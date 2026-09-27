@@ -1,0 +1,75 @@
+[
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-0",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-extension",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 0,
+    "occurredAt": "2026-01-01T00:00:00Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "run.started",
+      "runId": "run-extension"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-1",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-extension",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 1,
+    "occurredAt": "2026-01-01T00:00:00.001000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "extension.event",
+      "namespace": "mock",
+      "name": "native.unknown",
+      "data": {
+        "rawShape": "driver-private"
+      }
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-2",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-extension",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 2,
+    "occurredAt": "2026-01-01T00:00:00.002000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "run.completed",
+      "runId": "run-extension"
+    }
+  }
+]

@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+# 审计报告可能含键路径 + profile 名，默认不进仓库
+audit-inheritable-secrets.md
+audit-inheritable-secrets.json

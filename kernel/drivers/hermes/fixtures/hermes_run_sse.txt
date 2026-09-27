@@ -1,0 +1,30 @@
+data: {"event": "tool.started", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339749.557778, "tool": "terminal", "preview": "echo HERMES-PROBE-TOOL-MARKER"}
+
+data: {"event": "tool.completed", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339749.7282188, "tool": "terminal", "duration": 0.17, "error": false}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.877326, "delta": "\n\nHER"}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.878696, "delta": "M"}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.879403, "delta": "ES"}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.8798358, "delta": "-P"}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.880063, "delta": "RO"}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.8803, "delta": "BE"}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.880528, "delta": "-"}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.880811, "delta": "TO"}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.880973, "delta": "OL"}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.881275, "delta": "-M"}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.881523, "delta": "ARK"}
+
+data: {"event": "message.delta", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.881713, "delta": "ER"}
+
+data: {"event": "reasoning.available", "run_id": "run_36414bb8ee694016b045c8e2121c41f6", "timestamp": 1788339750.8830981, "text": "HERMES-PROBE-TOOL-MARKER"}
+

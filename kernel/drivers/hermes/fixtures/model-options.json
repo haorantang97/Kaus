@@ -1,0 +1,61 @@
+{
+  "_note": "Static model-options parser fixture. Authentication flags are test scenarios, not account state.",
+  "providers": [
+    {
+      "slug": "nous",
+      "name": "Nous Portal",
+      "models": [],
+      "capabilities": {},
+      "authenticated": false
+    },
+    {
+      "slug": "fireworks",
+      "name": "Fireworks AI",
+      "models": [],
+      "capabilities": {},
+      "authenticated": false
+    },
+    {
+      "slug": "moa",
+      "name": "Mixture of Agents",
+      "models": [
+        "default"
+      ],
+      "capabilities": {
+        "default": {
+          "fast": false,
+          "reasoning": true
+        }
+      },
+      "authenticated": true
+    },
+    {
+      "slug": "anthropic",
+      "name": "Anthropic",
+      "models": [
+        "claude-fable-5",
+        "claude-sonnet-5",
+        "claude-opus-4-8",
+        "claude-opus-4-7",
+        "claude-opus-4-6",
+        "claude-sonnet-4-6",
+        "claude-opus-4-5-20251101",
+        "claude-sonnet-4-5-20250929",
+        "claude-opus-4-20250514",
+        "claude-sonnet-4-20250514",
+        "claude-haiku-4-5-20251001"
+      ],
+      "capabilities": {
+        "claude-fable-5": {
+          "fast": false,
+          "reasoning": true
+        },
+        "claude-opus-4-6": {
+          "fast": true,
+          "reasoning": true
+        }
+      },
+      "authenticated": true
+    }
+  ]
+}

@@ -1,0 +1,638 @@
+[
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-0",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": null,
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 0,
+    "occurredAt": "2026-01-01T00:00:00Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "session.created",
+      "sessionId": "native-session-full"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-1",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 1,
+    "occurredAt": "2026-01-01T00:00:00.001000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "run.started",
+      "runId": "run-full"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-2",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 2,
+    "occurredAt": "2026-01-01T00:00:00.002000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "reasoning.status",
+      "status": "thinking",
+      "summary": "正在规划"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-3",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 3,
+    "occurredAt": "2026-01-01T00:00:00.003000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "plan.updated",
+      "planId": "plan-full",
+      "entries": [
+        {
+          "entryId": "p1",
+          "content": "读取文件",
+          "status": "in_progress",
+          "priority": null
+        },
+        {
+          "entryId": "p2",
+          "content": "写回结果",
+          "status": "pending",
+          "priority": null
+        }
+      ]
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-4",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 4,
+    "occurredAt": "2026-01-01T00:00:00.004000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "message.started",
+      "messageId": "msg-full",
+      "role": "assistant"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-5",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 5,
+    "occurredAt": "2026-01-01T00:00:00.005000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "message.delta",
+      "messageId": "msg-full",
+      "text": "先看一下文件"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-6",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 6,
+    "occurredAt": "2026-01-01T00:00:00.006000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "tool.started",
+      "callId": "call-full",
+      "name": "read_file",
+      "input": {
+        "path": "a.txt"
+      }
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-7",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 7,
+    "occurredAt": "2026-01-01T00:00:00.007000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "tool.updated",
+      "callId": "call-full",
+      "output": null,
+      "progress": {
+        "pct": 50
+      },
+      "cumulative": false
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-8",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 8,
+    "occurredAt": "2026-01-01T00:00:00.008000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "tool.completed",
+      "callId": "call-full",
+      "output": {
+        "lines": 3
+      },
+      "isError": false
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-9",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 9,
+    "occurredAt": "2026-01-01T00:00:00.009000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "terminal.started",
+      "terminalId": "term-full",
+      "command": "echo hi"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-10",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 10,
+    "occurredAt": "2026-01-01T00:00:00.010000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "terminal.updated",
+      "terminalId": "term-full",
+      "output": "hi\n",
+      "cumulative": false
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-11",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 11,
+    "occurredAt": "2026-01-01T00:00:00.011000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "terminal.completed",
+      "terminalId": "term-full",
+      "exitCode": 0
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-12",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 12,
+    "occurredAt": "2026-01-01T00:00:00.012000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "permission.requested",
+      "request": {
+        "requestId": "req-full-permission",
+        "title": "允许写入 a.txt？",
+        "detail": null,
+        "toolCallId": null,
+        "options": [
+          {
+            "optionId": "allow",
+            "label": "允许",
+            "kind": null
+          },
+          {
+            "optionId": "deny",
+            "label": "拒绝",
+            "kind": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-13",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 13,
+    "occurredAt": "2026-01-01T00:00:00.013000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "permission.resolved",
+      "requestId": "req-full-permission",
+      "decision": "allow"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-14",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 14,
+    "occurredAt": "2026-01-01T00:00:00.014000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "file.changed",
+      "path": "a.txt",
+      "diff": "@@ -1 +1 @@",
+      "operation": "modified"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-15",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 15,
+    "occurredAt": "2026-01-01T00:00:00.015000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "artifact.created",
+      "artifact": {
+        "artifactId": "artifact-full",
+        "kind": "file",
+        "title": "a.txt",
+        "uri": null,
+        "mimeType": null,
+        "sizeBytes": null
+      }
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-16",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 16,
+    "occurredAt": "2026-01-01T00:00:00.016000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "question.requested",
+      "request": {
+        "requestId": "req-full-question",
+        "prompt": "还需要我做别的吗？",
+        "options": [],
+        "allowFreeText": true
+      }
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-17",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 17,
+    "occurredAt": "2026-01-01T00:00:00.017000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "question.resolved",
+      "requestId": "req-full-question"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-18",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 18,
+    "occurredAt": "2026-01-01T00:00:00.018000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "authentication.requested",
+      "request": {
+        "requestId": "req-full-authentication",
+        "message": "需要认证后才能提交结果",
+        "methods": [
+          "device-code"
+        ]
+      }
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-19",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 19,
+    "occurredAt": "2026-01-01T00:00:00.019000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "authentication.resolved",
+      "requestId": "req-full-authentication",
+      "outcome": "authenticated"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-20",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 20,
+    "occurredAt": "2026-01-01T00:00:00.020000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "message.delta",
+      "messageId": "msg-full",
+      "text": "，已完成。"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-21",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 21,
+    "occurredAt": "2026-01-01T00:00:00.021000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "message.completed",
+      "messageId": "msg-full",
+      "text": "先看一下文件，已完成。"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-22",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 22,
+    "occurredAt": "2026-01-01T00:00:00.022000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "usage.updated",
+      "usage": {
+        "inputTokens": 120,
+        "outputTokens": 40,
+        "cachedInputTokens": null,
+        "reasoningTokens": null,
+        "totalTokens": 160,
+        "costUsd": null,
+        "contextWindow": null,
+        "contextUsed": null
+      }
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-23",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-full",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 23,
+    "occurredAt": "2026-01-01T00:00:00.023000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "run.completed",
+      "runId": "run-full"
+    }
+  }
+]

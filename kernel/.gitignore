@@ -1,0 +1,4 @@
+# 只忽略本目录下的 Python / pytest 产物；不影响仓库其它部分。
+__pycache__/
+*.py[cod]
+.pytest_cache/

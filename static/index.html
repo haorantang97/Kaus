@@ -1,0 +1,2454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hermes</title>
+<link rel="stylesheet" href="/static/vendor/xterm.css" />
+<style>
+  :root {
+    --bg: #ffffff;
+    --side: #f4f3f1;
+    --side-hover: #eeece8;
+    --side-active: #e7e4de;
+    --hair: #e4e2dd;
+    --hair-strong: #d6d3cc;
+    --ink: #2b2a28;
+    --muted: #8a8782;
+    --faint: #b4b1aa;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+            "PingFang SC", "Hiragino Sans GB", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans);
+    font-size: 14px; -webkit-font-smoothing: antialiased; }
+  .app { display: flex; height: 100vh; overflow: hidden; }
+
+  /* ---------- sidebar (Nordic minimal, monochrome) ---------- */
+  .side { width: 280px; flex: none; background: var(--side);
+    border-right: 1px solid var(--hair); display: flex; flex-direction: column; }
+  .side-head { padding: 22px 20px 10px; }
+  .brand { font-size: 15px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; display: flex; align-items: baseline; }
+  .brand small { display: block; font-size: 10.5px; font-weight: 400; letter-spacing: .18em;
+    color: var(--faint); margin-top: 5px; text-transform: uppercase; }
+  .brand .src { margin-left: auto; font: 9.5px var(--mono); color: var(--faint); letter-spacing: .04em;
+    text-transform: none; align-self: center; }
+  /* 纵向操作列表（参考 Claude）：每项独占整行，2 字标签不再竖断，字数容错高 */
+  .side-actions { display: flex; flex-direction: column; gap: 1px; padding: 4px 12px 8px; }
+  .sa-btn { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font: 12.5px var(--mono);
+    color: var(--muted); cursor: pointer; border-radius: 6px; white-space: nowrap; user-select: none; }
+  .sa-btn:hover { background: var(--side-hover); color: var(--ink); }
+  .sa-btn .ic { width: 14px; text-align: center; color: var(--faint); flex: none; }
+  .sa-btn:hover .ic { color: var(--ink); }
+  /* "新建 agent" 是动作不是视图 → 绿色虚框强调 */
+  .sa-btn.new { color: #5e7355; }
+  .sa-btn.new .ic { color: #5e7355; }
+  .sa-btn.new:hover { background: #eaf0e6; }
+  /* 主区顶部刷新图标按钮 */
+  .top .lnk { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+  .top .lnk:hover { color: var(--ink); }
+  #top-reload { font-size: 15px; }
+
+  /* E2: 侧栏搜索框 */
+  .side-search { padding: 0 18px 6px; }
+  .side-search input { width: 100%; padding: 6px 9px; font: 12px var(--mono); border: 1px solid var(--hair);
+    border-radius: 6px; background: #fff; color: var(--ink); }
+  .side-search input:focus { outline: none; border-color: var(--hair-strong); }
+  .nav { flex: 1; overflow-y: auto; padding: 6px 12px 24px; }
+  .nav.filtered .snode.fhide { display: none; }
+  .nav.filtered .it.fmatch { background: #efe9d8; }
+  .grp { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--faint);
+    padding: 20px 8px 8px; }
+  .it { display: flex; align-items: baseline; gap: 8px; padding: 8px 8px; cursor: pointer;
+    border-left: 1px solid transparent; }
+  .it:hover { background: var(--side-hover); }
+  /* 可拖的行 hover 显示抓手光标，提示"可以拖动改上级"（点击选中仍然可用） */
+  .it[draggable="true"]:hover { cursor: grab; }
+  .it[draggable="true"]:active { cursor: grabbing; }
+  .it.on { background: var(--side-active); border-left-color: var(--ink); }
+  .it.drag { opacity: .4; }
+  .it.drop { background: var(--side-active); box-shadow: inset 0 0 0 1px var(--ink); border-radius: 6px; }
+  .it .nm { font: 13px var(--mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 2.5em; }
+  /* 徽章不竖排折行：nowrap + 不参与挤压 */
+  .it .role { font-size: 10.5px; color: var(--faint); letter-spacing: .04em; white-space: nowrap; flex: none; }
+  /* 侧栏项 ⋯ 菜单按钮（hover 出现，仿 Claude desktop） */
+  .it .mbtn { flex: none; color: var(--faint); cursor: pointer; opacity: 0; padding: 0 3px; font-size: 15px; line-height: 1; }
+  .it:hover .mbtn { opacity: 1; }
+  .it .mbtn:hover { color: var(--ink); }
+  .ctx-menu { position: fixed; z-index: 85; background: var(--bg); border: 1px solid var(--hair-strong);
+    border-radius: 8px; box-shadow: 0 6px 22px rgba(0,0,0,.1); padding: 4px; min-width: 132px; display: none; }
+  .ctx-menu.on { display: block; }
+  .ctx-menu .mi { padding: 7px 12px; font: 12.5px var(--mono); color: var(--ink); cursor: pointer; border-radius: 5px; display: flex; gap: 8px; align-items: center; }
+  .ctx-menu .mi:hover { background: var(--side-hover); }
+  .ctx-menu .mi.danger { color: #9c5b4f; }
+  .ctx-menu .mi .ic { width: 14px; text-align: center; color: var(--faint); }
+  .ctx-menu .mi.danger .ic { color: #9c5b4f; }
+  /* 置顶区：pin 的 agent 在侧栏最上方做快捷分身，点了跳真 profile，原树位置不动 */
+  .pinned-wrap { padding: 2px 12px 8px; border-bottom: 1px dashed var(--hair); margin-bottom: 4px; }
+  .pin-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; border-radius: 6px;
+    font: 12.5px var(--mono); color: var(--ink); }
+  .pin-row:hover { background: var(--side-hover); }
+  .pin-row.on { background: var(--side-active); }
+  .pin-row .pic { color: #9c8b4a; flex: none; font-size: 11px; }
+  .pin-row .pn { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pin-row .unpin { color: var(--faint); opacity: 0; flex: none; padding: 0 3px; }
+  .pin-row:hover .unpin { opacity: 1; }
+  .pin-row .unpin:hover { color: #9c5b4f; }
+  /* gw 圆点不再用 margin-left:auto（那会吃掉空闲宽度、压住 .nm 的 flex 生长→名字截断）；
+     改成跟在 role 后面的固定小间距，名字就能用满剩余宽度 */
+  .it .gw { flex: none; align-self: center; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--ink); opacity: 0; }
+  .it .gw.run { opacity: .85; }
+  /* 树状侧栏：折叠箭头 + 连接线 */
+  .grp { cursor: pointer; user-select: none; display: flex; align-items: center; }
+  .grp .gtw { margin-left: 6px; font-size: 9px; color: var(--faint); }
+  .grp-body.hide { display: none; }
+  .tw { flex: none; width: 12px; text-align: center; font-size: 9px; line-height: 1; color: var(--faint);
+    cursor: pointer; align-self: center; user-select: none; }
+  .tw:hover { color: var(--ink); }
+  .tw.empty { cursor: default; }
+  .subtree { margin-left: 11px; border-left: 1px solid var(--hair); }
+  .subtree > .snode > .it { position: relative; }
+  .subtree > .snode > .it::before { content: ""; position: absolute; left: -11px; top: 16px;
+    width: 9px; height: 1px; background: var(--hair); }
+  /* 侧栏草稿提示行：单行摘要 + "点击 → 关系网处理"，避免和关系网面板里的可拖卡片重复展示 */
+  .drafts-wrap { margin-top: 18px; padding-top: 6px; border-top: 1px dashed var(--hair); }
+  .drafts-summary { padding: 8px 10px; font: 11.5px var(--mono); color: var(--muted);
+    cursor: pointer; border-radius: 6px; border: 1px dashed var(--hair); margin: 2px 8px; }
+  .drafts-summary:hover { background: var(--side-hover); border-style: solid; }
+  .drafts-summary .hint { font-size: 10.5px; color: var(--faint); margin-left: 8px; }
+
+  /* ---------- main ---------- */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+  .welcome { margin: auto; text-align: center; color: var(--muted); max-width: 380px; padding: 24px; }
+  .welcome .k { font: 13px var(--mono); color: var(--faint); letter-spacing: .04em; }
+  .welcome p { margin: 12px 0 0; font-size: 13px; line-height: 1.6; }
+
+  .top { display: flex; align-items: baseline; gap: 12px; padding: 14px 22px;
+    border-bottom: 1px solid var(--hair); flex: none; }
+  .top .nm { font: 15px var(--mono); color: var(--ink); }
+  .top .meta { font: 11px var(--mono); color: var(--faint); letter-spacing: .03em; }
+  .top .sp { margin-left: auto; }
+  .lnk { font-size: 12px; color: var(--muted); cursor: pointer; margin-left: 18px; letter-spacing: .04em; }
+  .lnk:hover { color: var(--ink); }
+
+  .term-host { flex: 1; position: relative; min-height: 0; background: var(--bg); }
+  .term-wrap { position: absolute; inset: 0; background: var(--bg); }
+  .term { position: absolute; inset: 14px 10px 10px 18px; }
+  .term-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    text-align: center; color: var(--muted); font-size: 13px; padding: 24px; line-height: 1.6; }
+  .term-hint code { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+
+  /* ---------- info drawer (monochrome) ---------- */
+  .scrim { position: fixed; inset: 0; background: rgba(43,42,40,.28); opacity: 0; pointer-events: none;
+    transition: opacity .16s; z-index: 40; }
+  .scrim.on { opacity: 1; pointer-events: auto; }
+  .info { position: fixed; top: 0; right: 0; height: 100%; width: 430px; max-width: 92vw; background: var(--bg);
+    border-left: 1px solid var(--hair); z-index: 50; transform: translateX(100%); transition: transform .18s;
+    overflow-y: auto; }
+  .info.on { transform: translateX(0); }
+  .info-head { position: sticky; top: 0; background: var(--bg); border-bottom: 1px solid var(--hair);
+    padding: 17px 22px; display: flex; align-items: baseline; gap: 10px; }
+  .info-head .nm { font: 15px var(--mono); }
+  .info-head .role { font-size: 11px; color: var(--faint); letter-spacing: .04em; }
+  .x { margin-left: auto; cursor: pointer; border: none; background: none; font-size: 20px; line-height: 1;
+    color: var(--muted); padding: 2px 6px; }
+  .x:hover { color: var(--ink); }
+  .info-body { padding: 18px 22px 50px; }
+  .blk { margin-top: 24px; } .blk:first-child { margin-top: 2px; }
+  .blk > h3 { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--faint);
+    margin: 0 0 10px; font-weight: 500; }
+  .meta-line { font: 12px var(--mono); color: var(--muted); }
+  /* 6 分区的 field-row 表格布局：标签 160 / 值 1fr。conventions §7 schema 对齐。 */
+  .fld { display: grid; grid-template-columns: 160px 1fr; gap: 12px 14px; padding: 6px 0;
+    border-bottom: 1px dotted var(--hair); align-items: baseline; }
+  .fld:last-child { border-bottom: 0; }
+  .fld > .lbl { font: 11px var(--mono); color: var(--faint); letter-spacing: .06em;
+    text-transform: lowercase; padding-top: 2px; }
+  .fld > .val { font: 12.5px var(--mono); color: var(--ink); word-break: break-all; }
+  /* C3: pill 收敛到 3 色语义：ok=绿（健康/启用/自有）· inh=黄（继承/警告）· bad=红（停用/违规/错误） */
+  .fld > .val .pill { display: inline-block; padding: 1px 7px; margin: 2px 4px 2px 0;
+    background: var(--side-active); color: var(--ink); border-radius: 4px; font-size: 11px; }
+  .fld > .val .pill.ok { background: #eaf0e6; color: #5e7355; }
+  .fld > .val .pill.inh { background: #efe9d8; color: #6a5e3a; }
+  .fld > .val .pill.bad { background: #f3e7e3; color: #9c5b4f; }
+  /* .warn 是 inh 的别名（保留以兼容旧 HTML 字符串），新代码请直接用 inh */
+  .fld > .val .pill.warn { background: #efe9d8; color: #6a5e3a; }
+  .blk-h-meta { font-size: 10.5px; color: var(--faint); margin-left: 8px; letter-spacing: 0;
+    text-transform: none; font-weight: 400; }
+  /* 子任务卡 / 备份历史 */
+  .subtask-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 4px; }
+  .subtask-card { background: #fff; border: 1px solid var(--hair); border-radius: 7px; padding: 9px 11px; cursor: pointer; }
+  .subtask-card:hover { background: var(--side-hover); }
+  .subtask-card.dashed { border-style: dashed; color: var(--muted); text-align: center; }
+  .subtask-card .st-t { font: 12px var(--mono); color: var(--ink); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; }
+  .subtask-card .st-m { font: 10.5px var(--mono); color: var(--faint); display: flex; gap: 6px; }
+  .bkp-row { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px dotted var(--hair); font: 11.5px var(--mono); }
+  .bkp-row:last-child { border-bottom: 0; }
+  .bkp-row .ago { color: var(--faint); min-width: 70px; flex: none; }
+  .bkp-row .file { color: var(--ink); flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .bkp-row .act { color: #5e7355; cursor: pointer; font-size: 11px; text-decoration: underline dotted; flex: none; }
+  .bkp-row .act:hover { color: var(--ink); }
+  .bkp-fold summary { cursor: pointer; font: 11.5px var(--mono); color: var(--muted); padding: 4px 0; list-style: none; }
+  .bkp-fold summary:hover { color: var(--ink); }
+  .bkp-fold summary::-webkit-details-marker { display: none; }
+  .bkp-fold[open] summary::after { content: " ▾"; color: var(--faint); }
+  .bkp-fold summary::after { content: " ▸"; color: var(--faint); }
+  /* 影响范围 */
+  .impact-row { font: 11.5px var(--mono); padding: 5px 0; border-bottom: 1px dotted var(--hair); }
+  .impact-row:last-child { border-bottom: 0; }
+  .impact-row .lab { color: var(--muted); margin-right: 8px; }
+  .impact-row .num { color: var(--ink); font-weight: 600; }
+  .impact-row .nms { color: var(--faint); font-size: 11px; }
+  .soul { font: 12px var(--mono); white-space: pre-wrap; color: var(--ink);
+    border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair);
+    padding: 12px 0; max-height: 200px; overflow: auto; }
+  /* 知识库：全局 vault 面板的文件夹树 + 笔记项 */
+  .vault-tree { font: 12.5px var(--mono); max-width: 820px; margin-top: 12px; }
+  .vault-empty { color: var(--faint); font: 11.5px var(--mono); padding: 6px 0 6px 22px; }
+  .vdir { margin: 1px 0; }
+  .vdir > summary { cursor: pointer; padding: 4px 6px; border-radius: 6px; color: var(--ink);
+    list-style: none; display: flex; align-items: center; gap: 8px; user-select: none; }
+  .vdir > summary::-webkit-details-marker { display: none; }
+  .vdir > summary::before { content: "▸"; color: var(--faint); font-size: 10px; width: 9px; display: inline-block; }
+  .vdir[open] > summary::before { content: "▾"; }
+  .vdir > summary:hover { background: var(--side-hover); }
+  .vdir-name { font-weight: 600; }
+  .vdir-c { color: var(--faint); font-size: 11px; }
+  .vdir-body { padding-left: 14px; border-left: 1px solid var(--hair); margin-left: 10px; }
+  .vfile { display: flex; align-items: center; gap: 12px; padding: 4px 6px 4px 24px;
+    border-radius: 6px; cursor: pointer; }
+  .vfile:hover { background: var(--side-active); }
+  .vfile .vf-name { flex: 1; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vfile .vf-meta { color: var(--faint); font-size: 11px; flex: none; }
+  /* 笔记预览弹窗 */
+  .modal.wide { width: 640px; }
+  .vault-content { font: 12px var(--mono); white-space: pre-wrap; color: var(--ink);
+    background: #fafaf7; border: 1px solid var(--hair); border-radius: 7px; padding: 12px 14px;
+    max-height: 360px; overflow: auto; margin-top: 8px; }
+  /* 渲染后的 markdown 视图（与 raw 切换） */
+  .vault-md { background: #fafaf7; border: 1px solid var(--hair); border-radius: 7px;
+    padding: 14px 18px; max-height: 360px; overflow: auto; margin-top: 8px;
+    font: 13px/1.65 -apple-system, var(--mono); color: var(--ink); }
+  .vault-md h1, .vault-md h2, .vault-md h3 { margin: 14px 0 8px; font-weight: 600; color: var(--ink); }
+  .vault-md h1 { font-size: 17px; border-bottom: 1px solid var(--hair); padding-bottom: 4px; }
+  .vault-md h2 { font-size: 15px; }
+  .vault-md h3 { font-size: 13.5px; color: var(--muted); }
+  .vault-md p { margin: 6px 0; }
+  .vault-md code { font: 12px var(--mono); background: var(--side-active); padding: 1px 5px; border-radius: 3px; }
+  .vault-md pre { background: var(--side-active); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+  .vault-md pre code { background: transparent; padding: 0; }
+  .vault-md ul, .vault-md ol { margin: 4px 0; padding-left: 22px; }
+  .vault-md li { margin: 2px 0; }
+  .vault-md blockquote { border-left: 3px solid var(--hair-strong); margin: 8px 0; padding: 2px 12px; color: var(--muted); }
+  .vault-md a { color: #5e7355; text-decoration: underline; text-decoration-style: dotted; }
+  .vault-md .wikilink { color: #5e7355; background: #eaf0e6; padding: 0 4px; border-radius: 3px;
+    font-size: 12px; text-decoration: none; }
+  .vault-view-toggle { display: inline-flex; gap: 6px; margin-top: 8px; }
+  .vault-view-toggle .tg { font: 10.5px var(--mono); padding: 3px 9px; border: 1px solid var(--hair);
+    border-radius: 5px; cursor: pointer; color: var(--muted); user-select: none; }
+  .vault-view-toggle .tg.on { background: var(--side-active); color: var(--ink); border-color: var(--hair-strong); }
+  details.gp { border-top: 1px solid var(--hair); }
+  details.gp > summary { cursor: pointer; list-style: none; padding: 9px 0; font: 12.5px var(--mono);
+    display: flex; align-items: center; gap: 8px; color: var(--ink); }
+  details.gp > summary::-webkit-details-marker { display: none; }
+  details.gp > summary .c { margin-left: auto; color: var(--faint); font-size: 11px; }
+  .sk { padding: 7px 0 7px 14px; border-top: 1px solid var(--hair); border-left: 1px solid transparent; }
+  .sk .sn { font: 12px var(--mono); color: var(--ink); }
+  .sk .sd { color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.5; }
+  .lv { display: flex; gap: 9px; align-items: baseline; padding: 6px 0 6px 14px; border-top: 1px solid var(--hair); font-size: 12px; }
+  .lv .lvb { flex: none; font-size: 10.5px; letter-spacing: .04em; }
+  .lv .lw { flex: none; font: 11.5px var(--mono); color: var(--ink); }
+  .lv .lm { color: var(--muted); }
+  .it.dead .nm { opacity: .55; text-decoration: line-through; }
+  .cedit textarea { width: 100%; min-height: 280px; box-sizing: border-box; padding: 12px 14px; font: 12.5px var(--mono);
+    line-height: 1.6; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; resize: vertical; }
+  .csubs { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  .csub { display: flex; align-items: center; gap: 6px; font: 12.5px var(--mono); color: var(--ink); cursor: pointer; }
+  .sess { border-top: 1px solid var(--hair); padding: 9px 0; }
+  .sess .t { font-size: 13px; color: var(--ink); }
+  .sess .m2 { color: var(--faint); font: 11px var(--mono); margin-top: 3px; }
+  .note { color: var(--muted); font-size: 12px; }
+
+  /* ---------- conversation tabs ---------- */
+  .tabbar { flex: none; display: flex; align-items: stretch; gap: 2px; padding: 6px 12px 0;
+    border-bottom: 1px solid var(--hair); overflow-x: auto; }
+  .tab { display: flex; align-items: center; gap: 7px; max-width: 210px; padding: 7px 9px 8px;
+    font: 12px var(--mono); color: var(--muted); cursor: pointer; border: 1px solid transparent;
+    border-bottom: none; border-radius: 7px 7px 0 0; margin-bottom: -1px; }
+  .tab:hover { background: var(--side-hover); }
+  .tab.on { background: var(--bg); color: var(--ink); border-color: var(--hair); }
+  .tab .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab .cl { color: var(--faint); font-size: 14px; line-height: 1; padding: 0 1px; border-radius: 4px; }
+  .tab .cl:hover { color: #9c5b4f; background: var(--side-active); }
+  .tab-add { flex: none; padding: 7px 11px 8px; font: 14px var(--mono); color: var(--muted);
+    cursor: pointer; border-radius: 7px; }
+  .tab-add:hover { background: var(--side-hover); color: var(--ink); }
+  .tab-sync { flex: none; margin-left: auto; align-self: center; font-size: 13px; color: var(--faint);
+    cursor: pointer; padding: 0 8px; }
+  .tab-sync:hover { color: var(--ink); }
+
+  .btn { font: 12px var(--mono); cursor: pointer; border: 1px solid var(--hair-strong); background: #fff;
+    color: var(--ink); border-radius: 7px; padding: 8px 15px; }
+  .btn:hover { background: var(--side); }
+  .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .btn.primary:hover { background: #000; }
+
+  /* ---------- network (org tree) ---------- */
+  .netwrap { position: fixed; inset: 0; background: var(--bg); z-index: 60; display: none; flex-direction: column; }
+  .netwrap.on { display: flex; }
+  /* 面板头部的"刷新/关闭"等切换链接统一样式（基础 .rl，过去缺这条） */
+  .rl { cursor: pointer; color: var(--muted); font-size: 12px; letter-spacing: .04em; }
+  .rl:hover { color: var(--ink); }
+  .net-head { display: flex; align-items: baseline; gap: 14px; padding: 16px 24px; border-bottom: 1px solid var(--hair); flex: none; }
+  .net-head .ttl { font-size: 14px; letter-spacing: .12em; text-transform: uppercase; }
+  .net-head .sp { margin-left: auto; }
+  .net-body { flex: 1; overflow: auto; padding: 20px 24px 60px; }
+  .net-hint { color: var(--faint); font-size: 12px; margin-bottom: 16px; line-height: 1.65; max-width: 760px; }
+  /* 仪表盘卡片网格：3 张零基建卡（系统健康 / 待你 Review / 最近变更） */
+  .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+  .dash-card { background: #fff; border: 1px solid var(--hair); border-radius: 12px; padding: 18px 20px;
+    display: flex; flex-direction: column; min-height: 240px; }
+  .dash-card h4 { margin: 0 0 12px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--faint); font-weight: 600; }
+  .dash-card .lead { font: 22px var(--mono); color: var(--ink); margin-bottom: 4px; }
+  .dash-card .sub-meta { color: var(--muted); font-size: 12px; line-height: 1.75; }
+  .dash-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0;
+    border-bottom: 1px dotted var(--hair); font-size: 12.5px; }
+  .dash-row:last-child { border-bottom: 0; }
+  .dash-row .lbl { color: var(--muted); }
+  .dash-row .val { font: 13px var(--mono); color: var(--ink); }
+  .dash-row.clickable { cursor: pointer; }
+  .dash-row.clickable:hover { background: var(--side-hover); }
+  .dash-row .val.bad { color: #9c5b4f; }
+  .dash-row .val.warn { color: #9c8b4a; }
+  .dash-row .val.ok { color: #5e7355; }
+  .dash-review { font: 12.5px var(--mono); padding: 7px 9px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--hair); margin: 5px 0; background: #fff; }
+  .dash-review:hover { background: var(--side-hover); border-color: var(--hair-strong); }
+  .dash-review .who { color: var(--ink); }
+  .dash-review .what { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+  .dash-change { font: 11.5px var(--mono); padding: 7px 9px; border-bottom: 1px dotted var(--hair); display: flex; gap: 10px; align-items: baseline; }
+  .dash-change:last-child { border-bottom: 0; }
+  .dash-change .ago { color: var(--faint); flex: none; min-width: 70px; }
+  .dash-change .desc { color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+  .dash-empty { color: var(--faint); font: 11.5px var(--mono); padding: 14px 0; text-align: center; }
+  /* 关系网：自上而下的组织架构图（org chart）—— 嵌套 ul/li + 伪元素连线，一眼看出第一/二/三层 */
+  .org { display: inline-block; min-width: 100%; padding: 4px 0 40px; text-align: center; }
+  .org ul { position: relative; padding-top: 22px; white-space: nowrap; margin: 0; list-style: none; }
+  .org > ul { padding-top: 0; }
+  .org li { display: inline-block; vertical-align: top; list-style: none; position: relative;
+    padding: 22px 8px 0; }
+  /* 兄弟之间的横线 + 到上方汇合点的竖线 */
+  .org li::before, .org li::after { content: ""; position: absolute; top: 0; right: 50%;
+    border-top: 1px solid var(--hair-strong); width: 50%; height: 22px; }
+  .org li::after { right: auto; left: 50%; border-left: 1px solid var(--hair-strong); }
+  .org li:only-child::before, .org li:only-child::after { display: none; }
+  .org li:only-child { padding-top: 22px; }
+  .org li:first-child::before, .org li:last-child::after { border: 0 none; }
+  .org li:last-child::before { border-right: 1px solid var(--hair-strong); border-radius: 0 6px 0 0; }
+  .org li:first-child::after { border-radius: 6px 0 0 0; }
+  /* 父节点底部到子级横线的那根竖线 */
+  .org ul ul::before { content: ""; position: absolute; top: 0; left: 50%;
+    border-left: 1px solid var(--hair-strong); width: 0; height: 22px; }
+  /* 节点盒子 */
+  .onode { display: inline-block; text-align: left; border: 1px solid var(--hair); border-radius: 9px;
+    background: #fff; padding: 8px 12px; min-width: 120px; cursor: grab; vertical-align: top; transition: box-shadow .12s; }
+  .onode:hover { box-shadow: 0 2px 10px rgba(0,0,0,.06); border-color: var(--hair-strong); }
+  .onode.drag { opacity: .4; }
+  .onode.drop { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .onode.root { border-color: var(--ink); }
+  .onode .on-top { display: flex; align-items: baseline; gap: 6px; }
+  .onode .on-nm { font: 13px var(--mono); color: var(--ink); }
+  .onode .on-tag { font-size: 9.5px; padding: 0 5px; border-radius: 3px; }
+  .onode .on-tag.twin { color: #5e7355; background: #eaf0e6; }
+  .onode .on-tag.bad { color: #9c5b4f; background: #f3e7e3; }
+  .onode .on-tag.warn { color: #6a5e3a; background: #efe9d8; }
+  .onode .on-meta { font: 10.5px var(--mono); color: var(--faint); margin-top: 3px; }
+  .onode .on-acts { display: none; gap: 10px; margin-top: 7px; padding-top: 6px; border-top: 1px dotted var(--hair); }
+  .onode:hover .on-acts { display: flex; }
+  .onode .act { font-size: 10.5px; color: var(--muted); cursor: pointer; }
+  .onode .act:hover { color: var(--ink); }
+  .droptop { border: 1px dashed var(--hair-strong); border-radius: 9px; padding: 9px 12px; margin: 2px 0 16px;
+    color: var(--faint); font-size: 12px; text-align: center; }
+  .droptop.drop { border-color: var(--ink); color: var(--ink); background: var(--side-active); }
+
+  /* ---------- modal ---------- */
+  .modal-scrim { position: fixed; inset: 0; background: rgba(43,42,40,.4); z-index: 70; display: none;
+    align-items: center; justify-content: center; }
+  .modal-scrim.on { display: flex; }
+  .modal { background: var(--bg); border: 1px solid var(--hair-strong); border-radius: 12px; width: 470px;
+    max-width: 92vw; max-height: 86vh; overflow: auto; padding: 20px 22px; }
+  .modal h3 { margin: 0 0 6px; font-size: 14px; }
+  .modal .sub { color: var(--muted); font-size: 12px; margin-bottom: 8px; line-height: 1.55; }
+  .modal .grp { margin-top: 14px; }
+  .modal .grp > h4 { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin: 0 0 6px; }
+  .modal .ck { display: flex; align-items: center; gap: 9px; padding: 6px 0; font: 12.5px var(--mono); cursor: pointer; }
+  .modal .ck input { accent-color: var(--ink); }
+  .modal select { font: 12.5px var(--mono); padding: 6px 8px; border: 1px solid var(--hair-strong); border-radius: 7px; width: 100%; }
+  .modal .row { display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end; }
+  .modal .warn { color: #9c5b4f; font-size: 12px; margin-top: 10px; min-height: 1em; }
+  /* C1: 自定义 toast + 异步 confirm，替代原生 alert/confirm（视觉一致 + Chrome 自动化友好） */
+  .toast-stack { position: fixed; top: 20px; right: 20px; z-index: 90; display: flex; flex-direction: column; gap: 8px;
+    pointer-events: none; max-width: 380px; }
+  .toast { background: var(--bg); border: 1px solid var(--hair-strong); border-left: 3px solid var(--ink);
+    border-radius: 7px; padding: 10px 14px; font: 12.5px var(--mono); color: var(--ink);
+    box-shadow: 0 4px 14px rgba(0,0,0,.06); pointer-events: auto; animation: toast-in .18s ease-out; max-width: 100%; word-break: break-word; }
+  .toast.ok { border-left-color: #5e7355; }
+  .toast.warn { border-left-color: #9c8b4a; }
+  .toast.bad { border-left-color: #9c5b4f; }
+  @keyframes toast-in { from { opacity: 0; transform: translateX(8px) } to { opacity: 1; transform: translateX(0) } }
+  /* tab 化的落位预演对话框 */
+  .modal .tabs { display: flex; gap: 0; margin: 12px 0 0; border-bottom: 1px solid var(--hair); }
+  .modal .tab { padding: 7px 14px; font: 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--faint); cursor: pointer; border-bottom: 2px solid transparent; user-select: none; }
+  .modal .tab:hover { color: var(--muted); }
+  .modal .tab.on { color: var(--ink); border-bottom-color: var(--ink); }
+  .modal .tab .pill { display: inline-block; min-width: 16px; height: 16px; padding: 0 5px; margin-left: 6px;
+    background: var(--side-active); color: var(--ink); border-radius: 9px; font: 10px var(--mono);
+    line-height: 16px; text-align: center; letter-spacing: 0; }
+  .modal .tabpane { display: none; padding-top: 12px; min-height: 140px; }
+  .modal .tabpane.on { display: block; }
+  .modal .chain { font: 11.5px var(--mono); color: var(--muted); padding: 6px 0; word-break: break-all; }
+  .modal .chain .arr { color: var(--faint); margin: 0 6px; }
+  .modal .chain .self { color: var(--ink); font-weight: 600; }
+  .modal .diffrow { font: 12px var(--mono); padding: 5px 0; display: flex; gap: 8px; align-items: baseline;
+    border-bottom: 1px dotted var(--hair); }
+  .modal .diffrow:last-child { border-bottom: 0; }
+  .modal .diffrow .k { color: var(--ink); min-width: 130px; }
+  .modal .diffrow .v { color: var(--muted); font-size: 11.5px; }
+  .modal .diffrow .tag { font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase;
+    padding: 1px 6px; border-radius: 4px; }
+  .modal .diffrow .tag.add { color: #5e7355; background: #eaf0e6; }
+  .modal .diffrow .tag.remove { color: #9c5b4f; background: #f3e7e3; }
+  .modal .diffrow .tag.update { color: #6a5e3a; background: #efe9d8; }
+  .modal .empty { font: 11.5px var(--mono); color: var(--faint); padding: 10px 0; }
+  .modal .note-strong { color: #6a5e3a; font: 11.5px var(--mono); margin-top: 8px; }
+
+  /* ---------- kanban ---------- */
+  .kan-new { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
+  .kan-new input, .kan-new select { font: 12.5px var(--mono); padding: 7px 9px; border: 1px solid var(--hair-strong); border-radius: 7px; background: #fff; color: var(--ink); }
+  .kan-new input.t { flex: 1; min-width: 220px; }
+  .kan-cols { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+  .kan-col { flex: 1; min-width: 200px; }
+  .kan-col > h4 { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin: 0 0 8px; }
+  .ktask { border: 1px solid var(--hair); border-radius: 9px; background: #fff; padding: 9px 11px; margin-bottom: 8px; }
+  .ktask .kt { font-size: 13px; color: var(--ink); line-height: 1.4; }
+  .ktask .km { font: 11px var(--mono); color: var(--faint); margin-top: 5px; display: flex; align-items: center; gap: 8px; }
+  .ktask .ka { margin-left: auto; color: var(--muted); cursor: pointer; }
+  .ktask .ka:hover { color: #9c5b4f; }
+  .kan-ctl { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--hair); }
+  .kan-ctl .dstat { font: 11px var(--mono); color: var(--muted); letter-spacing: .03em; }
+  .kan-ctl .dstat.on { color: #5e7355; }
+  .kan-ctl .btn { padding: 6px 12px; }
+  .kan-ctl .out { color: var(--faint); font: 11px var(--mono); }
+
+  /* per-agent 技能管理器 */
+  .askrow { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--hair); font: 12px var(--mono); }
+  .askrow .an { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .askadd { display: flex; gap: 8px; margin-bottom: 8px; }
+  .askadd input { flex: 1; font: 12px var(--mono); padding: 6px 9px; border: 1px solid var(--hair-strong); border-radius: 7px; background: #fff; color: var(--ink); }
+  .askadd .btn { padding: 6px 12px; flex: none; }
+  .askrow .sb { font-size: 10px; color: var(--faint); letter-spacing: .03em; flex: none; }
+  .askrow .aun { margin-left: auto; color: var(--muted); cursor: pointer; font-size: 11px; flex: none; }
+  .askrow .aun:hover { color: #9c5b4f; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="side-head">
+      <div class="brand">Hermes<small>agent profiles</small><span class="src" id="src">…</span></div>
+    </div>
+    <div class="side-actions">
+      <div class="sa-btn new" id="new-agent" title="新建空 agent（草稿，拖到位置才正式入树）"><span class="ic">＋</span>新建 agent</div>
+      <div class="sa-btn" id="dash-open"><span class="ic">▦</span>仪表盘</div>
+      <div class="sa-btn" id="kan-open"><span class="ic">▤</span>任务板</div>
+      <div class="sa-btn" id="net-open"><span class="ic">⌗</span>关系网</div>
+      <div class="sa-btn" id="vault-open"><span class="ic">▥</span>知识库</div>
+      <div class="sa-btn" id="const-open"><span class="ic">⚖</span>宪法</div>
+    </div>
+    <!-- E2: 侧栏顶部搜索框，按名字 / 模型实时过滤主树 -->
+    <div class="side-search"><input type="search" id="nav-filter" placeholder="搜 agent…（/ 聚焦）" autocomplete="off" spellcheck="false"></div>
+    <nav class="nav" id="nav"><div class="note" style="padding:10px 8px">加载中…</div></nav>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="welcome">
+      <div class="k">你的 AI 团队</div>
+      <p>点左边任意一个 AI 开始对话。<br />每个 AI 都有自己的人格、技能和记忆，可以多轮聊、用工具。</p>
+    </div>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="info" id="info" aria-hidden="true"></aside>
+<aside class="netwrap" id="netwrap" aria-hidden="true"></aside>
+<aside class="netwrap" id="kanwrap" aria-hidden="true"></aside>
+<aside class="netwrap" id="constwrap" aria-hidden="true"></aside>
+<aside class="netwrap" id="dashwrap" aria-hidden="true"></aside>
+<aside class="netwrap" id="vaultwrap" aria-hidden="true"></aside>
+<div class="modal-scrim" id="modal-scrim"></div>
+<div class="toast-stack" id="toast-stack"></div>
+<div class="ctx-menu" id="ctx-menu"></div>
+
+<script src="/static/vendor/xterm.js"></script>
+<script src="/static/vendor/xterm-addon-fit.js"></script>
+<script src="/static/vendor/xterm-addon-webgl.js"></script>
+<script>
+const ROLE = { source: "源", shared: "继承", none: "" };
+const ROLE_FULL = { source: "技能源", shared: "借用技能", none: "独立" };  // 仅关系网/详情等高阶视图用
+// 显示名映射：profile ID（小写，hermes 硬约束）→ 显示名（首字母大写 / default→X，来自后端 labels.json）。
+// dname 优先查 LABELS，没有则回退原 id。全站渲染都走 dname。
+const LABELS = {};
+const dname = (n) => LABELS[n] || (n || "");
+let PROFILES = [];
+let current = null;                 // 当前 profile
+const TERMS = {};                   // convKey -> { wrap, term, fit, ws }（常驻终端，按对话框）
+const TABS = {};                    // profile -> { list:[tab], active: convKey|null }
+// E3: 侧栏树折叠状态持久化到 localStorage，刷新页面不丢
+const COLLAPSED = new Set(JSON.parse(localStorage.getItem("hermes-collapsed") || "[]"));
+function saveCollapsed() {
+  try { localStorage.setItem("hermes-collapsed", JSON.stringify([...COLLAPSED])); } catch (e) {}
+}
+// tab = { key(稳定), sid(绑定后填), title, preSids:[] }
+let _uid = 0;
+const nextKey = (p) => `${p}::c${++_uid}`;
+
+const esc = s => (s || "").replace(/[&<>"']/g, m =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+
+// 显示名 → 底层 ID 候选：小写、非 ASCII 去掉、非字母数字转连字符、去首尾连字符、限长。
+// 纯中文名 slug 为空 → 让用户手填 ID。
+function slugify(s) {
+  return (s || "").toLowerCase().trim()
+    .replace(/[^\x00-\x7f]/g, "")      // 去非 ASCII（中文消失）
+    .replace(/[^a-z0-9]+/g, "-")       // 非字母数字 → 连字符
+    .replace(/^-+|-+$/g, "")           // 去首尾连字符
+    .slice(0, 32).replace(/-+$/g, "");
+}
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+  return j;
+}
+
+/* ---------- sidebar ---------- */
+function rowHTML(p, toggle) {
+  const dead = p.effective_killed;
+  // 侧栏只显示对用户有意义的徽章：停用 / 化身。技能图角色（源/继承/独立）对小白无意义，不显示。
+  const badge = dead
+    ? `<span class="role" style="color:#9c5b4f">${p.killed ? "已停用" : "随上级停用"}</span>`
+    : (p.main_twin ? `<span class="role" style="color:#5e7355">化身</span>` : "");
+  // draggable：侧栏树直接拖动改上级（drop 到另一节点 → reparentDialog）。主 AI 是最高层，不可拖。
+  const draggable = p.name === "default" ? "" : 'draggable="true"';
+  const titleAttr = dead ? "已停用" : (p.name === "default" ? "主 AI（最高层，不能移动）" : "拖到另一个 AI 上 = 改它的上级");
+  return `<div class="it ${current === p.name ? "on" : ""} ${dead ? "dead" : ""}" data-name="${esc(p.name)}" role="button" tabindex="0" ${draggable} title="${titleAttr}">
+    ${toggle}<span class="nm" title="${esc(p.name)}">${esc(dname(p.name))}</span>
+    ${badge}
+    <span class="gw ${p.gateway === "running" ? "run" : ""}" title="gateway ${p.gateway || "?"}"></span>
+    <span class="mbtn" data-menu="${esc(p.name)}" title="更多">⋯</span>
+  </div>`;
+}
+function renderNav() {
+  // 草稿（顶栏「+ 新建」生成、尚未拖到位置）从主树拆出，单独在底部以虚框展示——
+  // 提醒用户它们处于"游离"态，去关系网面板拖到位置才正式入树。
+  const drafts = PROFILES.filter(p => p.is_draft);
+  const main = PROFILES.filter(p => !p.is_draft);
+
+  // 用每个 profile 的 .parent 在前端拼出父子森林
+  const byName = {}; main.forEach(p => byName[p.name] = p);
+  const kids = {};
+  main.forEach(p => { if (p.parent && byName[p.parent] && p.parent !== p.name) (kids[p.parent] = kids[p.parent] || []).push(p.name); });
+  // 分身（main_twin）= 主 agent 的另一种模态，同灵魂 → 在同级里置顶成组，再按字母排其余
+  const twinFirst = (x, y) => {
+    const tx = byName[x].main_twin ? 0 : 1, ty = byName[y].main_twin ? 0 : 1;
+    return (tx - ty) || x.localeCompare(y);
+  };
+  Object.values(kids).forEach(a => a.sort(twinFirst));
+  const hasKids = n => (kids[n] || []).length > 0;
+  // 根 = 无父级的（正常只有主 agent default；显式置顶的也算根）。default 永远排最前。
+  const roots = main.filter(p => !p.parent || !byName[p.parent]).map(p => p.name)
+    .sort((a, b) => (a === "default" ? -1 : b === "default" ? 1 : a.localeCompare(b)));
+
+  const nodeHTML = (name) => {
+    const p = byName[name]; if (!p) return "";
+    const has = hasKids(name);
+    const col = COLLAPSED.has(name);
+    const toggle = has
+      ? `<span class="tw" data-toggle="${esc(name)}">${col ? "▸" : "▾"}</span>`
+      : `<span class="tw empty"></span>`;
+    const sub = (has && !col) ? `<div class="subtree">${kids[name].map(nodeHTML).join("")}</div>` : "";
+    return `<div class="snode">${rowHTML(p, toggle)}${sub}</div>`;
+  };
+
+  const nav = document.getElementById("nav");
+  // 置顶区：pin 的 agent 做成快捷"分身"放最上，点了跳真 profile，原树位置不动
+  const pins = PROFILES.filter(p => p.is_pinned && !p.is_draft);
+  const pinnedHTML = pins.length
+    ? `<div class="pinned-wrap">${pins.map(p => `
+        <div class="pin-row ${current === p.name ? "on" : ""}" data-pin-go="${esc(p.name)}" title="置顶快捷方式 → ${esc(p.name)}">
+          <span class="pic">📌</span><span class="pn">${esc(dname(p.name))}</span>
+          <span class="unpin" data-unpin="${esc(p.name)}" title="取消置顶">✕</span>
+        </div>`).join("")}</div>`
+    : "";
+  const mainHTML = roots.length
+    ? roots.map(nodeHTML).join("")
+    : '<div class="note" style="padding:10px 8px">无 Profile</div>';
+  // A2：侧栏不再列出每个草稿（关系网面板已有可拖动入口），改成单行提示，避免双展示
+  const draftsHTML = drafts.length
+    ? `<div class="drafts-wrap"><div class="drafts-summary" id="draft-summary">
+         ${drafts.length} 个草稿 <span class="hint">点击 → 关系网处理</span>
+       </div></div>`
+    : "";
+  nav.innerHTML = pinnedHTML + mainHTML + draftsHTML;
+  const ds = document.getElementById("draft-summary");
+  if (ds) ds.onclick = openNetwork;
+  // 置顶快捷方式：点行体 → 选中真 profile；点 ✕ → 取消置顶
+  nav.querySelectorAll("[data-pin-go]").forEach(el => el.addEventListener("click", e => {
+    if (e.target.dataset.unpin) return;  // ✕ 自己处理
+    selectProfile(el.dataset.pinGo);
+  }));
+  nav.querySelectorAll("[data-unpin]").forEach(el => el.addEventListener("click", async e => {
+    e.stopPropagation();
+    await setPin(el.dataset.unpin, false);
+  }));
+  // ⋯ 菜单
+  nav.querySelectorAll("[data-menu]").forEach(el => el.addEventListener("click", e => {
+    e.stopPropagation();
+    const r = el.getBoundingClientRect();
+    openCtxMenu(el.dataset.menu, r.right, r.bottom);
+  }));
+  // E2: 搜索框激活时，重渲染后立即重过滤
+  applyNavFilter();
+  // 折叠箭头（节点）；点箭头只折叠，stopPropagation 不触发选中
+  nav.querySelectorAll("[data-toggle]").forEach(el => el.addEventListener("click", e => {
+    e.stopPropagation();
+    const n = el.dataset.toggle;
+    COLLAPSED.has(n) ? COLLAPSED.delete(n) : COLLAPSED.add(n);
+    saveCollapsed();
+    renderNav();
+  }));
+  // 侧栏树直接拖拽改父级（与关系网面板共用 reparentDialog）。drop 到 default 即"挂到主 agent 下"
+  nav.querySelectorAll(".it[draggable]").forEach(el => {
+    el.addEventListener("dragstart", e => { dragNode = el.dataset.name; el.classList.add("drag"); e.dataTransfer.effectAllowed = "move"; });
+    el.addEventListener("dragend", () => { el.classList.remove("drag"); nav.querySelectorAll(".drop").forEach(x => x.classList.remove("drop")); });
+  });
+  nav.querySelectorAll(".it").forEach(el => {
+    el.addEventListener("dragover", e => { if (dragNode && dragNode !== el.dataset.name) { e.preventDefault(); el.classList.add("drop"); } });
+    el.addEventListener("dragleave", () => el.classList.remove("drop"));
+    el.addEventListener("drop", async e => {
+      e.preventDefault(); el.classList.remove("drop");
+      const t = el.dataset.name;
+      if (dragNode && dragNode !== t) { if (!TREE) await loadTree(); reparentDialog(dragNode, t); }
+    });
+  });
+  // 选中 profile（点行体）
+  nav.querySelectorAll(".it").forEach(el => {
+    const go = () => selectProfile(el.dataset.name);
+    el.addEventListener("click", go);
+    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  });
+}
+
+/* E2: 侧栏按名字过滤——空查询时取消高亮，否则把不匹配的 .snode 隐藏，匹配的 .it 加高亮 */
+function applyNavFilter() {
+  const inp = document.getElementById("nav-filter");
+  const nav = document.getElementById("nav");
+  if (!inp || !nav) return;
+  const q = inp.value.trim().toLowerCase();
+  if (!q) {
+    nav.classList.remove("filtered");
+    nav.querySelectorAll(".snode.fhide, .it.fmatch").forEach(el => {
+      el.classList.remove("fhide"); el.classList.remove("fmatch");
+    });
+    return;
+  }
+  nav.classList.add("filtered");
+  // 先全标隐藏，再把匹配的及其祖先恢复
+  nav.querySelectorAll(".snode").forEach(el => el.classList.add("fhide"));
+  nav.querySelectorAll(".it").forEach(it => {
+    const name = (it.dataset.name || "").toLowerCase();
+    if (name.includes(q)) {
+      it.classList.add("fmatch");
+      // 向上恢复所有祖先 snode
+      let p = it.closest(".snode");
+      while (p) { p.classList.remove("fhide"); p = p.parentElement.closest(".snode"); }
+    } else {
+      it.classList.remove("fmatch");
+    }
+  });
+}
+
+/* 侧栏 ⋯ 菜单：Pin / 改名 / Fork / 删除（仿 Claude desktop） */
+function openCtxMenu(name, x, y) {
+  const p = PROFILES.find(z => z.name === name) || {};
+  const pinned = !!p.is_pinned;
+  const m = document.getElementById("ctx-menu");
+  m.innerHTML = `
+    <div class="mi" data-act="pin"><span class="ic">📌</span>${pinned ? "取消置顶" : "置顶"}</div>
+    <div class="mi" data-act="rename"><span class="ic">✎</span>改名（显示名）</div>
+    <div class="mi" data-act="fork"><span class="ic">⎘</span>Fork（克隆）</div>
+    <div class="mi danger" data-act="delete"><span class="ic">🗑</span>删除</div>`;
+  m.style.left = Math.min(x, window.innerWidth - 150) + "px";
+  m.style.top = y + "px";
+  m.classList.add("on");
+  m.querySelectorAll(".mi").forEach(el => el.onclick = () => {
+    closeCtxMenu();
+    const act = el.dataset.act;
+    if (act === "pin") setPin(name, !pinned);
+    else if (act === "rename") renameAgentDialog(name);
+    else if (act === "fork") forkAgentDialog(name);
+    else if (act === "delete") deleteAgentConfirm(name);
+  });
+}
+function closeCtxMenu() { document.getElementById("ctx-menu").classList.remove("on"); }
+document.addEventListener("click", e => { if (!e.target.closest("#ctx-menu") && !e.target.dataset.menu) closeCtxMenu(); });
+
+async function setPin(name, pinned) {
+  try {
+    const r = await fetch(`/api/agent/${encodeURIComponent(name)}/pin`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pinned }) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.detail || "HTTP " + r.status);
+    await load();
+    toast(pinned ? `已置顶「${dname(name)}」` : `已取消置顶「${dname(name)}」`, "ok");
+  } catch (e) { toast("置顶操作失败：" + e.message, "bad"); }
+}
+
+function renameAgentDialog(name) {
+  const cur = dname(name);
+  const m = modal(`<h3>改名 · ${esc(name)}</h3>
+    <div class="sub">只改<strong>显示名</strong>（界面上看到的名字），底层 ID <code>${esc(name)}</code> 不变——改 ID 会牵动技能/继承路径，是另一码事。</div>
+    <div class="grp"><h4>显示名</h4>
+      <input id="rn-display" type="text" value="${esc(cur)}"
+        style="width:100%; padding:7px 9px; border:1px solid var(--hair-strong); border-radius:7px; font:12.5px var(--mono); background:#fff;"></div>
+    <div class="warn" id="mwarn"></div>
+    <div class="row"><span class="btn" id="mcancel">取消</span><span class="btn primary" id="mok">保存</span></div>`);
+  document.getElementById("mcancel").onclick = closeModal;
+  setTimeout(() => { const i = document.getElementById("rn-display"); i.focus(); i.select(); }, 50);
+  document.getElementById("mok").onclick = async () => {
+    const display = document.getElementById("rn-display").value.trim();
+    try {
+      const r = await fetch(`/api/agent/${encodeURIComponent(name)}/rename`, { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ display }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || "HTTP " + r.status);
+      closeModal(); await load(); await loadTree();
+      toast(`已改名为「${display || name}」`, "ok");
+    } catch (e) { document.getElementById("mwarn").textContent = "失败：" + e.message; }
+  };
+}
+
+function forkAgentDialog(name) {
+  const m = modal(`<h3>Fork · 克隆 ${esc(dname(name))}</h3>
+    <div class="sub">复制一份 <code>${esc(name)}</code>（连同它的配置/技能设置），放在和它同一个上级下。新副本独立，改它不影响原件。</div>
+    <div class="grp"><h4>新副本显示名</h4>
+      <input id="fk-display" type="text" placeholder="例：${esc(dname(name))} 副本"
+        style="width:100%; padding:7px 9px; border:1px solid var(--hair-strong); border-radius:7px; font:12.5px var(--mono); background:#fff;"></div>
+    <div class="grp"><h4>底层 ID <span class="blk-h-meta" style="text-transform:none">英文名自动生成、中文请手填</span></h4>
+      <input id="fk-name" type="text" placeholder="${esc(name)}-copy"
+        style="width:100%; padding:7px 9px; border:1px solid var(--hair-strong); border-radius:7px; font:12.5px var(--mono); background:#fff;"></div>
+    <div class="warn" id="mwarn"></div>
+    <div class="row"><span class="btn" id="mcancel">取消</span><span class="btn primary" id="mok">克隆</span></div>`);
+  document.getElementById("mcancel").onclick = closeModal;
+  const dispEl = document.getElementById("fk-display"), idEl = document.getElementById("fk-name");
+  let idEdited = false;
+  idEl.addEventListener("input", () => { idEdited = true; });
+  dispEl.addEventListener("input", () => { if (!idEdited) idEl.value = slugify(dispEl.value); });
+  setTimeout(() => dispEl.focus(), 50);
+  document.getElementById("mok").onclick = async () => {
+    const new_display = dispEl.value.trim();
+    const new_name = (idEl.value.trim() || (name + "-copy"));
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/.test(new_name)) {
+      document.getElementById("mwarn").textContent = "底层 ID 必须小写连字符（中文名请手填 ID）"; return;
+    }
+    try {
+      const r = await fetch(`/api/agent/${encodeURIComponent(name)}/fork`, { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ new_name, new_display: new_display || null }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || "HTTP " + r.status);
+      closeModal(); await load(); await loadTree();
+      toast(`已克隆出「${new_display || new_name}」`, "ok");
+    } catch (e) { document.getElementById("mwarn").textContent = "克隆失败：" + e.message; }
+  };
+}
+
+async function deleteAgentConfirm(name) {
+  const ok = await confirmAsync(
+    `删除「${dname(name)}」（底层 ${name}）？\n会归档到 trash（可恢复），并清掉它的组织关系/置顶/订阅等记录。`,
+    { title: "删除 AI", ok: "删除", cancel: "取消", danger: true });
+  if (!ok) return;
+  try {
+    const r = await fetch(`/api/agent/${encodeURIComponent(name)}`, { method: "DELETE" });
+    const j = await r.json(); if (!r.ok) throw new Error(j.detail || "HTTP " + r.status);
+    if (current === name) { current = null; document.getElementById("main").innerHTML = ""; }
+    await load(); await loadTree();
+    toast(`已删除「${dname(name)}」（已归档，可恢复）`, "ok");
+  } catch (e) { toast("删除失败：" + e.message, "bad"); }
+}
+
+function openNewAgentDialog() {
+  // 顶栏「+ 新建」：建一个新 AI，并当场选"放在谁手下"，免去"草稿→去关系网拖"两步。
+  // 选了上级 → 创建后立即归位（create-empty + move）；选"先不安排" → 留作草稿。
+  const parents = PROFILES.filter(p => !p.is_draft).map(p => p.name)
+    .sort((a, b) => (a === "default" ? -1 : b === "default" ? 1 : a.localeCompare(b)));
+  const parentOpts = parents.map(n => `<option value="${esc(n)}">${esc(dname(n))}</option>`).join("");
+  const m = modal(`<h3>新建 AI</h3>
+    <div class="sub">起个显示名（中英文随意），系统自动生成底层 ID；选好放在谁手下就能用。</div>
+    <div class="grp"><h4>显示名</h4>
+      <input id="na-display" type="text" autocomplete="off"
+        placeholder="随便起，例：市场营销 / Marketing"
+        style="width:100%; padding:7px 9px; border:1px solid var(--hair-strong); border-radius:7px; font:12.5px var(--mono); background:#fff;">
+    </div>
+    <div class="grp"><h4>底层 ID <span class="blk-h-meta" style="text-transform:none">小写英文+连字符，hermes 用它存储；英文名自动生成，中文名请手填</span></h4>
+      <input id="na-name" type="text" autocomplete="off" spellcheck="false"
+        placeholder="自动生成…"
+        style="width:100%; padding:7px 9px; border:1px solid var(--hair-strong); border-radius:7px; font:12.5px var(--mono); background:#fff;">
+    </div>
+    <div class="grp"><h4>放在谁手下</h4>
+      <select id="na-parent" style="width:100%; padding:7px 9px; border:1px solid var(--hair-strong); border-radius:7px; font:12.5px var(--mono); background:#fff;">
+        ${parentOpts}
+        <option value="">先不安排（之后去关系网拖）</option>
+      </select>
+      <div class="sub" style="margin-top:6px">会自动继承上级的技能、设置等（之后可在它的详情页单独调整）。</div>
+    </div>
+    <div class="grp"><h4>描述（可选）</h4>
+      <input id="na-desc" type="text" autocomplete="off"
+        placeholder="一句话说明这个 AI 干啥"
+        style="width:100%; padding:7px 9px; border:1px solid var(--hair-strong); border-radius:7px; font:12.5px var(--mono); background:#fff;">
+    </div>
+    <div class="warn" id="mwarn"></div>
+    <div class="row"><span class="btn" id="mcancel">取消</span><span class="btn primary" id="mok">创建</span></div>`);
+  document.getElementById("mcancel").onclick = closeModal;
+  setTimeout(() => document.getElementById("na-display").focus(), 50);
+  // 显示名 → 自动 slug 出 ID（英文有效；中文 slug 为空时留给用户手填）。用户手动改过 ID 后不再覆盖。
+  let idEdited = false;
+  const idEl = document.getElementById("na-name"), dispEl = document.getElementById("na-display");
+  idEl.addEventListener("input", () => { idEdited = true; });
+  dispEl.addEventListener("input", () => {
+    if (idEdited) return;
+    const slug = slugify(dispEl.value);
+    idEl.value = slug;
+    idEl.placeholder = slug ? "" : "中文名无法自动转，请手填 ID";
+  });
+  const submit = async () => {
+    const name = document.getElementById("na-name").value.trim();
+    const display = dispEl.value.trim();
+    const description = document.getElementById("na-desc").value.trim();
+    const parent = document.getElementById("na-parent").value;  // "" = 先不安排
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/.test(name)) {
+      document.getElementById("mwarn").textContent = "底层 ID 必须小写、可含数字和连字符，1-32 字符（中文名请在 ID 栏手填一个）";
+      return;
+    }
+    document.getElementById("mok").setAttribute("disabled", "1");
+    try {
+      const r = await fetch("/api/agent/create-empty", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description, display: display || null }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+      // 选了上级 → 立即归位（新 AI 是空的，没有可丢失的东西，直接 move 不弹预览）
+      if (parent) {
+        const mv = await fetch("/api/move", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ node: name, new_parent: parent }) });
+        if (!mv.ok) { const mj = await mv.json(); throw new Error("已创建，但归位失败：" + (mj.detail || mv.status)); }
+      }
+      closeModal(); await load(); await loadTree();
+      const shown = display || name;
+      toast(parent ? `已创建「${shown}」并放到 ${dname(parent)} 手下` : `已创建「${shown}」（草稿，去关系网安排位置）`, "ok");
+    } catch (e) {
+      document.getElementById("mwarn").textContent = "创建失败：" + e.message;
+      document.getElementById("mok").removeAttribute("disabled");
+    }
+  };
+  document.getElementById("mok").onclick = submit;
+  m.addEventListener("keydown", e => { if (e.key === "Enter") submit(); });
+}
+async function load() {
+  try {
+    const data = await getJSON("/api/profiles");
+    PROFILES = data.profiles;
+    PROFILES.forEach(p => { if (p.label) LABELS[p.name] = p.label; });  // 收集显示名
+    const srcEl = document.getElementById("src");
+    if (data.source === "cli") {
+      srcEl.textContent = "cli"; srcEl.title = "";
+    } else {
+      srcEl.textContent = "fs · CLI 不可用";
+      srcEl.title = data.source_error || "hermes CLI 不可达，以下为文件系统推断";
+    }
+    renderNav();
+  } catch (e) {
+    document.getElementById("nav").innerHTML = `<div class="note" style="padding:10px 8px">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+/* ---------- conversations（每个 profile 多个对话框=会话；标签页式 增/开/删 + 个性化技能） ---------- */
+async function selectProfile(name) {
+  current = name;
+  renderNav();
+  ensureScaffold();
+  if (!TABS[name]) TABS[name] = { list: [], active: null };
+  Object.values(TERMS).forEach(s => { if (s.wrap) s.wrap.style.display = "none"; });
+  await syncSessions(name);
+  renderTabs(name);
+  const t = TABS[name];
+  if (t.active && t.list.some(x => x.key === t.active)) openConv(name, t.active);
+  else if (t.list.length) openConv(name, t.list[0].key);
+  else showEmpty(name);
+}
+function ensureScaffold() {
+  if (document.getElementById("term-host")) return;
+  document.getElementById("main").innerHTML =
+    `<div class="top" id="top"></div><div class="tabbar" id="tabbar"></div><div class="term-host" id="term-host"></div>`;
+}
+function renderTop() {
+  const p = PROFILES.find(x => x.name === current) || { name: current, role: "none" };
+  document.getElementById("top").innerHTML = `
+    <span class="nm">${esc(dname(p.name))}</span>
+    <span class="meta">${esc(p.model || "—")}${p.parent ? " · 上级 " + esc(dname(p.parent)) : ""}</span>
+    <span class="sp"></span>
+    <span class="lnk" id="info-btn">详情</span>
+    <span class="lnk" id="top-reload" title="重新载入数据" style="margin-left:14px">↻</span>`;
+  document.getElementById("info-btn").onclick = () => openInfo(current);
+  document.getElementById("top-reload").onclick = () => { load(); if (current) openInfo(current); };
+}
+function currentSids(name) { return ((TABS[name] && TABS[name].list) || []).map(x => x.sid).filter(Boolean); }
+
+function renderTabs(name) {
+  const t = TABS[name], bar = document.getElementById("tabbar");
+  if (!bar) return;
+  bar.innerHTML = t.list.map(tab => `
+    <div class="tab ${tab.key === t.active ? "on" : ""}" data-key="${tab.key}"
+         title="${esc(tab.title)}">
+      <span class="tt">${esc(tab.title || "新对话")}</span>
+      <span class="cl" data-close="${tab.key}" title="删除对话">×</span>
+    </div>`).join("") +
+    `<div class="tab-add" id="tab-add" title="新对话">＋</div>` +
+    `<span class="tab-sync" id="tab-sync" title="刷新会话列表">⟳</span>`;
+  bar.querySelectorAll(".tab").forEach(el => {
+    el.addEventListener("click", e => {
+      if (e.target.dataset.close) { e.stopPropagation(); closeConv(name, e.target.dataset.close); }
+      else openConv(name, el.dataset.key);
+    });
+  });
+  document.getElementById("tab-add").onclick = () => newConv(name);
+  document.getElementById("tab-sync").onclick = async () => { await syncSessions(name); renderTabs(name); };
+}
+
+function cleanTitle(srv) {
+  const ok = v => v && v !== "—";
+  if (ok(srv.title)) return srv.title;
+  if (ok(srv.preview)) return srv.preview.slice(0, 28);
+  return "未命名对话";
+}
+async function syncSessions(name) {
+  let data;
+  try { data = await getJSON(`/api/sessions/${encodeURIComponent(name)}`); } catch (e) { return; }
+  const t = TABS[name];
+  const claimed = new Set(t.list.map(x => x.sid).filter(Boolean));
+  for (const srv of data.sessions) {
+    const sid = srv.id; if (!sid || claimed.has(sid)) continue;
+    // 新出现的 sid → 绑到一个尚未绑定、且创建时没见过它的“新对话”标签；否则补一个标签
+    const claimer = t.list.find(x => !x.sid && x.preSids && x.preSids.indexOf(sid) === -1);
+    if (claimer) {
+      claimer.sid = sid;
+      claimer.title = cleanTitle(srv);
+    } else {
+      t.list.push({ key: nextKey(name), sid, title: cleanTitle(srv), preSids: [] });
+    }
+    claimed.add(sid);
+  }
+  for (const tab of t.list) {
+    if (!tab.sid) continue;
+    const srv = data.sessions.find(s => s.id === tab.sid);
+    if (srv) tab.title = cleanTitle(srv);
+  }
+}
+
+function newConv(name) {
+  const tab = { key: nextKey(name), sid: null, title: "新对话", preSids: currentSids(name) };
+  TABS[name].list.push(tab);
+  TABS[name].active = tab.key;
+  renderTabs(name);
+  openConv(name, tab.key);
+}
+
+function openConv(name, key) {
+  const t = TABS[name], tab = t.list.find(x => x.key === key);
+  if (!tab) return;
+  t.active = key;
+  Object.values(TERMS).forEach(s => { if (s.wrap) s.wrap.style.display = "none"; });
+  let s = TERMS[key];
+  if (!s) { s = createTerm(name, tab); TERMS[key] = s; }
+  if (s.wrap) s.wrap.style.display = "block";
+  const eh = document.getElementById("empty-hint"); if (eh) eh.style.display = "none";
+  renderTabs(name);
+  renderTop();
+  requestAnimationFrame(() => { try { if (s.fit) { s.fit.fit(); sendResizeFor(s); } if (s.term) s.term.focus(); } catch (e) {} });
+}
+
+function emptyHintEl() {
+  let h = document.getElementById("empty-hint");
+  if (!h) {
+    h = document.createElement("div");
+    h.id = "empty-hint"; h.className = "term-hint";
+    h.innerHTML = `这个 Agent 还没有对话。<br />点上方 <code>＋</code> 新建一个对话框——独立上下文，自动继承它的 core skill。`;
+    const host = document.getElementById("term-host");
+    if (host) host.appendChild(h);
+  }
+  return h;
+}
+function showEmpty(name) {
+  // 只隐藏所有终端 + 显示提示，绝不 innerHTML 清空（否则会连带销毁别的 profile 的常驻终端 DOM）
+  Object.values(TERMS).forEach(s => { if (s.wrap) s.wrap.style.display = "none"; });
+  emptyHintEl().style.display = "flex";
+  renderTop();
+}
+
+function createTerm(name, tab) {
+  const host = document.getElementById("term-host");
+  const wrap = document.createElement("div");
+  wrap.className = "term-wrap";
+  host.appendChild(wrap);
+  if (typeof Terminal === "undefined") {
+    wrap.innerHTML = `<div class="term-hint">未找到 xterm.js。<br />请把 xterm 资源放到 <code>static/vendor/</code>，见 HANDOFF。</div>`;
+    return { wrap, term: null, fit: null, ws: null };
+  }
+  const el = document.createElement("div");
+  el.className = "term";
+  wrap.appendChild(el);
+  const term = new Terminal({
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    fontSize: 13, lineHeight: 1.4, cursorBlink: true, scrollback: 3000,
+    theme: {
+      background: "#ffffff", foreground: "#2b2a28", cursor: "#2b2a28",
+      cursorAccent: "#ffffff", selectionBackground: "#e4e2dd",
+      black: "#2b2a28", red: "#9c5b4f", green: "#5e7355", yellow: "#9a7d3f",
+      blue: "#4f6485", magenta: "#7e6080", cyan: "#4f7d7a", white: "#d6d3cc",
+      brightBlack: "#8a8782", brightRed: "#b06b5c", brightGreen: "#6f8763",
+      brightYellow: "#b3924a", brightBlue: "#5d76a0", brightMagenta: "#93738f",
+      brightCyan: "#5d918d", brightWhite: "#2b2a28",
+    },
+  });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(el);
+  try { fit.fit(); } catch (e) {}
+  if (typeof WebglAddon !== "undefined") {            // WebGL 渲染器：滚动顺滑（默认 DOM 渲染器卡）
+    try {
+      const webgl = new WebglAddon.WebglAddon();
+      webgl.onContextLoss(() => { try { webgl.dispose(); } catch (e) {} });  // 上下文丢失→自动退回 DOM
+      term.loadAddon(webgl);
+    } catch (e) {}
+  }
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const q = [tab.sid ? "resume=" + encodeURIComponent(tab.sid) : "new=1"];
+  const ws = new WebSocket(`${proto}://${location.host}/ws/chat/${encodeURIComponent(name)}?${q.join("&")}`);
+  ws.binaryType = "arraybuffer";
+  const td = new TextDecoder();
+  const s = { wrap, term, fit, ws };
+  ws.onopen = () => sendResizeFor(s);
+  ws.onmessage = (e) => term.write(typeof e.data === "string" ? e.data : td.decode(new Uint8Array(e.data)));
+  ws.onclose = () => { if (term) term.write("\r\n\x1b[2m[会话已结束 · 切走再回来可重连]\x1b[0m\r\n"); };
+  term.onData(d => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: "input", data: d })); });
+  term.onResize(() => sendResizeFor(s));
+  return s;
+}
+
+function destroyTerm(key) {
+  const s = TERMS[key];
+  if (!s) return;
+  try { if (s.ws) s.ws.close(); } catch (e) {}     // WS 关 → 服务端 SIGTERM 收掉这个 hermes
+  try { if (s.term) s.term.dispose(); } catch (e) {}
+  if (s.wrap) s.wrap.remove();
+  delete TERMS[key];
+}
+
+async function closeConv(name, key) {
+  const t = TABS[name], tab = t.list.find(x => x.key === key);
+  if (!tab) return;
+  const msg = tab.sid
+    ? `删除对话「${tab.title}」？会永久删除它的上下文，不可恢复。`
+    : `关闭这个还未保存的新对话？`;
+  if (!await confirmAsync(msg)) return;
+  if (tab.sid) {
+    try {
+      const r = await fetch(`/api/session/${encodeURIComponent(name)}/${encodeURIComponent(tab.sid)}`, { method: "DELETE" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+    } catch (e) { toast("删除失败：" + e.message, "bad"); return; }
+  }
+  destroyTerm(key);
+  t.list = t.list.filter(x => x.key !== key);
+  if (t.active === key) t.active = t.list.length ? t.list[t.list.length - 1].key : null;
+  renderTabs(name);
+  if (t.active) openConv(name, t.active); else showEmpty(name);
+}
+
+function sendResizeFor(s) {
+  if (!s || !s.term || !s.ws || s.ws.readyState !== 1) return;
+  s.ws.send(JSON.stringify({ type: "resize", cols: s.term.cols, rows: s.term.rows }));
+}
+/* 每条对话的"技能预载"已移除：hermes 渐进式披露——技能按需 / 模型自动触发，
+   勾选预载多余。技能归属是 agent 级（分层架构），见关系网的「配置…」与「共享…」。 */
+
+window.addEventListener("resize", () => {
+  const t = TABS[current]; if (!t || !t.active) return;
+  const s = TERMS[t.active];
+  if (s && s.fit) { try { s.fit.fit(); sendResizeFor(s); } catch (e) {} }
+});
+window.addEventListener("beforeunload", () => {
+  Object.values(TERMS).forEach(s => { try { if (s.ws) s.ws.close(); } catch (e) {} });
+});
+
+/* ---------- info drawer ---------- */
+async function openInfo(name) {
+  document.getElementById("scrim").classList.add("on");
+  const info = document.getElementById("info");
+  info.classList.add("on"); info.setAttribute("aria-hidden", "false");
+  info.innerHTML = `<div class="info-head"><span class="nm">${esc(dname(name))}</span>
+    <button class="x" id="xc" aria-label="关闭">×</button></div>
+    <div class="info-body"><div class="note">加载中…</div></div>`;
+  document.getElementById("xc").onclick = closeInfo;
+  try {
+    const d = await getJSON("/api/profile/" + encodeURIComponent(name));
+    // 6 分区布局：标识 / 人格 / 能力 / 协作 / 资源 / 子任务（对齐 conventions §7 schema）
+    const killStatusLine = d.effective_killed
+      ? `<span class="pill bad">${d.killed ? "已停用" : "随上级停用"}</span>`
+      : `<span class="pill ok">● 启用中</span>`;
+    const killBtn = (!d.effective_killed || d.killed)
+      ? `<span class="btn" id="kill-toggle" style="margin-left:10px">${d.killed ? "恢复" : "停用"}</span>`
+      : "";
+    const parentLine = d.parent
+      ? `<span class="pill inh">${esc(dname(d.parent))}</span>${d.main_twin ? '<span class="pill ok" style="margin-left:6px">主 AI 的化身（和主 AI 同一个大脑）</span>' : ""}`
+      : '<span class="pill ok">最高层（不归任何人管）</span>';
+    info.querySelector(".info-body").innerHTML = `
+      <div class="blk"><h3>标识 · Identity</h3>
+        <div class="fld"><div class="lbl">名字</div><div class="val">${esc(dname(d.name))}</div></div>
+        <div class="fld"><div class="lbl">类型</div><div class="val">${esc(d.main_twin ? "化身" : (ROLE_FULL[d.role] || "独立"))}</div></div>
+        <div class="fld"><div class="lbl">上级</div><div class="val">${parentLine}</div></div>
+        <div class="fld"><div class="lbl">模型</div><div class="val">${esc(d.model || "—")}${d.provider ? `<span class="pill">${esc(d.provider)}</span>` : ""}</div></div>
+        <div class="fld"><div class="lbl">状态</div><div class="val">${killStatusLine}${killBtn}</div></div>
+      </div>
+      <div class="blk"><h3>人格 · Persona</h3>
+        <div class="fld"><div class="lbl">人格设定</div><div class="val">
+          ${d.soul ? `<div class="soul">${esc(d.soul)}</div>` : '<span class="pill inh">还没写人格设定</span>'}
+        </div></div>
+      </div>
+      <div class="blk"><h3>记忆 · Memory <span class="blk-h-meta">这个 AI 自动沉淀的私脑（域隔离、不和别人混）</span></h3>
+        <div id="memblk"><div class="note">加载中…</div></div>
+      </div>
+      <div class="blk"><h3>运行设置 · Runtime</h3>
+        <div id="leversblk"><div class="note">加载中…</div></div>
+      </div>
+      <div class="blk"><h3>能力 · Capabilities <span class="blk-h-meta">${d.skill_count} 技能</span></h3>
+        <div id="askills"><div class="note">加载中…</div></div>
+      </div>
+      <div class="blk" id="collab-blk"><h3>协作 · Collaboration</h3>
+        <div id="impactblk"><div class="note">加载中…</div></div>
+      </div>
+      <div class="blk"><h3>资源 · Resources</h3>
+        <div class="fld"><div class="lbl">备份历史</div><div class="val" id="backupblk"><div class="note">加载中…</div></div></div>
+      </div>
+      <div class="blk"><h3>子任务 · Subtasks</h3>
+        <div id="subtaskblk"><div class="note">加载中…</div></div>
+      </div>`;
+      // A1: "最近会话" 删除——会话已在主区 tabs 显示，info 重复无意义
+    const kt = document.getElementById("kill-toggle");
+    if (kt) kt.onclick = () => toggleKill(name, !d.killed);
+    renderAgentSkills(name);
+    renderMemory(name);
+    renderLevers(name);
+    renderImpact(name);
+    renderBackups(name);
+    renderSubtasks(name);
+  } catch (e) {
+    info.querySelector(".info-body").innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`;
+  }
+}
+function closeInfo() {
+  document.getElementById("scrim").classList.remove("on");
+  const info = document.getElementById("info");
+  info.classList.remove("on"); info.setAttribute("aria-hidden", "true");
+}
+/* 记忆面板：这个 AI 的 MEMORY.md（私脑）+ USER.md（对你的画像）。可看可改（人在环修正） */
+async function renderMemory(name) {
+  const box = document.getElementById("memblk"); if (!box) return;
+  let d;
+  try { d = await getJSON(`/api/agent/${encodeURIComponent(name)}/memory`); }
+  catch (e) { box.innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  const kb = n => n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB";
+  const twinNote = d.is_twin ? `<div class="sub" style="color:#6a5e3a">⚠ 这是主 AI 的化身，记忆和主 AI（X）共享同一份，改这里=改 X 的记忆。</div>` : "";
+  const block = (lbl, content, size, kind) => {
+    const empty = !content || !content.trim();
+    return `<div class="fld"><div class="lbl">${lbl}</div><div class="val">
+      ${empty ? '<span class="pill inh">空（还没沉淀）</span>'
+        : `<div class="soul" style="max-height:120px">${esc(content.slice(0, 600))}${content.length > 600 ? "…" : ""}</div>
+           <div class="sub" style="margin-top:3px">${kb(size)}</div>`}
+      <span class="rl" data-edit-mem="${kind}" style="font-size:11px; margin-top:4px; display:inline-block">${empty ? "写入" : "编辑"}</span>
+    </div></div>`;
+  };
+  box.innerHTML = twinNote
+    + block("记忆 MEMORY.md", d.memory, d.memory_size, "memory")
+    + block("用户画像 USER.md", d.user, d.user_size, "user");
+  box.querySelectorAll("[data-edit-mem]").forEach(el => el.onclick = () => editMemoryDialog(name, el.dataset.editMem, d));
+}
+
+function editMemoryDialog(name, kind, d) {
+  const isMem = kind === "memory";
+  const cur = isMem ? d.memory : d.user;
+  const title = isMem ? "记忆 MEMORY.md" : "用户画像 USER.md";
+  const m = modal(`<h3>编辑 · ${esc(dname(name))} 的${esc(title)}</h3>
+    <div class="sub">${isMem ? "这个 AI 自己沉淀的记忆。你可以修正它记错的、删过时的。" : "它对你的画像。可纠正。"}${d.is_twin ? "（化身：和主 AI 共享）" : ""}</div>
+    <textarea id="mem-edit" style="width:100%; height:340px; padding:10px; border:1px solid var(--hair-strong); border-radius:7px; font:12px var(--mono); background:#fff; resize:vertical; margin-top:8px">${esc(cur)}</textarea>
+    <div class="warn" id="mwarn"></div>
+    <div class="row"><span class="btn" id="mcancel">取消</span><span class="btn primary" id="mok">保存</span></div>`);
+  const mb = m.closest(".modal"); if (mb) mb.style.width = "640px";
+  document.getElementById("mcancel").onclick = closeModal;
+  document.getElementById("mok").onclick = async () => {
+    const payload = {}; payload[kind] = document.getElementById("mem-edit").value;
+    try {
+      const r = await fetch(`/api/agent/${encodeURIComponent(name)}/memory`, { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || "HTTP " + r.status);
+      closeModal(); renderMemory(name);
+      toast("记忆已保存", "ok");
+    } catch (e) { document.getElementById("mwarn").textContent = "保存失败：" + e.message; }
+  };
+}
+
+/* 运行设置 4 杠杆：模型 / 记忆 / 终端隔离 / 危险命令审批。写自有 config，选"继承"= 回退父辈/默认 */
+async function renderLevers(name) {
+  const box = document.getElementById("leversblk"); if (!box) return;
+  let d;
+  try { d = await getJSON(`/api/agent/${encodeURIComponent(name)}/levers`); }
+  catch (e) { box.innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  if (d.is_twin) {
+    box.innerHTML = `<div class="note" style="padding:6px 0">这是主 AI 的化身，运行设置和主 AI（X）完全一致、不可单独改。要改请去 X 的运行设置。</div>`;
+    return;
+  }
+  // 模型选项：继承 + 已知模型 + 自定义
+  const curModel = d.model && (typeof d.model === "object" ? d.model.default : d.model);
+  const modelOpts = [`<option value="__inherit__" ${!d.model_own ? "selected" : ""}>继承（用上级/X 的默认）</option>`]
+    .concat((d.known_models || []).map(m => {
+      const v = "known:" + m.default;
+      const sel = d.model_own && curModel === m.default ? "selected" : "";
+      return `<option value="${esc(v)}" ${sel}>${esc(m.default)}${m.provider ? "（" + esc(m.provider) + "）" : ""}</option>`;
+    }))
+    .concat([`<option value="__custom__">自定义…</option>`]).join("");
+  const memVal = !d.memory_own ? "__inherit__" : (d.memory_enabled ? "on" : "off");
+  const termVal = !d.terminal_own ? "__inherit__" : d.terminal_backend;
+  const apprVal = !d.approvals_own ? "__inherit__" : d.approvals_mode;
+  const selStyle = "padding:6px 8px; border:1px solid var(--hair-strong); border-radius:6px; font:12px var(--mono); background:#fff; width:100%";
+  const reasoningOpts = ["__inherit__", "none", "minimal", "low", "medium", "high", "xhigh"].map(v => {
+    const cur = !d.reasoning_own ? "__inherit__" : d.reasoning_effort;
+    const label = v === "__inherit__" ? "继承（默认 medium）" : v;
+    return `<option value="${v}" ${cur === v ? "selected" : ""}>${label}</option>`;
+  }).join("");
+  box.innerHTML = `
+    <div class="fld"><div class="lbl">模型</div><div class="val">
+      <select id="lv-model" style="${selStyle}">${modelOpts}</select>
+      <div id="lv-model-custom" style="display:none; margin-top:6px">
+        <input id="lv-m-default" placeholder="模型名，如 anthropic/claude-sonnet-4.6" style="${selStyle}; margin-bottom:4px">
+        <input id="lv-m-provider" placeholder="provider，如 anthropic" style="${selStyle}; margin-bottom:4px">
+        <input id="lv-m-baseurl" placeholder="base_url（可空）" style="${selStyle}">
+      </div>
+      <div style="margin-top:6px">
+        <span class="rl" id="lv-adv-toggle" style="font-size:11px">高级 ▾</span>
+        <div id="lv-adv" style="display:none; margin-top:6px">
+          <div style="display:flex; align-items:center; gap:8px">
+            <span style="font:11px var(--mono); color:var(--muted); flex:none">推理强度</span>
+            <select id="lv-reasoning" style="${selStyle}">${reasoningOpts}</select>
+          </div>
+          <div class="sub" id="lv-reasoning-hint" style="margin-top:4px"></div>
+        </div>
+      </div>
+    </div></div>
+    <div class="fld"><div class="lbl">记忆</div><div class="val">
+      <select id="lv-mem" style="${selStyle}">
+        <option value="__inherit__" ${memVal === "__inherit__" ? "selected" : ""}>继承</option>
+        <option value="on" ${memVal === "on" ? "selected" : ""}>开（长期记忆 + 用户画像）</option>
+        <option value="off" ${memVal === "off" ? "selected" : ""}>关（一次性，不记）</option>
+      </select></div></div>
+    <div class="fld"><div class="lbl">终端隔离</div><div class="val">
+      <select id="lv-term" style="${selStyle}">
+        <option value="__inherit__" ${termVal === "__inherit__" ? "selected" : ""}>默认（local 直接在本机跑）</option>
+        <option value="docker" ${termVal === "docker" ? "selected" : ""}>docker（沙箱隔离，需装 docker）</option>
+        <option value="ssh" ${termVal === "ssh" ? "selected" : ""}>ssh（远程机器）</option>
+        <option value="modal" ${termVal === "modal" ? "selected" : ""}>modal（云沙箱）</option>
+        <option value="daytona" ${termVal === "daytona" ? "selected" : ""}>daytona（云沙箱）</option>
+      </select>
+      <div class="sub" style="margin-top:4px">会跑代码的 agent 建议 docker 隔离；只聊天的用默认即可。</div></div></div>
+    <div class="fld"><div class="lbl">危险命令审批</div><div class="val">
+      <select id="lv-appr" style="${selStyle}">
+        <option value="__inherit__" ${apprVal === "__inherit__" ? "selected" : ""}>默认（manual 每条问你）</option>
+        <option value="smart" ${apprVal === "smart" ? "selected" : ""}>smart（LLM 判断，只拦真危险的）</option>
+        <option value="off" ${apprVal === "off" ? "selected" : ""}>off（不拦，快但险）</option>
+      </select></div></div>
+    <div class="row" style="margin-top:10px"><span class="btn primary" id="lv-save">保存运行设置</span><span class="note" id="lv-msg" style="margin-left:10px"></span></div>`;
+  // 自定义模型展开
+  const mSel = document.getElementById("lv-model"), mCustom = document.getElementById("lv-model-custom");
+  // 高级展开（推理强度）
+  const advToggle = document.getElementById("lv-adv-toggle"), advBox = document.getElementById("lv-adv");
+  advToggle.onclick = () => {
+    const open = advBox.style.display === "none";
+    advBox.style.display = open ? "block" : "none";
+    advToggle.textContent = open ? "高级 ▴" : "高级 ▾";
+  };
+  // 推理能力提示：跟当前选的模型走（启发式判定，参考 Claude——只对推理模型有效）
+  const reasoningHint = () => {
+    const hint = document.getElementById("lv-reasoning-hint"); if (!hint) return;
+    let mname = "";
+    if (mSel.value.startsWith("known:")) mname = mSel.value.slice(6);
+    else if (mSel.value === "__custom__") mname = (document.getElementById("lv-m-default").value || "");
+    else mname = curModel || "";  // 继承时用当前生效模型
+    const cap = /\bo[1-9]\b|r1|reasoner|thinking|qwq|deepseek-r|claude-(sonnet|opus)-4|claude-4|gpt-5|gemini-[0-9.]+-(flash|pro)-thinking/i.test(mname);
+    hint.innerHTML = cap
+      ? `<span style="color:#5e7355">✓ 当前模型「${esc(mname || "?")}」看起来支持推理档位</span>`
+      : `<span style="color:#9c8b4a">⚠ 当前模型「${esc(mname || "继承的默认")}」可能不吃这个参数，设了也许无效（仅 o系/R1/Claude-4 thinking 等推理模型有效）</span>`;
+  };
+  mSel.onchange = () => { mCustom.style.display = mSel.value === "__custom__" ? "block" : "none"; reasoningHint(); };
+  reasoningHint();
+  document.getElementById("lv-save").onclick = async () => {
+    const payload = {};
+    // 模型
+    const mv = mSel.value;
+    if (mv === "__inherit__") payload.model = "__inherit__";
+    else if (mv === "__custom__") {
+      const def = document.getElementById("lv-m-default").value.trim();
+      if (!def) { document.getElementById("lv-msg").textContent = "自定义模型名不能为空"; return; }
+      payload.model = { default: def, provider: document.getElementById("lv-m-provider").value.trim() || null,
+                        base_url: document.getElementById("lv-m-baseurl").value.trim() || null };
+    } else if (mv.startsWith("known:")) {
+      const km = (d.known_models || []).find(m => m.default === mv.slice(6));
+      if (km) payload.model = km;
+    }
+    // 记忆 / 终端 / 审批
+    const memv = document.getElementById("lv-mem").value;
+    payload.memory_enabled = memv === "__inherit__" ? "__inherit__" : (memv === "on");
+    payload.terminal_backend = document.getElementById("lv-term").value;
+    payload.approvals_mode = document.getElementById("lv-appr").value;
+    payload.reasoning_effort = document.getElementById("lv-reasoning").value;
+    try {
+      const r = await fetch(`/api/agent/${encodeURIComponent(name)}/levers`, { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || "HTTP " + r.status);
+      toast("运行设置已保存", "ok");
+      renderLevers(name); load();
+    } catch (e) { document.getElementById("lv-msg").textContent = "保存失败：" + e.message; }
+  };
+}
+
+/* #29 变更影响范围：改这个 profile 会影响谁。沿组织树继承 + 横向 symlink 共享 + vault 都算上 */
+async function renderImpact(name) {
+  const box = document.getElementById("impactblk"); if (!box) return;
+  let d;
+  try { d = await getJSON(`/api/profile/${encodeURIComponent(name)}/impact`); }
+  catch (e) { box.innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  const s = d.summary;
+  const total = s.descendants_count + s.symlink_consumer_count;
+  if (total === 0) {
+    // A3：叶子节点没有协作关系——整个 blk 隐藏，省屏
+    const blk = document.getElementById("collab-blk");
+    if (blk) blk.style.display = "none";
+    return;
+  }
+  // D3：≥10 时只列前 5 + "…其余 N 个"
+  const names = arr => {
+    if (!arr.length) return "";
+    if (arr.length < 10) return `<span class="nms">${arr.map(esc).join("、")}</span>`;
+    return `<span class="nms">${arr.slice(0, 5).map(esc).join("、")}…<span style="color:var(--faint)">其余 ${arr.length - 5} 个</span></span>`;
+  };
+  const symlinkHTML = d.symlink_consumers.length
+    ? d.symlink_consumers.map(c => `${esc(c.name)}(${c.skills.length})`).join("、")
+    : "无";
+  box.innerHTML = `
+    <div class="fld"><div class="lbl">手下的 AI</div><div class="val">
+      <span class="num">${s.descendants_count}</span> 个 ${names(d.descendants)}
+      <div class="impact-row" style="margin-top:6px">
+        <span class="lab">继承我设置的</span><span class="num">${s.config_affected}</span><span class="lab" style="margin-left:8px">我改设置，它们几秒内自动跟随</span>
+      </div>
+      <div class="impact-row">
+        <span class="lab">继承我技能的</span><span class="num">${s.external_dirs_count}</span><span class="lab" style="margin-left:8px">我增删技能，它们自动跟着变</span>
+      </div>
+    </div></div>
+    <div class="fld"><div class="lbl">借了我技能的</div><div class="val">
+      <span class="num">${s.symlink_consumer_count}</span> 个 AI 借用了我的技能<br>
+      <span class="nms">${esc(symlinkHTML)}</span>
+    </div></div>`;
+}
+
+/* #30 备份历史：.dashbak / .constibak / vault note .dashbak，按时间倒序，可恢复 */
+async function renderBackups(name) {
+  const box = document.getElementById("backupblk"); if (!box) return;
+  let d;
+  try { d = await getJSON(`/api/profile/${encodeURIComponent(name)}/backups`); }
+  catch (e) { box.innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  if (!d.backups.length) {
+    box.innerHTML = `<span class="pill">无备份记录</span>`;
+    return;
+  }
+  // D1: 默认折叠成"N 条备份"，点开展开列表（避免长列表占屏）
+  const rowsHTML = d.backups.map(b => `
+    <div class="bkp-row">
+      <span class="ago">${esc(b.ago)}</span>
+      <span class="file" title="${esc(b.when)}">${esc(b.file)}</span>
+      <span class="act" data-restore="${esc(b.file)}">恢复</span>
+    </div>`).join("");
+  box.innerHTML = `<details class="bkp-fold"><summary>${d.backups.length} 条备份（点开展开 / 最近：${esc(d.backups[0].ago)}）</summary>${rowsHTML}</details>`;
+  box.querySelectorAll("[data-restore]").forEach(el => el.onclick = async () => {
+    if (!await confirmAsync(`从「${el.dataset.restore}」恢复内容？当前内容会再备份一份为 .pre-restore`)) return;
+    try {
+      const r = await fetch(`/api/profile/${encodeURIComponent(name)}/restore`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({file: el.dataset.restore})
+      });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || "HTTP " + r.status);
+      toast(`已恢复 ${j.restored}${j.pre_restore_saved ? "（原内容已存为 .pre-restore）" : ""}`);
+      renderBackups(name);
+    } catch (e) { toast("恢复失败：" + e.message, "bad"); }
+  });
+}
+
+/* #31 子任务卡：kanban 里 assignee==name 的任务 + 虚线"+ 新建子任务"卡 */
+async function renderSubtasks(name) {
+  const box = document.getElementById("subtaskblk"); if (!box) return;
+  let d;
+  try { d = await getJSON(`/api/profile/${encodeURIComponent(name)}/subtasks`); }
+  catch (e) { box.innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  const tasks = d.tasks || [];
+  const cards = tasks.map(t => `
+    <div class="subtask-card" data-tid="${esc(t.id || "")}">
+      <div class="st-t">${esc(t.title || "(无标题)")}</div>
+      <div class="st-m">
+        <span class="pill">${esc(t.status || "?")}</span>
+        ${t.priority ? `<span class="pill inh">p${esc(t.priority)}</span>` : ""}
+      </div>
+    </div>`).join("");
+  // A4: 空状态时虚线卡自身已表达"无任务，点这里建"，下方再加文字是冗余 → 删
+  box.innerHTML = `<div class="subtask-grid">${cards}<div class="subtask-card dashed" id="subtask-new">
+      <div class="st-t">+ 新建子任务</div>
+      <div class="st-m" style="justify-content:center">分配给 ${esc(name)}</div>
+    </div></div>`;
+  document.getElementById("subtask-new").onclick = () => openSubtaskCreate(name);
+  // 点击任务卡跳到 kanban 面板
+  box.querySelectorAll(".subtask-card[data-tid]").forEach(el => el.onclick = () => {
+    closeInfo();
+    openKanban();
+  });
+}
+
+function openSubtaskCreate(assignee) {
+  const m = modal(`<h3>新建子任务 · ${esc(assignee)}</h3>
+    <div class="sub">这条任务会进 kanban，assignee 预填为 <code>${esc(assignee)}</code>。</div>
+    <div class="grp"><h4>标题</h4>
+      <input id="st-title" type="text" placeholder="任务标题（必填）"
+        style="width:100%; padding:7px 9px; border:1px solid var(--hair-strong); border-radius:7px; font:12.5px var(--mono); background:#fff;"></div>
+    <div class="grp"><h4>详情（可选）</h4>
+      <textarea id="st-body" rows="6" placeholder="任务背景 / 验收标准 / 提示"
+        style="width:100%; padding:9px; border:1px solid var(--hair-strong); border-radius:7px; font:12px var(--mono); background:#fff; resize:vertical;"></textarea></div>
+    <div class="grp"><h4>优先级</h4>
+      <select id="st-pri" style="font:12.5px var(--mono); padding:6px 8px; border:1px solid var(--hair-strong); border-radius:7px; background:#fff;">
+        <option value="">默认</option><option value="1">P1 紧急</option><option value="2">P2 高</option><option value="3">P3 中</option><option value="4">P4 低</option>
+      </select></div>
+    <div class="warn" id="mwarn"></div>
+    <div class="row"><span class="btn" id="mcancel">取消</span><span class="btn primary" id="mok">创建</span></div>`);
+  document.getElementById("mcancel").onclick = closeModal;
+  setTimeout(() => document.getElementById("st-title").focus(), 50);
+  document.getElementById("mok").onclick = async () => {
+    const title = document.getElementById("st-title").value.trim();
+    const body = document.getElementById("st-body").value;
+    const pri = document.getElementById("st-pri").value;
+    if (!title) { document.getElementById("mwarn").textContent = "标题不能为空"; return; }
+    try {
+      const r = await fetch("/api/kanban/create", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({title, assignee, body: body || null, priority: pri ? parseInt(pri, 10) : null})});
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || "HTTP " + r.status);
+      closeModal(); renderSubtasks(assignee);
+    } catch (e) { document.getElementById("mwarn").textContent = "失败：" + e.message; }
+  };
+}
+
+/* ===== 知识库 · Vault（全局，指向 llmwiki / Obsidian 库）：浏览文件夹树 + 读 + 写。检索交给 llmwiki ===== */
+function openVault() { document.getElementById("vaultwrap").classList.add("on"); loadVault(); }
+function closeVault() { document.getElementById("vaultwrap").classList.remove("on"); }
+async function loadVault() {
+  const wrap = document.getElementById("vaultwrap");
+  wrap.innerHTML = `<div class="net-head"><span class="ttl">知识库 · Vault</span><span class="sp"></span>
+    <span class="rl" id="vault-new-top">+ 新建笔记</span>
+    <span class="rl" id="vault-reload" style="margin-left:16px">刷新</span>
+    <span class="rl" id="vault-close" style="margin-left:16px">关闭</span></div>
+    <div class="net-body" id="vault-body"><div class="note">加载中…</div></div>`;
+  document.getElementById("vault-close").onclick = closeVault;
+  document.getElementById("vault-reload").onclick = loadVault;
+  document.getElementById("vault-new-top").onclick = () => openVaultCreate();
+  let data;
+  try { data = await getJSON("/api/vault"); }
+  catch (e) { document.getElementById("vault-body").innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  renderVaultPanel(data);
+}
+function fmtBytes(n) { return n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB"; }
+function renderVaultPanel(data) {
+  const body = document.getElementById("vault-body");
+  if (!data.exists) {
+    body.innerHTML = `<div class="net-hint">知识库路径不存在：<code>${esc(data.root)}</code><br>去 <code>dashboard/vault_config.json</code> 改 <code>root</code> 指向你的库。</div>`;
+    return;
+  }
+  const obs = `obsidian://open?path=${encodeURIComponent(data.root)}`;
+  const hint = `<div class="net-hint">这是<b>全局知识库</b>——所有 AI 共享同一个库（检索 / RAG 由 llmwiki 负责，这里只做浏览和读写）。
+    <br><code>${esc(data.root)}</code> · ${data.file_count} 篇 · <a class="lnk" href="${obs}">用 Obsidian 打开</a></div>`;
+  const tree = renderVaultTree(data.tree || [], 0);
+  body.innerHTML = `${hint}<div class="vault-tree">${tree || '<div class="vault-empty">空知识库</div>'}</div>`;
+  body.querySelectorAll(".vfile").forEach(el => el.onclick = () => openVaultNote(el.dataset.path));
+}
+function renderVaultTree(nodes, depth) {
+  return nodes.map(n => {
+    if (n.type === "dir") {
+      const inner = renderVaultTree(n.children || [], depth + 1);
+      const open = depth === 0 ? " open" : "";
+      return `<details class="vdir"${open}><summary><span class="vdir-name">${esc(n.name)}</span><span class="vdir-c">${(n.children || []).length}</span></summary><div class="vdir-body">${inner || '<div class="vault-empty">空</div>'}</div></details>`;
+    }
+    return `<div class="vfile" data-path="${esc(n.path)}"><span class="vf-name">${esc(n.title)}</span><span class="vf-meta">${fmtBytes(n.size)}</span></div>`;
+  }).join("");
+}
+
+/* 极简 markdown → HTML 渲染（够用：标题、强调、代码块、行内代码、链接、列表、引用、[[wikilinks]]） */
+function renderMarkdown(src) {
+  if (!src) return "";
+  // 1. 先 escape，再用占位符护住 fenced code（剥掉语言标识行，例 ```python）
+  const fences = [];
+  let t = src.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    fences.push(code.replace(/\n$/, "")); return `__FENCE_${fences.length - 1}__`;
+  });
+  t = esc(t);
+  // 2. headers
+  t = t.replace(/^### (.+)$/gm, "<h3>$1</h3>")
+       .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+       .replace(/^# (.+)$/gm, "<h1>$1</h1>");
+  // 3. blockquote
+  t = t.replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>");
+  // 4. lists（简单：连续 `- ` 行包成 ul；连续数字行包成 ol）
+  t = t.replace(/(^- .+\n?)+/gm, m => "<ul>" + m.trim().split(/\n/).map(l => `<li>${l.replace(/^- /, "")}</li>`).join("") + "</ul>");
+  t = t.replace(/(^\d+\. .+\n?)+/gm, m => "<ol>" + m.trim().split(/\n/).map(l => `<li>${l.replace(/^\d+\. /, "")}</li>`).join("") + "</ol>");
+  // 5. inline: code, bold, italic
+  t = t.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/(?<![*\w])\*([^*\n]+)\*(?!\w)/g, "<em>$1</em>");
+  // 6. links + wikilinks（防 XSS：拒绝 javascript:/data: 协议；href 已 escape）
+  t = t.replace(/\[\[([^\]]+)\]\]/g, '<span class="wikilink">$1</span>');
+  t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+    const safe = /^(https?:|mailto:|\/|#)/i.test(url.trim()) ? url : "#";
+    return `<a href="${safe}" target="_blank" rel="noopener">${text}</a>`;
+  });
+  // 7. fences 还原
+  t = t.replace(/__FENCE_(\d+)__/g, (_, i) => `<pre><code>${esc(fences[parseInt(i, 10)])}</code></pre>`);
+  // 8. 段落（双换行 → <p>）
+  t = t.split(/\n{2,}/).map(p => {
+    if (/^<(h\d|ul|ol|pre|blockquote)/.test(p.trim())) return p;
+    return p.trim() ? `<p>${p.replace(/\n/g, "<br>")}</p>` : "";
+  }).join("\n");
+  return t;
+}
+
+async function openVaultNote(path) {
+  let data;
+  try { data = await getJSON(`/api/vault/note?path=${encodeURIComponent(path)}`); }
+  catch (e) { toast("打开失败：" + e.message, "bad"); return; }
+  const obs = data.abs_path ? `obsidian://open?path=${encodeURIComponent(data.abs_path)}` : "";
+  const m = modal(`<div class="modal wide">
+    <h3>${esc(data.path)}</h3>
+    <div class="sub">全局知识库笔记。可在此快速编辑（保存前自动备份）；结构化写作建议用 Obsidian。</div>
+    <div class="vault-view-toggle">
+      <span class="tg on" data-view="md">渲染</span><span class="tg" data-view="raw">原文</span>
+    </div>
+    <div class="vault-md" id="v-md">${renderMarkdown(data.content)}</div>
+    <div class="vault-content" id="v-raw" style="display:none">${esc(data.content)}</div>
+    <div class="row">
+      ${obs ? `<a class="btn" href="${obs}">在 Obsidian 打开</a>` : ""}
+      <span class="btn" id="v-edit">编辑</span>
+      <span class="btn" id="mcancel">关闭</span>
+    </div>
+  </div>`);
+  const mb = m.closest(".modal"); if (mb) mb.style.width = "680px";
+  document.getElementById("mcancel").onclick = closeModal;
+  m.querySelectorAll(".vault-view-toggle .tg").forEach(el => el.onclick = () => {
+    m.querySelectorAll(".vault-view-toggle .tg").forEach(x => x.classList.remove("on"));
+    el.classList.add("on");
+    document.getElementById("v-md").style.display = el.dataset.view === "md" ? "" : "none";
+    document.getElementById("v-raw").style.display = el.dataset.view === "raw" ? "" : "none";
+  });
+  document.getElementById("v-edit").onclick = () => vaultEditNote(data.path, data.content);
+}
+
+function vaultEditNote(path, content) {
+  const m = modal(`<h3>编辑 · ${esc(path)}</h3>
+    <div class="sub">保存前会自动把原文备份成 .dashbak，可在文件系统里找回。</div>
+    <textarea id="ve-content" spellcheck="false" rows="18"
+      style="width:100%; padding:9px; border:1px solid var(--hair-strong); border-radius:7px; font:12px var(--mono); background:#fff; resize:vertical;">${esc(content)}</textarea>
+    <div class="warn" id="mwarn"></div>
+    <div class="row"><span class="btn" id="mcancel">取消</span><span class="btn primary" id="mok">保存</span></div>`);
+  const mb = m.closest(".modal"); if (mb) mb.style.width = "680px";
+  document.getElementById("mcancel").onclick = closeModal;
+  document.getElementById("mok").onclick = async () => {
+    try {
+      const r = await fetch("/api/vault/note", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path, content: document.getElementById("ve-content").value})
+      });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || "HTTP " + r.status);
+      toast(`已保存 ${j.path}`); closeModal(); loadVault();
+    } catch (e) { document.getElementById("mwarn").textContent = "失败：" + e.message; }
+  };
+}
+
+function openVaultCreate() {
+  const m = modal(`<h3>新建笔记 · 全局知识库</h3>
+    <div class="sub">写到知识库根目录下的相对路径。示例：<code>raw/inbox/2026-05-31.md</code> 或 <code>wiki/concepts/rag.md</code>。</div>
+    <div class="grp"><h4>路径（必须 .md 结尾）</h4>
+      <input id="vc-path" type="text" autocomplete="off" placeholder="如：raw/inbox/new-note.md"
+        style="width:100%; padding:7px 9px; border:1px solid var(--hair-strong); border-radius:7px; font:12.5px var(--mono); background:#fff;"></div>
+    <div class="grp"><h4>内容（markdown）</h4>
+      <textarea id="vc-content" rows="10" placeholder="# 标题&#10;&#10;正文..."
+        style="width:100%; padding:9px; border:1px solid var(--hair-strong); border-radius:7px; font:12px var(--mono); background:#fff; resize:vertical;"></textarea></div>
+    <div class="warn" id="mwarn"></div>
+    <div class="row"><span class="btn" id="mcancel">取消</span><span class="btn primary" id="mok">创建</span></div>`);
+  const mb = m.closest(".modal"); if (mb) mb.style.width = "560px";
+  document.getElementById("mcancel").onclick = closeModal;
+  setTimeout(() => document.getElementById("vc-path").focus(), 50);
+  document.getElementById("mok").onclick = async () => {
+    const path = document.getElementById("vc-path").value.trim();
+    const content = document.getElementById("vc-content").value;
+    if (!path) { document.getElementById("mwarn").textContent = "路径不能为空"; return; }
+    if (!path.toLowerCase().endsWith(".md")) { document.getElementById("mwarn").textContent = "路径必须 .md 结尾"; return; }
+    try {
+      const r = await fetch("/api/vault/note", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path, content})
+      });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || "HTTP " + r.status);
+      closeModal(); loadVault();
+    } catch (e) { document.getElementById("mwarn").textContent = "失败：" + e.message; }
+  };
+}
+
+/* 这个 agent 自己的技能集（成员制）：自有/继承 分类 + 装(install)/卸(uninstall)/解除(继承) */
+async function renderAgentSkills(name) {
+  const box = document.getElementById("askills");
+  if (!box) return;
+  let data;
+  try { data = await getJSON("/api/agent-skills/" + encodeURIComponent(name)); }
+  catch (e) { box.innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  const badge = (s) => s.inherited
+    ? `<span class="sb inh">继承自 ${esc(s.source || "?")}</span>`
+    : `<span class="sb own">自带</span>`;
+  const ownN = data.skills.filter(s => !s.inherited).length;
+  box.innerHTML = `
+    <div class="askadd">
+      <input id="ask-install" placeholder="装技能：owner/skills/name 或 SKILL.md URL" />
+      <span class="btn" id="ask-install-go">安装</span>
+    </div>
+    <div class="askadd">
+      <input id="ask-uninstall" placeholder="卸载：技能名（内置的卸不掉）" />
+      <span class="btn" id="ask-uninstall-go">卸载</span>
+    </div>
+    <div class="askadd">
+      ${data.converted
+        ? `<span class="dstat on">已精简（和上级重复的技能改为共享）</span><span class="btn" id="ask-revert">还原</span>`
+        : `<span class="btn" id="ask-convert">精简重复技能</span><span class="out">把和上级重复的技能改为共享，省空间，可还原</span>`}
+    </div>
+    <div class="note" style="margin:8px 0">技能会在需要时自动触发。「继承自 X」= 从上级 X 自动获得（X 增删，这里跟着变）；单独借来的可随时解除。</div>
+    ` + data.skills.map(s => `<div class="askrow">
+      <span class="an" title="${esc(s.desc || "")}">${esc(s.name)}</span>${badge(s)}
+      ${s.via === "symlink" ? `<span class="aun" data-unshare="${esc(s.category)}" title="收回借用（不删原技能）">解除</span>` : ""}
+    </div>`).join("");
+  const cv = document.getElementById("ask-convert");
+  if (cv) cv.onclick = async () => {
+    try {
+      const p = await getJSON(`/api/skills/convert-inherit/${encodeURIComponent(name)}`);  // dry-run 预览
+      if (p.error) { toast(p.error); return; }
+      const from = (p.ancestors_inherited_from || []).join(", ") || "（无祖先）";
+      if (!await confirmAsync(`精简「${name}」的重复技能？\n· 把 ${p.redundant.length} 个和上级完全一样的技能改为共享（原文件存进备份，可还原）\n· 保留你定制过的 ${p.kept_customized.length} 个、独有的 ${p.kept_unique.length} 个\n· 之后从上级（${from}）自动获得这些技能\n随时可「还原」。`)) return;
+      const r = await fetch(`/api/skills/convert-inherit/${encodeURIComponent(name)}`, { method: "POST" });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+      renderAgentSkills(name); load();
+    } catch (e) { toast("精简失败：" + e.message, "bad"); }
+  };
+  const rv = document.getElementById("ask-revert");
+  if (rv) rv.onclick = async () => {
+    if (!await confirmAsync(`还原「${name}」的技能？把备份里的原技能搬回来，恢复成精简前的样子。`)) return;
+    try {
+      const r = await fetch(`/api/skills/revert-inherit/${encodeURIComponent(name)}`, { method: "POST" });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+      renderAgentSkills(name); load();
+    } catch (e) { toast("撤销失败：" + e.message, "bad"); }
+  };
+  document.getElementById("ask-install-go").onclick = async () => {
+    const ident = document.getElementById("ask-install").value.trim();
+    if (!ident) return;
+    if (!await confirmAsync(`给 ${name} 安装「${ident}」？\n会联网拉取并做安全扫描。`)) return;
+    try {
+      const r = await fetch(`/api/agent-skills/${encodeURIComponent(name)}/install`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: ident }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+      renderAgentSkills(name);
+    } catch (e) { toast("安装失败：" + e.message, "bad"); }
+  };
+  document.getElementById("ask-uninstall-go").onclick = async () => {
+    const sk = document.getElementById("ask-uninstall").value.trim();
+    if (!sk) return;
+    if (!await confirmAsync(`从 ${name} 卸载「${sk}」？不可恢复（内置技能卸不掉）。`)) return;
+    try {
+      const r = await fetch(`/api/agent-skills/${encodeURIComponent(name)}/uninstall`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ skill: sk }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+      renderAgentSkills(name);
+    } catch (e) { toast("卸载失败：" + e.message, "bad"); }
+  };
+  box.querySelectorAll("[data-unshare]").forEach(el => el.addEventListener("click", async () => {
+    if (!await confirmAsync("解除借用「" + el.dataset.unshare + "」？只收回这个 AI 的借用，不影响原技能。")) return;
+    try {
+      const r = await fetch("/api/link", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: name, skill: el.dataset.unshare }) });
+      if (!r.ok) { const j = await r.json(); throw new Error(j.detail || ("HTTP " + r.status)); }
+      renderAgentSkills(name);
+    } catch (e) { toast("解除失败：" + e.message, "bad"); }
+  }));
+}
+function sessionsHTML(d) {
+  if (d.sessions_note) return `<p class="note">${esc(d.sessions_note)}</p>`;
+  if (!d.sessions.length) return '<p class="note">暂无会话</p>';
+  return d.sessions.map(s => {
+    if (s.raw) return `<div class="sess"><div class="t">${esc(s.raw)}</div></div>`;
+    const head = s.title || s.preview || "(无标题)";
+    const tail = [s.last_active, s.src, s.id].filter(Boolean).join("  ·  ");
+    return `<div class="sess"><div class="t">${esc(head)}</div>${tail ? `<div class="m2">${esc(tail)}</div>` : ""}</div>`;
+  }).join("");
+}
+
+/* ===== 关系网络（组织树：拖动改父级 + 共享/解除共享） ===== */
+let TREE = null, dragNode = null;
+function openNetwork() { document.getElementById("netwrap").classList.add("on"); loadTree(); }
+function closeNetwork() { document.getElementById("netwrap").classList.remove("on"); }
+async function loadTree() {
+  const wrap = document.getElementById("netwrap");
+  wrap.innerHTML = `<div class="net-head"><span class="ttl">Agent 关系网络</span><span class="sp"></span>
+      <span class="rl" id="net-reload">刷新</span>
+      <span class="rl" id="net-close" style="margin-left:16px">关闭</span></div>
+    <div class="net-body" id="net-body"><div class="note">加载中…</div></div>`;
+  document.getElementById("net-close").onclick = closeNetwork;
+  document.getElementById("net-reload").onclick = loadTree;
+  try { TREE = await getJSON("/api/network"); }
+  catch (e) { document.getElementById("net-body").innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  Object.values(TREE.nodes || {}).forEach(n => { if (n.label) LABELS[n.name] = n.label; });
+  (TREE.drafts || []).forEach(n => { if (n.label) LABELS[n.name] = n.label; });
+  renderTree();
+}
+function renderTree() {
+  const body = document.getElementById("net-body"), nodes = TREE.nodes;
+  // 自上而下 org chart：嵌套 <ul><li>，父在上、子横排在下，伪元素画连线
+  const liHTML = (name) => {
+    const n = nodes[name]; if (!n) return "";
+    const sl = (n.symlinks || []).filter(s => s.target_profile);
+    const tags = [];
+    if (n.main_twin) tags.push('<span class="on-tag twin">分身</span>');
+    if (n.killed || n.effective_killed) tags.push('<span class="on-tag bad">停用</span>');
+    const roleLabel = name === "default" ? "主 agent" : (ROLE_FULL[n.role] || "独立");
+    const meta = `${roleLabel} · ${n.skill_count} 技能${sl.length ? " · 🔗" + sl.length : ""}${n.config_inherit ? " · ⟳cfg" : ""}`;
+    // 子节点排序与侧栏一致：分身（main_twin）置顶成组，其余按字母
+    const sortedKids = (n.children || []).slice().sort((x, y) => {
+      const tx = (nodes[x] && nodes[x].main_twin) ? 0 : 1, ty = (nodes[y] && nodes[y].main_twin) ? 0 : 1;
+      return (tx - ty) || x.localeCompare(y);
+    });
+    const kids = sortedKids.map(liHTML).join("");
+    return `<li>
+      <div class="onode ${name === "default" ? "root" : ""}" draggable="true" data-name="${esc(name)}">
+        <div class="on-top"><span class="on-nm" title="${esc(name)}">${esc(dname(name))}</span>${tags.join("")}</div>
+        <div class="on-meta">${esc(meta)}</div>
+        <div class="on-acts">
+          <span class="act" data-cfg="${esc(name)}">配置</span>
+          <span class="act" data-share="${esc(name)}">共享</span>
+          ${sl.length ? `<span class="act" data-manage="${esc(name)}">解除</span>` : ""}
+        </div>
+      </div>
+      ${kids ? `<ul>${kids}</ul>` : ""}
+    </li>`;
+  };
+  const drafts = TREE.drafts || [];
+  const draftHTML = (d) => `<div class="onode draft" draggable="true" data-name="${esc(d.name)}">
+      <div class="on-top"><span class="on-nm" title="${esc(d.name)}">${esc(dname(d.name))}</span><span class="on-tag warn">草稿</span></div>
+      <div class="on-meta">尚未落位</div>
+    </div>`;
+  const draftsBlock = drafts.length
+    ? `<div class="net-hint" style="color:var(--muted)">草稿（${drafts.length}）：拖到下面树里某个 agent 上，才正式入树。</div>
+       <div class="drafts-tnodes" style="display:flex; flex-wrap:wrap; gap:8px; padding:8px 0 14px; border-bottom:1px dashed var(--hair); margin-bottom:14px">
+         ${drafts.map(draftHTML).join("")}
+       </div>`
+    : "";
+  body.innerHTML = `<div class="net-hint">自上而下的组织层级：上是上级、下是下属。把一个 AI 拖到另一个上面 = 让它（连同手下）改到对方手下；悬停节点出现「配置 / 共享」。只调组织关系，不动对话和数据，随时改回。</div>
+    ${draftsBlock}
+    <div class="droptop" id="droptop">拖到这里 = 设为顶层（脱离父级）</div>
+    <div class="org"><ul>${TREE.roots.map(liHTML).join("")}</ul></div>`;
+  body.querySelectorAll(".onode").forEach(el => {
+    el.addEventListener("dragstart", e => { dragNode = el.dataset.name; el.classList.add("drag"); e.dataTransfer.effectAllowed = "move"; });
+    el.addEventListener("dragend", () => { el.classList.remove("drag"); body.querySelectorAll(".drop").forEach(x => x.classList.remove("drop")); });
+    el.addEventListener("dragover", e => { e.preventDefault(); if (dragNode && dragNode !== el.dataset.name) el.classList.add("drop"); });
+    el.addEventListener("dragleave", () => el.classList.remove("drop"));
+    el.addEventListener("drop", e => { e.preventDefault(); el.classList.remove("drop"); const t = el.dataset.name; if (dragNode && dragNode !== t) reparentDialog(dragNode, t); });
+  });
+  body.querySelectorAll("[data-cfg]").forEach(el => el.addEventListener("click", e => { e.stopPropagation(); configDialog(el.dataset.cfg); }));
+  body.querySelectorAll("[data-share]").forEach(el => el.addEventListener("click", e => { e.stopPropagation(); shareDialog(el.dataset.share); }));
+  body.querySelectorAll("[data-manage]").forEach(el => el.addEventListener("click", e => { e.stopPropagation(); manageDialog(el.dataset.manage); }));
+  const dt = document.getElementById("droptop");
+  dt.addEventListener("dragover", e => { e.preventDefault(); if (dragNode) dt.classList.add("drop"); });
+  dt.addEventListener("dragleave", () => dt.classList.remove("drop"));
+  dt.addEventListener("drop", e => { e.preventDefault(); dt.classList.remove("drop"); if (dragNode) reparentDialog(dragNode, null); });
+}
+function modal(html) { const s = document.getElementById("modal-scrim"); s.innerHTML = `<div class="modal">${html}</div>`; s.classList.add("on"); return s.querySelector(".modal"); }
+function closeModal() { const s = document.getElementById("modal-scrim"); s.classList.remove("on"); s.innerHTML = ""; }
+
+/* C1: 自定义 toast + 异步 confirm，统一替代原生 toast()/await confirmAsync()，避免 Chrome MCP 卡死 + UX 一致
+   toast(msg, type='') —— 短期提示（默认 3.5s 自动消失），type ∈ '' | 'ok' | 'warn' | 'bad'
+   confirmAsync(msg, opts) —— 返回 Promise<boolean>，true=确认 false=取消 */
+function toast(msg, type = "", duration = 3500) {
+  const stack = document.getElementById("toast-stack");
+  if (!stack) return;
+  const t = document.createElement("div");
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  stack.appendChild(t);
+  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .25s"; setTimeout(() => t.remove(), 280); }, duration);
+}
+function confirmAsync(msg, opts = {}) {
+  return new Promise(resolve => {
+    const okLabel = esc(opts.ok || "确认");
+    const cancelLabel = esc(opts.cancel || "取消");
+    const danger = opts.danger ? "primary" : "primary";  // 视觉上未来可分级
+    const m = modal(`<h3>${esc(opts.title || "确认操作")}</h3>
+      <div class="sub" style="white-space:pre-wrap; line-height:1.55">${esc(msg)}</div>
+      <div class="row">
+        <span class="btn" id="cf-cancel">${cancelLabel}</span>
+        <span class="btn ${danger}" id="cf-ok">${okLabel}</span>
+      </div>`);
+    const done = (v) => { closeModal(); resolve(v); };
+    document.getElementById("cf-cancel").onclick = () => done(false);
+    document.getElementById("cf-ok").onclick = () => done(true);
+    setTimeout(() => document.getElementById("cf-ok").focus(), 50);
+  });
+}
+async function refreshAll() { await loadTree(); load(); }
+
+function reparentDialog(node, np) {
+  // tab 化的落位预演对话框：先调 /api/reparent-preview 拿完整 profile diff，再分 tab 展示
+  // 用户取消则什么都没发生；确认 → /api/move + 可选 /api/constitution/apply + 立即物化 config
+  // 草稿（顶栏「+」新建未落位）不在 TREE.nodes 里，要从 TREE.drafts 里找。
+  const n = TREE.nodes[node] || (TREE.drafts || []).find(d => d.name === node) || { symlinks: [], parent: null };
+  const sl = (n.symlinks || []).filter(s => s.target_profile), cur = n.parent;
+  const title = np ? `把 <span class="self">${esc(node)}</span> 移到 <span class="self">${esc(np)}</span> 下`
+                   : `把 <span class="self">${esc(node)}</span> 设为顶层`;
+  const dropHTML = sl.length
+    ? sl.map(s => `<label class="ck"><input type="checkbox" class="dropck" value="${esc(s.name)}" ${s.target_profile === cur ? "checked" : ""}> 丢弃 ${esc(s.name)}（来自 ${esc(s.target_profile)}）</label>`).join("")
+    : `<div class="empty">无可丢弃的共享技能</div>`;
+  const m = modal(`<h3>${title}</h3>
+    <div class="sub">${esc(node)} 手下的所有 AI 会一起跟着走；调整随时可改回。</div>
+    <div class="tabs">
+      <span class="tab on" data-pane="pos">位置</span>
+      <span class="tab" data-pane="sk">技能<span class="pill" id="pill-sk">·</span></span>
+      <span class="tab" data-pane="cfg">配置<span class="pill" id="pill-cfg">·</span></span>
+      <span class="tab" data-pane="con">宪法<span class="pill" id="pill-con">·</span></span>
+    </div>
+    <div class="tabpane on" data-pane="pos" id="pane-pos"><div class="empty">加载中…</div></div>
+    <div class="tabpane" data-pane="sk" id="pane-sk">
+      <div class="grp" id="extgrp"><h4>继承上级的技能</h4><div class="empty">加载中…</div></div>
+      <div class="grp"><h4>丢掉从旧上级借来的技能</h4>${dropHTML}</div>
+      <div class="grp" id="addgrp"><h4>从新父辈引入</h4><div class="empty">${np ? "加载中…" : "顶层：不引入"}</div></div>
+    </div>
+    <div class="tabpane" data-pane="cfg" id="pane-cfg"><div class="empty">加载中…</div></div>
+    <div class="tabpane" data-pane="con" id="pane-con"><div class="empty">加载中…</div></div>
+    <div class="warn" id="mwarn"></div>
+    <div class="row"><span class="btn" id="mcancel">取消</span><span class="btn primary" id="mok" disabled>确认</span></div>`);
+  document.getElementById("mcancel").onclick = closeModal;
+  // tab 切换
+  m.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+    m.querySelectorAll(".tab").forEach(x => x.classList.remove("on"));
+    m.querySelectorAll(".tabpane").forEach(x => x.classList.remove("on"));
+    t.classList.add("on");
+    m.querySelector(`.tabpane[data-pane="${t.dataset.pane}"]`).classList.add("on");
+  });
+  if (np) fillAddCandidates(np, node);
+  // 拉预演 diff
+  let preview = null;
+  fetch("/api/reparent-preview", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ node, new_parent: np }) })
+    .then(r => r.json().then(j => ({ ok: r.ok, j })))
+    .then(({ ok, j }) => {
+      if (!ok) { document.getElementById("mwarn").textContent = "预演失败：" + (j.detail || "未知错误"); return; }
+      preview = j;
+      renderReparentPanes(m, preview);
+      document.getElementById("mok").removeAttribute("disabled");
+    })
+    .catch(e => { document.getElementById("mwarn").textContent = "预演失败：" + e.message; });
+  document.getElementById("mok").onclick = async () => {
+    if (!preview) return;
+    const drop = Array.from(m.querySelectorAll(".dropck:checked")).map(i => i.value);
+    const add = Array.from(m.querySelectorAll(".addck:checked")).map(i => ({ source: np, skill: i.value }));
+    // 配置 tab 取消勾选的继承键 → block
+    const skip_inherit_keys = Array.from(m.querySelectorAll(".cfgck"))
+      .filter(i => !i.checked).map(i => i.value);
+    // 技能 tab 的总开关：勾=启用继承(off=false)，取消=关闭(off=true)；只在与当前不同时才传
+    const skinhck = document.getElementById("skinhck");
+    let skill_inherit_off_change = null;
+    if (skinhck && !skinhck.disabled) {
+      const wantOn = skinhck.checked;
+      if (wantOn !== preview.skill_diff.skill_inherit_on) {
+        skill_inherit_off_change = !wantOn;  // off = !on
+      }
+    }
+    // 宪法订阅
+    const constCk = document.getElementById("conck");
+    const wantConst = constCk ? constCk.checked : preview.constitution.subscribed;
+    const constChanged = wantConst !== preview.constitution.subscribed;
+    document.getElementById("mok").setAttribute("disabled", "1");
+    try {
+      const r = await fetch("/api/move", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ node, new_parent: np, drop, add, skip_inherit_keys, skill_inherit_off_change }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+      const warnings = [].concat(j.warnings || []);
+      if (constChanged) {
+        try {
+          const cr = await fetch("/api/constitution/apply", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                              body: JSON.stringify({ name: node, on: wantConst }) });
+          if (!cr.ok) { const cj = await cr.json(); warnings.push("宪法订阅调整失败：" + (cj.detail || cr.status)); }
+        } catch (e) { warnings.push("宪法订阅调整失败：" + e.message); }
+      }
+      closeModal(); await refreshAll();
+      if (warnings.length) toast("完成，但有提示：\n• " + warnings.join("\n• "));
+    } catch (e) {
+      document.getElementById("mwarn").textContent = "失败：" + e.message;
+      document.getElementById("mok").removeAttribute("disabled");
+    }
+  };
+}
+
+function renderReparentPanes(m, p) {
+  // 位置 tab
+  const chainStr = (parent, anc) => {
+    if (!parent && !anc.length) return `<span class="self">${esc(p.node)}</span><span class="arr">→</span><span style="color:var(--faint)">顶层（独立）</span>`;
+    return `<span class="self">${esc(p.node)}</span>` + (anc.length ? anc.map(a => `<span class="arr">→</span>${esc(a)}`).join("") : "");
+  };
+  const warnHTML = (p.warnings || []).map(w => `<div class="note-strong">⚠ ${esc(w)}</div>`).join("");
+  document.getElementById("pane-pos").innerHTML = `
+    <div class="grp"><h4>来源</h4><div class="chain">${chainStr(p.from.parent, p.from.ancestors)}</div></div>
+    <div class="grp"><h4>落位</h4><div class="chain">${chainStr(p.to.parent, p.to.ancestors)}</div></div>
+    ${warnHTML}`;
+  // 技能 tab — external_dirs diff + 总开关
+  const sk = p.skill_diff;
+  let extHTML = "";
+  // 总开关：勾上 = 启用 skill 自动继承（external_dirs），取消 = 关闭并写进 skill_inherit_off
+  const togDisabled = !sk.converted;          // 没转继承 → 没法启用，置灰
+  const togChecked = sk.skill_inherit_on;     // 默认按当前状态
+  extHTML += `<label class="ck"><input type="checkbox" id="skinhck" ${togChecked ? "checked" : ""} ${togDisabled ? "disabled" : ""}>
+    自动继承上级的技能${togDisabled ? " — 需先在「技能」里精简过才能开" : ""}</label>`;
+  if (sk.converted && sk.skill_inherit_on) {
+    if (sk.ext_dirs_add.length || sk.ext_dirs_remove.length) {
+      extHTML += `<div class="sub" style="margin-top:6px">落位后继承来源会变：` +
+        (sk.ext_dirs_add.length ? `<span class="tag add">新增 ${sk.ext_dirs_add.length}</span> ` : "") +
+        (sk.ext_dirs_remove.length ? `<span class="tag remove">移除 ${sk.ext_dirs_remove.length}</span>` : "") + `</div>`;
+    } else {
+      extHTML += `<div class="sub" style="margin-top:6px">继承来源不变。</div>`;
+    }
+  } else if (!sk.converted) {
+    extHTML += `<div class="sub" style="margin-top:6px">这个 AI 还没精简过技能，暂时不走自动继承（它本地已有全套技能）。</div>`;
+  }
+  document.getElementById("extgrp").innerHTML = `<h4>继承上级的技能</h4>${extHTML}`;
+  document.getElementById("pill-sk").textContent = (sk.ext_dirs_add.length + sk.ext_dirs_remove.length) || "·";
+  // 配置 tab — 每条 diff 前面加复选框（默认勾，取消勾 = block 这次继承）
+  const items = p.config_diff.items;
+  let cfgHTML = "";
+  if (p.is_main_twin) {
+    cfgHTML = `<div class="empty">化身和主 AI 共用同一套设置，落位不影响它——它永远跟随主 AI。</div>`;
+  } else if (p.node === "default") {
+    cfgHTML = `<div class="empty">主 AI 是最顶层，没有上级可继承。</div>`;
+  } else if (!items.length) {
+    cfgHTML = `<div class="empty">设置没变化（新旧上级给到的设置一样）。</div>`;
+  } else {
+    cfgHTML = items.map(it => {
+      let label, hint;
+      if (it.change === "add") {
+        label = `<span class="tag add">+</span><span class="k">${esc(it.key)}</span><span class="v">${esc(it.after)}</span>`;
+        hint = `取消 = 不跟随这项`;
+      } else if (it.change === "remove") {
+        label = `<span class="tag remove">−</span><span class="k">${esc(it.key)}</span><span class="v">${esc(it.before)} → ×</span>`;
+        hint = `取消 = 保留当前值不变`;
+      } else {
+        label = `<span class="tag update">~</span><span class="k">${esc(it.key)}</span><span class="v">${esc(it.before)} → ${esc(it.after)}</span>`;
+        hint = `取消 = 保留旧值不变`;
+      }
+      return `<label class="ck" title="${hint}">
+        <input type="checkbox" class="cfgck" value="${esc(it.key)}" checked>
+        <span style="flex:1; font: 12px var(--mono); display:flex; gap:8px; align-items:baseline">${label}</span>
+      </label>`;
+    }).join("");
+  }
+  const ownHTML = p.config_diff.own_keys_unchanged.length
+    ? `<div class="note-strong">你自己改过的设置不动，落位后还是这些：${p.config_diff.own_keys_unchanged.map(esc).join("、")}</div>`
+    : "";
+  document.getElementById("pane-cfg").innerHTML = `
+    <div class="grp"><h4>从上级继承的设置（勾上 = 跟随 / 取消 = 不跟随）</h4>${cfgHTML}</div>
+    ${ownHTML}
+    <div class="sub" style="margin-top:10px">取消跟随的设置以后也不会自动同步。可继承的设置有：${p.config_diff.inheritable_keys.map(esc).join("、")}。</div>`;
+  document.getElementById("pill-cfg").textContent = items.length || "·";
+  // 宪法 tab
+  const sub = p.constitution.subscribed;
+  document.getElementById("pane-con").innerHTML = `
+    <div class="grp"><h4>当前订阅状态</h4>
+      <label class="ck"><input type="checkbox" id="conck" ${sub ? "checked" : ""}> 落位后订阅宪法（注入 SOUL.md 受管块）</label>
+      <div class="sub" style="margin-top:6px">${sub ? "当前已订阅。" : "当前未订阅。"}宪法和组织树解耦，可任意单独调整；这里只是顺便确认。</div>
+    </div>`;
+  document.getElementById("pill-con").textContent = sub ? "✓" : "·";
+}
+async function fillAddCandidates(parent, node) {
+  try {
+    const [pa, na] = await Promise.all([getJSON(`/api/skills/${encodeURIComponent(parent)}`), getJSON(`/api/skills/${encodeURIComponent(node)}`)]);
+    const have = new Set(na.skills.map(s => s.name));
+    const cand = pa.skills.filter(s => !have.has(s.name));
+    const items = cand.map(s => `<label class="ck"><input type="checkbox" class="addck" value="${esc(s.name)}"> 引入 ${esc(s.name)}</label>`).join("");
+    document.getElementById("addgrp").innerHTML = `<h4>从 ${esc(parent)} 引入（${esc(node)} 还没有的）</h4>${items || '<div class="note">没有新技能可引入</div>'}`;
+  } catch (e) { document.getElementById("addgrp").innerHTML = `<h4>引入</h4><div class="note">加载失败：${esc(e.message)}</div>`; }
+}
+function shareDialog(node) {
+  const others = Object.keys(TREE.nodes).filter(x => x !== node).sort();
+  modal(`<h3>给 ${esc(node)} 共享技能</h3>
+    <div class="sub">把某个 AI 的技能借给 ${esc(node)} 用（不影响原 AI，随时可解除）。</div>
+    <div class="grp"><h4>来源 Agent</h4>
+      <select id="shsrc"><option value="">— 选择 —</option>${others.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join("")}</select></div>
+    <div class="grp" id="shgrp"><h4>技能</h4><div class="note">先选来源</div></div>
+    <div class="warn" id="mwarn"></div>
+    <div class="row"><span class="btn" id="mcancel">取消</span><span class="btn primary" id="mok">共享所选</span></div>`);
+  document.getElementById("mcancel").onclick = closeModal;
+  document.getElementById("shsrc").onchange = async (ev) => {
+    const src = ev.target.value;
+    if (!src) { document.getElementById("shgrp").innerHTML = `<h4>技能</h4><div class="note">先选来源</div>`; return; }
+    try {
+      const [sa, na] = await Promise.all([getJSON(`/api/skills/${encodeURIComponent(src)}`), getJSON(`/api/skills/${encodeURIComponent(node)}`)]);
+      const have = new Set(na.skills.map(s => s.name));
+      const cand = sa.skills.filter(s => !have.has(s.name));
+      const items = cand.map(s => `<label class="ck"><input type="checkbox" class="shck" value="${esc(s.name)}"> ${esc(s.name)}</label>`).join("");
+      document.getElementById("shgrp").innerHTML = `<h4>从 ${esc(src)} 选（${esc(node)} 还没有的）</h4>${items || '<div class="note">无可共享技能</div>'}`;
+    } catch (e) { document.getElementById("shgrp").innerHTML = `<h4>技能</h4><div class="note">加载失败：${esc(e.message)}</div>`; }
+  };
+  document.getElementById("mok").onclick = async () => {
+    const src = document.getElementById("shsrc").value;
+    const skills = Array.from(document.querySelectorAll(".shck:checked")).map(i => i.value);
+    if (!src || !skills.length) { document.getElementById("mwarn").textContent = "请选择来源和至少一个技能"; return; }
+    try {
+      for (const sk of skills) {
+        const r = await fetch("/api/link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source: src, skill: sk, target: node }) });
+        if (!r.ok) { const j = await r.json(); throw new Error(j.detail || ("HTTP " + r.status)); }
+      }
+      closeModal(); await refreshAll();
+    } catch (e) { document.getElementById("mwarn").textContent = "失败：" + e.message; }
+  };
+}
+function manageDialog(node) {
+  const sl = (TREE.nodes[node].symlinks || []).filter(s => s.target_profile);
+  modal(`<h3>${esc(node)} 的共享技能</h3>
+    <div class="sub">这些是借来的技能。解除只是收回借用，不会删掉原技能。</div>
+    <div class="grp">${sl.map(s => `<label class="ck"><input type="checkbox" class="unck" value="${esc(s.name)}"> ${esc(s.name)} ← ${esc(s.target_profile)}</label>`).join("") || '<div class="note">无</div>'}</div>
+    <div class="warn" id="mwarn"></div>
+    <div class="row"><span class="btn" id="mcancel">取消</span><span class="btn primary" id="mok">解除所选</span></div>`);
+  document.getElementById("mcancel").onclick = closeModal;
+  document.getElementById("mok").onclick = async () => {
+    const skills = Array.from(document.querySelectorAll(".unck:checked")).map(i => i.value);
+    if (!skills.length) { closeModal(); return; }
+    try {
+      for (const sk of skills) {
+        const r = await fetch("/api/link", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: node, skill: sk }) });
+        if (!r.ok) { const j = await r.json(); throw new Error(j.detail || ("HTTP " + r.status)); }
+      }
+      closeModal(); await refreshAll();
+    } catch (e) { document.getElementById("mwarn").textContent = "失败：" + e.message; }
+  };
+}
+
+/* ===== config 继承（快照合并；目录类继承走「共享…」=实时 symlink） ===== */
+async function configDialog(node) {
+  let me, imap = {};
+  try { me = await getJSON(`/api/config/${encodeURIComponent(node)}`); } catch (e) { me = { has_backup: false }; }
+  try { imap = (await getJSON("/api/config-inherit")).map || {}; } catch (e) {}
+  const live = imap[node];   // {parent, keys} | undefined
+  const others = Object.keys(TREE.nodes).filter(x => x !== node).sort();
+  modal(`<h3>让 ${esc(node)} 继承设置</h3>
+    <div class="sub">从某个 AI 继承设置（模型 / MCP / 工具…）。
+      <b>实时同步</b>=上级一改、它几秒内自动跟随（你自己改过的保留，其余听上级的）；不勾=只复制当前这一次。
+      ⚠ 正在进行的对话需要重开才生效。</div>
+    ${live ? `<div class="grp"><div class="note">● 正在【实时继承】自 <b>${esc(live.parent)}</b>：${esc((live.keys || []).join(", "))}</div>
+      <div style="margin-top:8px"><span class="btn" id="cfgstop">停止实时同步</span></div></div>` : ""}
+    <div class="grp"><h4>来源 Agent</h4>
+      <select id="cfgsrc"><option value="">— 选择 —</option>${others.map(o => `<option value="${esc(o)}"${live && live.parent === o ? " selected" : ""}>${esc(o)}</option>`).join("")}</select></div>
+    <div class="grp" id="cfggrp"><h4>键</h4><div class="note">先选来源</div></div>
+    <label class="ck" style="margin-top:6px"><input type="checkbox" id="cfglive" checked> 持续实时同步（推荐；不勾 = 一次性快照）</label>
+    <div class="warn" id="mwarn"></div>
+    <div class="row">
+      ${me.has_backup ? `<span class="btn" id="cfgrevert">还原快照</span>` : ""}
+      <span class="btn" id="mcancel">取消</span><span class="btn primary" id="mok">应用</span></div>`);
+  document.getElementById("mcancel").onclick = closeModal;
+  if (live) document.getElementById("cfgstop").onclick = async () => {
+    try { const r = await fetch("/api/config-inherit/disable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ child: node }) }); if (!r.ok) throw new Error("HTTP " + r.status); closeModal(); await refreshAll(); }
+    catch (e) { document.getElementById("mwarn").textContent = "停止失败：" + e.message; }
+  };
+  if (me.has_backup) document.getElementById("cfgrevert").onclick = async () => {
+    try { const r = await fetch("/api/revert-config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ child: node }) }); if (!r.ok) throw new Error("HTTP " + r.status); closeModal(); await refreshAll(); }
+    catch (e) { document.getElementById("mwarn").textContent = "还原失败：" + e.message; }
+  };
+  const loadKeys = async (src) => {
+    if (!src) { document.getElementById("cfggrp").innerHTML = `<h4>键</h4><div class="note">先选来源</div>`; return; }
+    try {
+      const sc = await getJSON(`/api/config/${encodeURIComponent(src)}`);
+      const pre = (live && live.parent === src) ? new Set(live.keys || []) : new Set();
+      const items = (sc.keys || []).map(k => `<label class="ck"><input type="checkbox" class="cfgck" value="${esc(k)}"${pre.has(k) ? " checked" : ""}> ${esc(k)}</label>`).join("");
+      document.getElementById("cfggrp").innerHTML = `<h4>从 ${esc(src)} 继承哪些键</h4>${items || '<div class="note">该来源没有可继承的 config 键</div>'}`;
+    } catch (e) { document.getElementById("cfggrp").innerHTML = `<h4>键</h4><div class="note">加载失败：${esc(e.message)}</div>`; }
+  };
+  document.getElementById("cfgsrc").onchange = (ev) => loadKeys(ev.target.value);
+  if (live && live.parent) loadKeys(live.parent);
+  document.getElementById("mok").onclick = async () => {
+    const src = document.getElementById("cfgsrc").value;
+    const keys = Array.from(document.querySelectorAll(".cfgck:checked")).map(i => i.value);
+    const isLive = document.getElementById("cfglive").checked;
+    if (!src || !keys.length) { document.getElementById("mwarn").textContent = "请选来源和至少一个键"; return; }
+    try {
+      const url = isLive ? "/api/config-inherit/enable" : "/api/inherit-config";
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ child: node, parent: src, keys }) });
+      if (!r.ok) { const j = await r.json(); throw new Error(j.detail || ("HTTP " + r.status)); }
+      closeModal(); await refreshAll();
+    } catch (e) { document.getElementById("mwarn").textContent = "失败：" + e.message; }
+  };
+}
+
+/* ===== 任务板（kanban：沿组织树派持久任务给常驻 agent） ===== */
+function openKanban() { document.getElementById("kanwrap").classList.add("on"); loadKanban(); }
+function closeKanban() { document.getElementById("kanwrap").classList.remove("on"); }
+async function loadKanban() {
+  const wrap = document.getElementById("kanwrap");
+  wrap.innerHTML = `<div class="net-head"><span class="ttl">任务板 · Kanban</span><span class="sp"></span>
+    <span class="rl" id="kan-reload">刷新</span><span class="rl" id="kan-close" style="margin-left:16px">关闭</span></div>
+    <div class="net-body" id="kan-body"><div class="note">加载中…</div></div>`;
+  document.getElementById("kan-close").onclick = closeKanban;
+  document.getElementById("kan-reload").onclick = loadKanban;
+  if (!PROFILES.length) { try { PROFILES = (await getJSON("/api/profiles")).profiles; } catch (e) {} }
+  let data, dstat = { running: false };
+  try { data = await getJSON("/api/kanban"); }
+  catch (e) { document.getElementById("kan-body").innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  try { dstat = await getJSON("/api/kanban/daemon"); } catch (e) {}
+  renderKanban(data, dstat);
+}
+function renderKanban(data, dstat) {
+  const body = document.getElementById("kan-body"), tasks = data.tasks || [];
+  dstat = dstat || { running: false };
+  const opts = PROFILES.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("");
+  const STAT = ["triage", "todo", "ready", "running", "review", "blocked", "scheduled", "done"];
+  const byStat = {};
+  tasks.forEach(t => { (byStat[t.status] = byStat[t.status] || []).push(t); });
+  const card = t => `<div class="ktask"><div class="kt">${esc(t.title)}</div>
+     <div class="km">@${esc(t.assignee || "—")} · ${esc(t.id)}<span class="ka" data-arch="${esc(t.id)}" title="归档">归档</span></div></div>`;
+  const cols = STAT.filter(s => byStat[s] && byStat[s].length).map(s => `<div class="kan-col"><h4>${s} · ${byStat[s].length}</h4>${byStat[s].map(card).join("")}</div>`).join("");
+  body.innerHTML = `<div class="net-hint">把任务交给某个 AI 长期负责。（AI 自己临时叫的帮手不在这里管。）${data.note ? ` · ⚠ ${esc(data.note)}` : ""}</div>
+    <div class="kan-ctl">
+      <span class="dstat ${dstat.running ? "on" : ""}">自动派活：${dstat.running ? "进行中" : "已关"}</span>
+      <span class="btn" id="dtoggle">${dstat.running ? "关闭自动派活" : "开启自动派活"}</span>
+      <span class="btn" id="disp-dry">试运行</span>
+      <span class="btn" id="disp-run">立即派一次</span>
+      <span class="out" id="disp-out"></span>
+    </div>
+    <div class="kan-new">
+      <input class="t" id="kan-title" placeholder="任务标题…" />
+      <select id="kan-assignee">${opts}</select>
+      <input id="kan-pri" type="number" placeholder="优先级" style="width:96px" />
+      <span class="btn primary" id="kan-create">派活</span>
+    </div>
+    <div class="kan-cols">${cols || '<div class="note">暂无任务</div>'}</div>`;
+  document.getElementById("kan-create").onclick = createTask;
+  document.getElementById("dtoggle").onclick = () => toggleDaemon(dstat.running);
+  document.getElementById("disp-dry").onclick = () => dispatchOnce(true);
+  document.getElementById("disp-run").onclick = () => dispatchOnce(false);
+  body.querySelectorAll("[data-arch]").forEach(el => el.addEventListener("click", () => archiveTask(el.dataset.arch)));
+}
+async function toggleDaemon(running) {
+  if (!running && !await confirmAsync("开启后，系统每分钟自动把待办任务交给对应 AI 去做（AI 会真的执行、调用工具）。确定开启？")) return;
+  try {
+    const r = await fetch("/api/kanban/daemon/" + (running ? "stop" : "start"), { method: "POST" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    loadKanban();
+  } catch (e) { toast("操作失败：" + e.message); }
+}
+async function dispatchOnce(dry) {
+  const out = document.getElementById("disp-out");
+  if (!dry && !await confirmAsync("现在把待办任务交给对应 AI 去做（会真的执行、调用工具）。确定？")) return;
+  out.textContent = dry ? "试运行中…" : "派发中…";
+  try {
+    const r = await fetch("/api/kanban/dispatch?dry_run=" + (dry ? "true" : "false"), { method: "POST" });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+    out.textContent = (dry ? "试运行：" : "已派发：") + JSON.stringify(j.result).slice(0, 180);
+    if (!dry) loadKanban();
+  } catch (e) { out.textContent = "失败：" + e.message; }
+}
+async function createTask() {
+  const title = document.getElementById("kan-title").value.trim();
+  const assignee = document.getElementById("kan-assignee").value;
+  const pri = document.getElementById("kan-pri").value;
+  if (!title || !assignee) return;
+  const b = { title, assignee }; if (pri) b.priority = parseInt(pri, 10);
+  try {
+    const r = await fetch("/api/kanban/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
+    if (!r.ok) { const j = await r.json(); throw new Error(j.detail || ("HTTP " + r.status)); }
+    loadKanban();
+  } catch (e) { toast("建任务失败：" + e.message); }
+}
+async function archiveTask(id) {
+  if (!await confirmAsync("归档任务 " + id + "？")) return;
+  try { const r = await fetch("/api/kanban/archive/" + encodeURIComponent(id), { method: "POST" }); if (!r.ok) throw new Error("HTTP " + r.status); loadKanban(); }
+  catch (e) { toast("归档失败：" + e.message); }
+}
+
+/* ===== 规范体检（只读 linter：skill frontmatter + mcp_servers，硬/软违规） ===== */
+/* B1: 规范体检独立面板已并入仪表盘。openLintModal() 改为以 modal 形式打开（点仪表盘"系统健康"卡的违规数触发） */
+async function openLintModal() {
+  const m = modal(`<h3 style="margin-bottom:6px">技能体检</h3>
+    <div class="sub" id="lint-modal-sub">扫描中…</div>
+    <div id="lint-modal-body" style="max-height:60vh; overflow:auto; margin-top:10px"></div>
+    <div class="row"><span class="btn" id="mcancel">关闭</span></div>`);
+  const mb = m.closest(".modal"); if (mb) mb.style.width = "680px";
+  document.getElementById("mcancel").onclick = closeModal;
+  let data;
+  try { data = await getJSON("/api/lint"); }
+  catch (e) { document.getElementById("lint-modal-body").innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  renderLintInto("lint-modal-body", "lint-modal-sub", data);
+}
+// D2: bundled 技能（hermes 官方 bundle）的违规折叠开关——路径含这些关键字的当 bundled 处理
+const BUNDLED_PATTERNS = ["hermes-skill-factory", "open-design", "sleep-tools", "design-mode"];
+function isBundledViolation(v) {
+  return BUNDLED_PATTERNS.some(p => (v.where || "").includes(p));
+}
+let LINT_HIDE_BUNDLED = true;  // 默认隐藏 bundled，因为它们不在我们可控范围
+function renderLintInto(bodyId, subId, data) {
+  const body = document.getElementById(bodyId);
+  const subEl = document.getElementById(subId);
+  // 按开关过滤
+  const profs = (data.profiles || []).map(p => {
+    const hard = LINT_HIDE_BUNDLED ? p.hard.filter(v => !isBundledViolation(v)) : p.hard;
+    const soft = LINT_HIDE_BUNDLED ? p.soft.filter(v => !isBundledViolation(v)) : p.soft;
+    return {...p, hard, soft, hard_count: hard.length, soft_count: soft.length, ok: hard.length === 0};
+  }).sort((a, b) => (b.hard_count - a.hard_count) || (b.soft_count - a.soft_count) || a.name.localeCompare(b.name));
+  const total_hard = profs.reduce((s, p) => s + p.hard_count, 0);
+  const total_soft = profs.reduce((s, p) => s + p.soft_count, 0);
+  const total_hard_all = (data.profiles || []).reduce((s, p) => s + p.hard_count, 0);
+  const bundled_hidden = total_hard_all - total_hard;
+  const viol = (v, hard) => `<div class="lv"><span class="lvb" style="color:${hard ? "#9c5b4f" : "var(--muted)"}">${hard ? "必须修" : "建议"}</span><span class="lw">${esc(v.where)}</span><span class="lm">${esc(v.msg)}</span></div>`;
+  const block = p => {
+    if (p.ok && !p.soft_count) return `<details class="gp"><summary>${esc(p.name)}<span class="c" style="color:#5e7355">✓ 合规</span></summary><div class="note" style="padding:6px 0">无违规</div></details>`;
+    const rows = p.hard.map(v => viol(v, true)).join("") + p.soft.map(v => viol(v, false)).join("");
+    const tag = `${p.hard_count ? p.hard_count + " 必修" : ""}${p.hard_count && p.soft_count ? " · " : ""}${p.soft_count ? p.soft_count + " 建议" : ""}`;
+    return `<details class="gp" ${p.hard_count ? "open" : ""}><summary>${esc(p.name)}<span class="c" style="color:${p.hard_count ? "#9c5b4f" : "var(--muted)"}">${tag}</span></summary>${rows}</details>`;
+  };
+  if (subEl) {
+    subEl.innerHTML = `合计 ${total_hard} 个必须修 · ${total_soft} 个建议优化。检查每个 AI 自带技能的设置是否规范。
+      <label style="margin-left:14px; cursor:pointer; user-select:none">
+        <input type="checkbox" id="lint-hide-bundled" ${LINT_HIDE_BUNDLED ? "checked" : ""}>
+        隐藏系统自带技能的问题${bundled_hidden ? ` (${bundled_hidden} 条)` : ""}
+      </label>`;
+    document.getElementById("lint-hide-bundled").onchange = (e) => {
+      LINT_HIDE_BUNDLED = e.target.checked;
+      renderLintInto(bodyId, subId, data);
+    };
+  }
+  body.innerHTML = profs.map(block).join("");
+}
+
+/* ===== 仪表盘：3 张零基建卡（系统健康 / 待你 Review / 最近变更）===== */
+function openDashboard() { document.getElementById("dashwrap").classList.add("on"); loadDashboard(); }
+function closeDashboard() { document.getElementById("dashwrap").classList.remove("on"); }
+async function loadDashboard() {
+  const wrap = document.getElementById("dashwrap");
+  wrap.innerHTML = `<div class="net-head"><span class="ttl">仪表盘 · Dashboard</span><span class="sp"></span>
+    <span class="rl" id="dash-reload">刷新</span><span class="rl" id="dash-close" style="margin-left:16px">关闭</span></div>
+    <div class="net-body" id="dash-body"><div class="note">加载中…</div></div>`;
+  document.getElementById("dash-close").onclick = closeDashboard;
+  document.getElementById("dash-reload").onclick = loadDashboard;
+  let data;
+  try { data = await getJSON("/api/dashboard/summary"); }
+  catch (e) { document.getElementById("dash-body").innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  renderDashboard(data);
+}
+function renderDashboard(d) {
+  const h = d.health, rv = d.review, ch = d.recent_changes || [];
+  // 系统健康
+  const healthCard = `<div class="dash-card">
+    <h4>系统健康</h4>
+    <div class="lead">${h.agent_total} <span style="font-size:12px; color:var(--faint); margin-left:6px">个 agent</span></div>
+    <div class="sub-meta" style="margin-bottom:14px">${h.main} 主 · ${h.twin} 分身 · ${h.sub} 子${h.drafts ? ` · ${h.drafts} 草稿` : ""}</div>
+    <div class="dash-row"><span class="lbl">停用</span><span class="val ${h.killed ? "warn" : "ok"}">${h.killed} 主动${h.effective_killed > h.killed ? ` · ${h.effective_killed - h.killed} 级联` : ""}</span></div>
+    <div class="dash-row clickable" data-lint="hard"><span class="lbl">必须修的技能问题</span><span class="val ${h.lint_hard_total ? "bad" : "ok"}">${h.lint_hard_total} ${h.lint_hard_total ? "▸" : ""}</span></div>
+    <div class="dash-row clickable" data-lint="soft"><span class="lbl">建议优化的技能</span><span class="val ${h.lint_soft_total ? "warn" : "ok"}">${h.lint_soft_total} ${h.lint_soft_total ? "▸" : ""}</span></div>
+    <div class="dash-row"><span class="lbl">MCP 工具（主 AI）</span><span class="val">${h.default_mcp_count} 个</span></div>
+    <div class="dash-row"><span class="lbl">已继承 MCP 的 AI</span><span class="val">${h.agents_with_mcp} / ${h.agent_total - h.main}</span></div>
+    <div class="dash-row"><span class="lbl">宪法</span><span class="val">${h.const_subscribed === 0 ? "未启用" : `已为 ${h.const_subscribed} 个 agent 启用`}</span></div>
+  </div>`;
+  // 待你 Review
+  let reviewItems = [];
+  rv.killed.forEach(n => reviewItems.push({
+    title: `⛔ ${esc(n)}`, sub: "已停用（你主动停的，去恢复或确认）", go: n,
+  }));
+  rv.hard_lint.forEach(it => reviewItems.push({
+    title: `⚠ ${esc(it.profile)}`, sub: `${it.count} 个必须修的技能问题（${it.items.map(x=>esc(x.where.split('/').pop())).slice(0,3).join('、')}${it.count > 3 ? "…" : ""}）`, go: it.profile,
+  }));
+  rv.drafts.forEach(n => reviewItems.push({
+    title: `○ ${esc(n)}`, sub: "草稿还没安排位置（去「关系网」拖到岗位）", go: n,
+  }));
+  const reviewCard = `<div class="dash-card">
+    <h4>待你 Review · ${reviewItems.length} 项</h4>
+    ${reviewItems.length === 0
+      ? `<div class="dash-empty" style="flex:1; display:flex; align-items:center; justify-content:center">✓ 全员合规 · 无需 Review</div>`
+      : reviewItems.map(it => `<div class="dash-review" data-go="${esc(it.go)}">
+          <div class="who">${it.title}</div>
+          <div class="what">${it.sub}</div>
+        </div>`).join("")}
+  </div>`;
+  // 最近变更
+  const changesCard = `<div class="dash-card">
+    <h4>最近变更 · ${ch.length} 条</h4>
+    ${ch.length === 0
+      ? `<div class="dash-empty">尚无任何变更记录</div>`
+      : ch.map(c => `<div class="dash-change">
+          <span class="ago">${esc(c.ago)}</span>
+          <span class="desc" title="${esc(c.when)} · ${esc(c.summary)}">${esc(c.target)}</span>
+        </div>`).join("")}
+  </div>`;
+  document.getElementById("dash-body").innerHTML =
+    `<div class="net-hint">系统健康 · 待你处理 · 最近改动，三块一眼看全。<br>生成于 ${esc(d.generated_at)}。</div>
+     <div class="dash-grid">${healthCard}${reviewCard}${changesCard}</div>`;
+  // review 行点击 → 关闭面板 + 选中对应 profile
+  document.querySelectorAll(".dash-review[data-go]").forEach(el => {
+    el.onclick = () => {
+      const name = el.dataset.go;
+      closeDashboard();
+      if (PROFILES.some(p => p.name === name)) selectProfile(name);
+    };
+  });
+  // B1: 点违规数 → 打开 lint detail modal（替代独立 lintwrap 面板）
+  document.querySelectorAll(".dash-row.clickable[data-lint]").forEach(el => {
+    el.onclick = () => openLintModal();
+  });
+}
+
+/* ===== Kill switch：停用/恢复一个 agent（仪表盘级闸，级联子树，可逆） ===== */
+async function toggleKill(name, killed) {
+  const msg = killed
+    ? `停用「${name}」？会挡掉它（及其子树）经仪表盘开终端 / 派任务，随时可恢复，不删任何东西。`
+    : `恢复「${name}」？`;
+  if (!await confirmAsync(msg)) return;
+  try {
+    const r = await fetch("/api/kill", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, killed }) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+    await load();              // 刷新侧栏置灰
+    if (current === name) openInfo(name);  // 刷新面板按钮
+  } catch (e) { toast("操作失败：" + e.message, "bad"); }
+}
+
+/* ===== Constitution（宪法）：全局强制红线，注入各订阅 agent 的 SOUL.md 顶部受管块 ===== */
+function openConst() { document.getElementById("constwrap").classList.add("on"); loadConst(); }
+function closeConst() { document.getElementById("constwrap").classList.remove("on"); }
+async function loadConst() {
+  const wrap = document.getElementById("constwrap");
+  wrap.innerHTML = `<div class="net-head"><span class="ttl">宪法 · Constitution</span><span class="sp"></span>
+    <span class="rl" id="const-reload">刷新</span><span class="rl" id="const-close" style="margin-left:16px">关闭</span></div>
+    <div class="net-body" id="const-body"><div class="note">加载中…</div></div>`;
+  document.getElementById("const-close").onclick = closeConst;
+  document.getElementById("const-reload").onclick = loadConst;
+  let data;
+  try { data = await getJSON("/api/constitution"); }
+  catch (e) { document.getElementById("const-body").innerHTML = `<div class="note">加载失败：${esc(e.message)}</div>`; return; }
+  renderConst(data);
+}
+function renderConst(data) {
+  const body = document.getElementById("const-body");
+  const applied = new Set(data.applied || []);
+  const subs = (data.profiles || []).map(n => `<label class="csub"><input type="checkbox" data-sub="${esc(n)}" ${applied.has(n) ? "checked" : ""}/> ${esc(n)}</label>`).join("");
+  body.innerHTML = `<div class="net-hint">这份"宪法"（红线 / 目标 / 风格）会自动加到<b>订阅</b>它的每个 AI 的设定开头（它们各自的人格不受影响）。内容你自己写；改完点「保存并同步」会刷进所有订阅的 AI。它是写进设定里的<b>强引导</b>，不是硬性拦截。</div>
+    <div class="cedit"><textarea id="const-text" spellcheck="false" placeholder="例：&#10;## 红线&#10;- 未经我确认不得花钱 / 不得删除文件&#10;## 目标&#10;- 优先简洁、说人话&#10;## 风格&#10;- 中文回答，先结论后细节">${esc(data.text || "")}</textarea></div>
+    <div class="kan-ctl"><span class="btn primary" id="const-save">保存并同步</span><span class="out" id="const-out"></span></div>
+    <h3 style="margin:18px 0 6px">哪些 AI 订阅（勾上=应用这套规则，取消=移除）</h3>
+    <div class="csubs">${subs}</div>`;
+  document.getElementById("const-save").onclick = async () => {
+    const out = document.getElementById("const-out"); out.textContent = "保存中…";
+    try {
+      const r = await fetch("/api/constitution", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: document.getElementById("const-text").value }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+      out.textContent = `已保存并同步到 ${j.applied.length} 个 agent`;
+    } catch (e) { out.textContent = "失败：" + e.message; }
+  };
+  body.querySelectorAll("[data-sub]").forEach(el => el.addEventListener("change", async () => {
+    const nm = el.dataset.sub, on = el.checked;
+    if (!await confirmAsync(on ? `让「${nm}」应用这套规则？会加到它的设定开头（自动备份原设定）。` : `取消「${nm}」的规则？会恢复它原来的设定。`)) { el.checked = !on; return; }
+    try {
+      const r = await fetch("/api/constitution/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nm, on }) });
+      if (!r.ok) { const j = await r.json(); throw new Error(j.detail || ("HTTP " + r.status)); }
+    } catch (e) { toast("操作失败：" + e.message, "bad"); el.checked = !on; }
+  }));
+}
+
+document.getElementById("net-open").addEventListener("click", openNetwork);
+document.getElementById("kan-open").addEventListener("click", openKanban);
+document.getElementById("const-open").addEventListener("click", openConst);
+document.getElementById("vault-open").addEventListener("click", openVault);
+document.getElementById("new-agent").addEventListener("click", openNewAgentDialog);
+document.getElementById("dash-open").addEventListener("click", openDashboard);
+document.getElementById("scrim").addEventListener("click", closeInfo);
+document.getElementById("modal-scrim").addEventListener("click", e => { if (e.target.id === "modal-scrim") closeModal(); });
+
+/* E2: 侧栏搜索框输入即过滤 + `/` 快捷键聚焦 */
+const _navFilterEl = document.getElementById("nav-filter");
+if (_navFilterEl) _navFilterEl.addEventListener("input", applyNavFilter);
+
+/* E1: 键盘快捷键
+   `?` 弹帮助 / `Esc` 关闭对话框 / `/` 聚焦搜索 / `g d` 仪表盘 / `g r` 关系网 / `g k` 任务板 / `g c` 宪法 / `Ctrl+P` 命令面板（暂以搜索框替代） */
+let _gPrefix = false;
+function showKeyHelp() {
+  const m = modal(`<h3>键盘快捷键</h3>
+    <div class="sub">所有快捷键在没聚焦输入框时生效。</div>
+    <div class="grp"><h4>导航</h4>
+      <div class="fld"><div class="lbl">/</div><div class="val">聚焦侧栏搜索框</div></div>
+      <div class="fld"><div class="lbl">g d</div><div class="val">打开仪表盘</div></div>
+      <div class="fld"><div class="lbl">g r</div><div class="val">打开关系网</div></div>
+      <div class="fld"><div class="lbl">g k</div><div class="val">打开任务板</div></div>
+      <div class="fld"><div class="lbl">g c</div><div class="val">打开宪法</div></div>
+      <div class="fld"><div class="lbl">g v</div><div class="val">打开知识库</div></div>
+      <div class="fld"><div class="lbl">g n</div><div class="val">新建空 agent</div></div>
+    </div>
+    <div class="grp"><h4>通用</h4>
+      <div class="fld"><div class="lbl">?</div><div class="val">显示此帮助</div></div>
+      <div class="fld"><div class="lbl">Esc</div><div class="val">关闭对话框 / 详情面板</div></div>
+    </div>
+    <div class="row"><span class="btn primary" id="mcancel">明白了</span></div>`);
+  document.getElementById("mcancel").onclick = closeModal;
+}
+document.addEventListener("keydown", e => {
+  // 输入框聚焦时不拦截（除了 Esc）
+  const inInput = ["INPUT", "TEXTAREA"].includes((e.target.tagName || ""));
+  if (e.key === "Escape") { closeModal(); closeInfo(); _gPrefix = false; return; }
+  if (inInput) return;
+  if (e.key === "/") { e.preventDefault(); const f = document.getElementById("nav-filter"); if (f) f.focus(); return; }
+  if (e.key === "?") { e.preventDefault(); showKeyHelp(); return; }
+  if (e.key === "g") { _gPrefix = true; setTimeout(() => { _gPrefix = false; }, 1200); return; }
+  if (_gPrefix) {
+    _gPrefix = false;
+    if (e.key === "d") openDashboard();
+    else if (e.key === "r") openNetwork();
+    else if (e.key === "k") openKanban();
+    else if (e.key === "c") openConst();
+    else if (e.key === "v") openVault();
+    else if (e.key === "n") openNewAgentDialog();
+  }
+});
+load();
+</script>
+</body>
+</html>

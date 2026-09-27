@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kaus</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" type="image/png" href="/favicon.png" />
+    <!-- 批次四十一：字体改为本地打包（web/public/fonts/，@font-face 在
+         src/index.css）。原来这里三行指向 fonts.googleapis.com——那个域名
+         在本机连不上，展示体 Anton 从未真正加载过，界面上的大字一直是
+         回落字体。字体属于设计，不交给网络运气。 -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

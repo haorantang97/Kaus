@@ -1,0 +1,697 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`快照：内核剧本逐条归并后的时间线 > authentication-roundtrip 1`] = `
+{
+  "activeRunId": "run-authentication",
+  "childRuns": [],
+  "dropped": {
+    "duplicates": 0,
+    "stale": 0,
+  },
+  "error": null,
+  "items": [
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-0",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-authentication",
+      "terminal": true,
+    },
+    {
+      "decision": null,
+      "interactionKind": "authentication",
+      "itemId": "interaction:req-authentication",
+      "kind": "interaction",
+      "outcome": "authenticated",
+      "parentRunId": null,
+      "runId": "run-authentication",
+      "status": "resolved",
+      "terminal": true,
+    },
+    {
+      "itemId": "message:msg-authentication",
+      "kind": "message",
+      "parentRunId": null,
+      "reasoning": "",
+      "role": "assistant",
+      "runId": "run-authentication",
+      "terminal": true,
+      "text": "认证完成，继续执行。",
+    },
+    {
+      "detail": null,
+      "eventType": "run.completed",
+      "itemId": "lifecycle:evt-fixture-6",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-authentication",
+      "terminal": true,
+    },
+  ],
+  "lastSequence": 6,
+  "runState": "completed",
+  "usage": null,
+}
+`;
+
+exports[`快照：内核剧本逐条归并后的时间线 > delegated-run 1`] = `
+{
+  "activeRunId": "run-parent",
+  "childRuns": [
+    {
+      "parentRunId": "run-parent",
+      "runId": "run-child",
+      "state": "completed",
+    },
+  ],
+  "dropped": {
+    "duplicates": 0,
+    "stale": 0,
+  },
+  "error": null,
+  "items": [
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-0",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-parent",
+      "terminal": true,
+    },
+    {
+      "itemId": "message:msg-parent",
+      "kind": "message",
+      "parentRunId": null,
+      "reasoning": "",
+      "role": "assistant",
+      "runId": "run-parent",
+      "terminal": true,
+      "text": "这一步交给子任务。已回收结果。",
+    },
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-3",
+      "kind": "lifecycle",
+      "parentRunId": "run-parent",
+      "runId": "run-child",
+      "terminal": true,
+    },
+    {
+      "itemId": "message:msg-child",
+      "kind": "message",
+      "parentRunId": "run-parent",
+      "reasoning": "",
+      "role": "assistant",
+      "runId": "run-child",
+      "terminal": true,
+      "text": "子任务已处理。",
+    },
+    {
+      "detail": null,
+      "eventType": "run.completed",
+      "itemId": "lifecycle:evt-fixture-7",
+      "kind": "lifecycle",
+      "parentRunId": "run-parent",
+      "runId": "run-child",
+      "terminal": true,
+    },
+    {
+      "detail": null,
+      "eventType": "run.completed",
+      "itemId": "lifecycle:evt-fixture-9",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-parent",
+      "terminal": true,
+    },
+  ],
+  "lastSequence": 9,
+  "runState": "completed",
+  "usage": null,
+}
+`;
+
+exports[`快照：内核剧本逐条归并后的时间线 > extension-event 1`] = `
+{
+  "activeRunId": "run-extension",
+  "childRuns": [],
+  "dropped": {
+    "duplicates": 0,
+    "stale": 0,
+  },
+  "error": null,
+  "items": [
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-0",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-extension",
+      "terminal": true,
+    },
+    {
+      "itemId": "extension:evt-fixture-1",
+      "kind": "extension",
+      "name": "native.unknown",
+      "namespace": "mock",
+      "parentRunId": null,
+      "runId": "run-extension",
+      "terminal": true,
+    },
+    {
+      "detail": null,
+      "eventType": "run.completed",
+      "itemId": "lifecycle:evt-fixture-2",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-extension",
+      "terminal": true,
+    },
+  ],
+  "lastSequence": 2,
+  "runState": "completed",
+  "usage": null,
+}
+`;
+
+exports[`快照：内核剧本逐条归并后的时间线 > failure 1`] = `
+{
+  "activeRunId": "run-failure",
+  "childRuns": [],
+  "dropped": {
+    "duplicates": 0,
+    "stale": 0,
+  },
+  "error": "mock.boom",
+  "items": [
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-0",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-failure",
+      "terminal": true,
+    },
+    {
+      "itemId": "diagnostic:evt-fixture-1",
+      "kind": "diagnostic",
+      "level": "warning",
+      "message": "即将失败",
+      "parentRunId": null,
+      "runId": "run-failure",
+      "terminal": true,
+    },
+    {
+      "detail": null,
+      "eventType": "run.failed",
+      "itemId": "lifecycle:evt-fixture-2",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-failure",
+      "terminal": true,
+    },
+  ],
+  "lastSequence": 2,
+  "runState": "failed",
+  "usage": null,
+}
+`;
+
+exports[`快照：内核剧本逐条归并后的时间线 > full-lifecycle 1`] = `
+{
+  "activeRunId": "run-full",
+  "childRuns": [],
+  "dropped": {
+    "duplicates": 0,
+    "stale": 0,
+  },
+  "error": null,
+  "items": [
+    {
+      "detail": "native-session-full",
+      "eventType": "session.created",
+      "itemId": "lifecycle:evt-fixture-0",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": null,
+      "terminal": true,
+    },
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-1",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-full",
+      "terminal": true,
+    },
+    {
+      "itemId": "reasoning:run-full",
+      "kind": "reasoning",
+      "parentRunId": null,
+      "runId": "run-full",
+      "status": "thinking",
+      "summary": "正在规划",
+      "terminal": false,
+    },
+    {
+      "entries": [
+        "读取文件",
+        "写回结果",
+      ],
+      "itemId": "plan:plan-full",
+      "kind": "plan",
+      "parentRunId": null,
+      "runId": "run-full",
+      "terminal": false,
+    },
+    {
+      "itemId": "message:msg-full",
+      "kind": "message",
+      "parentRunId": null,
+      "reasoning": "",
+      "role": "assistant",
+      "runId": "run-full",
+      "terminal": true,
+      "text": "先看一下文件，已完成。",
+    },
+    {
+      "itemId": "tool:call-full",
+      "kind": "tool",
+      "name": "read_file",
+      "output": {
+        "lines": 3,
+      },
+      "parentRunId": null,
+      "progress": {
+        "pct": 50,
+      },
+      "runId": "run-full",
+      "status": "completed",
+      "terminal": true,
+    },
+    {
+      "command": "echo hi",
+      "exitCode": 0,
+      "itemId": "terminal:term-full",
+      "kind": "terminal",
+      "output": "hi
+",
+      "parentRunId": null,
+      "runId": "run-full",
+      "terminal": true,
+    },
+    {
+      "decision": "allow",
+      "interactionKind": "permission",
+      "itemId": "interaction:req-full-permission",
+      "kind": "interaction",
+      "outcome": null,
+      "parentRunId": null,
+      "runId": "run-full",
+      "status": "resolved",
+      "terminal": true,
+    },
+    {
+      "itemId": "file:evt-fixture-14",
+      "kind": "file",
+      "operation": "modified",
+      "parentRunId": null,
+      "path": "a.txt",
+      "runId": "run-full",
+      "terminal": true,
+    },
+    {
+      "artifactId": "artifact-full",
+      "itemId": "artifact:artifact-full",
+      "kind": "artifact",
+      "parentRunId": null,
+      "runId": "run-full",
+      "terminal": false,
+    },
+    {
+      "decision": null,
+      "interactionKind": "question",
+      "itemId": "interaction:req-full-question",
+      "kind": "interaction",
+      "outcome": null,
+      "parentRunId": null,
+      "runId": "run-full",
+      "status": "resolved",
+      "terminal": true,
+    },
+    {
+      "decision": null,
+      "interactionKind": "authentication",
+      "itemId": "interaction:req-full-authentication",
+      "kind": "interaction",
+      "outcome": "authenticated",
+      "parentRunId": null,
+      "runId": "run-full",
+      "status": "resolved",
+      "terminal": true,
+    },
+    {
+      "detail": null,
+      "eventType": "run.completed",
+      "itemId": "lifecycle:evt-fixture-23",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-full",
+      "terminal": true,
+    },
+  ],
+  "lastSequence": 23,
+  "runState": "completed",
+  "usage": {
+    "cachedInputTokens": null,
+    "contextUsed": null,
+    "contextWindow": null,
+    "costUsd": null,
+    "inputTokens": 120,
+    "outputTokens": 40,
+    "reasoningTokens": null,
+    "totalTokens": 160,
+  },
+}
+`;
+
+exports[`快照：内核剧本逐条归并后的时间线 > permission-roundtrip 1`] = `
+{
+  "activeRunId": "run-permission",
+  "childRuns": [],
+  "dropped": {
+    "duplicates": 0,
+    "stale": 0,
+  },
+  "error": null,
+  "items": [
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-0",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-permission",
+      "terminal": true,
+    },
+    {
+      "itemId": "tool:call-perm",
+      "kind": "tool",
+      "name": "write_file",
+      "output": {
+        "written": true,
+      },
+      "parentRunId": null,
+      "progress": null,
+      "runId": "run-permission",
+      "status": "completed",
+      "terminal": true,
+    },
+    {
+      "decision": "allow",
+      "interactionKind": "permission",
+      "itemId": "interaction:req-permission",
+      "kind": "interaction",
+      "outcome": null,
+      "parentRunId": null,
+      "runId": "run-permission",
+      "status": "resolved",
+      "terminal": true,
+    },
+    {
+      "detail": null,
+      "eventType": "run.completed",
+      "itemId": "lifecycle:evt-fixture-5",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-permission",
+      "terminal": true,
+    },
+  ],
+  "lastSequence": 5,
+  "runState": "completed",
+  "usage": null,
+}
+`;
+
+exports[`快照：内核剧本逐条归并后的时间线 > question-roundtrip 1`] = `
+{
+  "activeRunId": "run-question",
+  "childRuns": [],
+  "dropped": {
+    "duplicates": 0,
+    "stale": 0,
+  },
+  "error": null,
+  "items": [
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-0",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-question",
+      "terminal": true,
+    },
+    {
+      "decision": null,
+      "interactionKind": "question",
+      "itemId": "interaction:req-question",
+      "kind": "interaction",
+      "outcome": null,
+      "parentRunId": null,
+      "runId": "run-question",
+      "status": "resolved",
+      "terminal": true,
+    },
+    {
+      "itemId": "message:msg-question",
+      "kind": "message",
+      "parentRunId": null,
+      "reasoning": "",
+      "role": "assistant",
+      "runId": "run-question",
+      "terminal": true,
+      "text": "收到，使用所选分支。",
+    },
+    {
+      "detail": null,
+      "eventType": "run.completed",
+      "itemId": "lifecycle:evt-fixture-6",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-question",
+      "terminal": true,
+    },
+  ],
+  "lastSequence": 6,
+  "runState": "completed",
+  "usage": null,
+}
+`;
+
+exports[`快照：内核剧本逐条归并后的时间线 > streaming-reasoning 1`] = `
+{
+  "activeRunId": "run-reasoning",
+  "childRuns": [],
+  "dropped": {
+    "duplicates": 0,
+    "stale": 0,
+  },
+  "error": null,
+  "items": [
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-0",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-reasoning",
+      "terminal": true,
+    },
+    {
+      "itemId": "reasoning:run-reasoning",
+      "kind": "reasoning",
+      "parentRunId": null,
+      "runId": "run-reasoning",
+      "status": "done",
+      "summary": "想好了",
+      "terminal": false,
+    },
+    {
+      "itemId": "message:msg-reasoning",
+      "kind": "message",
+      "parentRunId": null,
+      "reasoning": "先看输入，再想一步，得出结论。",
+      "role": "assistant",
+      "runId": "run-reasoning",
+      "terminal": true,
+      "text": "结论：可以。",
+    },
+    {
+      "detail": null,
+      "eventType": "run.completed",
+      "itemId": "lifecycle:evt-fixture-9",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-reasoning",
+      "terminal": true,
+    },
+  ],
+  "lastSequence": 9,
+  "runState": "completed",
+  "usage": null,
+}
+`;
+
+exports[`快照：内核剧本逐条归并后的时间线 > streaming-tool-output 1`] = `
+{
+  "activeRunId": "run-tool-stream",
+  "childRuns": [],
+  "dropped": {
+    "duplicates": 0,
+    "stale": 0,
+  },
+  "error": null,
+  "items": [
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-0",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-tool-stream",
+      "terminal": true,
+    },
+    {
+      "itemId": "tool:call-stream",
+      "kind": "tool",
+      "name": "run_shell",
+      "output": "line-1
+line-2
+line-3
+",
+      "parentRunId": null,
+      "progress": null,
+      "runId": "run-tool-stream",
+      "status": "completed",
+      "terminal": true,
+    },
+    {
+      "detail": null,
+      "eventType": "run.completed",
+      "itemId": "lifecycle:evt-fixture-7",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-tool-stream",
+      "terminal": true,
+    },
+  ],
+  "lastSequence": 7,
+  "runState": "completed",
+  "usage": null,
+}
+`;
+
+exports[`快照：内核剧本逐条归并后的时间线 > text-stream 1`] = `
+{
+  "activeRunId": "run-text",
+  "childRuns": [],
+  "dropped": {
+    "duplicates": 0,
+    "stale": 0,
+  },
+  "error": null,
+  "items": [
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-0",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-text",
+      "terminal": true,
+    },
+    {
+      "itemId": "message:msg-text",
+      "kind": "message",
+      "parentRunId": null,
+      "reasoning": "",
+      "role": "assistant",
+      "runId": "run-text",
+      "terminal": true,
+      "text": "Hello, world!",
+    },
+    {
+      "detail": null,
+      "eventType": "run.completed",
+      "itemId": "lifecycle:evt-fixture-7",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-text",
+      "terminal": true,
+    },
+  ],
+  "lastSequence": 7,
+  "runState": "completed",
+  "usage": null,
+}
+`;
+
+exports[`快照：内核剧本逐条归并后的时间线 > tool-lifecycle 1`] = `
+{
+  "activeRunId": "run-tool",
+  "childRuns": [],
+  "dropped": {
+    "duplicates": 0,
+    "stale": 0,
+  },
+  "error": null,
+  "items": [
+    {
+      "detail": null,
+      "eventType": "run.started",
+      "itemId": "lifecycle:evt-fixture-0",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-tool",
+      "terminal": true,
+    },
+    {
+      "itemId": "tool:call-1",
+      "kind": "tool",
+      "name": "read_file",
+      "output": {
+        "bytes": 42,
+      },
+      "parentRunId": null,
+      "progress": {
+        "of": 3,
+        "step": 3,
+      },
+      "runId": "run-tool",
+      "status": "completed",
+      "terminal": true,
+    },
+    {
+      "detail": null,
+      "eventType": "run.completed",
+      "itemId": "lifecycle:evt-fixture-6",
+      "kind": "lifecycle",
+      "parentRunId": null,
+      "runId": "run-tool",
+      "terminal": true,
+    },
+  ],
+  "lastSequence": 6,
+  "runState": "completed",
+  "usage": null,
+}
+`;

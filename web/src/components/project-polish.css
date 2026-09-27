@@ -1,0 +1,12 @@
+.agent-browser .agent-browser-head h1 { font-family:var(--theme-font-sans); font-size:22px; font-weight:600; letter-spacing:-.02em; }
+.agent-browser .ag-ph2 { font-family:var(--theme-font-sans); font-size:27px; font-weight:600; line-height:1.25; letter-spacing:-.03em; overflow-wrap:anywhere; }
+.agent-browser .ag-ptag { font-size:11px; letter-spacing:.04em; }
+.agent-browser .ag-pactions { display:flex; gap:6px; }
+.agent-browser .ag-pactions .ag-act { display:grid; place-items:center; width:32px; height:32px; padding:0; border:0; border-radius:6px; }
+.agent-browser .ag-pactions .ag-act:hover { background:color-mix(in srgb,var(--midground-base) 7%,transparent); }
+.agent-browser .ag-prow { gap:18px; align-items:start; font-size:12px; line-height:1.6; }
+.agent-browser .ag-prow span:last-child { text-align:right; min-width:0; overflow-wrap:anywhere; }
+.agent-browser .ag-stat-row strong { font-family:var(--theme-font-sans); font-size:23px; font-weight:600; line-height:1.5; }
+.agent-browser .ag-stat-row span { letter-spacing:0; font-size:11px; }
+.agent-browser .ag-panel-section { padding-top:20px; padding-bottom:20px; }
+.agent-browser .ag-panel-section h3 { font-family:var(--theme-font-sans); letter-spacing:0; font-size:12px; margin-bottom:12px; }

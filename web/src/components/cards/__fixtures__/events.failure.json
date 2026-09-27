@@ -1,0 +1,78 @@
+[
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-0",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-failure",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 0,
+    "occurredAt": "2026-01-01T00:00:00Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "run.started",
+      "runId": "run-failure"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-1",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-failure",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 1,
+    "occurredAt": "2026-01-01T00:00:00.001000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "diagnostic.notice",
+      "level": "warning",
+      "message": "即将失败"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-2",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-failure",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 2,
+    "occurredAt": "2026-01-01T00:00:00.002000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "run.failed",
+      "runId": "run-failure",
+      "error": {
+        "code": "mock.boom",
+        "message": "Mock Driver 故意失败",
+        "retriable": false,
+        "detail": null
+      }
+    }
+  }
+]

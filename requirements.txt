@@ -1,0 +1,8 @@
+# Runtime dependencies, pinned to the verified local baseline.
+fastapi==0.136.1
+uvicorn==0.47.0
+pydantic==2.13.4
+PyYAML==6.0.3
+httpx==0.28.1
+python-multipart==0.0.29
+websockets==16.0

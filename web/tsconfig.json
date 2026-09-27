@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    // import.meta.env（main.tsx 用它把 /dev/cards 挡在生产构建外）。
+    "types": ["vite/client"]
+  },
+  // 测试文件也一起检查（vitest 已装齐，`import { describe } from "vitest"` 有类型）。
+  "include": ["src"]
+}

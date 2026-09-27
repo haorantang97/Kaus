@@ -1,0 +1,1 @@
+"""Native terminal application adapters."""

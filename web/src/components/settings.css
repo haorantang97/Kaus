@@ -1,0 +1,28 @@
+.kaus-settings { display:grid; grid-template-columns:160px minmax(0,720px); gap:36px; max-width:980px; margin:0 auto; }
+.kaus-settings-nav { display:flex; flex-direction:column; gap:4px; align-self:start; position:sticky; top:0; }
+.kaus-settings-nav button { display:flex; align-items:center; gap:10px; min-height:38px; padding:8px 12px; border:0; border-radius:7px; background:transparent; color:var(--midground-base); font-size:13px; text-align:left; }
+.kaus-settings-nav button:hover,.kaus-settings-nav button.is-active { background:color-mix(in srgb,var(--midground-base) 7%,transparent); }
+.kaus-settings-nav button.is-active { font-weight:600; }
+.kaus-settings-content { min-width:0; }
+.kaus-settings-content h2 { display:flex; align-items:center; gap:9px; font-size:15px; font-weight:600; margin:0 0 20px; }
+.kaus-settings-section { padding:4px 0 28px; margin-bottom:24px; border-bottom:1px solid color-mix(in srgb,var(--midground-base) 10%,transparent); }
+.kaus-settings-content select { max-width:100%; min-height:36px; padding:7px 12px; border:1px solid color-mix(in srgb,var(--midground-base) 16%,transparent); border-radius:7px; background:var(--background-base); color:var(--midground-base); font-size:13px; }
+.kaus-settings-heading { display:flex; align-items:baseline; justify-content:space-between; }
+.kaus-settings-heading>span,.kaus-settings-empty { color:color-mix(in srgb,var(--midground-base) 55%,transparent); font-size:12px; }
+.kaus-config-categories details { border-bottom:1px solid color-mix(in srgb,var(--midground-base) 10%,transparent); }
+.kaus-config-categories summary { display:flex; align-items:center; gap:10px; padding:14px 0; cursor:pointer; font-size:13px; list-style:none; }
+.kaus-config-categories summary::-webkit-details-marker { display:none; }
+.kaus-config-categories details[open] summary>svg { transform:rotate(90deg); }
+.kaus-config-categories summary>span { margin-left:auto; font-size:12px; opacity:.5; }
+.kaus-config-categories dl { margin:0 0 16px 25px; }
+.kaus-config-categories dl>div { display:grid; grid-template-columns:minmax(110px,30%) minmax(0,1fr); gap:16px; padding:8px 0; font-size:12px; line-height:1.6; }
+.kaus-config-categories dt { opacity:.6; }
+.kaus-config-categories dd { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+.kaus-archive-row { display:flex; align-items:center; gap:8px; padding:13px 0; border-bottom:1px solid color-mix(in srgb,var(--midground-base) 9%,transparent); }
+.kaus-archive-row>div { min-width:0; flex:1; }
+.kaus-archive-row strong { display:block; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kaus-archive-row span { display:block; margin-top:5px; font-size:11px; opacity:.55; }
+.kaus-archive-row button { display:grid; place-items:center; width:32px; height:32px; border:0; border-radius:6px; color:inherit; background:transparent; }
+.kaus-archive-row button:hover { background:color-mix(in srgb,var(--midground-base) 7%,transparent); }
+.kaus-archive-row button:disabled { opacity:.4; }
+@media(max-width:720px) { .kaus-settings { grid-template-columns:1fr; gap:22px; } .kaus-settings-nav { flex-direction:row; flex-wrap:wrap; position:static; } .kaus-settings-nav button { padding:7px 10px; } }

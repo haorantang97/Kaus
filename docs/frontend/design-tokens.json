@@ -1,0 +1,163 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "$description": "Kaus 设计 token 机器可读版。派生自 docs/frontend/DESIGN.md；冲突时以 DESIGN.md 为准。alpha 类值按 CSS color-mix(in srgb, <ink> N%, transparent) 解析，N = alpha × 100。",
+  "$version": "1",
+  "$updated": "2026-09-02",
+  "meta": {
+    "prefix": "--k-",
+    "themes": ["light", "dark"],
+    "darkSelector": "body.dark",
+    "framework": "tailwindcss@4 (@theme)",
+    "contrastChecker": "DESIGN.md §12.1",
+    "contrastResult": "66 checks / 0 fail (2026-09-02)"
+  },
+
+  "color": {
+    "background": {
+      "bg":       { "light": "#eae7dd", "dark": "#16180f", "use": "页面画布、侧栏底" },
+      "surface":  { "light": "#f1eee5", "dark": "#1e211a", "use": "卡片、面板、表格容器" },
+      "elevated": { "light": "#f8f5ec", "dark": "#25281f", "use": "浮窗、下拉、弹窗" },
+      "scrim":    { "light": "rgba(35,32,25,0.22)", "dark": "rgba(4,5,3,0.58)", "use": "弹窗遮罩" }
+    },
+
+    "text": {
+      "ink":   { "light": "#1a1a15", "dark": "#edeadd", "use": "正文、主标题、输入内容" },
+      "muted": { "light": { "base": "#1a1a15", "alpha": 0.62 }, "dark": { "base": "#edeadd", "alpha": 0.70 }, "use": "次要说明、字段标签、元信息" },
+      "faint": { "light": { "base": "#1a1a15", "alpha": 0.52 }, "dark": { "base": "#edeadd", "alpha": 0.50 }, "use": "时间戳、计数、禁用态；仅限 >=14px 或非关键信息" }
+    },
+
+    "border": {
+      "border":        { "light": { "base": "#1a1a15", "alpha": 0.15 }, "dark": { "base": "#edeadd", "alpha": 0.16 }, "decorative": true, "use": "发丝线、卡片外框、分隔线" },
+      "border-strong": { "light": { "base": "#1a1a15", "alpha": 0.48 }, "dark": { "base": "#edeadd", "alpha": 0.40 }, "decorative": false, "use": "输入框、可点击控件外框、选中框；需 >=3:1" }
+    },
+
+    "accent": {
+      "accent":      { "light": "#4a6410", "dark": "#b8dc4a", "use": "强调色文字/图标、焦点环", "textSafe": true },
+      "accent-edge": { "light": "#c4ee45", "dark": "#cbee52", "use": "纯装饰：选中条、进度条填充、高亮线", "textSafe": false, "decorative": true },
+      "accent-soft": { "light": "rgba(196,238,69,0.16)", "dark": "rgba(203,238,82,0.12)", "use": "chip 底、选中行底" },
+      "focus":       { "light": "#4a6410", "dark": "#b8dc4a", "use": "焦点环，2px 实线 + 2px offset" }
+    },
+
+    "status": {
+      "ok":           { "light": "#2f6b2f", "dark": "#7fc47f", "use": "成功、就绪、已连接", "shape": "实心圆" },
+      "ok-soft":      { "light": "rgba(47,107,47,0.14)", "dark": "rgba(127,196,127,0.14)", "unverifiedContrast": true },
+      "warn":         { "light": "#845408", "dark": "#e0a458", "use": "警告、降级", "shape": "实心三角" },
+      "warn-soft":    { "light": "rgba(132,84,8,0.14)", "dark": "rgba(224,164,88,0.14)", "unverifiedContrast": true },
+      "error":        { "light": "#a8452a", "dark": "#e08a6a", "use": "失败、断开、危险操作", "shape": "实心方" },
+      "error-soft":   { "light": "rgba(168,69,42,0.12)", "dark": "rgba(224,138,106,0.14)", "unverifiedContrast": true },
+      "info":         { "light": "#2f6090", "dark": "#7fb0dd", "use": "中性提示、系统消息", "shape": "空心圆" },
+      "info-soft":    { "light": "rgba(47,96,144,0.12)", "dark": "rgba(127,176,221,0.14)", "unverifiedContrast": true },
+      "running":      { "light": "#6b6357", "dark": "#a49b8c", "use": "运行中、流式输出中（刻意中性）", "shape": "实心圆 + 脉冲" },
+      "running-soft": { "light": "rgba(107,99,87,0.12)", "dark": "rgba(164,155,140,0.14)", "unverifiedContrast": true }
+    },
+
+    "shadow": {
+      "shadow-md":     { "light": "0 10px 30px rgba(60,50,20,0.16)", "dark": "0 10px 30px rgba(0,0,0,0.34)" },
+      "shadow-lg":     { "light": "0 18px 50px rgba(60,50,20,0.20)", "dark": "0 18px 50px rgba(0,0,0,0.42)" },
+      "shadow-drawer": { "light": "-14px 0 44px rgba(60,50,20,0.13)", "dark": "-14px 0 44px rgba(0,0,0,0.36)" }
+    },
+
+    "$rules": [
+      "组件只准引用本文件定义的 token，不准写字面色值。",
+      "不得给任何引擎/Backend 分配专属颜色（DESIGN.md §2.4）。",
+      "decorative: true 的 token 不许独自承载信息，也不许作为文字颜色。",
+      "颜色不得作为唯一信息载体：必须同时有图标、文字或形状差异（DESIGN.md §2.3）。"
+    ]
+  },
+
+  "font": {
+    "family": {
+      "sans": "\"Inter\", \"PingFang SC\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif",
+      "mono": "\"JetBrains Mono\", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    },
+    "$rules": [
+      "无展示体（display）。Anton 已取消。",
+      "西文字体必须排在中文字体之前。",
+      "等宽字体仅用于：终端输出、代码、ID/哈希/路径/token、需按列对齐的数字。",
+      "字体须自托管，不得走 Google Fonts 外链。"
+    ],
+    "size": {
+      "xs":   { "size": "11px", "lineHeight": 1.4,  "use": "状态角标、chip、表头、时间戳" },
+      "sm":   { "size": "12px", "lineHeight": 1.45, "use": "元信息、字段标签" },
+      "base": { "size": "13px", "lineHeight": 1.55, "use": "界面默认：按钮、输入、列表、表格" },
+      "body": { "size": "15px", "lineHeight": 1.65, "use": "对话正文" },
+      "lg":   { "size": "18px", "lineHeight": 1.4,  "use": "面板标题、卡片区块标题" },
+      "xl":   { "size": "24px", "lineHeight": 1.3,  "use": "页面标题，每页最多一个" }
+    },
+    "weight": {
+      "normal": 400,
+      "strong": 600,
+      "$rule": "只有这两档。不用 700 及以上（中文合成加粗会糊）。"
+    }
+  },
+
+  "space": {
+    "unit": "4px",
+    "scale": {
+      "1": "4px",
+      "2": "8px",
+      "3": "12px",
+      "4": "16px",
+      "6": "24px",
+      "8": "32px"
+    },
+    "$rule": "只用这六阶，不用 5/7 或任何奇数派生值。",
+    "padding": {
+      "card-header":  "12px 16px",
+      "card-body":    "16px",
+      "panel":        "20px 24px",
+      "dialog":       "20px",
+      "menu":         "4px",
+      "menu-item":    "8px 12px",
+      "table-cell":   "8px 12px",
+      "tree-node":    "6px 8px",
+      "tree-indent":  "16px"
+    }
+  },
+
+  "radius": {
+    "sm": { "value": "4px",  "use": "chip、状态角标、小按钮、输入框" },
+    "md": { "value": "8px",  "use": "卡片、面板、下拉、toast" },
+    "lg": { "value": "12px", "use": "弹窗、浮窗、抽屉" },
+    "$shapes": { "dot": "50%", "capsule": "999px" },
+    "$rule": "只有这三档 + 两个形状特例。"
+  },
+
+  "motion": {
+    "duration": {
+      "fast": "120ms",
+      "base": "160ms",
+      "slow": "200ms"
+    },
+    "easing": {
+      "out":    "cubic-bezier(0, 0, 0.2, 1)",
+      "inOut":  "cubic-bezier(0.4, 0, 0.2, 1)"
+    },
+    "allowed": [
+      { "name": "fade-in",     "duration": "base", "easing": "out",   "use": "弹窗、下拉、toast、浮层出现；位移 <=4px" },
+      { "name": "height",      "duration": "slow", "easing": "out",   "use": "推理卡、报错详情、树节点展开" },
+      { "name": "pulse",       "duration": "1600ms", "easing": "inOut", "loop": true, "use": "仅 running 状态点" }
+    ],
+    "$rules": [
+      "只有上面三种动效，没有第四种。",
+      "禁止：滑入滑出、弹跳、缩放 >±2%、旋转（加载指示器除外）、打字机、视差、任何 >200ms 的过渡。",
+      "必须实现 prefers-reduced-motion: reduce 全局降级（DESIGN.md §8.1）。"
+    ]
+  },
+
+  "a11y": {
+    "contrast": {
+      "text": 4.5,
+      "largeOrIncidentalText": 3.0,
+      "meaningfulNonText": 3.0,
+      "decorative": null
+    },
+    "focusRing": { "width": "2px", "style": "solid", "color": "accent.focus", "offset": "2px", "trigger": ":focus-visible" },
+    "$rules": [
+      "不得 outline: none 而不给替代。",
+      "弹窗/浮窗打开时焦点移入，Esc 关闭，关闭后焦点归还触发元素。",
+      "焦点顺序 = 视觉顺序；不用正数 tabindex。",
+      "纯图标按钮必须有 aria-label。"
+    ]
+  }
+}

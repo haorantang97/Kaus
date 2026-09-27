@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hermes Voice Input Bridge Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #11140d;
+      --panel: #171a12;
+      --panel-2: #202419;
+      --ink: #edeadd;
+      --muted: rgba(237, 234, 221, .55);
+      --faint: rgba(237, 234, 221, .18);
+      --accent: #cbee52;
+      --orange: #e1a363;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background:
+        radial-gradient(circle at 82% 12%, rgba(203, 238, 82, .08), transparent 32%),
+        linear-gradient(135deg, #10130c, #17190f 58%, #10130c);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 34px;
+    }
+
+    .shell {
+      width: min(1180px, 100%);
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    .card,
+    .terminal {
+      border: 1px solid var(--faint);
+      border-radius: 22px;
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, .36);
+    }
+
+    .card {
+      padding: 24px;
+    }
+
+    .kicker {
+      color: var(--accent);
+      font: 800 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 18px 0 12px;
+      font-family: Impact, Anton, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+      font-size: clamp(42px, 6vw, 76px);
+      line-height: .86;
+      letter-spacing: -.04em;
+      text-transform: uppercase;
+    }
+
+    p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .steps {
+      display: grid;
+      gap: 10px;
+      margin-top: 24px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .steps li {
+      padding: 12px 13px;
+      border: 1px solid var(--faint);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .025);
+      color: color-mix(in srgb, var(--ink) 82%, transparent);
+      font: 700 12px/1.55 ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace;
+    }
+
+    .terminal {
+      position: relative;
+      min-height: 720px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .terminal-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--faint);
+      background: rgba(255, 255, 255, .02);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 22px rgba(203, 238, 82, .45);
+    }
+
+    .terminal-title {
+      font: 900 12px/1 ui-monospace, "SF Mono", Menlo, monospace;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    .state {
+      margin-left: auto;
+      color: var(--muted);
+      font: 800 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .state strong {
+      color: var(--accent);
+      font-weight: 900;
+    }
+
+    .screen {
+      overflow: auto;
+      padding: 26px 32px 18px;
+      font: 600 16px/1.65 ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, "PingFang SC", "Noto Sans Mono CJK SC", monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .line {
+      min-height: 1.65em;
+    }
+
+    .muted { color: var(--muted); }
+    .accent { color: var(--accent); }
+    .orange { color: var(--orange); }
+
+    .composer {
+      position: relative;
+      padding: 0 32px 28px;
+    }
+
+    .prompt {
+      min-height: 56px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px 18px;
+      border-top: 2px solid var(--orange);
+      border-bottom: 2px solid var(--orange);
+      background: rgba(255, 255, 255, .018);
+      font: 700 17px/1.55 ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, "PingFang SC", "Noto Sans Mono CJK SC", monospace;
+      cursor: text;
+    }
+
+    .chevron {
+      color: var(--ink);
+      font-weight: 900;
+    }
+
+    .buffer {
+      flex: 1;
+      min-width: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .cursor {
+      display: inline-block;
+      width: .62em;
+      height: 1.1em;
+      margin-left: 2px;
+      vertical-align: -.15em;
+      background: var(--accent);
+      animation: blink 1s steps(2, start) infinite;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    .bridge-input {
+      position: absolute;
+      left: 32px;
+      right: 32px;
+      bottom: 28px;
+      height: 56px;
+      opacity: .001;
+      color: transparent;
+      background: transparent;
+      caret-color: transparent;
+      border: 0;
+      outline: 0;
+      resize: none;
+      pointer-events: none;
+      font-size: 16px;
+    }
+
+    .bridge-input.is-visible {
+      left: 32px;
+      right: 32px;
+      bottom: 96px;
+      height: 92px;
+      opacity: 1;
+      color: var(--ink);
+      caret-color: var(--accent);
+      pointer-events: auto;
+      padding: 12px;
+      border: 1px solid var(--faint);
+      border-radius: 14px;
+      background: var(--panel-2);
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+      color: var(--muted);
+      font: 800 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    button {
+      border: 0;
+      border-bottom: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+      letter-spacing: inherit;
+      text-transform: inherit;
+    }
+
+    button:hover,
+    button.is-on {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    @media (max-width: 920px) {
+      body { padding: 18px; }
+      .shell { grid-template-columns: 1fr; }
+      .terminal { min-height: 620px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <aside class="card">
+      <div class="kicker">Input Bridge Prototype</div>
+      <h1>Voice<br />Into<br />xterm</h1>
+      <p>这个 demo 不是重做聊天框，而是在 xterm 视觉层旁边挂一个原生 textarea 输入桥。</p>
+      <p>外挂语音输入、系统听写、中文 IME、整段粘贴先进入 textarea，再被转发到模拟 PTY。</p>
+      <ul class="steps">
+        <li>1. 点击右侧终端区域，让输入桥获得焦点。</li>
+        <li>2. 用微信语音转文字/系统听写输入一段话。</li>
+        <li>3. 按 Enter 发送；Shift+Enter 换行。</li>
+        <li>4. 点「显示捕获层」可看到真实 textarea。</li>
+      </ul>
+    </aside>
+
+    <section class="terminal" id="terminal">
+      <header class="terminal-head">
+        <span class="dot"></span>
+        <span class="terminal-title">Hermes PTY Visual Shell</span>
+        <span class="state">Bridge <strong id="focusState">READY</strong></span>
+      </header>
+
+      <div class="screen" id="screen" aria-live="polite">
+        <div class="line accent">╭─ Hermes Voice Bridge Demo ───────────────────────────────╮</div>
+        <div class="line">│ 这里模拟 xterm 视觉，不直接用 contenteditable。               │</div>
+        <div class="line">│ 语音工具写入隐藏的原生 textarea，前端再转发到 PTY。          │</div>
+        <div class="line accent">╰──────────────────────────────────────────────────────────╯</div>
+        <div class="line"></div>
+        <div class="line muted">Welcome to Hermes Agent! Type your message or /help for commands.</div>
+      </div>
+
+      <footer class="composer">
+        <div class="prompt" id="prompt">
+          <span class="chevron">›</span>
+          <span class="buffer" id="buffer"></span>
+          <span class="cursor"></span>
+        </div>
+        <textarea
+          id="bridgeInput"
+          class="bridge-input"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          aria-label="Hermes voice input bridge"
+        ></textarea>
+        <div class="toolbar">
+          <button id="focusBtn" type="button">聚焦输入桥</button>
+          <button id="toggleBtn" type="button">显示捕获层</button>
+          <button id="sendBtn" type="button">发送</button>
+          <button id="clearBtn" type="button">清空</button>
+        </div>
+      </footer>
+    </section>
+  </main>
+
+  <script>
+    const terminal = document.getElementById("terminal");
+    const screen = document.getElementById("screen");
+    const bridgeInput = document.getElementById("bridgeInput");
+    const bufferEl = document.getElementById("buffer");
+    const promptEl = document.getElementById("prompt");
+    const focusState = document.getElementById("focusState");
+    const focusBtn = document.getElementById("focusBtn");
+    const toggleBtn = document.getElementById("toggleBtn");
+    const sendBtn = document.getElementById("sendBtn");
+    const clearBtn = document.getElementById("clearBtn");
+
+    let buffer = "";
+    let visibleCapture = false;
+
+    function renderBuffer() {
+      bufferEl.textContent = buffer;
+      if (!visibleCapture) bridgeInput.value = "";
+    }
+
+    function appendLine(text, className = "") {
+      const line = document.createElement("div");
+      line.className = `line ${className}`;
+      line.textContent = text;
+      screen.appendChild(line);
+      screen.scrollTop = screen.scrollHeight;
+    }
+
+    function focusBridge() {
+      bridgeInput.focus({ preventScroll: true });
+      focusState.textContent = "FOCUSED";
+    }
+
+    function absorbInput() {
+      const value = bridgeInput.value;
+      if (!value) return;
+      buffer += value;
+      bridgeInput.value = "";
+      renderBuffer();
+    }
+
+    function sendBuffer() {
+      absorbInput();
+      const text = buffer.trimEnd();
+      if (!text) {
+        focusBridge();
+        return;
+      }
+      appendLine(`› ${text}`, "accent");
+      appendLine("  [demo] 已捕获并转发到 PTY：真实版会 ws.send({ type: 'input', data })", "muted");
+      buffer = "";
+      renderBuffer();
+      focusBridge();
+    }
+
+    terminal.addEventListener("pointerdown", (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest("button")) return;
+      focusBridge();
+    });
+
+    bridgeInput.addEventListener("focus", () => {
+      focusState.textContent = "FOCUSED";
+    });
+
+    bridgeInput.addEventListener("blur", () => {
+      focusState.textContent = "READY";
+    });
+
+    bridgeInput.addEventListener("beforeinput", () => {
+      window.requestAnimationFrame(absorbInput);
+    });
+
+    bridgeInput.addEventListener("input", absorbInput);
+
+    bridgeInput.addEventListener("compositionend", absorbInput);
+
+    bridgeInput.addEventListener("paste", () => {
+      window.requestAnimationFrame(absorbInput);
+    });
+
+    bridgeInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendBuffer();
+      } else if (event.key === "Backspace" && !bridgeInput.value) {
+        event.preventDefault();
+        buffer = buffer.slice(0, -1);
+        renderBuffer();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        buffer = "";
+        renderBuffer();
+      }
+    });
+
+    promptEl.addEventListener("click", focusBridge);
+    focusBtn.addEventListener("click", focusBridge);
+    sendBtn.addEventListener("click", sendBuffer);
+    clearBtn.addEventListener("click", () => {
+      buffer = "";
+      bridgeInput.value = "";
+      renderBuffer();
+      focusBridge();
+    });
+    toggleBtn.addEventListener("click", () => {
+      visibleCapture = !visibleCapture;
+      bridgeInput.classList.toggle("is-visible", visibleCapture);
+      toggleBtn.classList.toggle("is-on", visibleCapture);
+      toggleBtn.textContent = visibleCapture ? "隐藏捕获层" : "显示捕获层";
+      focusBridge();
+    });
+
+    renderBuffer();
+    setTimeout(focusBridge, 120);
+  </script>
+</body>
+</html>

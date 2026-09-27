@@ -1,0 +1,4835 @@
+/* ------------------------------------------------------------------ */
+/* Platinum theme — white-dominant, one flat accent (never large fills). */
+/* 2026-09-02: metallic gradients, gold-leaf grain and the gold hero image */
+/* were removed for the open-source release; backups in archive/.          */
+/* Overrides the DS LENS_0 (teal) tokens.                                  */
+/* Loaded after index.css.                                              */
+/* ------------------------------------------------------------------ */
+:root {
+  /* Terminal/computer font everywhere. */
+  --theme-font-sans:
+    "Inter", "PingFang SC", ui-sans-serif, system-ui, sans-serif;
+  --theme-font-display: "Anton", Impact, "PingFang SC", sans-serif;
+  --theme-font-mono:
+    "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* 侧栏宽度：主区被「推」开时要平移这么多（批次七 d 第 1 条）。 */
+  --kaus-rail-width: 280px;
+
+  /* Base: white canvas, warm near-black ink. The cream() helper in the
+     components resolves to ink-at-opacity, so it becomes light warm-grey
+     borders/muted text automatically on this light theme. */
+  --background-base: #eae7dd;
+  --background-secondary: #e3dfd3;
+  --foreground-base: #1a1a15;
+  --midground-base: #1a1a15;
+  --panel: #f1eee5;
+  --surface-raised: #f8f5ec;
+  --overlay-scrim: rgba(35, 32, 25, 0.22);
+  --shadow-lg: 0 18px 50px rgba(60, 50, 20, 0.2);
+  --shadow-drawer: -14px 0 44px rgba(60, 50, 20, 0.13);
+
+  /* Accent (historic name "gold"; the value is a lime). Flat solid — no metallic
+     gradient since 2026-09-02. Solid variants for tiny elements. */
+  --gold: #c4ee45;
+  --gold-deep: #7f9a22;
+  --gold-soft: rgba(196, 238, 69, 0.16);
+  --gold-metal: linear-gradient(var(--gold-deep), var(--gold-deep)); /* flat: metallic sheen removed */
+  /* Accent used as TEXT/icon colour only (AD-78). Same hue, pushed darker so
+     body copy and links clear WCAG AA on the light canvas (2.59 → 5.1).
+     Swatches, chip backgrounds, edges and borders keep --gold / --gold-deep. */
+  --accent-text: #5e7a12;
+
+  /* Status colors tuned for a light background. */
+  --danger: #c2603a;
+
+  /* 轮盘图谱里**未选中**的那些连线（AgentGraph.redraw）。浅色保持历史取值不动
+     （AD-78「不改视觉」）；深色在 body.dark 里换成跟着 --gold 走的取值——那条
+     暖褐色在深底上几乎看不见。选中的连线两套主题都是 --gold-deep。 */
+  --graph-link-idle: rgba(120, 100, 40, 0.22);
+}
+
+body.dark {
+  --background-base: #16180f;
+  --background-secondary: #1e211a;
+  --foreground-base: #edeadd;
+  --midground-base: #edeadd;
+  --panel: #1e211a;
+  --surface-raised: #25281f;
+  --overlay-scrim: rgba(4, 5, 3, 0.58);
+  /* AD-78: the lime accent crushed the sidebar and the graph edges on the dark
+     canvas (user-reported). Same role, a desaturated mint that keeps its
+     contrast without glowing. */
+  --gold: #8fcdbb;
+  --gold-deep: #6fb3a0;
+  --gold-soft: rgba(143, 205, 187, 0.12);
+  --gold-metal: linear-gradient(var(--gold-deep), var(--gold-deep)); /* flat: metallic sheen removed */
+  /* Dark text already clears AA against the dark canvas — no separate value. */
+  --accent-text: var(--gold-deep);
+  --graph-link-idle: color-mix(in srgb, var(--gold) 26%, transparent);
+  --danger: #d98a55;
+  --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.42);
+  --shadow-drawer: -14px 0 44px rgba(0, 0, 0, 0.36);
+}
+
+html,
+body,
+#root {
+  font-family: var(--theme-font-sans);
+  background: var(--background-base);
+  color: var(--midground-base);
+}
+
+/* Brand / key-heading accent text — flat accent color (was a metallic clip). */
+.gold-text {
+  color: var(--accent-text);
+}
+
+/* Thin accent bar/divider — flat. */
+.gold-bar {
+  background-image: var(--gold-metal);
+}
+
+/* Gradient accent bars for active/selected states — full champagne→gold→bronze
+   range (not a flat tone). Applied as pseudo-elements so they can carry the
+   gradient that box-shadow can't. */
+.sel-accent {
+  position: relative;
+}
+.sel-accent::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background-image: var(--gold-metal);
+  border-radius: 0 2px 2px 0;
+}
+.tab-accent {
+  position: relative;
+}
+.tab-accent::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  background-image: var(--gold-metal);
+  border-radius: 2px;
+}
+
+/* ---- Vault folder tree ---- */
+.vault-tree {
+  font: 12.5px var(--theme-font-mono);
+}
+.vault-empty {
+  color: color-mix(in srgb, var(--midground-base) 40%, transparent);
+  font-size: 11.5px;
+  padding: 6px 0 6px 22px;
+}
+.vdir {
+  margin: 1px 0;
+}
+.vdir > summary {
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+.vdir > summary::-webkit-details-marker {
+  display: none;
+}
+.vdir > summary::before {
+  content: "▸";
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font-size: 10px;
+  width: 9px;
+  display: inline-block;
+}
+.vdir[open] > summary::before {
+  content: "▾";
+}
+.vdir > summary:hover {
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+}
+.vdir-name {
+  font-weight: 600;
+}
+.vdir-c {
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font-size: 11px;
+}
+.vdir-body {
+  padding-left: 14px;
+  border-left: 1px solid
+    color-mix(in srgb, var(--midground-base) 11%, transparent);
+  margin-left: 10px;
+}
+.vfile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 6px 4px 22px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.vfile:hover {
+  background: var(--gold-soft);
+}
+.vfile .vf-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vfile .vf-meta {
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font-size: 11px;
+  flex: none;
+}
+
+/* ---- Markdown render body ---- */
+.md-body {
+  font: 13px/1.65 var(--theme-font-mono);
+  color: var(--midground-base);
+}
+.md-body h1,
+.md-body h2,
+.md-body h3 {
+  margin: 12px 0 6px;
+  font-weight: 600;
+}
+.md-body h1 {
+  font-size: 16px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--midground-base) 11%, transparent);
+  padding-bottom: 4px;
+}
+.md-body h2 {
+  font-size: 14px;
+}
+.md-body h3 {
+  font-size: 13px;
+  color: var(--accent-text);
+}
+.md-body p {
+  margin: 6px 0;
+}
+.md-body code {
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.md-body pre {
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+  padding: 10px 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.md-body pre code {
+  background: transparent;
+  padding: 0;
+}
+.md-body ul,
+.md-body ol {
+  margin: 4px 0;
+  padding-left: 22px;
+}
+.md-body li {
+  margin: 2px 0;
+}
+.md-body blockquote {
+  border-left: 3px solid var(--gold-soft);
+  margin: 8px 0;
+  padding: 2px 12px;
+  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+}
+.md-body a {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+.md-body .wikilink {
+  color: var(--accent-text);
+  background: var(--gold-soft);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+/* ---- Org chart — top-down nested ul/li with connector lines ---- */
+.org {
+  display: inline-block;
+  min-width: 100%;
+  padding: 4px 0 40px;
+  text-align: center;
+}
+.org ul {
+  position: relative;
+  padding-top: 22px;
+  white-space: nowrap;
+  margin: 0;
+  list-style: none;
+}
+.org > ul {
+  padding-top: 0;
+}
+.org li {
+  display: inline-block;
+  vertical-align: top;
+  list-style: none;
+  position: relative;
+  padding: 22px 8px 0;
+}
+.org li::before,
+.org li::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 22px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--midground-base) 16%, transparent);
+}
+.org li::after {
+  right: auto;
+  left: 50%;
+  border-left: 1px solid
+    color-mix(in srgb, var(--midground-base) 16%, transparent);
+}
+.org li:only-child::before,
+.org li:only-child::after {
+  display: none;
+}
+.org li:only-child {
+  padding-top: 22px;
+}
+.org li:first-child::before,
+.org li:last-child::after {
+  border: 0 none;
+}
+.org li:last-child::before {
+  border-right: 1px solid
+    color-mix(in srgb, var(--midground-base) 16%, transparent);
+  border-radius: 0 6px 0 0;
+}
+.org li:first-child::after {
+  border-radius: 6px 0 0 0;
+}
+.org ul ul::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  border-left: 1px solid
+    color-mix(in srgb, var(--midground-base) 16%, transparent);
+  width: 0;
+  height: 22px;
+}
+.onode {
+  display: inline-block;
+  text-align: left;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: var(--surface-raised);
+  cursor: pointer;
+  min-width: 120px;
+}
+.onode:hover {
+  box-shadow: 0 2px 12px rgba(60, 50, 20, 0.08);
+  border-color: color-mix(in srgb, var(--midground-base) 22%, transparent);
+}
+.onode.drag {
+  opacity: 0.4;
+}
+.onode.drop {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+.onode.root {
+  border-color: var(--gold-deep);
+}
+.onode.draft {
+  border-style: dashed;
+}
+.onode .on-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.onode .on-nm {
+  font-size: 13px;
+}
+.onode .on-tag {
+  font-size: 9.5px;
+  padding: 0 5px;
+  border-radius: 3px;
+}
+.onode .on-tag.twin,
+.onode .on-tag.warn {
+  color: var(--accent-text);
+  background: var(--gold-soft);
+}
+.onode .on-tag.bad {
+  color: var(--danger);
+  background: rgba(179, 87, 63, 0.1);
+}
+.onode .on-meta {
+  font-size: 10.5px;
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  margin-top: 3px;
+}
+.droptop {
+  border: 1px dashed color-mix(in srgb, var(--midground-base) 20%, transparent);
+  border-radius: 9px;
+  padding: 9px 12px;
+  margin: 2px 0 16px;
+  text-align: center;
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+}
+.droptop.drop {
+  border-color: var(--gold);
+  color: var(--accent-text);
+  background: var(--gold-soft);
+}
+
+/* Canvas: plain --background-base. (Grain + parchment wash removed 2026-09-02.) */
+
+.app-sidebar {
+  display: flex;
+  width: 280px;
+  min-width: 280px;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 22px 20px;
+  background: var(--background-secondary);
+  border-right: 1px solid
+    color-mix(in srgb, var(--midground-base) 13%, transparent);
+}
+
+.sidebar-brand {
+  margin-bottom: 22px;
+}
+
+/* 字标 A（设计画布）：展示体 KAUS，28px。头像与 "Control Plane" 副标题去掉。
+   ★M（批次四十一）：字标在哪儿都是同一枚——斜切 -7°、界面绿。**这里不加投影**：
+   投影属于铭牌那块深底；燕麦底上的投影只会显脏（浅色主题下尤其）。 */
+.brand-wordmark {
+  display: inline-block;
+  font: 400 28px/1 var(--theme-font-display);
+  letter-spacing: 0.02em;
+  color: var(--accent-text);
+  transform: skewX(-7deg);
+  transform-origin: left bottom;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 24%, transparent);
+  border-radius: 999px;
+  padding: 5px 8px;
+  cursor: pointer;
+  background: transparent;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 600 9px/1 var(--theme-font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition:
+    color 0.18s,
+    border-color 0.18s;
+}
+
+.theme-toggle:hover {
+  color: var(--midground-base);
+  border-color: var(--midground-base);
+}
+
+/* 选中态（批次十一第 6 件）：主题 / 语言 / 图钉这三枚小胶囊原来没有 selected
+   视觉，走查者分不清"当前是哪个"。用与导航项**同一套** `.is-active`（深底反白），
+   不加新颜色。 */
+.theme-toggle.is-active {
+  border-color: var(--midground-base);
+  background: var(--midground-base);
+  color: var(--background-base);
+}
+
+.shell-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.shell-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 8px 9px;
+  border-radius: 8px;
+  color: var(--midground-base);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+
+.shell-nav-item:hover {
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+}
+
+.shell-nav-item.is-active {
+  background: var(--midground-base);
+  color: var(--background-base);
+}
+
+.shell-nav-item.is-new {
+  margin: 5px 0;
+}
+
+.shell-nav-icon {
+  display: grid;
+  width: 18px;
+  flex: none;
+  place-items: center;
+}
+
+.shell-nav-icon svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.shell-nav-item.is-active .shell-nav-icon {
+  color: var(--gold);
+}
+
+.shell-nav-label {
+  font: 600 12.5px/1 var(--theme-font-sans);
+}
+
+.shell-nav-en {
+  margin-left: auto;
+  font: 700 8px/1 var(--theme-font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.45;
+}
+
+.sidebar-context {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  margin-top: 18px;
+}
+
+.sidebar-tree-context {
+  margin-inline: -8px;
+}
+
+.sidebar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px 6px;
+  padding: 7px 8px;
+  color: var(--accent-text);
+  font: 600 10px/1 var(--theme-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sidebar-agent-tree {
+  padding: 0 4px 8px;
+}
+
+.sidebar-agent-row {
+  min-height: 30px;
+  border-radius: 7px;
+  padding-block: 6px;
+  padding-right: 7px;
+  font: 13px/1 var(--theme-font-mono);
+}
+
+.sidebar-agent-row:hover {
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+}
+
+.sidebar-agent-row.is-current {
+  background: var(--midground-base);
+  color: var(--background-base) !important;
+}
+
+.sidebar-agent-row.is-current::before {
+  display: none;
+}
+
+.sidebar-agent-row.is-current button,
+.sidebar-agent-row.is-current span {
+  color: inherit !important;
+}
+
+.sidebar-agent-tree.is-compact .sidebar-agent-row {
+  min-height: 28px;
+  padding-block: 5px;
+}
+
+.sidebar-agent-tree.is-compact .sidebar-twin-row {
+  font-size: 12px;
+}
+
+.sidebar-back svg {
+  width: 13px;
+  height: 13px;
+}
+
+.sidebar-context-title {
+  margin: 0 4px 8px;
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font: 700 8.5px/1 var(--theme-font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.sidebar-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 14px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--midground-base) 13%, transparent);
+}
+
+.sidebar-legend > div:not(.sidebar-context-title) {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 11px/1 var(--theme-font-sans);
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  margin-left: 5px;
+  border: 1.5px solid var(--midground-base);
+  border-radius: 50%;
+}
+
+.legend-dot.is-online {
+  border-color: #3c7a30;
+  background: #3c7a30;
+}
+
+.legend-dot.is-twin {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+body.dark .legend-dot.is-online {
+  border-color: #86c64f;
+  background: #86c64f;
+}
+
+.legend-inherit {
+  width: 18px;
+  margin-left: 0;
+  border-top: 1.5px dashed var(--midground-base);
+}
+
+.sidebar-manifesto {
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.sidebar-headline {
+  font: 400 32px/0.86 var(--theme-font-display);
+  text-transform: uppercase;
+}
+
+.sidebar-stats {
+  margin-top: 10px;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 10.5px/1.5 var(--theme-font-mono);
+}
+
+.sidebar-copy {
+  margin-top: 12px;
+  color: color-mix(in srgb, var(--midground-base) 36%, transparent);
+  font: 700 8.5px/1 var(--theme-font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+body.dark select,
+body.dark textarea,
+body.dark input {
+  color-scheme: dark;
+}
+
+/* Sidebar nav rows + group labels — retained for nested module content. */
+.nav-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 0.84rem;
+  letter-spacing: 0.08em;
+  transition: background-color 0.12s;
+  cursor: pointer;
+}
+.nav-row:hover {
+  background: color-mix(in srgb, var(--midground-base) 4%, transparent);
+}
+.nav-group {
+  padding: 14px 14px 4px;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: color-mix(in srgb, var(--midground-base) 38%, transparent);
+}
+
+/* ===== HOME hero — exact structure from redesign-demo-21-themed ===== */
+.home-hero {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: #16180f;
+}
+
+.home-hero-image {
+  position: absolute;
+  inset: 0;
+  /* Quiet dark canvas instead of the former gold map photo. */
+  background:
+    radial-gradient(70% 55% at 30% 18%, rgba(255, 255, 255, 0.05), transparent 70%),
+    linear-gradient(160deg, #1c1f16 0%, #16180f 55%, #121409 100%);
+}
+
+.home-hero-grade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(20, 18, 12, 0.16),
+    transparent 28%,
+    transparent 72%,
+    rgba(20, 18, 12, 0.2)
+  );
+}
+
+.home-hero-frame {
+  position: absolute;
+  z-index: 3;
+  inset: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  pointer-events: none;
+}
+
+.home-grid-line {
+  position: absolute;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.home-grid-line-x {
+  top: 22px;
+  bottom: 22px;
+  width: 1px;
+}
+
+.home-grid-line-x-one {
+  left: 36%;
+}
+.home-grid-line-x-two {
+  left: 68%;
+}
+.home-grid-line-y {
+  top: 40%;
+  right: 22px;
+  left: 22px;
+  height: 1px;
+}
+
+.home-tick,
+.home-vertical,
+.home-scale {
+  position: absolute;
+  z-index: 4;
+  color: #efe9d6;
+  font: 700 9px/1 var(--theme-font-mono);
+  letter-spacing: 0.14em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.home-tick {
+  top: 30px;
+  transform: translateX(-50%);
+}
+.home-tick-time {
+  left: 36%;
+}
+.home-tick-year {
+  left: 68%;
+}
+
+.home-vertical {
+  top: 35%;
+  writing-mode: vertical-rl;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.home-vertical-left {
+  left: 30px;
+}
+.home-vertical-right {
+  right: 30px;
+  top: 31%;
+}
+
+.home-logo-stamp {
+  position: absolute;
+  z-index: 5;
+  top: 44px;
+  left: 48px;
+  color: #f3efe0;
+  font: 400 56px/0.8 var(--theme-font-display);
+  letter-spacing: 0.02em;
+  transform: skewX(-7deg);
+}
+
+.home-logo-stamp small {
+  display: block;
+  margin-top: 8px;
+  color: #eef2dd;
+  font: 700 9px/1.4 var(--theme-font-mono);
+  letter-spacing: 0.26em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  transform: skewX(7deg);
+}
+
+.home-big-title {
+  position: absolute;
+  z-index: 5;
+  bottom: 54px;
+  left: 48px;
+  margin: 0;
+  color: #f3efe0;
+  font: 400 58px/0.84 var(--theme-font-display);
+  text-transform: uppercase;
+  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.5);
+}
+
+.home-scale {
+  bottom: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.1em;
+}
+.home-scale-left {
+  left: 48px;
+}
+.home-scale-right {
+  right: 48px;
+}
+.home-scale-right span {
+  width: 54px;
+  border-top: 2px solid #efe9d6;
+}
+
+/* 概览页的下一步（批次十一第 5 件）：形态沿用导航项 `.shell-nav-item`（同一个
+   圆角、同一份内边距），颜色用这块 hero 自己已有的局部色值（#efe9d6 /
+   rgba(255,255,255,…)），不引入新颜色（AD-78）。 */
+.home-actions {
+  position: absolute;
+  z-index: 6;
+  bottom: 168px;
+  left: 48px;
+  display: flex;
+  gap: 10px;
+}
+
+.home-actions .shell-nav-item {
+  width: auto;
+  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(26, 26, 21, 0.55);
+  color: #f3efe0;
+  backdrop-filter: blur(14px);
+}
+
+.home-actions .shell-nav-item:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(26, 26, 21, 0.75);
+}
+
+.home-actions .shell-nav-item.is-active {
+  border-color: #efe9d6;
+  background: #efe9d6;
+  color: #16180f;
+}
+
+.home-hotspot {
+  position: absolute;
+  z-index: 6;
+  right: 40px;
+  bottom: 80px;
+  display: block;
+  width: 206px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(26, 26, 21, 0.55);
+  color: var(--background-base);
+  text-align: left;
+  backdrop-filter: blur(14px);
+  transition:
+    transform 0.18s,
+    border-color 0.18s;
+}
+
+.home-hotspot:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  transform: translateY(-2px);
+}
+
+.home-hotspot-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cfcabb;
+  font: 700 8.5px/1 var(--theme-font-mono);
+  letter-spacing: 0.12em;
+}
+
+.home-hotspot-body {
+  display: block;
+  padding: 12px;
+  text-align: center;
+}
+
+.home-hotspot-label {
+  display: block;
+  color: var(--gold);
+  font: 700 8px/1 var(--theme-font-mono);
+  letter-spacing: 0.12em;
+}
+
+.home-hotspot-name {
+  display: block;
+  margin: 7px 0 2px;
+  color: #f3efe0;
+  font: 400 28px/1 var(--theme-font-display);
+}
+
+@media (max-width: 900px) {
+  :root {
+    --kaus-rail-width: 236px;
+  }
+
+  .app-sidebar {
+    width: 236px;
+    min-width: 236px;
+    padding-inline: 14px;
+  }
+
+  .shell-nav-en,
+  .sidebar-manifesto {
+    display: none;
+  }
+
+  .home-big-title {
+    font-size: 44px;
+  }
+
+  .home-hotspot {
+    right: 30px;
+  }
+}
+
+/* ===== AGENTS chat — exact demo-21 shell around the real PTY ===== */
+.agent-chat {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--background-base);
+}
+
+.agent-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 30px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--midground-base) 13%, transparent);
+}
+
+/* .agent-chat-back 的样式随返回箭头一起删除（AD-98）。 */
+
+.agent-chat-head h2 {
+  margin: 0;
+  color: var(--midground-base);
+  font: 400 30px/0.9 var(--theme-font-display);
+}
+
+.agent-chat-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 10px/1 var(--theme-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.agent-chat-status {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 48%, transparent);
+  border-radius: 50%;
+}
+
+.agent-chat-status.is-online {
+  border-color: #3c7a30;
+  background: #3c7a30;
+}
+
+body.dark .agent-chat-status.is-online {
+  border-color: #86c64f;
+  background: #86c64f;
+}
+
+.agent-chat-model {
+  max-width: 220px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  outline: none;
+}
+
+.agent-chat-reasoning {
+  max-width: 116px;
+}
+
+.agent-chat-approvals {
+  max-width: 104px;
+}
+
+.agent-chat-segments {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.agent-chat-segments button {
+  padding: 0 0 3px;
+  border-bottom: 2px solid transparent;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 600 11px/1 var(--theme-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.agent-chat-segments button:hover,
+.agent-chat-segments button.is-active {
+  color: var(--midground-base);
+}
+
+.agent-chat-segments button.is-active {
+  border-bottom-color: var(--gold-deep);
+}
+
+.agent-chat-segments svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── 会话选择下拉 ── */
+.agent-session-picker {
+  position: relative;
+}
+.agent-session-picker > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 0 3px;
+  border-bottom: 2px solid transparent;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 600 11px/1 var(--theme-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: color 0.15s, border-color 0.15s;
+  background: none;
+  cursor: pointer;
+}
+.agent-session-picker > button:hover {
+  color: var(--midground-base);
+  border-bottom-color: var(--gold-deep);
+}
+.agent-session-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: -12px;
+  z-index: 50;
+  min-width: 320px;
+  max-height: 380px;
+  background: #16180f;
+  border: 1px solid color-mix(in srgb, var(--gold-deep) 28%, transparent);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.agent-session-dropdown-head {
+  padding: 8px 14px;
+  font: 600 10px/1.4 var(--theme-font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--midground-base) 40%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 8%, transparent);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-session-dropdown-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+.agent-session-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 14px;
+  font: 400 12px/1.6 ui-sans-serif, system-ui, sans-serif;
+  color: color-mix(in srgb, var(--midground-base) 60%, transparent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.agent-session-dropdown-item:hover {
+  background: color-mix(in srgb, var(--gold-deep) 10%, transparent);
+  color: var(--midground-base);
+}
+.agent-session-dropdown-item.is-active {
+  background: color-mix(in srgb, var(--gold-deep) 16%, transparent);
+  color: var(--midground-base);
+}
+.agent-session-dropdown-item.is-ended .agent-session-dropdown-title {
+  opacity: 0.65;
+}
+.agent-session-dropdown-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-session-dropdown-meta {
+  flex-shrink: 0;
+  margin-left: 12px;
+  font-size: 10px;
+  color: color-mix(in srgb, var(--midground-base) 32%, transparent);
+}
+
+.agent-chat-body {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.agent-session-tabs {
+  display: flex;
+  width: min(100%, 1280px);
+  align-items: center;
+  gap: 18px;
+  box-sizing: border-box;
+  margin-inline: auto;
+  min-height: 39px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  padding: 0 30px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--midground-base) 9%, transparent);
+  scrollbar-width: thin;
+}
+
+.agent-session-tab {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+}
+
+.agent-session-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 0 8px;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 600 10px/1 var(--theme-font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.agent-session-tab:hover .agent-session-tab-label,
+.agent-session-tab.is-active .agent-session-tab-label {
+  color: var(--midground-base);
+}
+
+.agent-session-tab.is-active {
+  border-bottom-color: var(--gold-deep);
+}
+
+.agent-session-close {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  margin-left: 7px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--midground-base) 30%, transparent);
+  opacity: 0;
+  transition:
+    color 0.15s ease,
+    opacity 0.15s ease,
+    background 0.15s ease;
+}
+
+.agent-session-tab:hover .agent-session-close,
+.agent-session-tab.is-active .agent-session-close {
+  opacity: 1;
+}
+
+.agent-session-close:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+
+.agent-session-close svg {
+  width: 11px;
+  height: 11px;
+}
+
+.agent-session-delete-history {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--danger) 74%, var(--midground-base));
+  font: 700 9px/1 var(--theme-font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.agent-session-delete-history:hover {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+
+.agent-session-error {
+  overflow: hidden;
+  max-width: 360px;
+  color: var(--danger);
+  font: 600 10px/1.2 var(--theme-font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-terminal-stage {
+  width: min(100%, 1280px);
+  min-height: 0;
+  flex: 1;
+  box-sizing: border-box;
+  margin-inline: auto;
+  overflow: hidden;
+  padding: 20px 34px 30px;
+}
+
+.agent-terminal-stage > div {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0;
+  border-left: 1px solid
+    color-mix(in srgb, var(--midground-base) 12%, transparent);
+  border-right: 1px solid
+    color-mix(in srgb, var(--midground-base) 12%, transparent);
+}
+
+.agent-terminal-slot {
+  inset: 4px 18px 0;
+  overflow: hidden;
+}
+
+.agent-terminal-slot.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.agent-terminal-history-gate {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  place-items: center;
+  border-left: 1px solid
+    color-mix(in srgb, var(--midground-base) 12%, transparent);
+  border-right: 1px solid
+    color-mix(in srgb, var(--midground-base) 12%, transparent);
+  color: var(--midground-base);
+  text-align: center;
+}
+
+.agent-terminal-history-gate > div {
+  max-width: 520px;
+  padding: 24px;
+}
+
+.agent-terminal-history-gate strong {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--foreground-base);
+  font: 900 13px/1 var(--theme-font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.agent-terminal-history-gate p {
+  margin: 0 0 18px;
+  color: color-mix(in srgb, var(--midground-base) 76%, transparent);
+  font: 700 13px/1.7 var(--theme-font-ui);
+}
+
+.agent-terminal-history-gate button {
+  border: 1px solid color-mix(in srgb, var(--gold-deep) 56%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gold-deep) 10%, transparent);
+  color: var(--accent-text);
+  cursor: pointer;
+  font: 900 12px/1 var(--theme-font-ui);
+  letter-spacing: 0.06em;
+  padding: 10px 14px;
+}
+
+.agent-terminal-history-gate button:hover {
+  background: color-mix(in srgb, var(--gold-deep) 18%, transparent);
+}
+
+.agent-terminal-launcher-stage > div {
+  border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--background-base) 94%, transparent), var(--background-base)),
+    var(--background-base);
+}
+
+.real-terminal-launcher {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 0;
+  min-height: 360px;
+}
+
+.real-terminal-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(24px, 4vw, 52px);
+}
+
+.real-terminal-kicker {
+  margin-bottom: 12px;
+  color: var(--accent-text);
+  font: 900 10px/1 var(--theme-font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.real-terminal-main h3 {
+  max-width: 720px;
+  margin: 0;
+  color: var(--foreground-base);
+  font: 900 clamp(24px, 4vw, 46px)/1.03 var(--theme-font-display);
+}
+
+.real-terminal-main p {
+  max-width: 680px;
+  margin: 14px 0 0;
+  color: color-mix(in srgb, var(--midground-base) 68%, transparent);
+  font: 650 14px/1.7 var(--theme-font-ui);
+}
+
+.real-terminal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.real-terminal-meta span {
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: color-mix(in srgb, var(--midground-base) 70%, transparent);
+  font: 800 11px/1 var(--theme-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-governor-card {
+  max-width: 760px;
+  margin-top: 18px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--midground-base) 4%, transparent);
+  padding: 14px;
+}
+
+.session-governor-card.is-ok {
+  border-color: color-mix(in srgb, var(--color-success, #4f8a5b) 35%, transparent);
+  background: color-mix(in srgb, var(--color-success, #4f8a5b) 7%, transparent);
+}
+
+.session-governor-card.is-watch,
+.session-governor-card.is-bloated {
+  border-color: color-mix(in srgb, var(--gold-deep) 38%, transparent);
+  background: color-mix(in srgb, var(--gold-deep) 8%, transparent);
+}
+
+.session-governor-card.is-critical,
+.session-governor-card.is-unknown {
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+}
+
+.session-governor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+
+.session-governor-head strong {
+  color: var(--foreground-base);
+  font: 900 13px/1.2 var(--theme-font-ui);
+}
+
+.session-governor-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: var(--midground-base);
+  font: 900 10px/1 var(--theme-font-ui);
+}
+
+.session-governor-card.is-critical .session-governor-badge,
+.session-governor-card.is-unknown .session-governor-badge {
+  color: var(--danger);
+}
+
+.session-governor-card.is-watch .session-governor-badge,
+.session-governor-card.is-bloated .session-governor-badge {
+  color: var(--accent-text);
+}
+
+.session-governor-card p {
+  margin: 10px 0 0;
+  color: color-mix(in srgb, var(--midground-base) 72%, transparent);
+  font: 700 12px/1.55 var(--theme-font-ui);
+}
+
+.session-governor-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.session-governor-metrics span {
+  border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+  border-radius: 999px;
+  padding: 5px 7px;
+  color: color-mix(in srgb, var(--midground-base) 70%, transparent);
+  font: 850 10px/1 var(--theme-font-mono);
+}
+
+.session-governor-reasons {
+  margin: 10px 0 0;
+  padding-left: 17px;
+  color: color-mix(in srgb, var(--midground-base) 68%, transparent);
+  font: 700 11px/1.5 var(--theme-font-ui);
+}
+
+.session-governor-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  margin-top: 12px;
+  border: 1px solid color-mix(in srgb, var(--gold-deep) 45%, transparent);
+  border-radius: 999px;
+  color: var(--accent-text);
+  font: 900 11px/1 var(--theme-font-ui);
+  padding: 0 11px;
+}
+
+.session-governor-copy:hover {
+  background: color-mix(in srgb, var(--gold-deep) 10%, transparent);
+}
+
+.real-terminal-command {
+  max-width: 100%;
+  margin: 22px 0 0;
+  overflow-x: auto;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+  color: var(--foreground-base);
+  font: 800 12px/1.55 var(--theme-font-mono);
+  padding: 13px 14px;
+  white-space: pre;
+}
+
+.real-terminal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.real-terminal-actions button,
+.real-terminal-side-head button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
+  border-radius: 999px;
+  color: var(--midground-base);
+  font: 900 12px/1 var(--theme-font-ui);
+  padding: 0 13px;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.real-terminal-actions button:hover,
+.real-terminal-side-head button:hover {
+  border-color: color-mix(in srgb, var(--gold-deep) 46%, transparent);
+  background: color-mix(in srgb, var(--gold-deep) 9%, transparent);
+  color: var(--foreground-base);
+}
+
+.real-terminal-actions .real-terminal-primary {
+  border-color: color-mix(in srgb, var(--gold-deep) 60%, transparent);
+  background: color-mix(in srgb, var(--gold-deep) 12%, transparent);
+  color: var(--accent-text);
+}
+
+.real-terminal-side {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-left: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
+  background: color-mix(in srgb, var(--midground-base) 3%, transparent);
+}
+
+.real-terminal-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 9%, transparent);
+  padding: 0 16px;
+  color: color-mix(in srgb, var(--midground-base) 74%, transparent);
+  font: 900 11px/1 var(--theme-font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.real-terminal-side-head button {
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+}
+
+.real-terminal-session-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.real-terminal-session-list button {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  border-radius: 6px;
+  padding: 10px;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.real-terminal-session-list button:hover,
+.real-terminal-session-list button.is-active {
+  background: color-mix(in srgb, var(--gold-deep) 10%, transparent);
+}
+
+.real-terminal-session-list span,
+.real-terminal-session-list small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.real-terminal-session-list span {
+  color: var(--foreground-base);
+  font: 850 12px/1.2 var(--theme-font-ui);
+}
+
+.real-terminal-session-list small,
+.real-terminal-empty {
+  color: color-mix(in srgb, var(--midground-base) 48%, transparent);
+  font: 750 10px/1.3 var(--theme-font-mono);
+}
+
+.real-terminal-empty {
+  padding: 12px 10px;
+}
+
+.whiteboard-terminal-pane {
+  width: 100%;
+  height: 100%;
+}
+
+.whiteboard-terminal-pane.is-idle {
+  opacity: 0.58;
+  filter: saturate(0.72);
+  pointer-events: none;
+}
+
+.chat-terminal-frame {
+  position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  max-width: 100%;
+  padding-right: 0;
+  outline: none;
+}
+
+.chat-terminal-frame.is-dragging-file {
+  box-shadow:
+    inset 0 0 0 2px var(--gold-deep),
+    inset 0 0 44px color-mix(in srgb, var(--gold-deep) 16%, transparent);
+}
+
+.chat-terminal-host {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  max-width: 100%;
+  padding-right: 0;
+  outline: none;
+}
+
+.pty-upload-drop-hint {
+  position: absolute;
+  inset: 12px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  border: 1px dashed color-mix(in srgb, var(--gold-deep) 58%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-base) 68%, transparent);
+  color: var(--midground-base);
+  font: 800 12px/1 var(--theme-font-mono);
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
+.chat-terminal-host .xterm {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+}
+
+.chat-terminal-host .xterm-screen {
+  max-width: none;
+}
+
+.chat-terminal-host .xterm-viewport {
+  max-height: 100%;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.whiteboard-terminal-sleep {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-content: center;
+  gap: 4px;
+  border: 1px dashed color-mix(in srgb, var(--ink) 16%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 2.5%, transparent);
+  color: color-mix(in srgb, var(--ink) 52%, transparent);
+  font-family: var(--theme-font-mono);
+  text-align: center;
+  cursor: pointer;
+}
+
+.whiteboard-terminal-sleep:hover {
+  border-color: var(--gold-deep);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--gold-deep) 8%, transparent);
+}
+
+.whiteboard-terminal-sleep strong {
+  max-width: 34ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92rem;
+}
+
+.whiteboard-terminal-sleep span,
+.whiteboard-terminal-sleep small {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.pty-adapter-events {
+  position: fixed;
+  z-index: 120;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  width: min(430px, calc(100% - 32px));
+  gap: 8px;
+  pointer-events: none;
+}
+
+.pty-adapter-event {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 15%, transparent);
+  border-left: 3px solid var(--gold-deep);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+  color: var(--midground-base);
+  pointer-events: auto;
+  animation: dialog-in 0.2s ease-out;
+}
+
+.pty-adapter-event.is-file {
+  border-left-color: var(--warning, #d98a55);
+}
+
+.pty-adapter-event.is-disconnected {
+  border-left-color: var(--danger);
+}
+
+.pty-adapter-event header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--midground-base) 8%, transparent);
+}
+
+.pty-adapter-event header > span {
+  color: var(--accent-text);
+  font: 700 8px/1 var(--theme-font-mono);
+  letter-spacing: 0.13em;
+}
+
+.pty-adapter-event.is-file header > span {
+  color: var(--warning, #d98a55);
+}
+
+.pty-adapter-event.is-disconnected header > span {
+  color: var(--danger);
+}
+
+.pty-adapter-event header strong {
+  font: 600 12px/1 var(--theme-font-ui);
+}
+
+.pty-adapter-event header button {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  place-items: center;
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+}
+
+.pty-adapter-event header svg {
+  width: 12px;
+  height: 12px;
+}
+
+.pty-adapter-event p {
+  padding: 10px 12px 0;
+  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  font: 11px/1.55 var(--theme-font-ui);
+}
+
+.pty-adapter-event code {
+  display: block;
+  overflow: hidden;
+  padding: 7px 12px 0;
+  color: var(--midground-base);
+  font: 10px/1.4 var(--theme-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pty-adapter-event footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  padding: 11px 12px 12px;
+}
+
+.pty-adapter-event footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 0 3px;
+  border-bottom: 1px solid transparent;
+  color: color-mix(in srgb, var(--midground-base) 58%, transparent);
+  font: 700 9px/1 var(--theme-font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pty-adapter-event footer button:hover {
+  color: var(--accent-text);
+}
+
+.pty-adapter-event footer button.is-primary {
+  border-bottom-color: var(--gold-deep);
+  color: var(--midground-base);
+}
+
+.pty-adapter-event footer svg {
+  width: 11px;
+  height: 11px;
+}
+
+.pty-file-preview {
+  width: 100%;
+  height: min(68vh, 680px);
+  border: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
+  border-radius: 8px;
+  background: var(--background-base);
+}
+
+@media (max-width: 980px) {
+  .agent-chat-head {
+    gap: 10px;
+    padding-inline: 20px;
+  }
+
+  .agent-chat-meta > span:last-child {
+    display: none;
+  }
+
+  .agent-chat-segments {
+    gap: 10px;
+  }
+
+  .agent-terminal-stage,
+  .agent-session-tabs {
+    padding-inline: 20px;
+  }
+
+  .real-terminal-launcher {
+    grid-template-columns: 1fr;
+  }
+
+  .real-terminal-side {
+    min-height: 180px;
+    border-top: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
+    border-left: 0;
+  }
+
+  .pty-adapter-events {
+    right: 10px;
+    width: min(390px, calc(100% - 20px));
+  }
+}
+
+/* ===== AgentGraph / AGENTS browse — demo-21 exact interaction shell ===== */
+.agent-browser {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.agent-browser-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 22px 30px 14px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--midground-base) 13%, transparent);
+}
+
+.agent-browser-head h1 {
+  font: 400 32px/0.9 var(--theme-font-display);
+  text-transform: uppercase;
+}
+
+.agent-browser-head > div {
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 11px/1 var(--theme-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.agent-browser-head b {
+  color: var(--accent-text);
+}
+
+.agent-browser-modes {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-raised) 62%, transparent);
+}
+
+.agent-browser-modes button {
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 11px;
+  color: color-mix(in srgb, var(--midground-base) 46%, transparent);
+  background: transparent;
+  cursor: pointer;
+  font: 700 9px/1 var(--theme-font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.agent-browser-modes button:hover,
+.agent-browser-modes button.is-active {
+  color: var(--background-base);
+  background: var(--midground-base);
+}
+
+.agent-browser-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.agent-browser-body .ag-canvas {
+  min-width: 0;
+  overflow: auto;
+  cursor: grab;
+  overscroll-behavior: contain;
+}
+
+.ag-embedded-drafts {
+  position: absolute;
+  z-index: 8;
+  top: 76px;
+  left: 30px;
+  max-width: calc(100% - 390px);
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--background-base) 86%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.ag-droptop {
+  border: 1px dashed color-mix(in srgb, var(--midground-base) 22%, transparent);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 0.68rem;
+  text-align: center;
+  color: color-mix(in srgb, var(--midground-base) 50%, transparent);
+  margin-bottom: 10px;
+}
+.ag-droptop.ag-drop,
+.ag-node.ag-drop,
+.ag-root.ag-drop {
+  outline: 2px dashed var(--gold);
+  outline-offset: 4px;
+  background: var(--gold-soft);
+}
+.ag-draft {
+  display: inline-flex;
+  align-items: center;
+  border: 1px dashed color-mix(in srgb, var(--midground-base) 28%, transparent);
+  border-radius: 7px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  cursor: grab;
+  background: var(--surface-raised);
+}
+.ag-canvas {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  cursor: grab;
+}
+.ag-canvas.ag-panning,
+.ag-canvas.ag-panning * {
+  cursor: grabbing !important;
+}
+.ag-canvas.ag-wheel-dragging,
+.ag-canvas.ag-wheel-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.ag-edges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.ag-cols {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 56px;
+  padding: 40px 78px 40px 64px;
+  min-height: 100%;
+  width: max-content;
+  min-width: max-content;
+}
+.graph-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.ag-wheel-col {
+  position: relative;
+  width: clamp(330px, 25vw, 430px);
+  height: 430px;
+  flex: none;
+  perspective: 900px;
+  transform-style: preserve-3d;
+}
+.ag-wheel-col .ag-colh {
+  position: absolute;
+  top: 16px;
+  left: 0;
+}
+.ag-wheel-col .ag-node {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  min-width: 330px;
+  transform-origin: left center;
+  will-change: transform, opacity;
+  transition: color 0.15s;
+}
+.ag-colh {
+  padding-left: 2px;
+  color: color-mix(in srgb, var(--midground-base) 36%, transparent);
+  font: 700 8.5px/1 var(--theme-font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ag-root {
+  cursor: pointer;
+  position: relative;
+  padding: 2px;
+}
+.ag-rootline {
+  position: absolute;
+  left: 2px;
+  bottom: -8px;
+  width: 42px;
+  height: 4px;
+  transform-origin: left;
+  background: var(--midground-base);
+  animation: ag-underline 3.6s ease-in-out infinite;
+}
+@keyframes ag-underline {
+  0%,
+  100% {
+    transform: scaleX(0.35);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+.ag-rootnm {
+  color: var(--midground-base);
+  font: 400 60px/0.86 var(--theme-font-display);
+}
+.ag-rootsub {
+  margin-top: 9px;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 700 9px/1 var(--theme-font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.ag-twincluster {
+  margin-top: 12px;
+  border-left: 2px solid var(--danger);
+  padding: 4px 0 4px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ag-twinh {
+  color: var(--danger);
+  font: 700 7.5px/1 var(--theme-font-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.ag-twin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12.5px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  position: relative;
+  transition: background-color 0.15s;
+}
+.ag-twin:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.ag-twin.sel {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+.ag-tdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex: none;
+}
+.ag-twin .ag-nm {
+  font-weight: 600;
+}
+.ag-tmode {
+  margin-left: auto;
+  color: color-mix(in srgb, var(--midground-base) 36%, transparent);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+.ag-node {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transform-origin: left center;
+  /* 轮盘每帧写 transform:提前提层,别让浏览器每帧重新决定(AD-81)。 */
+  will-change: transform;
+  /* transform 不再进过渡列表(批次七 d 第 2 条):位移完全由 JS 弹簧
+     (e^(−dt/86)) 驱动,再叠一层 250ms CSS 过渡只会让节点比连线慢半拍 ——
+     用户看到的"连线滞后"就是这么来的。opacity/color 的过渡保留。 */
+  transition:
+    opacity 0.25s,
+    color 0.15s;
+  padding-left: 12px;
+  position: relative;
+}
+
+/* 「+ 添加项目」虚节点:沿用 .ag-node 的排布与轮盘变换,只换描边与色度。 */
+.ag-node-add {
+  align-items: center;
+  border: 1px dashed color-mix(in srgb, var(--midground-base) 26%, transparent);
+  border-radius: 8px;
+  padding: 5px 12px 5px 10px;
+  color: color-mix(in srgb, var(--midground-base) 46%, transparent);
+}
+
+.ag-node-add:hover {
+  border-color: var(--gold);
+  color: var(--accent-text);
+}
+
+.ag-node-add .ag-nm {
+  font-weight: 600;
+}
+/* 命中区（批次十一第 6 件）：节点本体只有 20px 上下高，指针要很准才点得中。
+   套一层透明的命中面，**可见几何一点不动**——它是绝对定位的子元素，不参与布局，
+   也不进父元素的 border box（列空白处的命中判定照旧按节点自身的矩形算）。 */
+.ag-node-hit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 32px;
+  height: 32px;
+}
+
+.ag-node::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 2px;
+  height: 0;
+  transform: translateY(-50%);
+  background: var(--gold-deep);
+  transition: height 0.18s;
+}
+.ag-node.current-front::before {
+  height: 70%;
+}
+/* 减少动态效果:吸附那一下 JS 已经直接落位,CSS 过渡也别再补一段(AD-81)。 */
+@media (prefers-reduced-motion: reduce) {
+  .ag-node {
+    transition: none;
+  }
+}
+.ag-node.current-front .ag-nm {
+  font-weight: 700;
+  color: var(--midground-base);
+}
+.ag-node.path .ag-nm {
+  color: var(--midground-base);
+}
+.ag-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  align-self: center;
+  border: 1.5px solid var(--midground-base);
+}
+.ag-dot.on {
+  background: #3c7a30;
+  border-color: #3c7a30;
+}
+body.dark .ag-dot.on {
+  background: #86c64f;
+  border-color: #86c64f;
+}
+.ag-dot.idle {
+  background: transparent;
+}
+.ag-nm {
+  color: color-mix(in srgb, var(--midground-base) 88%, transparent);
+  font: 600 18px/1 var(--theme-font-mono);
+}
+/* 角色小字：36% → 55%（批次十一第 6 件）。乘上轮盘 0.72 的地板仍到不了 4.5:1，
+   但把它提到那个档次就得和节点名一样黑，那是另一种坏——名字才是要读的那行。
+   只调透明度、不换色（AD-78）。 */
+.ag-rl {
+  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  font: 9.5px/1 var(--theme-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ag-bad {
+  font-size: 0.56rem;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.ag-cn {
+  color: var(--accent-text);
+  font: 9.5px/1 var(--theme-font-mono);
+  opacity: 0.8;
+}
+.ag-dots {
+  margin-left: 4px;
+  opacity: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--midground-base) 36%, transparent);
+  cursor: pointer;
+  padding: 2px;
+  display: grid;
+  place-items: center;
+  transition: opacity 0.12s;
+}
+.ag-node:hover .ag-dots,
+.ag-twin:hover .ag-dots {
+  opacity: 1;
+}
+.ag-dots:hover {
+  color: var(--midground-base);
+}
+/* detail panel */
+.ag-panel {
+  width: 344px;
+  flex: none;
+  overflow: auto;
+  background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
+  backdrop-filter: blur(20px);
+  border-left: 1px solid
+    color-mix(in srgb, var(--midground-base) 12%, transparent);
+}
+.ag-panel-head {
+  padding: 22px 22px 16px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--midground-base) 13%, transparent);
+}
+.ag-ptag {
+  display: flex;
+  justify-content: space-between;
+  color: var(--accent-text);
+  font: 700 9px/1 var(--theme-font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.ag-ph2 {
+  margin: 10px 0 5px;
+  color: var(--midground-base);
+  font: 400 36px/0.9 var(--theme-font-display);
+}
+.ag-prole {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 10px/1 var(--theme-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ag-status {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3c7a30;
+}
+.ag-status.idle {
+  background: color-mix(in srgb, var(--midground-base) 36%, transparent);
+}
+body.dark .ag-status:not(.idle) {
+  background: #86c64f;
+}
+.ag-pactions {
+  display: flex;
+  gap: 18px;
+  margin-top: 16px;
+}
+.ag-act {
+  cursor: pointer;
+  padding-bottom: 4px;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font: 700 11px/1 var(--theme-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ag-act.p {
+  color: var(--midground-base);
+  border-bottom-color: var(--gold-deep);
+}
+.ag-act.g {
+  color: color-mix(in srgb, var(--midground-base) 50%, transparent);
+}
+.ag-act.g:hover {
+  color: var(--midground-base);
+}
+.ag-panel-section {
+  padding: 14px 22px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--midground-base) 13%, transparent);
+}
+.ag-panel-section h3 {
+  margin-bottom: 12px;
+  color: color-mix(in srgb, var(--midground-base) 36%, transparent);
+  font: 700 9px/1 var(--theme-font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.ag-prow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 5px 0;
+  font: 12.5px var(--theme-font-mono);
+}
+.ag-prow span:first-child {
+  flex: none;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.ag-prow span:last-child {
+  font-weight: 600;
+  text-align: right;
+}
+.ag-stat-row {
+  display: flex;
+  gap: 26px;
+  padding: 4px 0 10px;
+}
+.ag-stat-row div {
+  display: flex;
+  flex-direction: column;
+}
+.ag-stat-row strong {
+  color: var(--midground-base);
+  font: 400 30px/1 var(--theme-font-display);
+}
+.ag-stat-row span {
+  margin-top: 5px;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 8.5px var(--theme-font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ag-note {
+  margin: 10px 0;
+  border-left: 2px solid var(--danger);
+  padding-left: 13px;
+  color: var(--danger);
+  font: 11px/1.5 var(--theme-font-mono);
+}
+.ag-phint {
+  margin-top: 12px;
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font: 10px/1.5 var(--theme-font-mono);
+}
+
+@media (max-width: 980px) {
+  .ag-panel {
+    width: 290px;
+  }
+  .agent-browser-head > div {
+    display: none;
+  }
+  .agent-browser-head .agent-browser-modes {
+    display: inline-flex;
+  }
+}
+
+/* Conversation 底部说明行(此前类未定义,裸文字贴边) */
+.agent-session-note {
+  padding: 10px 28px 18px;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+}
+
+/* ================================================================== *
+ * Phase 2 会话外壳：侧栏会话列表 / 悬停收起 / 草稿页 / 对话页
+ * 只用现有 CSS 变量与视觉语汇（★定稿 F），不引入新的色板与新的圆角尺度。
+ * ================================================================== */
+
+/* 侧栏轨道：轮盘视图收起时轨道宽 0，侧栏本体绝对定位并只用 transform 滑动
+   ——不动 width，避免每帧重排（AD-79 的"动画只用 transform"）。
+   滑出时是「推」不是「盖」（批次七 d 第 1 条）：主区同步 translateX 一个侧栏宽，
+   同样只动 transform；过渡结束后 App 补发一次 resize，轮盘全画一次。 */
+.kaus-rail {
+  position: relative;
+  display: flex;
+  flex: none;
+}
+
+/* 「推」= 轨道自己的宽度从 0 长到侧栏宽，主区被 flex 挤到右边并同步变窄。
+   （另一个选项是给主区 translateX，但那会把右侧详情面板推出视口 —— 用户要的是
+   被推开，不是被裁掉。）整个过渡只动 width 这一个属性。 */
+.kaus-rail.is-collapsible {
+  width: 0;
+  min-width: 0;
+  transition: width 0.22s ease;
+}
+
+.kaus-rail.is-collapsible.is-open {
+  width: var(--kaus-rail-width, 280px);
+}
+
+.kaus-rail.is-collapsible > .app-sidebar {
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  transition: transform 0.22s ease;
+  box-shadow: var(--shadow-drawer);
+}
+
+.kaus-rail.is-collapsible.is-open > .app-sidebar {
+  transform: translateX(0);
+}
+
+.kaus-rail-hotzone {
+  position: fixed;
+  z-index: 29;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 8px;
+}
+
+/* 轮盘视图下的折叠态导航列（批次十一第 3 件）。走查者进轮盘后"找不到路回来"：
+   侧栏按 AD-79 自动收起，左缘只剩一条 8px 热区，没有任何可见提示。这里把**同一组**
+   `.shell-nav-item` 缩成只剩图标摆在左上角——不是新控件，图标宽度也沿用现值
+   （`.shell-nav-icon` 18px）。顶部内边距对齐侧栏里导航列的起始位置
+   （侧栏 padding-top 22px + 字标 28px + 字标下边距 22px）。
+   悬停它把整条侧栏推出来（`.kaus-rail` 的推挤，不覆盖）。
+   起点压在轮盘头部之下（`.agent-browser-head` 那一行）：图标列不该盖住页面标题。 */
+.kaus-nav-peek {
+  position: fixed;
+  z-index: 28;
+  top: 104px;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 10px 8px;
+  border-radius: 0 10px 10px 0;
+  background: var(--background-secondary);
+  border-right: 1px solid color-mix(in srgb, var(--midground-base) 13%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 13%, transparent);
+}
+
+.kaus-nav-peek .shell-nav-item {
+  width: auto;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kaus-rail.is-collapsible,
+  .kaus-rail.is-collapsible > .app-sidebar {
+    transition: none;
+  }
+}
+
+/* 「新会话」搬进了导航列表最上面（批次七 d 第 4 条），侧栏顶部不再有独立按钮。 */
+.kaus-conversation-sidebar {
+  margin-inline: -4px;
+}
+
+.kaus-sidebar-group {
+  margin-bottom: 6px;
+}
+
+.kaus-sidebar-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  border-radius: 6px;
+  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  cursor: pointer;
+  text-align: left;
+  font: 700 9.5px/1 var(--theme-font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.kaus-sidebar-group-head:hover {
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+}
+
+.kaus-conversation-row {
+  padding-left: 8px;
+}
+
+.kaus-run-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--gold);
+  animation: kaus-pulse 1.6s ease-in-out infinite;
+}
+
+.kaus-run-dot.is-idle {
+  background: color-mix(in srgb, var(--midground-base) 22%, transparent);
+  animation: none;
+}
+
+@keyframes kaus-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.28; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kaus-run-dot {
+    animation: none;
+  }
+}
+
+.kaus-engine-tag {
+  display: grid;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 16%, transparent);
+  border-radius: 4px;
+  color: color-mix(in srgb, var(--midground-base) 58%, transparent);
+  font: 700 8.5px/1 var(--theme-font-mono);
+}
+
+.kaus-conversation-time {
+  flex: none;
+  color: color-mix(in srgb, var(--midground-base) 38%, transparent);
+  font: 9.5px/1 var(--theme-font-mono);
+}
+
+/* 草稿页：整屏居中的空对话窗（≤ 760px）。 */
+.kaus-draft-page {
+  display: flex;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 28px;
+}
+
+/* batch42：顶上有铭牌时它是首页，铭牌贴着顶而不是整块悬在正中——悬在正中
+   会在铭牌上方留一大块空白，看着像还没加载完。 */
+.kaus-draft-page.has-plate {
+  align-items: flex-start;
+  padding-top: 28px;
+}
+
+.kaus-draft-window {
+  display: flex;
+  width: min(760px, 100%);
+  flex-direction: column;
+  gap: 18px;
+}
+
+.kaus-draft-config {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
+.kaus-draft-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 11px/1 var(--theme-font-mono);
+}
+
+.kaus-draft-field > span:first-child {
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.kaus-draft-field select {
+  max-width: 240px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 18%, transparent);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--midground-base);
+  font: 12px var(--theme-font-mono);
+}
+
+.kaus-draft-locked,
+.kaus-draft-select-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--midground-base);
+  font: 12px var(--theme-font-mono);
+}
+
+.kaus-draft-locked button,
+.kaus-draft-select-wrap button {
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  cursor: pointer;
+}
+
+.kaus-draft-empty {
+  padding: 44px 4px 24px;
+  text-align: center;
+}
+
+.kaus-draft-empty h1 {
+  margin-bottom: 8px;
+  font: 700 20px/1.3 var(--theme-font-sans);
+  letter-spacing: 0.02em;
+}
+
+.kaus-draft-empty p {
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.kaus-draft-error {
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+/* 输入区：草稿页与对话页共用一套。 */
+.kaus-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 16%, transparent);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--surface-raised);
+}
+
+.kaus-composer textarea {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--midground-base);
+  outline: none;
+  resize: none;
+  font: 13px/1.6 var(--theme-font-sans);
+}
+
+/* H-3：主按钮（发送 / 停止）改「深底反白」——与导航选中项 `.shell-nav-item.is-active`
+   同一套（深色模式靠 token 自己反过来），不再用绿底。圆角与字号照旧（AD-78）。 */
+.kaus-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--midground-base);
+  border-radius: 8px;
+  padding: 7px 12px;
+  background: var(--midground-base);
+  color: var(--background-base);
+  cursor: pointer;
+  font: 600 12px/1 var(--theme-font-sans);
+}
+
+/* H-3：停止只在悬停时才带 --danger 边框（平时与发送同形，不喊）。 */
+.kaus-send.is-stop:hover {
+  border-color: var(--danger);
+}
+
+.kaus-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 对话页（★ 定稿 G：居中阅读栏）。 */
+.kaus-conversation-page {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  padding: 0;
+  gap: 0;
+}
+
+/* G-1：消息流、运行提示、输入框、页头内容共用这一条 760 栏；
+   页头的背景与分隔线仍横跨全宽，只有内容对齐这里。 */
+.kaus-thread {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.kaus-conversation-header {
+  flex: none;
+  padding: 18px 0 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 13%, transparent);
+}
+
+.kaus-conversation-headline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.kaus-conversation-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+}
+
+/* G-8：用量 Pill 悬停时展开 in / out / total。`title` 已经带同一串，
+   浮层只是给鼠标用户一个更快的读法，不新造颜色。 */
+.kaus-usage-pill {
+  position: relative;
+  display: inline-flex;
+}
+
+.kaus-usage-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  display: none;
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 16%, transparent);
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+  color: color-mix(in srgb, var(--midground-base) 66%, transparent);
+  font: 11px/1.4 var(--theme-font-mono);
+}
+
+.kaus-usage-pill:hover .kaus-usage-pop,
+.kaus-usage-pill:focus-within .kaus-usage-pop {
+  display: block;
+}
+
+.kaus-conversation-title {
+  font: 700 16px/1.3 var(--theme-font-sans);
+}
+
+/* batch52 第 5 件：标题本身就是改名入口。它现在是一枚 button（或改名时的
+   input），但**看上去一个像素都没变**——页头不因此多一枚按钮、多一个框
+   （★H：工作区中性，强调色只给运行点）。悬停才给一条极淡的下划线，说明它点得动。 */
+button.kaus-conversation-title {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: text;
+}
+
+button.kaus-conversation-title:hover {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--midground-base) 28%, transparent);
+  text-underline-offset: 3px;
+}
+
+.kaus-conversation-title-input {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 22%, transparent);
+  background: none;
+  color: inherit;
+  outline: none;
+}
+
+.kaus-conversation-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 11px/1 var(--theme-font-mono);
+}
+
+.kaus-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kaus-stream-bar,
+.kaus-advisory-bar {
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--midground-base) 6%, transparent);
+  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  font-size: 11.5px;
+}
+
+.kaus-timeline {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.kaus-thread-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.kaus-msg {
+  position: relative;
+  max-width: 100%;
+}
+
+/* G-2：用户消息保留浅底气泡，靠右、最大宽 80%，没有 `YOU` 标签。 */
+.kaus-msg.is-user {
+  align-self: flex-end;
+  max-width: 80%;
+  text-align: right;
+}
+
+.kaus-msg.is-assistant {
+  align-self: stretch;
+}
+
+/* G-2：助手正文不装盒子——无边框、无底色，行高 1.6，段间距 12px。 */
+.kaus-prose {
+  color: var(--midground-base);
+  font: 13px/1.6 var(--theme-font-sans);
+}
+
+.kaus-prose > span > * + * {
+  margin-top: 12px;
+}
+
+.kaus-prose p {
+  margin: 0 0 12px;
+}
+
+.kaus-prose p:last-child {
+  margin-bottom: 0;
+}
+
+.kaus-prose-empty {
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font-size: 12px;
+}
+
+/* G-2：时间戳平时不显示，悬停整条消息时在右侧淡出。 */
+.kaus-msg-time {
+  display: block;
+  margin-top: 2px;
+  opacity: 0;
+  text-align: right;
+  transition: opacity 120ms ease;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 10px/1 var(--theme-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.kaus-msg:hover .kaus-msg-time,
+.kaus-msg:focus-within .kaus-msg-time {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kaus-msg-time {
+    transition: none;
+  }
+}
+
+/* 批次十三：卡片头部的时间与消息的时间戳同一条口径——平时不显示，悬停淡出。 */
+.kaus-card-time {
+  opacity: 0;
+  transition: opacity 120ms ease;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 10px/1 var(--theme-font-mono);
+}
+
+.kaus-card:hover .kaus-card-time,
+.kaus-card:focus-within .kaus-card-time {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kaus-card-time {
+    transition: none;
+  }
+}
+
+.kaus-msg-role {
+  margin-bottom: 3px;
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font: 700 9px/1 var(--theme-font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.kaus-msg-body {
+  border: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--midground-base) 2%, transparent);
+  font: 13px/1.7 var(--theme-font-sans);
+  white-space: pre-wrap;
+}
+
+/* H-2：用户气泡换中性浅面（原来是绿底）。边框仍是现有 hairline，圆角不动。 */
+.kaus-msg.is-user .kaus-msg-body {
+  border-color: color-mix(in srgb, var(--midground-base) 14%, transparent);
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+}
+
+/* 占位气泡（AD-94）：同一个气泡，只淡化——沿用界面里已有的 opacity 手法，
+   不新造颜色。发失败时只把边换成现有的 --danger。 */
+.kaus-msg.is-pending {
+  opacity: 0.55;
+}
+
+.kaus-msg.is-failed .kaus-msg-body {
+  border-color: var(--danger);
+}
+
+.kaus-msg-note {
+  margin-top: 3px;
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font: 10px/1.4 var(--theme-font-mono);
+}
+
+.kaus-msg.is-failed .kaus-msg-note {
+  color: var(--danger);
+}
+
+.kaus-msg-retry {
+  margin-left: 6px;
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* batch39 第 2 件：上一轮还在跑时这枚「重发」照旧在位，只是点不动——入口的位置
+   不跟着状态忽隐忽现，可用性由禁用态和 title 说话。 */
+.kaus-msg-retry:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  text-decoration: none;
+}
+
+/* batch38 / R6：已经落库、但引擎没接下的那条用户消息。与本地占位失败气泡同一套
+   （危险色边 + 小字原因 + 重发），另加一层淡化——它在会话历史里，但它没生效。 */
+.kaus-msg.is-undelivered .kaus-msg-body {
+  opacity: 0.55;
+}
+
+/* ---- batch12：折叠行（工具 / 推理 / 已回答的审批） ---- *
+ * G-3 / G-4 / G-5：默认都是一行，点开才有细节。行本身没有盒子——只有一条
+ * 悬停底色，和消息流的"不装盒子"保持一致。颜色 / 圆角 / 图标一律沿用现值（AD-78）。 */
+.kaus-tool-head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+  border-radius: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--midground-base);
+  font: 12px/1.5 var(--theme-font-sans);
+}
+
+.kaus-tool-head:hover {
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+}
+
+.kaus-tool-chevron {
+  flex: none;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+}
+
+.kaus-tool-name {
+  flex: none;
+  font-family: var(--theme-font-mono);
+}
+
+/* 预览串：一行放不下就截断，绝不换行——折叠态永远只有一行高。 */
+.kaus-tool-preview {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kaus-tool-preview::before,
+.kaus-permission-subject::before {
+  content: "· ";
+}
+
+.kaus-tool-tail {
+  margin-left: auto;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 11px/1 var(--theme-font-mono);
+}
+
+/* 出错只把状态点染成 --danger，行文字保持墨色（G-3）。 */
+.kaus-tool-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--midground-base) 35%, transparent);
+}
+
+.kaus-tool-dot.is-running {
+  background: var(--gold);
+  animation: kaus-pulse 1.6s ease-in-out infinite;
+}
+
+.kaus-tool-dot.is-failed {
+  background: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kaus-tool-dot.is-running {
+    animation: none;
+  }
+}
+
+.kaus-tool-body,
+.kaus-reasoning-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 6px 4px 22px;
+}
+
+.kaus-tool-progress {
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 10.5px/1.4 var(--theme-font-mono);
+}
+
+/* batch17 第 2 件：展开态的入参。等宽键值对，对象再列一层；
+   只有预览串时是一行「命令：…」。两者都不出现原始 JSON。 */
+.kaus-tool-args {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kaus-tool-kv {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font: 0.7rem/1.55 var(--theme-font-mono);
+}
+
+.kaus-tool-kv-key {
+  flex: none;
+  min-width: 68px;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+}
+
+.kaus-tool-kv-value {
+  min-width: 0;
+  color: color-mix(in srgb, var(--midground-base) 72%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.kaus-tool-kv-nested {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kaus-tool-kv-sub {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.kaus-tool-command {
+  color: color-mix(in srgb, var(--midground-base) 72%, transparent);
+  font: 0.7rem/1.55 var(--theme-font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* 回填到达的标记：中性小点，说明挂在 title 上（H：工作区不用强调色）。 */
+.kaus-tool-backfill {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--midground-base) 32%, transparent);
+}
+
+/* 页尾的中性解释小字（batch17：`runtime_lost`）。 */
+.kaus-flow-note {
+  padding: 2px 2px 6px;
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font: 11px/1.6 var(--theme-font-sans);
+}
+
+.kaus-tool-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 16px;
+}
+
+/* 批次十三：计划行展开后的步骤表。中性小字，状态只是一个前缀词，不上色。 */
+.kaus-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: color-mix(in srgb, var(--midground-base) 70%, transparent);
+  font: 12px/1.55 var(--theme-font-sans);
+}
+
+.kaus-plan-status {
+  margin-right: 7px;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 10.5px/1.4 var(--theme-font-mono);
+}
+
+.kaus-plan-list li[data-status="completed"] {
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+}
+
+.kaus-reasoning-summary,
+.kaus-reasoning-text {
+  margin: 0;
+  white-space: pre-wrap;
+  color: color-mix(in srgb, var(--midground-base) 58%, transparent);
+  font: 12px/1.6 var(--theme-font-sans);
+}
+
+/* G-5：回答完的审批收成一行。 */
+.kaus-permission-done {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  font: 12px/1.5 var(--theme-font-sans);
+}
+
+.kaus-permission-mark {
+  flex: none;
+  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  font-family: var(--theme-font-mono);
+}
+
+.kaus-permission-mark.is-denied {
+  color: var(--danger);
+}
+
+.kaus-permission-subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* G-6：运行中，消息流末尾的一行反馈。 */
+.kaus-replying {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: color-mix(in srgb, var(--midground-base) 50%, transparent);
+  font: 12px/1.5 var(--theme-font-sans);
+}
+
+/* G-10：历史还没到时的三行骨架。 */
+.kaus-skeleton-line {
+  height: 12px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--midground-base) 8%, transparent);
+  animation: kaus-pulse 1.6s ease-in-out infinite;
+}
+
+.kaus-skeleton-line:nth-child(2) {
+  width: 82%;
+}
+
+.kaus-skeleton-line:nth-child(3) {
+  width: 54%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kaus-skeleton-line {
+    animation: none;
+  }
+}
+
+/* ---- batch12：输入区 ---- */
+.kaus-composer-wrap {
+  position: relative;
+  flex: none;
+  padding-bottom: 18px;
+}
+
+/* 对话页 batch12 之后 textarea 下面多了一条工具栏，所以那一版竖着排：
+   `.kaus-composer-row` 才是原来草稿页那一行（草稿页不加 is-stacked，不受影响）。 */
+.kaus-composer.is-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.kaus-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+/* G-7：textarea 下方一行工具栏，左起 项目 · 引擎 · 模型 · 审批模式。 */
+.kaus-composer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
+}
+
+.kaus-composer-bar:empty {
+  display: none;
+}
+
+/* ---- batch13：工具栏（DESIGN ★ I + H-4） ---- *
+ * 全中性描边 Pill，可点的多一个 `▾`。形态（圆角 1px、9.6px 等宽大写、0.14em 字距）
+ * 沿用原来那枚 `.kaus-composer-select`，只是不再是原生 `<select>`。 */
+.kaus-bar-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 220px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 13%, transparent);
+  border-radius: 1px;
+  padding: 2px 5px;
+  background: transparent;
+  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 9.6px/1.4 var(--theme-font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.kaus-bar-pill.is-button {
+  cursor: pointer;
+}
+
+.kaus-bar-pill.is-button:hover {
+  border-color: color-mix(in srgb, var(--midground-base) 26%, transparent);
+  color: var(--midground-base);
+}
+
+.kaus-bar-caret {
+  flex: none;
+  opacity: 0.7;
+}
+
+/* 批次十五第 5 件：目录降级时 Pill 右侧的小点。**中性**（★H：工作区不上强调色），
+   原因挂在整枚 Pill 的 title 上，工具栏不因此变长。 */
+.kaus-bar-dot {
+  flex: none;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--midground-base) 40%, transparent);
+}
+
+.kaus-bar-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.kaus-bar-spacer {
+  margin-left: auto;
+}
+
+/* 浮层菜单：形态与用量 Pill 的浮层同族（同一套边、圆角、阴影）。 */
+.kaus-bar-pop {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 6;
+  display: flex;
+  min-width: 160px;
+  max-height: 260px;
+  flex-direction: column;
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 16%, transparent);
+  border-radius: 8px;
+  padding: 4px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+}
+
+/* batch29 / ★I-3：按 provider 分组的一段（组头 + 该组的项）。它只是个容器，
+   形态一律由里面的项决定——外层 `.kaus-bar-pop` 是 flex column，这一层要接上。 */
+.kaus-bar-pop-group {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 组头：小号大写的中性小字，与站内其它 section 标签同形（★H：工作区不上强调色）。
+   它不可点、不该被选中，所以没有 hover 也没有指针。 */
+.kaus-bar-pop-head {
+  padding: 6px 8px 3px;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 600 9.5px/1.3 var(--theme-font-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* batch30 / ★I-3：组头现在是个按钮（点它展开/收起这一组）。形态一个字不改——
+   它看上去仍旧是那行小号大写灰字，只是点得动；折着的时候右边补一句条数。 */
+.kaus-bar-pop-head.is-button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.kaus-bar-pop-count {
+  color: color-mix(in srgb, var(--midground-base) 35%, transparent);
+  font: 9.5px/1.3 var(--theme-font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* 第一个组的头贴着菜单顶部（或过滤框）时不要多出一截空白。 */
+.kaus-bar-pop-group:first-child .kaus-bar-pop-head {
+  padding-top: 2px;
+}
+
+.kaus-bar-pop-item {
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--midground-base);
+  font: 11.5px/1.4 var(--theme-font-sans);
+}
+
+.kaus-bar-pop-item:hover {
+  background: color-mix(in srgb, var(--midground-base) 6%, transparent);
+}
+
+/* 当前项也用中性的深底反白（与导航选中项同一套），不用强调色（H-4）。 */
+.kaus-bar-pop-item.is-current {
+  background: var(--midground-base);
+  color: var(--background-base);
+}
+
+/* 目录降级时垫在下拉底部的一行小字。 */
+.kaus-bar-pop-note {
+  padding: 5px 8px 3px;
+  border-top: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
+  color: color-mix(in srgb, var(--midground-base) 48%, transparent);
+  font: 10.5px/1.45 var(--theme-font-sans);
+  white-space: normal;
+}
+
+/* 空目录那句话是菜单里唯一一行，头上不该再有分隔线。 */
+.kaus-bar-pop-note:first-child {
+  border-top: 0;
+}
+
+.kaus-bar-pop-note.is-error {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 6;
+  min-width: 180px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--danger);
+}
+
+/* 工作目录的小输入框：点开才有，宽度够看清一条路径。 */
+.kaus-bar-input {
+  width: 260px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 22%, transparent);
+  border-radius: 1px;
+  padding: 2px 5px;
+  background: var(--surface-raised);
+  color: var(--midground-base);
+  outline: none;
+  font: 10.5px/1.4 var(--theme-font-mono);
+}
+
+/* G-9：上翻之后固定在输入框上方居中。 */
+.kaus-jump-latest {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  z-index: 4;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
+  border-radius: 1px;
+  padding: 3px 8px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  color: color-mix(in srgb, var(--midground-base) 70%, transparent);
+  font: 9.6px/1.4 var(--theme-font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.kaus-caret {
+  display: inline-block;
+  width: 7px;
+  height: 13px;
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  background: var(--gold);
+  animation: kaus-pulse 1.1s ease-in-out infinite;
+}
+
+.kaus-lifecycle {
+  color: color-mix(in srgb, var(--midground-base) 38%, transparent);
+  font: 10px/1 var(--theme-font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.kaus-diagnostic {
+  display: flex;
+  gap: 8px;
+  border-left: 2px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.kaus-diagnostic-level {
+  color: var(--danger);
+  font: 700 9px/1.6 var(--theme-font-mono);
+  text-transform: uppercase;
+}
+
+.kaus-generic-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px dashed color-mix(in srgb, var(--midground-base) 20%, transparent);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 11.5px;
+}
+
+.kaus-generic-type {
+  color: var(--accent-text);
+  font: 700 10px/1 var(--theme-font-mono);
+}
+
+/* ------------------------------------------------------------------ */
+/* 项目详情页（批次九第 4 件）。左边是次级导航（紧凑树，宽度沿用侧栏现值），   */
+/* 右边是分区。分区本身全部用现有 Card / Section / FieldRow，这里只排版。      */
+/* ------------------------------------------------------------------ */
+
+.kaus-project-page {
+  display: flex;
+  min-height: 100%;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 28px 28px 60px;
+}
+
+.kaus-project-nav {
+  position: sticky;
+  top: 28px;
+  display: flex;
+  width: var(--kaus-rail-width, 280px);
+  min-width: 200px;
+  max-height: calc(100dvh - 80px);
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.kaus-project-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.kaus-project-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kaus-project-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 10px/1.4 var(--theme-font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.kaus-project-crumbs button {
+  color: var(--accent-text);
+}
+
+/* 批次十五第 3 件：kicker 的「← 轮盘」。AD-98 去掉的是返回箭头**按钮**，
+   文字链接仍然允许——它是项目页回到刚才那张轮盘的唯一一条路。 */
+.kaus-project-crumbs .kaus-crumb-wheel:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.kaus-project-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.kaus-project-title h1 {
+  font: 600 20px/1.2 var(--theme-font-sans);
+}
+
+.kaus-project-conversation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 7px;
+  padding: 7px 8px;
+  font: 13px/1 var(--theme-font-mono);
+  text-align: left;
+}
+
+.kaus-project-conversation:hover {
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+}
+
+.kaus-cap-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.kaus-cap-row {
+  display: grid;
+  gap: 10px;
+  /* 三列：类型 / 内容 / 来源。第四列「操作」随批次十一第 1 件去掉——写端点还没接上
+     就是没有操作列，不是显示一列「需后端补」的占位。 */
+  grid-template-columns: minmax(120px, 1.2fr) minmax(120px, 1.6fr) minmax(110px, 1fr);
+  align-items: baseline;
+  padding: 6px 2px;
+  border-top: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
+  font-size: 12px;
+}
+
+.kaus-cap-row.is-head {
+  border-top: 0;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 9px/1 var(--theme-font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.kaus-cap-row.is-blocked {
+  opacity: 0.7;
+}
+
+/* batch18 第 2 件：写端点在的时候才多一列「操作」（AD-71，缺就整列不渲染）。 */
+.kaus-cap-table.has-actions .kaus-cap-row {
+  grid-template-columns:
+    minmax(120px, 1.2fr) minmax(120px, 1.6fr) minmax(110px, 1fr)
+    32px;
+}
+
+.kaus-cap-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.kaus-cap-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+/* 「…」按钮：与侧栏那枚同一套（同尺寸、同悬停底、同中性色），不新造样式。 */
+.kaus-cap-menu-button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--midground-base) 70%, transparent);
+}
+
+.kaus-cap-menu-button:hover {
+  background: color-mix(in srgb, var(--midground-base) 6%, transparent);
+}
+
+.kaus-cap-menu-button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* 菜单沿用 `.kaus-bar-pop`，只把它从"向上弹"改成"向下弹"（表格行下方空间足够）。 */
+.kaus-cap-menu .kaus-bar-pop {
+  top: calc(100% + 4px);
+  right: 0;
+  bottom: auto;
+  left: auto;
+}
+
+.kaus-project-more > summary {
+  cursor: pointer;
+  padding: 8px 0;
+  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  font: 700 10px/1 var(--theme-font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1100px) {
+  .kaus-project-page {
+    flex-direction: column;
+  }
+
+  .kaus-project-nav {
+    position: static;
+    width: 100%;
+    max-height: 280px;
+  }
+}
+
+/* ---- phase4：双表面（到终端 / 回站内 / 只读态 / 校准） ---- *
+ * 全中性（DESIGN ★H）：这一段没有一处强调色，也没有 `--danger`——启动降级与
+ * 「部分记录无法恢复」都是**降级不是错误**。形态沿用现有横幅与折叠行（AD-78）。 */
+
+.kaus-external-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kaus-bar-pop-item.is-static {
+  cursor: default;
+  font-family: var(--theme-font-mono);
+  font-size: 10.5px;
+}
+
+.kaus-external-degraded {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--midground-base) 4%, transparent);
+}
+
+.kaus-external-degraded-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: color-mix(in srgb, var(--midground-base) 70%, transparent);
+  font: 11.5px/1.4 var(--theme-font-sans);
+}
+
+.kaus-external-degraded-head > button {
+  margin-left: auto;
+}
+
+.kaus-external-degraded-reason {
+  margin: 0;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 11px/1.5 var(--theme-font-sans);
+}
+
+.kaus-external-degraded-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kaus-external-degraded-cmd > code {
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: var(--surface-raised);
+  color: var(--midground-base);
+  white-space: pre;
+  font: 11px/1.5 var(--theme-font-mono);
+}
+
+/* 降级说明的小字：中性，**不**用 --danger。 */
+.kaus-external-gap {
+  padding: 2px 0 0 18px;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 10.5px/1.5 var(--theme-font-sans);
+}
+
+.kaus-external-history-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ================================================================== *
+ * batch16：第二轮走查回灌
+ * 只加中性件与深色对比，字体 / 圆角 / 颜色 token 一个不动（AD-78）。
+ * ================================================================== */
+
+/* 第 6 件（F8）：深色下轮盘的细线与小字偏暗——只调透明度，不换色。
+   浅色一律不动；阻力常数与几何更不动（AD-81）。 */
+body.dark {
+  --graph-link-idle: color-mix(in srgb, var(--gold) 34%, transparent);
+}
+
+body.dark .ag-rl {
+  color: color-mix(in srgb, var(--midground-base) 66%, transparent);
+}
+
+/* 能力表的表头小字同步提一档（走查里"capability 小字偏暗"说的就是这行）。 */
+body.dark .kaus-cap-row.is-head {
+  color: color-mix(in srgb, var(--midground-base) 58%, transparent);
+}
+
+/* 第 5 件（F11）：长清单的过滤框。沿用 `.kaus-bar-input` 的形态，只是撑满菜单宽。 */
+.kaus-bar-filter {
+  margin-bottom: 4px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
+  border-radius: 0;
+  padding: 4px 6px;
+  background: transparent;
+  color: var(--midground-base);
+  outline: none;
+  font: 11px/1.4 var(--theme-font-sans);
+}
+
+/* 第 4 件（F4）：消息悬停动作。中性、无底色，和时间戳同一条淡出口径。 */
+.kaus-msg-actions {
+  position: absolute;
+  top: -10px;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.kaus-msg:hover .kaus-msg-actions,
+.kaus-msg:focus-within .kaus-msg-actions,
+/* batch17 第 3 件：键盘聚焦（React 记的那一档）与触控设备上一律可见——
+   只靠 hover 的入口在触屏上等于不存在。 */
+.kaus-msg[data-actions-visible="true"] .kaus-msg-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .kaus-msg-actions {
+    opacity: 1;
+  }
+}
+
+.kaus-msg-action {
+  border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: var(--surface-raised);
+  cursor: pointer;
+  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  font: 10px/1.4 var(--theme-font-sans);
+}
+
+.kaus-msg-action:hover {
+  color: var(--midground-base);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kaus-msg-actions {
+    transition: none;
+  }
+}
+
+/* 第 2 件（F3）：「回到站内」的说明弹窗。用现有 Modal 的底面，两枚按钮平铺。 */
+.kaus-return-dialog p {
+  margin-bottom: 14px;
+  color: var(--midground-base);
+  font: 13px/1.6 var(--theme-font-sans);
+}
+
+.kaus-return-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* 第 3 件（F5b）：外壳判定完成前的中性骨架。 */
+.kaus-shell-skeleton {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+.kaus-shell-skeleton-rail {
+  flex: none;
+  width: 232px;
+  border-right: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
+  padding: 18px 14px;
+}
+
+.kaus-shell-skeleton-main {
+  flex: 1;
+  padding: 28px 32px;
+}
+
+/* 第 1 件：停止未获确认时补在「正在停止…」后面的一句中性小字。 */
+.kaus-replying-note {
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font: 11px/1.5 var(--theme-font-sans);
+}
+
+/* batch30 第 1 件：SSE 到不了、改走轮询时输入区上方那一行小字。中性到底
+   （★H：工作区不上强调色）——它是一条事实，不是一个需要用户处理的错误。 */
+.kaus-transport-note {
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font: 11px/1.5 var(--theme-font-sans);
+  padding: 0 2px 4px;
+}
+
+/* batch39 第 1 件：运行中按 Enter 之后输入框**下面**那一行小字。与上面那条轮询提示
+   同一套中性字号色值（★H）——它是一条事实，不是一个需要用户处理的错误。 */
+.kaus-composer-note {
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font: 11px/1.5 var(--theme-font-sans);
+  padding: 4px 2px 0;
+}
+
+/* ================================================================== *
+ * batch23：Group 浮窗（DESIGN ★ 定稿 J）
+ * ================================================================== *
+ * 固定在右下角，宽 420px、最高 60vh；**不是抽屉**，不占主区、不推开内容。
+ * 全中性（★H）：这一片唯一的强调色是成员行/组行的运行点。形态（1px 圆角的
+ * Pill、8px 圆角的浮层、9.6px 等宽大写）沿用输入区工具栏那一套，不发明新语汇。
+ */
+.kaus-group-dock {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  /* z-40：压过主区与侧栏，但让在它之上的 Modal(z-70) 与 toast(z-80) 照旧盖住它。 */
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.kaus-group-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 16%, transparent);
+  border-radius: 1px;
+  padding: 5px 9px;
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  font: 9.6px/1.4 var(--theme-font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.kaus-group-pill:hover {
+  border-color: color-mix(in srgb, var(--midground-base) 28%, transparent);
+  color: var(--midground-base);
+}
+
+.kaus-group-panel {
+  display: flex;
+  width: 420px;
+  max-width: calc(100vw - 40px);
+  max-height: 60vh;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 16%, transparent);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+}
+
+.kaus-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+}
+
+.kaus-group-head-title {
+  margin-right: auto;
+  color: var(--midground-base);
+  font: 9.6px/1.4 var(--theme-font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.kaus-group-icon-btn {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 6px;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--midground-base) 50%, transparent);
+  font: 13px/1 var(--theme-font-sans);
+}
+
+.kaus-group-icon-btn:hover {
+  background: color-mix(in srgb, var(--midground-base) 7%, transparent);
+  color: var(--midground-base);
+}
+
+.kaus-group-body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.kaus-group-empty,
+.kaus-group-error {
+  padding: 10px 8px;
+  color: color-mix(in srgb, var(--midground-base) 48%, transparent);
+  font: 11.5px/1.6 var(--theme-font-sans);
+}
+
+.kaus-group-error {
+  color: var(--danger);
+}
+
+.kaus-group-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  padding: 6px 7px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--midground-base);
+  font: 12px/1.4 var(--theme-font-sans);
+}
+
+.kaus-group-row:hover {
+  background: color-mix(in srgb, var(--midground-base) 6%, transparent);
+}
+
+.kaus-group-detail {
+  padding: 2px 0 8px 20px;
+}
+
+.kaus-group-actions {
+  display: flex;
+  gap: 6px;
+  padding: 2px 0 6px;
+}
+
+.kaus-group-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.kaus-group-member {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  padding: 5px 7px;
+  font: 11.5px/1.4 var(--theme-font-sans);
+}
+
+.kaus-group-member:hover {
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+}
+
+.kaus-group-member-title {
+  flex: 1;
+  overflow: hidden;
+  color: var(--midground-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 角色标 / 成员状态：中性描边小标，与侧栏的引擎字母标同族。 */
+.kaus-group-tag {
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 13%, transparent);
+  border-radius: 1px;
+  padding: 0 4px;
+  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  font: 9px/1.6 var(--theme-font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.kaus-group-dim {
+  flex: none;
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font: 10px/1.4 var(--theme-font-sans);
+}
+
+/* 三张小表单（新建组 / 选择已有会话 / 启动新成员）共用一条横排。 */
+.kaus-group-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 7px;
+  border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
+}
+
+.kaus-group-form-actions {
+  display: flex;
+  margin-left: auto;
+  gap: 6px;
+}
+
+.kaus-group-input {
+  min-width: 150px;
+  flex: 1;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 18%, transparent);
+  border-radius: 6px;
+  padding: 4px 7px;
+  background: var(--surface-raised);
+  outline: none;
+  color: var(--midground-base);
+  font: 12px/1.5 var(--theme-font-sans);
+}
+
+/* 关组处置：两个选项各带一句后果说明。选中态用中性描边加重，不上强调色。 */
+.kaus-group-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.kaus-group-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+  border-radius: 8px;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+/* 原生 radio 默认是浏览器的蓝：那是一个不在我们色板里的强调色（★H / AD-78）。
+   钉成中性的前景色。 */
+.kaus-group-choice input[type="radio"] {
+  margin-top: 2px;
+  accent-color: var(--midground-base);
+}
+
+.kaus-group-choice.is-current {
+  border-color: color-mix(in srgb, var(--midground-base) 34%, transparent);
+}
+
+.kaus-group-choice b {
+  display: block;
+  color: var(--midground-base);
+  font: 600 12.5px/1.5 var(--theme-font-sans);
+}
+
+.kaus-group-choice em {
+  display: block;
+  margin-top: 2px;
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 11.5px/1.6 var(--theme-font-sans);
+  font-style: normal;
+}
+
+.kaus-group-close-counts {
+  margin-bottom: 14px;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 11px/1.6 var(--theme-font-sans);
+}
+
+/* 浮窗里的菜单**向下**弹：工具栏那套是向上弹的（它贴在页面底部），而这里的按钮
+   在浮层顶部，向上弹会被浮层自己的边裁掉。成员行的「…」再靠右对齐，免得一个
+   420px 宽的浮层被一枚菜单顶出横向滚动条。 */
+.kaus-group-menu > .kaus-bar-pop {
+  top: calc(100% + 4px);
+  bottom: auto;
+}
+
+.kaus-group-member .kaus-group-menu > .kaus-bar-pop {
+  right: 0;
+  left: auto;
+}
+
+/* ================================================================== *
+ * batch26：Group 浮窗的展开态（三栏）与广播输入框
+ * ================================================================== *
+ * 展开一个组之后浮层变宽到 760px、变高到 72vh，里面是三栏 + 一条底部输入。
+ * 它要读起来像**一件工具**：栏与栏之间只有 1px 细线，没有各自的卡片壳、圆角与
+ * 底色；三个栏头是同一档 9.6px 等宽大写（与浮层头同一档）。窄屏（≤820px）折成
+ * 三个 tab —— 纯 CSS，DOM 一个不少。全中性（★H），唯一的强调色仍旧只有运行点。
+ */
+.kaus-group-panel.is-wide {
+  width: 760px;
+  max-height: 72vh;
+}
+
+.kaus-group-body.is-workspace {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 展开的那个组占满剩下的高度；其余组行照旧是一行一条。 */
+.kaus-group-body.is-workspace > .kaus-group-item:has(.kaus-group-detail) {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.kaus-group-detail.is-workspace {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  padding-left: 0;
+}
+
+.kaus-group-workspace {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.kaus-group-panes {
+  display: flex;
+  min-height: 220px;
+  flex: 1;
+  border-top: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+}
+
+.kaus-group-pane {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+/* 中间那栏是主角，两边窄一点。分栏靠一条细线，不靠间距与底色。 */
+.kaus-group-pane[data-pane="members"] {
+  flex: 0 0 216px;
+}
+
+.kaus-group-pane[data-pane="packet"] {
+  flex: 0 0 232px;
+}
+
+.kaus-group-pane + .kaus-group-pane {
+  border-left: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+}
+
+.kaus-group-pane-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0 6px;
+  background: var(--panel);
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 9.6px/1.4 var(--theme-font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.kaus-group-pane-head > span:first-child {
+  margin-right: auto;
+}
+
+.kaus-group-pane-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+/* tab 条：只在窄屏出现。 */
+.kaus-group-tabs {
+  display: none;
+  gap: 4px;
+  padding: 6px 8px 0;
+}
+
+.kaus-group-tab {
+  border: 1px solid transparent;
+  border-radius: 1px;
+  padding: 3px 8px;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 9.6px/1.4 var(--theme-font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.kaus-group-tab.is-current {
+  border-color: color-mix(in srgb, var(--midground-base) 28%, transparent);
+  color: var(--midground-base);
+}
+
+/* 一条消息：种类小标 · 时间 · 投递摘要，正文在下面一行。 */
+.kaus-group-message {
+  padding: 6px 0;
+  border-top: 1px solid color-mix(in srgb, var(--midground-base) 9%, transparent);
+}
+
+.kaus-group-message-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* batch45a（★J-5）：成员发言的那一行。与用户那几条是**同一条时间线**，所以不给
+   它卡片壳、圆角或底色（★J-2：这一片要读起来像一件工具）；区别只靠左边一条细
+   竖线 + 缩进——顺着往下扫的时候，「这是别人说的」一眼分得出来，又不必先读完
+   一枚种类小标。失败那一轮把竖线换成 --danger 的淡色：失败仍是唯一染色的一档。 */
+.kaus-group-turn {
+  padding-left: 8px;
+  border-left: 2px solid color-mix(in srgb, var(--midground-base) 16%, transparent);
+}
+
+.kaus-group-turn[data-outcome="failed"] {
+  border-left-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+/* batch45b：收口那一条（`final`）。它是用户等的那个答案，所以这一片里只有它被
+   抬起来一档——一条实一点的左竖线 + 一层极淡的底。仍旧**不上强调色**（★H：强调
+   色只给运行点与审批边框）：抬一档靠的是对比度，不是又一种颜色。 */
+.kaus-group-turn.is-final {
+  border-left-color: var(--midground-base);
+  background: color-mix(in srgb, var(--midground-base) 4%, transparent);
+}
+
+.kaus-group-turn.is-final .kaus-group-message-text {
+  font-weight: 500;
+}
+
+/* 组头那一行：房间在转的时候才有（运行点 + 「第 k/N 轮 · 轮到 B」 + 「停」）。 */
+.kaus-group-thread {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 9%, transparent);
+}
+
+.kaus-group-thread .kaus-group-summary {
+  margin-left: auto;
+}
+
+/* 成员名是这一行的第一眼，所以它比周围的小字重一档（但仍不上强调色，★H）。 */
+.kaus-group-turn .kaus-group-member-title {
+  color: var(--midground-base);
+  font: 500 10.5px/1.4 var(--theme-font-sans);
+}
+
+.kaus-group-message-text {
+  margin-top: 3px;
+  color: var(--midground-base);
+  font: 11.5px/1.6 var(--theme-font-sans);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.kaus-group-summary {
+  margin-left: auto;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font: 10px/1.4 var(--theme-font-sans);
+}
+
+.kaus-group-summary:hover {
+  color: var(--midground-base);
+}
+
+/* batch45c（★J-6）：正序之后时间线两端各一枚小按钮。两枚都用既有的
+   `.kaus-group-summary` 语汇（全中性、10px），只是各自贴在一端——不发明新形状。 */
+.kaus-group-earlier {
+  align-self: center;
+  margin: 2px 0 6px;
+}
+
+/* 「回到最新 · N 条新」浮在底部：它要在用户往上翻着的时候一直看得见，
+   所以 sticky 而不是跟着内容滚走。 */
+.kaus-group-jump {
+  position: sticky;
+  bottom: 4px;
+  align-self: center;
+  margin: 6px 0 2px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 18%, transparent);
+  border-radius: 1px;
+  background: var(--panel);
+  color: var(--midground-base);
+}
+
+.kaus-group-deliveries {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+}
+
+.kaus-group-deliveries li {
+  display: flex;
+  gap: 6px;
+  font: 10.5px/1.5 var(--theme-font-sans);
+}
+
+/* 失败是唯一染色的一档：「跳过」不是错误，不该红（★H）。 */
+.kaus-group-bad {
+  flex: none;
+  color: var(--danger);
+  font: 10px/1.4 var(--theme-font-sans);
+}
+
+/* batch27：组时间线顶上那条常驻通知（首句没发出去）。它不是 toast——不会自己
+   消失，用户读完自己关。描边取 --danger 的一层淡色：这是一件真的没做成的事。 */
+.kaus-group-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
+}
+
+.kaus-group-notice .kaus-group-summary {
+  margin-left: 0;
+  align-self: flex-start;
+}
+
+/* Context Packet 的只读表。 */
+.kaus-group-packet {
+  width: 100%;
+  border-collapse: collapse;
+  font: 10.5px/1.5 var(--theme-font-sans);
+}
+
+.kaus-group-packet th {
+  padding: 2px 4px 4px 0;
+  text-align: left;
+  color: color-mix(in srgb, var(--midground-base) 40%, transparent);
+  font: 9px/1.4 var(--theme-font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.kaus-group-packet-meta {
+  display: block;
+  margin-top: 1px;
+  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  font: 9.5px/1.5 var(--theme-font-sans);
+}
+
+.kaus-group-packet td {
+  padding: 3px 4px 3px 0;
+  border-top: 1px solid color-mix(in srgb, var(--midground-base) 9%, transparent);
+  vertical-align: top;
+  word-break: break-word;
+}
+
+/* 底部广播输入：与会话页 ComposerBar 同一语汇（中性描边、深底反白主按钮），
+   但更矮——浮窗里没有那一整行工具栏的位置。 */
+.kaus-group-composer {
+  border-top: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+  padding: 6px 8px 8px;
+}
+
+.kaus-group-composer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.kaus-group-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+/* batch48：`@` 浮层的定位锚（PRD §A5）。输入框本来是 composer-row 的一个 flex
+   子项，浮层要贴着它、又不能把它挤窄，所以给它包一层 `position: relative` 的
+   容器并继承那一份伸缩——形态照旧由 `.kaus-bar-pop` 出，这里一个新样式都不加。 */
+.kaus-group-mention-anchor {
+  flex: 1;
+  min-width: 0;
+}
+
+.kaus-group-mention-anchor > .kaus-group-textarea {
+  width: 100%;
+}
+
+.kaus-group-textarea {
+  min-height: 44px;
+  resize: none;
+}
+
+/* 浮窗里的发送：与会话页同一枚按钮，矮一档（★J 追加节：更矮的 Composer）。 */
+.kaus-send.is-compact {
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+}
+
+/* 成员行第二行：元信息（角色/状态标 · 项目 · 引擎 · 终端图标）。与标题对齐缩进。 */
+.kaus-group-pane[data-pane="members"] .kaus-group-member {
+  flex-wrap: wrap;
+  row-gap: 1px;
+}
+
+.kaus-group-member-meta {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding-left: 24px;
+}
+
+.kaus-group-member-meta:empty {
+  display: none;
+}
+
+
+
+@media (max-width: 820px) {
+  .kaus-group-panel.is-wide {
+    width: calc(100vw - 40px);
+  }
+
+  .kaus-group-tabs {
+    display: flex;
+  }
+
+  .kaus-group-panes.is-tab-members .kaus-group-pane:not([data-pane="members"]),
+  .kaus-group-panes.is-tab-timeline .kaus-group-pane:not([data-pane="timeline"]),
+  .kaus-group-panes.is-tab-packet .kaus-group-pane:not([data-pane="packet"]) {
+    display: none;
+  }
+
+  .kaus-group-pane {
+    flex: 1 !important;
+    border-left: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * batch40 / DESIGN ★L：概览页（工作台，不是封面）
+ * ------------------------------------------------------------------ *
+ * 一栏，最宽 900px，三张现有 Card 叠着。行是"一行一件事"：状态点 · 标题 ·
+ * 项目 · 引擎 · 状态词 · 相对时间。全中性（★H），强调色只给运行点。
+ */
+.kaus-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(900px, 100%);
+  margin: 0 auto;
+  padding: 28px 24px 40px;
+}
+
+/* ===== ★M 字标 treatment（批次四十一，用户裁决 2026-09-08）=====
+ *
+ * 批次四十把首页封面整块拿掉时，把**字体气质**跟营销文案一起扔了——★L 要收的
+ * 是那句没人需要的口号，不是排版本身。这一节按用户的三条裁决把气质接回来：
+ *
+ *   ① KAUS 用**和界面统一的绿**（--gold，不是当年那支米白）；
+ *   ② 它下面那一行仍旧是**米白**（#f3efe0）；
+ *   ③ 这两处的**投影继承**老 hero 的取值（只按尺寸等比收了一档）；
+ *   ④ **金色相关的一律不启用**：金属渐变 `.gold-text`、金箔底图 map-gold.jpg、
+ *      飞白颗粒、呼吸光晕 `home-pulse` 一样都没回来（备份仍在 archive/）。
+ *
+ * 为什么铭牌自带深底、不跟随阅读主题翻转：米白与投影只在深底上成立。浅色主题
+ * 的燕麦底（#eae7dd）上，#f3efe0 等于隐形，投影等于一团脏。所以这块是个**深色
+ * 小岛**，两套主题下长得一样——这是让①②③三条同时成立的唯一办法。
+ *
+ * 为什么这不算"封面又回来了"：副行载的是**真数据**（几条等你处理 / 几条在跑 /
+ * 几个项目），答得上 ★L 那三句话里的"什么等着我"。口号一个字都没回来，高度也
+ * 只有当年那张封面的四分之一。
+ */
+.kaus-overview-plate {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  overflow: hidden;
+  padding: 20px 24px;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
+  /* 深色岛：把强调色令牌就地换成亮柠檬，丢进来的按钮不用改自己就是对的
+     （Button 的 primary 走 --gold-soft / --accent-text）。 */
+  --gold: #cbee52;
+  --gold-soft: rgba(203, 238, 82, 0.14);
+  --accent-text: #cbee52;
+  /* 老 hero 去金之后那块安静的深底，原样搬过来。 */
+  background:
+    radial-gradient(70% 55% at 30% 18%, rgba(255, 255, 255, 0.05), transparent 70%),
+    linear-gradient(160deg, #1c1f16 0%, #16180f 55%, #121409 100%);
+}
+
+/* 老 hero 的那道内框（.home-hero-frame），从 22px 收到 10px 并压淡：留一点当年
+   的边界感，不抢。 */
+.kaus-overview-plate::after {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+}
+
+/* 字标：56px → 36px，斜切 -7° 与投影都照抄 `.home-logo-stamp`，投影从
+   `0 3px 18px` 等比收到 `0 2px 12px`（字小了，影子也得跟着小，不然发糊）。 */
+.kaus-overview-stamp {
+  position: relative;
+  z-index: 1;
+  color: var(--gold);
+  font: 400 36px/0.82 var(--theme-font-display);
+  letter-spacing: 0.02em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+  transform: skewX(-7deg);
+  transform-origin: left bottom;
+}
+
+/* 副行嵌在字标里、再反向斜切掰正——这是老 `.home-logo-stamp small` 的原做法，
+   照抄以保住那点手感（斜的是牌子，字是正的）。米白 + 老投影原样。
+   字号从 9px 抬到 10.5px、字距从 .26em 收到 .045em：这一行有中文，9px 加宽字距
+   在中文上是散的（.08em 试过，中文之间还是撑得开）。 */
+.kaus-overview-stamp small {
+  display: block;
+  margin-top: 7px;
+  color: #f3efe0;
+  font: 700 10.5px/1.5 var(--theme-font-mono);
+  letter-spacing: 0.045em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  transform: skewX(7deg);
+  transform-origin: left center;
+}
+
+.kaus-overview-plate .kaus-overview-actions {
+  position: relative;
+  z-index: 1;
+  margin-left: auto;
+}
+
+.kaus-overview-error {
+  padding: 6px 2px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.kaus-overview-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.kaus-overview-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  padding: 7px 4px;
+  border-top: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+}
+
+.kaus-overview-list > .kaus-overview-row:first-child {
+  border-top: 0;
+}
+
+.kaus-overview-row:hover {
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+}
+
+.kaus-overview-row .kaus-run-dot {
+  align-self: center;
+}
+
+.kaus-overview-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--midground-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 项目 / 引擎 / 状态各给一个下限宽度并右对齐：一列行摆在一起时，眼睛是**按列**
+   扫的，宽度随内容浮动就会让四行看着像四个方向。 */
+.kaus-overview-meta {
+  flex: none;
+  min-width: 64px;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  text-align: right;
+  font-size: 11px;
+}
+
+.kaus-overview-state {
+  flex: none;
+  min-width: 72px;
+  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  text-align: right;
+  font-size: 11px;
+}
+
+.kaus-overview-time {
+  flex: none;
+  min-width: 56px;
+  color: color-mix(in srgb, var(--midground-base) 38%, transparent);
+  text-align: right;
+  font: 9.5px/1.6 var(--theme-font-mono);
+}
+
+.kaus-overview-empty {
+  padding: 6px 2px;
+  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ===== batch42 第 2 件：拖拽入组（DESIGN ★J-4 / §5.9 的拖拽目标规矩）=====
+ *
+ * 两条样式，一条都不多：
+ *  ① 拖起来的那条会话行压淡一点——"它正跟着光标走"，不发明新形状；
+ *  ② 放置目标 2px 虚线框。规范里写的令牌名是 --k-accent，仓库里对应的实现就是
+ *     --gold（界面统一的那支绿，Sidebar.tsx 的老拖拽目标用的也是它）。
+ */
+.kaus-conversation-row.is-dragging {
+  opacity: 0.45;
+}
+
+.kaus-group-pill.is-drop-target,
+.kaus-group-pane.is-drop-target {
+  outline: 2px dashed var(--gold);
+  outline-offset: -2px;
+}
+
+/* Group-owned material reuses the existing neutral workspace surfaces. */
+.kaus-group-materials .kaus-group-pane-head > span:first-child { flex: 1; }
+.kaus-group-materials .kaus-icon-btn, .kaus-group-message-actions .kaus-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; padding: 5px;
+  border: 0; border-radius: 4px; background: transparent; color: inherit; cursor: pointer;
+}
+.kaus-group-materials .kaus-icon-btn:hover, .kaus-group-message-actions .kaus-icon-btn:hover { background: var(--bg-hover, #8882); }
+.kaus-group-materials .kaus-icon-btn:disabled { opacity: .35; cursor: default; }
+.kaus-material { padding: 10px 0; border-bottom: 1px solid #8882; font-size: 12px; }
+.kaus-material-head, .kaus-material-editor-foot { display: flex; align-items: center; gap: 4px; }
+.kaus-material-head strong, .kaus-material-editor-foot small { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.kaus-material details { margin-top: 5px; }
+.kaus-material summary { cursor: pointer; overflow-wrap: anywhere; color: var(--text-muted); }
+.kaus-material pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 8px 0 0; }
+.kaus-material-editor { display: grid; gap: 7px; margin: 8px 0; }
+.kaus-material-editor input, .kaus-material-editor textarea, .kaus-material-editor select {
+  width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #8884; border-radius: 5px;
+  padding: 7px; font: inherit; font-size: 12px; background: var(--panel); color: inherit;
+}
+.kaus-material-editor textarea { resize: vertical; }
+.kaus-group-overview { margin-top: auto; padding-top: 14px; font-size: 11px; }
+.kaus-group-overview > summary { cursor: pointer; }
+.kaus-group-overview .kaus-group-pane { padding: 0; border: 0; }
+.kaus-group-message-actions { display: flex; justify-content: flex-end; gap: 2px; float: right; margin-top: -4px; }

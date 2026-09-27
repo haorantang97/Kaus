@@ -1,0 +1,182 @@
+[
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-0",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-question",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 0,
+    "occurredAt": "2026-01-01T00:00:00Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "run.started",
+      "runId": "run-question"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-1",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-question",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 1,
+    "occurredAt": "2026-01-01T00:00:00.001000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "question.requested",
+      "request": {
+        "requestId": "req-question",
+        "prompt": "要用哪个分支？",
+        "options": [
+          {
+            "optionId": "main",
+            "label": "main",
+            "kind": null
+          },
+          {
+            "optionId": "dev",
+            "label": "dev",
+            "kind": null
+          }
+        ],
+        "allowFreeText": true
+      }
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-2",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-question",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 2,
+    "occurredAt": "2026-01-01T00:00:00.002000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "question.resolved",
+      "requestId": "req-question"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-3",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-question",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 3,
+    "occurredAt": "2026-01-01T00:00:00.003000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "message.started",
+      "messageId": "msg-question",
+      "role": "assistant"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-4",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-question",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 4,
+    "occurredAt": "2026-01-01T00:00:00.004000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "message.delta",
+      "messageId": "msg-question",
+      "text": "收到，使用所选分支。"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-5",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-question",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 5,
+    "occurredAt": "2026-01-01T00:00:00.005000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "message.completed",
+      "messageId": "msg-question",
+      "text": "收到，使用所选分支。"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-6",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-question",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 6,
+    "occurredAt": "2026-01-01T00:00:00.006000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "run.completed",
+      "runId": "run-question"
+    }
+  }
+]

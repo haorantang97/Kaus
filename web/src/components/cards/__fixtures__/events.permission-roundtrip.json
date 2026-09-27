@@ -1,0 +1,166 @@
+[
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-0",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-permission",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 0,
+    "occurredAt": "2026-01-01T00:00:00Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "run.started",
+      "runId": "run-permission"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-1",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-permission",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 1,
+    "occurredAt": "2026-01-01T00:00:00.001000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "tool.started",
+      "callId": "call-perm",
+      "name": "write_file",
+      "input": {
+        "path": "a.txt"
+      }
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-2",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-permission",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 2,
+    "occurredAt": "2026-01-01T00:00:00.002000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "permission.requested",
+      "request": {
+        "requestId": "req-permission",
+        "title": "允许写入 a.txt？",
+        "detail": "Mock Driver 请求写入权限",
+        "toolCallId": "call-perm",
+        "options": [
+          {
+            "optionId": "allow",
+            "label": "允许",
+            "kind": "accept"
+          },
+          {
+            "optionId": "deny",
+            "label": "拒绝",
+            "kind": "reject"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-3",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-permission",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 3,
+    "occurredAt": "2026-01-01T00:00:00.003000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "permission.resolved",
+      "requestId": "req-permission",
+      "decision": "allow"
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-4",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-permission",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 4,
+    "occurredAt": "2026-01-01T00:00:00.004000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "tool.completed",
+      "callId": "call-perm",
+      "output": {
+        "written": true
+      },
+      "isError": false
+    }
+  },
+  {
+    "schemaVersion": "1.1",
+    "eventId": "evt-fixture-5",
+    "projectId": "project:fixture",
+    "conversationId": "conversation:fixture",
+    "agentBindingId": "binding:fixture:mock:main",
+    "backendId": "backend:mock",
+    "nativeSessionId": "native-session-fixture",
+    "runId": "run-permission",
+    "parentRunId": null,
+    "nativeEventId": null,
+    "sequence": 5,
+    "occurredAt": "2026-01-01T00:00:00.005000Z",
+    "source": {
+      "driverKind": "mock",
+      "driverVersion": "fixture",
+      "backendVersion": "0"
+    },
+    "event": {
+      "type": "run.completed",
+      "runId": "run-permission"
+    }
+  }
+]

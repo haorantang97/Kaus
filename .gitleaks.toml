@@ -1,0 +1,27 @@
+title = "Kaus source scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Non-secret reference URI in classifier tests"
+condition = "AND"
+paths = ['''^scripts/ops/tests/test_audit_inheritable_secrets\.py$''']
+regexTarget = "secret"
+regexes = [
+  '''^vault/anthropic$''',
+]
+
+[[allowlists]]
+description = "Non-secret browser storage key"
+condition = "AND"
+paths = ['''^web/src/lib/shellPrefs\.ts$''']
+regexTarget = "secret"
+regexes = ['''^kaus-default-destination-v1$''']
+
+[[allowlists]]
+description = "Non-secret FourKeyMap export in upstream minified xterm"
+condition = "AND"
+paths = ['''^static/vendor/xterm(-addon-webgl)?\.js$''']
+regexTarget = "match"
+regexes = ['''t\.FourKeyMap=''']

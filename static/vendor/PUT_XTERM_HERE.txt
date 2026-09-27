@@ -1,0 +1,5 @@
+把 xterm.js 三件套放到本目录（见 HANDOFF.md “vendor xterm” 一节）：
+  xterm.js            (UMD，全局 Terminal)
+  xterm.css
+  xterm-addon-fit.js  (UMD，全局 FitAddon.FitAddon)
+放好后刷新仪表板即可；缺失时前端会显示一行提示。

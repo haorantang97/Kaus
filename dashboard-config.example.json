@@ -1,0 +1,60 @@
+{
+  "_readme": "示例配置。复制成 dashboard-config.json 再按需删改；说明见 docs/ops/backends.md。这份文件里没有、也永远不该有任何密钥的值：env_keys 只写变量名，key_ref 只写引用。",
+  "features": {
+    "project_domain_v1": true,
+    "session_host_v1": true
+  },
+  "backends": [
+    {
+      "id": "backend:mock",
+      "driver": "mock",
+      "_note": "本地演示，不调用模型。真实对话请安装、登录并接入对应引擎。"
+    },
+    {
+      "_note": "已经在跑的原生 HTTP 网关。网关要你自己启动（mode=adopted）。",
+      "id": "backend:hermes",
+      "driver": "native-http",
+      "base_url": "http://127.0.0.1:8642",
+      "home": "~/.hermes",
+      "profile": "default",
+      "key_ref": "hermes-env:~/.hermes/.env#API_SERVER_KEY",
+      "mode": "adopted"
+    },
+    {
+      "_note": "ACP 预设：一行接入。登录先在终端里做好，仪表盘不代登录。",
+      "id": "backend:claude-code",
+      "driver": "acp",
+      "preset": "claude-code"
+    },
+    {
+      "_note": "env_keys 只写变量名；值放进后端进程自己的环境变量里。",
+      "id": "backend:codex",
+      "driver": "acp",
+      "preset": "codex",
+      "env_keys": [
+        "OPENAI_API_KEY"
+      ]
+    },
+    {
+      "id": "backend:opencode",
+      "driver": "acp",
+      "preset": "opencode"
+    },
+    {
+      "_note": "批次三十四新增的预设之一。它没有 ACP 内的登录方式，凭据只经环境变量——所以 env_keys 必须显式列名字，否则子进程读不到（AD-10 / AD-48）。可选的还有 deepseek-acp 与 kilo，见 docs/ops/backends.md §4。",
+      "id": "backend:dsh",
+      "driver": "acp",
+      "preset": "dsh",
+      "env_keys": [
+        "DSH_HOME",
+        "DEEPSEEK_API_KEY"
+      ]
+    }
+  ],
+  "terminal": {
+    "app": "terminal"
+  },
+  "runtime": {
+    "lease_ttl_seconds": 90
+  }
+}

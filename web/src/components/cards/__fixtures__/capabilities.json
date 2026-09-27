@@ -1,0 +1,984 @@
+{
+  "default": {
+    "ui": {
+      "structuredEvents": "supported",
+      "sessions": {
+        "list": "all",
+        "create": "supported",
+        "resume": "warm",
+        "history": "supported",
+        "branch": "unknown"
+      },
+      "card": {
+        "streaming": "supported",
+        "tools": {
+          "calls": "supported",
+          "output": "supported"
+        },
+        "terminal": "supported",
+        "fileChanges": "supported",
+        "artifacts": "supported",
+        "plan": "supported",
+        "reasoning": "supported",
+        "permissions": "protocol",
+        "questions": "supported",
+        "authentication": "supported",
+        "usage": "supported",
+        "interrupt": "immediate"
+      },
+      "externalCli": {
+        "supported": "supported",
+        "resume": "supported"
+      },
+      "models": {
+        "mode": "open",
+        "reasoning": "supported",
+        "providers": "supported"
+      },
+      "capabilityProjection": {
+        "skills": "native",
+        "mcp": "adapted",
+        "instructions": "adapted",
+        "memory": "partial",
+        "plugins": "unsupported"
+      }
+    },
+    "detail": {
+      "structuredEvents": {
+        "value": "supported",
+        "status": "supported",
+        "verification": "bench",
+        "supportedBool": true
+      },
+      "sessions": {
+        "list": {
+          "value": "all",
+          "status": "supported",
+          "verification": "bench",
+          "supportedBool": true
+        },
+        "create": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "bench",
+          "supportedBool": true
+        },
+        "resume": {
+          "value": "warm",
+          "status": "supported",
+          "verification": "bench",
+          "supportedBool": true
+        },
+        "history": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "bench",
+          "supportedBool": true
+        },
+        "branch": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "note": "分支（fork）没实测过，夹具把它留成 unknown，供契约测试验「跳过但计数」那条路。",
+          "supportedBool": false
+        }
+      },
+      "card": {
+        "streaming": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "tools": {
+          "calls": {
+            "value": "supported",
+            "status": "supported",
+            "verification": "declared",
+            "supportedBool": true
+          },
+          "output": {
+            "value": "supported",
+            "status": "supported",
+            "verification": "declared",
+            "supportedBool": true
+          }
+        },
+        "terminal": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "fileChanges": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "artifacts": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "plan": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "reasoning": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "permissions": {
+          "value": "protocol",
+          "status": "supported",
+          "verification": "bench",
+          "supportedBool": true
+        },
+        "questions": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "authentication": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "usage": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "note": "用量只报上下文占用，不报 token 计费用量（夹具刻意留的一项 detail 层备注）。",
+          "supportedBool": true
+        },
+        "interrupt": {
+          "value": "immediate",
+          "status": "supported",
+          "verification": "bench",
+          "supportedBool": true
+        }
+      },
+      "externalCli": {
+        "supported": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "resume": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        }
+      },
+      "models": {
+        "mode": "open",
+        "reasoning": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "providers": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        }
+      },
+      "capabilityProjection": {
+        "skills": "native",
+        "mcp": "adapted",
+        "instructions": "adapted",
+        "memory": "partial",
+        "plugins": "unsupported"
+      }
+    },
+    "unknownCount": 1
+  },
+  "lean": {
+    "ui": {
+      "structuredEvents": "supported",
+      "sessions": {
+        "list": "none",
+        "create": "supported",
+        "resume": "none",
+        "history": "unsupported",
+        "branch": "unsupported"
+      },
+      "card": {
+        "streaming": "supported",
+        "tools": {
+          "calls": "supported",
+          "output": "unsupported"
+        },
+        "terminal": "unknown",
+        "fileChanges": "unknown",
+        "artifacts": "unknown",
+        "plan": "unknown",
+        "reasoning": "unknown",
+        "permissions": "none",
+        "questions": "unknown",
+        "authentication": "unknown",
+        "usage": "unknown",
+        "interrupt": "none"
+      },
+      "externalCli": {
+        "supported": "unsupported",
+        "resume": "unsupported"
+      },
+      "models": {
+        "mode": "fixed",
+        "reasoning": "unknown",
+        "providers": "unknown"
+      },
+      "capabilityProjection": {
+        "skills": "adapted"
+      }
+    },
+    "detail": {
+      "structuredEvents": {
+        "value": "supported",
+        "status": "supported",
+        "verification": "declared",
+        "supportedBool": true
+      },
+      "sessions": {
+        "list": {
+          "value": "none",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "create": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "resume": {
+          "value": "none",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "history": {
+          "value": "unsupported",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "branch": {
+          "value": "unsupported",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "card": {
+        "streaming": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "tools": {
+          "calls": {
+            "value": "supported",
+            "status": "supported",
+            "verification": "declared",
+            "supportedBool": true
+          },
+          "output": {
+            "value": "unsupported",
+            "status": "unsupported",
+            "verification": "declared",
+            "supportedBool": false
+          }
+        },
+        "terminal": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "fileChanges": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "artifacts": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "plan": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "reasoning": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "permissions": {
+          "value": "none",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "questions": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "authentication": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "usage": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "interrupt": {
+          "value": "none",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "externalCli": {
+        "supported": {
+          "value": "unsupported",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "resume": {
+          "value": "unsupported",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "models": {
+        "mode": "fixed",
+        "reasoning": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "providers": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "capabilityProjection": {
+        "skills": "adapted"
+      }
+    },
+    "unknownCount": 10
+  },
+  "cold-reattach": {
+    "ui": {
+      "structuredEvents": "supported",
+      "sessions": {
+        "list": "own_process",
+        "create": "supported",
+        "resume": "cold",
+        "history": "unsupported",
+        "branch": "unsupported"
+      },
+      "card": {
+        "streaming": "supported",
+        "tools": {
+          "calls": "supported",
+          "output": "unsupported"
+        },
+        "terminal": "unknown",
+        "fileChanges": "unknown",
+        "artifacts": "unknown",
+        "plan": "unknown",
+        "reasoning": "supported",
+        "permissions": "mirror",
+        "questions": "unknown",
+        "authentication": "unknown",
+        "usage": "unsupported",
+        "interrupt": "tool_boundary"
+      },
+      "externalCli": {
+        "supported": "unsupported",
+        "resume": "unsupported"
+      },
+      "models": {
+        "mode": "constrained",
+        "reasoning": "unknown",
+        "providers": "unknown"
+      },
+      "capabilityProjection": {
+        "mcp": "adapted"
+      }
+    },
+    "detail": {
+      "structuredEvents": {
+        "value": "supported",
+        "status": "supported",
+        "verification": "declared",
+        "supportedBool": true
+      },
+      "sessions": {
+        "list": {
+          "value": "own_process",
+          "status": "supported",
+          "verification": "live",
+          "supportedBool": true
+        },
+        "create": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "resume": {
+          "value": "cold",
+          "status": "supported",
+          "verification": "live",
+          "supportedBool": true
+        },
+        "history": {
+          "value": "unsupported",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "branch": {
+          "value": "unsupported",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "card": {
+        "streaming": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "tools": {
+          "calls": {
+            "value": "supported",
+            "status": "supported",
+            "verification": "declared",
+            "supportedBool": true
+          },
+          "output": {
+            "value": "unsupported",
+            "status": "unsupported",
+            "verification": "declared",
+            "supportedBool": false
+          }
+        },
+        "terminal": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "fileChanges": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "artifacts": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "plan": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "reasoning": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "permissions": {
+          "value": "mirror",
+          "status": "supported",
+          "verification": "live",
+          "supportedBool": true
+        },
+        "questions": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "authentication": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "usage": {
+          "value": "unsupported",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "interrupt": {
+          "value": "tool_boundary",
+          "status": "supported",
+          "verification": "live",
+          "supportedBool": true
+        }
+      },
+      "externalCli": {
+        "supported": {
+          "value": "unsupported",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "resume": {
+          "value": "unsupported",
+          "status": "unsupported",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "models": {
+        "mode": "constrained",
+        "reasoning": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "providers": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "capabilityProjection": {
+        "mcp": "adapted"
+      }
+    },
+    "unknownCount": 8
+  },
+  "unprobed": {
+    "ui": {
+      "structuredEvents": "unknown",
+      "sessions": {
+        "list": "unknown",
+        "create": "unknown",
+        "resume": "unknown",
+        "history": "unknown",
+        "branch": "unknown"
+      },
+      "card": {
+        "streaming": "unknown",
+        "tools": {
+          "calls": "unknown",
+          "output": "unknown"
+        },
+        "terminal": "unknown",
+        "fileChanges": "unknown",
+        "artifacts": "unknown",
+        "plan": "unknown",
+        "reasoning": "unknown",
+        "permissions": "unknown",
+        "questions": "unknown",
+        "authentication": "unknown",
+        "usage": "unknown",
+        "interrupt": "unknown"
+      },
+      "externalCli": {
+        "supported": "unknown",
+        "resume": "unknown"
+      },
+      "models": {
+        "mode": "fixed",
+        "reasoning": "unknown",
+        "providers": "unknown"
+      },
+      "capabilityProjection": {}
+    },
+    "detail": {
+      "structuredEvents": {
+        "value": "unknown",
+        "status": "unknown",
+        "verification": "declared",
+        "supportedBool": false
+      },
+      "sessions": {
+        "list": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "create": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "resume": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "history": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "branch": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "card": {
+        "streaming": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "tools": {
+          "calls": {
+            "value": "unknown",
+            "status": "unknown",
+            "verification": "declared",
+            "supportedBool": false
+          },
+          "output": {
+            "value": "unknown",
+            "status": "unknown",
+            "verification": "declared",
+            "supportedBool": false
+          }
+        },
+        "terminal": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "fileChanges": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "artifacts": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "plan": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "reasoning": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "permissions": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "questions": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "authentication": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "usage": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "interrupt": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "externalCli": {
+        "supported": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "resume": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "models": {
+        "mode": "fixed",
+        "reasoning": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "providers": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "capabilityProjection": {}
+    },
+    "unknownCount": 23
+  },
+  "unverified-approval": {
+    "ui": {
+      "structuredEvents": "supported",
+      "sessions": {
+        "list": "unknown",
+        "create": "supported",
+        "resume": "unknown",
+        "history": "unknown",
+        "branch": "unknown"
+      },
+      "card": {
+        "streaming": "supported",
+        "tools": {
+          "calls": "supported",
+          "output": "unsupported"
+        },
+        "terminal": "unknown",
+        "fileChanges": "unknown",
+        "artifacts": "unknown",
+        "plan": "unknown",
+        "reasoning": "unknown",
+        "permissions": "unverified",
+        "questions": "unknown",
+        "authentication": "unknown",
+        "usage": "unknown",
+        "interrupt": "unknown"
+      },
+      "externalCli": {
+        "supported": "unknown",
+        "resume": "unknown"
+      },
+      "models": {
+        "mode": "fixed",
+        "reasoning": "unknown",
+        "providers": "unknown"
+      },
+      "capabilityProjection": {}
+    },
+    "detail": {
+      "structuredEvents": {
+        "value": "supported",
+        "status": "supported",
+        "verification": "declared",
+        "supportedBool": true
+      },
+      "sessions": {
+        "list": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "create": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "resume": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "history": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "branch": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "card": {
+        "streaming": {
+          "value": "supported",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "tools": {
+          "calls": {
+            "value": "supported",
+            "status": "supported",
+            "verification": "declared",
+            "supportedBool": true
+          },
+          "output": {
+            "value": "unsupported",
+            "status": "unsupported",
+            "verification": "declared",
+            "supportedBool": false
+          }
+        },
+        "terminal": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "fileChanges": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "artifacts": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "plan": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "reasoning": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "permissions": {
+          "value": "unverified",
+          "status": "supported",
+          "verification": "declared",
+          "supportedBool": true
+        },
+        "questions": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "authentication": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "usage": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "interrupt": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "externalCli": {
+        "supported": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "resume": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "models": {
+        "mode": "fixed",
+        "reasoning": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        },
+        "providers": {
+          "value": "unknown",
+          "status": "unknown",
+          "verification": "declared",
+          "supportedBool": false
+        }
+      },
+      "capabilityProjection": {}
+    },
+    "unknownCount": 17
+  }
+}
