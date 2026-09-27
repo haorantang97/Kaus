@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -495,7 +496,9 @@ async def test_tool_output_merge_follows_the_cumulative_quirk(
     )
 
 
-async def test_running_the_bench_upgrades_declared_to_bench(preset, workspace: str) -> None:
+async def test_running_the_bench_upgrades_declared_to_bench(
+    preset, workspace: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """第 4 件的收尾：契约跑一遍，摸得着的那几题从 ``declared`` 升到 ``bench``。
 
     两条都要断言，缺一条这个机制就是摆设：
@@ -509,6 +512,17 @@ async def test_running_the_bench_upgrades_declared_to_bench(preset, workspace: s
         observe_capabilities,
     )
     from runtime.capability_matrix import capability_state_at
+
+    # This bench checks launch construction, not an installed native product.
+    # Keep PATH independent of the developer's installed agents. These stubs
+    # fail if invoked; all actual protocol traffic must use fake_acp_agent.py.
+    native_bin = tmp_path / "native-bin"
+    native_bin.mkdir()
+    for executable in ("claude", "codex", "opencode"):
+        stub = native_bin / executable
+        stub.write_text("#!/bin/sh\nexit 97\n", encoding="utf-8")
+        stub.chmod(0o755)
+    monkeypatch.setenv("PATH", str(native_bin) + os.pathsep + os.defpath)
 
     harness = FakeAcpHarness(preset=preset, workspace_root=workspace)
     driver = harness.make_driver()
