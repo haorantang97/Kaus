@@ -4,6 +4,13 @@ title = "Kaus source scanning"
 useDefault = true
 
 [[allowlists]]
+description = "Synthetic payload in the credential-prefix classifier test"
+condition = "AND"
+paths = ['''^scripts/ops/tests/test_audit_inheritable_secrets\.py$''']
+regexTarget = "secret"
+regexes = ['''^ZmFrZUZBS0VmYWtlRkFLRTEyMzQ1Njc4OTA$''']
+
+[[allowlists]]
 description = "Non-secret reference URI in classifier tests"
 condition = "AND"
 paths = ['''^scripts/ops/tests/test_audit_inheritable_secrets\.py$''']
