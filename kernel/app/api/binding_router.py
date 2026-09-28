@@ -275,8 +275,8 @@ def build_binding_write_router(
             catalog = await driver.get_model_catalog(binding)
         except Exception:  # noqa: BLE001 - 校验的依据取不到 ≠ 这次写入非法
             return ()
-        target = model_id or getattr(catalog, "default_model_id", None)
-        for model in getattr(catalog, "models", ()) or ():
+        target = model_id or catalog.default_model_id
+        for model in catalog.models:
             if model.model_id == target:
                 return tuple(model.reasoning_levels)
         return ()
@@ -653,7 +653,7 @@ def build_binding_write_router(
         没实现这个可选方法的 Driver 就是 ``null``。
         """
         project = await repositories.projects.get(binding.project_id)
-        root = getattr(project, "workspace_root", None) if project else None
+        root = project.workspace_root if project else None
         if not root:
             raw = binding.runtime_config.get("workspace_root")
             root = raw if isinstance(raw, str) and raw.strip() else None

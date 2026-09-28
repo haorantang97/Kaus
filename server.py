@@ -7381,7 +7381,6 @@ def _profile_impact(name: str) -> dict:
        2. external_dirs: 后代里 converted=true 且未 skill_inherit_off 的——name 的 skills/ 是它们的祖先目录
        3. symlink_consumers: 谁的 skills/ 下有 symlink 指向 name 的某个技能（横向共享）
        注：知识库已改全局（所有 agent 共享一个库），不再随组织树继承，故不计入影响范围。"""
-    h = _load_hierarchy()
     nodes = build_tree()["nodes"]
     descendants = sorted(_descendants(name, nodes))
 

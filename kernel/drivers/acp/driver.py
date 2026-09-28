@@ -453,19 +453,24 @@ class AcpDriver:
         value = binding.runtime_config.get("approval_mode")
         return value if value in ("ask", "auto", "deny") else "ask"
 
+    def _option_ids(self) -> dict[str, str | None]:
+        """预设登记的「审批档 / 思考档」对应的 configOption id；没有预设就都没有。"""
+        if self.preset is None:
+            return {"approval_option_id": None, "thought_option_id": None}
+        return {
+            "approval_option_id": self.preset.approval_option_id,
+            "thought_option_id": self.preset.thought_option_id,
+        }
+
     def _config_options(self, result: Any):
-        return config_options_from_session_result(result,
-            approval_option_id=getattr(self.preset, "approval_option_id", None),
-            thought_option_id=getattr(self.preset, "thought_option_id", None))
+        return config_options_from_session_result(result, **self._option_ids())
 
     def _permission_modes(self, result: Any) -> tuple[Any, ...]:
         config = self._config_options(result)
         return config.approval_ids if config.approval_option_id else self._available_modes(result)
 
     def _available_modes(self, result: Any) -> tuple[Any, ...]:
-        return available_modes(result,
-            approval_option_id=getattr(self.preset, "approval_option_id", None),
-            thought_option_id=getattr(self.preset, "thought_option_id", None))
+        return available_modes(result, **self._option_ids())
 
     def _supports_permissions(self, config) -> bool:
         return bool(config.approval_option_id or (self.quirks.mode_semantics == "approval" and (self.quirks.supports_set_mode or config.mode_option_id)))
@@ -915,9 +920,8 @@ class AcpDriver:
         它没填时才回落到 Binding 上那一个——后者本来是给客户端 fs 划边界用的
         （AD-152），但两处指的是同一个地方，有一处填了就不该说「无处可写」。
         """
-        raw = getattr(project, "workspace_root", None)
-        if isinstance(raw, str) and raw.strip():
-            return raw
+        if project.workspace_root and project.workspace_root.strip():
+            return project.workspace_root
         return self._workspace_root_for(binding.id)
 
     def _instruction_rows(

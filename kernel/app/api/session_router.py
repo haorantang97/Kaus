@@ -67,7 +67,6 @@ Group（临时协作组）的那一组端点住在 :mod:`app.api.group_router`�
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import json
 from datetime import datetime, timezone
@@ -619,11 +618,10 @@ def build_session_router(
         理由。取不到 lease 表就退回每条会话自己的 ``preferred_surface``：
         没有写权记录时，那正是「上次在哪个界面」的正确答案。
         """
-        leases: dict[str, Any] = {}
-        describe_all = getattr(getattr(host, "leases", None), "describe_all", None)
-        if describe_all is not None:
-            for description in await describe_all():
-                leases[description.conversation_id] = description
+        leases = {
+            description.conversation_id: description
+            for description in await host.leases.describe_all()
+        }
         return {
             conversation.id: conversation_surface(
                 conversation, lease=leases.get(conversation.id)

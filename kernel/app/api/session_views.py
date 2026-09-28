@@ -26,10 +26,18 @@ from typing import Any, Mapping, Sequence
 
 from app.api.api_errors import error_body
 from app.conversations.models import Conversation
+from app.projects.models import AgentBinding, Project
 from app.runtimes.models import ConcurrencyAdvisory
-from drivers.base import APPROVAL_MODES
+from drivers.base import (
+    APPROVAL_MODES,
+    EngineSettings,
+    ModelCatalog,
+    RuntimeHandle,
+    SessionProjection,
+)
+from runtime.lease_manager import LeaseDescription
 from runtime.event_envelope import AgentEventEnvelope
-from runtime.event_reducer import TimelineState
+from runtime.event_reducer import InteractionItem, TimelineState
 
 #: 错误响应的固定形状 ``{"error": {"code", "message"}}`` 定义在
 #: :mod:`app.api.api_errors`：批次八第 5 件之后，只读领域端点也用同一个形状，
@@ -87,7 +95,7 @@ def advisory_to_wire(advisory: ConcurrencyAdvisory | None) -> dict[str, Any] | N
     return advisory.model_dump(mode="json", by_alias=True)
 
 
-def session_projection_to_wire(projection: Any) -> dict[str, list[str]] | None:
+def session_projection_to_wire(projection: SessionProjection | None) -> dict[str, list[str]] | None:
     """建会话时随协议参数送进引擎的项目能力（批次四十三）。
 
     **只有名字**。``summary`` 那一份由 Driver 自己填（只有它认识自家协议的参数
@@ -99,8 +107,7 @@ def session_projection_to_wire(projection: Any) -> dict[str, list[str]] | None:
     """
     if projection is None:
         return None
-    summary = getattr(projection, "summary", None) or {}
-    return {str(key): [str(name) for name in names] for key, names in summary.items()}
+    return {str(key): [str(name) for name in names] for key, names in projection.summary.items()}
 
 
 def timeline_summary(state: TimelineState | None) -> dict[str, Any] | None:
@@ -116,11 +123,11 @@ def timeline_summary(state: TimelineState | None) -> dict[str, Any] | None:
     pending_interactions: list[dict[str, Any]] = []
     for item in state.items:
         counts[item.kind] = counts.get(item.kind, 0) + 1
-        if item.kind == "interaction" and getattr(item, "status", None) == "pending":
+        if isinstance(item, InteractionItem) and item.status == "pending":
             pending_interactions.append(
                 {
                     "interactionId": item.item_id.split(":", 1)[-1],
-                    "interactionKind": getattr(item, "interaction_kind", None),
+                    "interactionKind": item.interaction_kind,
                     "runId": item.run_id,
                 }
             )
@@ -148,7 +155,7 @@ def timeline_summary(state: TimelineState | None) -> dict[str, Any] | None:
 def runtime_view(
     *,
     active: bool,
-    handle: Any | None,
+    handle: RuntimeHandle | None,
     owner: Any | None,
 ) -> dict[str, Any]:
     """Runtime 现状 + Runtime Owner（v1.0 §8.8.4：UI 必须始终显示 owner）。
@@ -158,9 +165,9 @@ def runtime_view(
     """
     return {
         "active": active,
-        "runtimeId": getattr(handle, "runtime_id", None),
-        "backendId": getattr(handle, "backend_id", None),
-        "nativeSessionId": getattr(handle, "native_session_id", None),
+        "runtimeId": handle.runtime_id if handle else None,
+        "backendId": handle.backend_id if handle else None,
+        "nativeSessionId": handle.native_session_id if handle else None,
         "owner": owner.model_dump(mode="json", by_alias=True)
         if owner is not None
         else None,
@@ -197,10 +204,10 @@ def _setting(value: Any, source: str, **extra: Any) -> dict[str, Any]:
 
 def effective_settings_to_wire(
     *,
-    binding: Any,
-    project: Any = None,
-    engine: Any = None,
-    catalog: Any = None,
+    binding: AgentBinding,
+    project: Project | None = None,
+    engine: EngineSettings | None = None,
+    catalog: ModelCatalog | None = None,
 ) -> dict[str, Any]:
     """把四个来源解析成「界面工具栏要显示什么、这个值是谁定的」（批次十三第 1 件）。
 
@@ -215,13 +222,13 @@ def effective_settings_to_wire(
     缺项返回 ``{"value": null, "source": "none"}``，**不编造默认值**
     （N §13.1）；前端按 AD-71 不渲染这一栏。
     """
-    runtime_config = dict(getattr(binding, "runtime_config", None) or {})
-    engine_model = getattr(engine, "model_id", None)
-    engine_effort = getattr(engine, "reasoning_effort", None)
-    engine_approval = getattr(engine, "approval_mode", None)
-    catalog_default = getattr(catalog, "default_model_id", None)
+    runtime_config = binding.runtime_config
+    engine_model = engine.model_id if engine else None
+    engine_effort = engine.reasoning_effort if engine else None
+    engine_approval = engine.approval_mode if engine else None
+    catalog_default = catalog.default_model_id if catalog else None
 
-    model_value = getattr(binding, "default_model_id", None)
+    model_value = binding.default_model_id
     model_source = "binding"
     if not model_value and engine_model:
         model_value, model_source = engine_model, "engine"
@@ -239,7 +246,7 @@ def effective_settings_to_wire(
         approval_value, approval_source = engine_approval, "engine"
 
     return {
-        "bindingId": getattr(binding, "id", None),
+        "bindingId": binding.id,
         "model": _setting(model_value or None, model_source),
         "reasoningEffort": _setting(
             effort_value,
@@ -250,17 +257,17 @@ def effective_settings_to_wire(
         "approvalMode": _setting(
             approval_value, approval_source, options=list(APPROVAL_MODES)
         ),
-        "workspaceRoot": _setting(getattr(project, "workspace_root", None), "project"),
+        "workspaceRoot": _setting(project.workspace_root if project else None, "project"),
     }
 
 
-def reasoning_levels_for(catalog: Any, model_id: str | None) -> tuple[str, ...]:
+def reasoning_levels_for(catalog: ModelCatalog | None, model_id: str | None) -> tuple[str, ...]:
     """目录里这个模型的 ``reasoning_levels``；找不到就是空元组（不猜一份词表）。"""
     if catalog is None or not model_id:
         return ()
-    for model in getattr(catalog, "models", ()) or ():
-        if getattr(model, "model_id", None) == model_id:
-            return tuple(getattr(model, "reasoning_levels", ()) or ())
+    for model in catalog.models:
+        if model.model_id == model_id:
+            return tuple(model.reasoning_levels)
     return ()
 
 
@@ -333,7 +340,7 @@ def debug_shape(value: Any, *, depth: int = 0) -> Any:
     return shape
 
 
-def conversation_surface(conversation: Conversation, *, lease: Any = None) -> str:
+def conversation_surface(conversation: Conversation, *, lease: LeaseDescription | None = None) -> str:
     """这条会话此刻在**哪个界面**上写：``card | external-cli``（批次十五第 2 件）。
 
     两个来源，前者赢：
@@ -345,12 +352,9 @@ def conversation_surface(conversation: Conversation, *, lease: Any = None) -> st
 
     过期的 lease 不算数：它的持有者早就不在了，再拿它当事实就是说谎。
     """
-    if lease is not None and not getattr(lease, "is_stale", False):
-        owner = getattr(lease, "owner_type", None)
-        if owner in ("card", "external-cli"):
-            return owner
-    preferred = getattr(conversation, "preferred_surface", "card")
-    return preferred if preferred in ("card", "external-cli") else "card"
+    if lease is not None and not lease.is_stale:
+        return lease.owner_type
+    return conversation.preferred_surface
 
 
 def conversation_list_to_wire(

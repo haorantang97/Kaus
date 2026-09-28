@@ -75,7 +75,7 @@ def binding_with_project_workspace(
     """
     if binding_workspace_root(binding) is not None:
         return binding
-    root = _clean(getattr(project, "workspace_root", None))
+    root = _clean(project.workspace_root if project else None)
     if root is None:
         return binding
     runtime_config = dict(binding.runtime_config)

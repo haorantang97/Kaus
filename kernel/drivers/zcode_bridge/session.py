@@ -12,7 +12,6 @@ from drivers.stdio_bridge import BridgeError
 from drivers.error_text import safe_error_text
 from .events import Events
 from .interactions import Interactions
-from .native import Native
 from .shapes import MODES, mcp_servers, model_key, options, prompt_parts
 
 

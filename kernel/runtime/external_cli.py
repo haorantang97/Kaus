@@ -142,7 +142,7 @@ def build_launch_script(
 Opener = Callable[[str, Path], "tuple[bool, str | None]"]
 
 
-from drivers.terminals.launcher import installed_terminals, macos_open, terminal_app_id, terminal_app_path
+from drivers.terminals.launcher import macos_open
 
 
 @dataclass(frozen=True)

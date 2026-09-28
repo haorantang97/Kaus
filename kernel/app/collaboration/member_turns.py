@@ -53,9 +53,7 @@ def turn_outcome(event_type: str) -> str | None:
 
 
 def _is_assistant_message(item: Any) -> bool:
-    return getattr(item, "kind", None) == "message" and (
-        getattr(item, "role", None) == "assistant"
-    )
+    return item.kind == "message" and item.role == "assistant"
 
 
 def summarize_turn(state: Any, run_id: str) -> tuple[str, int]:
@@ -67,9 +65,9 @@ def summarize_turn(state: Any, run_id: str) -> tuple[str, int]:
     """
     if state is None:
         return "", 0
-    items = tuple(getattr(state, "items", ()) or ())
-    of_run = [item for item in items if getattr(item, "run_id", None) == run_id]
-    tool_count = sum(1 for item in of_run if getattr(item, "kind", None) == "tool")
+    items = state.items
+    of_run = [item for item in items if item.run_id == run_id]
+    tool_count = sum(1 for item in of_run if item.kind == "tool")
     candidates = [item for item in of_run if _is_assistant_message(item)]
     if not candidates:
         # 这一轮一条 assistant 消息都没归上（有的引擎不给 ``runId``）→ 退到整条
@@ -78,7 +76,7 @@ def summarize_turn(state: Any, run_id: str) -> tuple[str, int]:
         candidates = [item for item in items if _is_assistant_message(item)]
     if not candidates:
         return "", tool_count
-    return (getattr(candidates[-1], "text", "") or ""), tool_count
+    return candidates[-1].text, tool_count
 
 
 def truncate_body(text: str) -> tuple[str, bool]:
@@ -169,10 +167,9 @@ def find_recorded_turn(
     三种都会走到这里，返回已有那一行就是「什么都不做」。
     """
     for message in messages:
-        if getattr(message, "conversation_id", None) != conversation_id:
+        if message.conversation_id != conversation_id:
             continue
-        metadata = getattr(message, "metadata", None) or {}
-        if metadata.get("runId") == run_id:
+        if message.metadata.get("runId") == run_id:
             return message
     return None
 
@@ -196,14 +193,9 @@ def run_started_at(rows: Sequence[Any], run_id: str) -> Any | None:
     找不到就是 ``None``——:func:`membership_covers` 对 ``None`` 判真。
     """
     for row in reversed(rows):
-        envelope = getattr(row, "envelope", None)
-        if envelope is None:
-            continue
-        if getattr(getattr(envelope, "event", None), "type", None) != "run.started":
-            continue
-        if getattr(envelope, "run_id", None) != run_id:
-            continue
-        return getattr(row, "created_at", None)
+        envelope = row.envelope
+        if envelope.event.type == "run.started" and envelope.run_id == run_id:
+            return row.created_at
     return None
 
 
@@ -233,7 +225,7 @@ def active_member_ids(members: Sequence[Any]) -> tuple[str, ...]:
     return tuple(
         member.id
         for member in members
-        if getattr(member, "participation_state", None) == "active"
+        if member.participation_state == "active"
     )
 
 

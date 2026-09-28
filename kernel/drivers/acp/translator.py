@@ -71,7 +71,7 @@ import base64
 import binascii
 import hashlib
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
 
@@ -619,9 +619,6 @@ class AcpTranslator:
     def client_event(self, event: AgentEvent) -> tuple[AgentEventEnvelope, ...]:
         """Give client interactions the same sequencing and run identity."""
         return (*self._close_message(), self._emit(event))
-
-    def pending_permission(self, request_id: str) -> PendingPermission | None:
-        return self._pending_permissions.get(request_id)
 
     def on_permission_resolved(
         self, request_id: str, decision: str

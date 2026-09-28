@@ -36,7 +36,6 @@ from drivers.hermes.capabilities import (
 )
 from drivers.hermes.credentials import CredentialError, resolve_credential_ref
 from drivers.hermes.http_client import (
-    HermesAuthError,
     HermesHttpClient,
     HermesHttpError,
 )

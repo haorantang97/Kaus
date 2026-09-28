@@ -37,7 +37,6 @@ from app.api.group_views import (
     member_to_wire,
     # batch52
     packet_recent_lines,
-    truncate_summary,
 )
 from app.api.session_auth import (
     SessionAuthPolicy,
@@ -54,7 +53,7 @@ from app.api.session_views import (
 )
 from app.api.views import normalize_project_id
 from app.api.group_coordinator import GroupCoordinator
-from app.collaboration.coordinator import CONFIG_KEY, DEFAULTS_KEY
+from app.collaboration.coordinator import CONFIG_KEY
 from app.collaboration.member_turns import (
     RUN_TERMINAL_EVENT_TYPES,
     find_recorded_turn,
@@ -93,7 +92,6 @@ from app.collaboration.room import (
     room_header,
     start_thread,
     stop_thread,
-    strip_room_header,
     with_room_header,
 )
 from app.conversations.models import Conversation
@@ -108,7 +106,6 @@ from drivers.base import (
     FailureHint,
     MessageInput,
     TurnAlreadyRunningError,
-    UnsupportedCapabilityError,
     plain_text,
 )
 from runtime.event_envelope import ExtensionEvent
@@ -544,13 +541,7 @@ def build_group_router(
             # 会话被删了（v1.0 §16.6 允许），成员行还在。如实回 null。
             return None
         binding = await repositories.bindings.get(conversation.agent_binding_id)
-        lease = None
-        describe = getattr(getattr(host, "leases", None), "describe", None)
-        if describe is not None:
-            try:
-                lease = await describe(conversation.id)
-            except Exception:  # noqa: BLE001 - 少一层来源，不是这条请求失败
-                lease = None
+        lease = await host.leases.describe(conversation.id)
         return member_conversation_summary(
             conversation,
             backend_id=binding.backend_id if binding is not None else None,
@@ -1435,11 +1426,7 @@ def build_group_router(
             run_id = await _first_run_id(subscription, timeout=run_id_timeout)
         except TurnAlreadyRunningError as exc:
             return _send_failure("turn_already_running", exc=exc)
-        except UnsupportedCapabilityError as exc:
-            # 这台引擎不接受这条会话的模型快照之类：code 由 Driver 给
-            # （`conversation_model_unsupported`），不要压成一句「发送失败」。
-            return _send_failure("message_send_failed", exc=exc)
-        except Exception as exc:  # noqa: BLE001 - 同上：显式状态，不是崩溃
+        except Exception as exc:  # noqa: BLE001 - 显式状态，不是崩溃；code 由 Driver 的 failure 给
             return _send_failure("message_send_failed", exc=exc)
         finally:
             subscription.close()
@@ -2271,10 +2258,7 @@ def build_group_router(
         ``None``——:func:`membership_covers` 对 ``None`` 判真，宁可多记一行可追溯
         的发言，也不要因为缺一个时间戳而静默丢掉成员的回答。
         """
-        try:
-            rows = await host.event_store.read_range(conversation_id)
-        except Exception:  # noqa: BLE001 - 取不到时间戳不该让这一行记不成
-            return None
+        rows = await host.event_store.read_range(conversation_id)
         # batch53 / AD-174：扫描本身是纯的，搬进了
         # :func:`app.collaboration.member_turns.run_started_at`——**从尾往前扫**，
         # 为的是给账本里已有的撞名历史数据兜底（理由写在那个函数的 docstring 里）。
@@ -2299,11 +2283,11 @@ def build_group_router(
           都会走到这里，已经有了就什么都不做。
         - **按 ``run.started`` 判成员期**：见 :func:`membership_covers`。
         """
-        event_type = getattr(getattr(envelope, "event", None), "type", None)
+        event_type = envelope.event.type
         if event_type not in RUN_TERMINAL_EVENT_TYPES:
             return
-        run_id = getattr(envelope, "run_id", None)
-        conversation_id = getattr(envelope, "conversation_id", None)
+        run_id = envelope.run_id
+        conversation_id = envelope.conversation_id
         if not run_id or not conversation_id:
             # N §13.1：没有 runId 就没有幂等键。宁可不记，也不要记一行永远会被
             # 下一次重放再记一遍的账。
@@ -2561,14 +2545,9 @@ def build_group_router(
         """
         store = host.event_store
         if await store.latest_sequence(conversation.id) is None:
-            try:
-                await host.restore_from_native_history(conversation)
-            except Exception:  # noqa: BLE001 - 汇编失败不该让整个 packet 报错
-                pass
-        try:
-            envelopes = await store.replay(conversation.id)
-        except Exception:  # noqa: BLE001 - 同上
-            return {}
+            # 读不到原生历史时它自己返回 0，不会抛。
+            await host.restore_from_native_history(conversation)
+        envelopes = await store.replay(conversation.id)
         last_completed: str | None = None
         for envelope in envelopes:
             if getattr(envelope.event, "type", None) == "run.completed":
@@ -2748,10 +2727,10 @@ def build_group_router(
                     continue
                 try:
                     driver = registry.get(binding.backend_id)
-                    hook = getattr(driver, 'group_context_isolation', None)
-                    supported = bool(hook and hook())
-                except Exception:
-                    supported = False
+                except DriverNotRegisteredError:
+                    continue
+                hook = getattr(driver, 'group_context_isolation', None)
+                supported = bool(hook and hook())
                 if supported:
                     rows.append({**binding_to_wire(binding), 'projectName': project.display_name})
         return {'bindings': rows}

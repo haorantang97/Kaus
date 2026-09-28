@@ -12,15 +12,14 @@ import time
 import uuid
 from pathlib import Path
 from tempfile import gettempdir
-from typing import Any
 
 from app.api.api_errors import ApiError
 from app.collaboration.coordinator import (
-    CONFIG_KEY, COORDINATOR_ID, DEFAULTS_KEY, Assignment, CoordinatorConfig,
+    CONFIG_KEY, COORDINATOR_ID, DEFAULTS_KEY, CoordinatorConfig,
     collaboration_requested, coordinator_excluded, directed_targets, extract_control, public_body,
 )
 from app.collaboration.member_turns import RUN_TERMINAL_EVENT_TYPES, summarize_turn, turn_outcome
-from app.collaboration.models import CollaborationMessage, RoomThread
+from app.collaboration.models import RoomThread
 from app.collaboration.room import resolve_display_names
 from app.conversations.models import Conversation
 from app.projects.models import AgentBinding

@@ -65,7 +65,6 @@ from drivers.hermes import reconnect
 from drivers.hermes import session_mapper
 from drivers.hermes import failure_hints
 from drivers.hermes.credentials import (
-    CredentialError,
     credential_ref_present,
     describe_credential_ref,
 )
@@ -952,7 +951,7 @@ class HermesDriver:
             catalog = await self.get_model_catalog(binding)
         except Exception:  # noqa: BLE001 - 同上
             return None
-        return getattr(catalog, "default_model_id", None) or None
+        return catalog.default_model_id or None
 
     async def _model_adoption(self, state: _RuntimeState) -> str | None:
         """这一句要不要**采纳**引擎当前的模型？要就返回那个模型 id（AD-155）。
