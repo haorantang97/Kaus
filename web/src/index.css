@@ -255,7 +255,7 @@ body {
   overflow: hidden;
 }
 
-code, kbd, pre, samp, .font-mono, .font-mono-ui {
+code, kbd, pre, samp, .font-mono {
   font-family: var(--theme-font-mono);
 }
 
@@ -469,44 +469,5 @@ code { font-size: 0.875rem; }
   scrollbar-width: none;
 }
 .scrollbar-none::-webkit-scrollbar {
-  display: none;
-}
-
-/* Plus-lighter blend used by logos/titles for a subtle glow. */
-.blend-lighter {
-  mix-blend-mode: plus-lighter;
-}
-
-/* System UI-monospace stack — distinct from `font-courier` (Courier
-   Prime), used for dense data readouts where the display font would
-   break the grid. Routes through the theme's mono stack so themes
-   with a different monospace (JetBrains Mono, IBM Plex Mono, etc.)
-   still apply here. */
-.font-mono-ui {
-  font-family: var(--theme-font-mono);
-}
-
-/* Subtle grain overlay for badges. */
-.grain {
-  position: relative;
-}
-.grain::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  opacity: 0.12;
-  pointer-events: none;
-  background: repeating-conic-gradient(currentColor 0% 25%, #0000 0% 50%) 0 0 /
-    2px 2px;
-}
-
-/* When a theme provides `assets.bg`, the backdrop's <div> renders it as
-   a CSS background; the default filler <img> is hidden to prevent
-   double-compositing. Unset → initial → empty, so the :not() selector
-   matches and the default image stays visible. */
-:root:not([style*="--theme-asset-bg:"]) .theme-default-filler {
-  display: block;
-}
-:root[style*="--theme-asset-bg:"] .theme-default-filler {
   display: none;
 }

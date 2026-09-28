@@ -1,11 +1,9 @@
 .kaus-coordinator-settings { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 18px; min-height: 100px; }
 .kaus-coordinator-trigger { gap: 6px; }
-.kaus-coordinator-model { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .65; }
 .kaus-coordinator-fields { flex-basis: 100%; display: grid; gap: 12px; }
 .kaus-coordinator-fields label { display: grid; gap: 6px; font-size: 12px; }
 .kaus-coordinator-actions { width: 100%; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding-top: 12px; }
 .kaus-group-run-content { min-width: 0; font-size: 13px; }
-.kaus-group-run-content .kaus-msg-assistant { padding-inline: 0; }
 .kaus-group-live { padding: 14px 12px; }
 .kaus-group-run-details { margin-top: 8px; font-size: 12px; }
 .kaus-group-run-details > summary { cursor: pointer; opacity: .6; }

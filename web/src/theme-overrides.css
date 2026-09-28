@@ -106,19 +106,6 @@ body,
   background-image: var(--gold-metal);
   border-radius: 0 2px 2px 0;
 }
-.tab-accent {
-  position: relative;
-}
-.tab-accent::after {
-  content: "";
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: -1px;
-  height: 2px;
-  background-image: var(--gold-metal);
-  border-radius: 2px;
-}
 
 /* ---- Vault folder tree ---- */
 .vault-tree {
@@ -332,74 +319,6 @@ body,
   width: 0;
   height: 22px;
 }
-.onode {
-  display: inline-block;
-  text-align: left;
-  border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
-  border-radius: 9px;
-  padding: 9px 12px;
-  background: var(--surface-raised);
-  cursor: pointer;
-  min-width: 120px;
-}
-.onode:hover {
-  box-shadow: 0 2px 12px rgba(60, 50, 20, 0.08);
-  border-color: color-mix(in srgb, var(--midground-base) 22%, transparent);
-}
-.onode.drag {
-  opacity: 0.4;
-}
-.onode.drop {
-  border-color: var(--gold);
-  box-shadow: inset 0 0 0 1px var(--gold);
-}
-.onode.root {
-  border-color: var(--gold-deep);
-}
-.onode.draft {
-  border-style: dashed;
-}
-.onode .on-top {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-.onode .on-nm {
-  font-size: 13px;
-}
-.onode .on-tag {
-  font-size: 9.5px;
-  padding: 0 5px;
-  border-radius: 3px;
-}
-.onode .on-tag.twin,
-.onode .on-tag.warn {
-  color: var(--accent-text);
-  background: var(--gold-soft);
-}
-.onode .on-tag.bad {
-  color: var(--danger);
-  background: rgba(179, 87, 63, 0.1);
-}
-.onode .on-meta {
-  font-size: 10.5px;
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
-  margin-top: 3px;
-}
-.droptop {
-  border: 1px dashed color-mix(in srgb, var(--midground-base) 20%, transparent);
-  border-radius: 9px;
-  padding: 9px 12px;
-  margin: 2px 0 16px;
-  text-align: center;
-  font-size: 11.5px;
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
-}
-.droptop.drop {
-  border-color: var(--gold);
-  color: var(--accent-text);
-  background: var(--gold-soft);
-}
 
 /* Canvas: plain --background-base. (Grain + parchment wash removed 2026-09-02.) */
 
@@ -540,18 +459,6 @@ body,
   margin-inline: -8px;
 }
 
-.sidebar-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 4px 6px;
-  padding: 7px 8px;
-  color: var(--accent-text);
-  font: 600 10px/1 var(--theme-font-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 .sidebar-agent-tree {
   padding: 0 4px 8px;
 }
@@ -589,11 +496,6 @@ body,
 
 .sidebar-agent-tree.is-compact .sidebar-twin-row {
   font-size: 12px;
-}
-
-.sidebar-back svg {
-  width: 13px;
-  height: 13px;
 }
 
 .sidebar-context-title {
@@ -678,29 +580,6 @@ body.dark select,
 body.dark textarea,
 body.dark input {
   color-scheme: dark;
-}
-
-/* Sidebar nav rows + group labels — retained for nested module content. */
-.nav-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-radius: 8px;
-  padding: 9px 12px;
-  font-size: 0.84rem;
-  letter-spacing: 0.08em;
-  transition: background-color 0.12s;
-  cursor: pointer;
-}
-.nav-row:hover {
-  background: color-mix(in srgb, var(--midground-base) 4%, transparent);
-}
-.nav-group {
-  padding: 14px 14px 4px;
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-  color: color-mix(in srgb, var(--midground-base) 38%, transparent);
 }
 
 /* ===== HOME hero — exact structure from redesign-demo-21-themed ===== */
@@ -1162,12 +1041,6 @@ body.dark .agent-chat-status.is-online {
   color: color-mix(in srgb, var(--midground-base) 32%, transparent);
 }
 
-.agent-chat-body {
-  min-height: 0;
-  flex: 1;
-  overflow: hidden;
-}
-
 .agent-session-tabs {
   display: flex;
   width: min(100%, 1280px);
@@ -1297,65 +1170,6 @@ body.dark .agent-chat-status.is-online {
     color-mix(in srgb, var(--midground-base) 12%, transparent);
   border-right: 1px solid
     color-mix(in srgb, var(--midground-base) 12%, transparent);
-}
-
-.agent-terminal-slot {
-  inset: 4px 18px 0;
-  overflow: hidden;
-}
-
-.agent-terminal-slot.is-hidden {
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.agent-terminal-history-gate {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  min-height: 260px;
-  place-items: center;
-  border-left: 1px solid
-    color-mix(in srgb, var(--midground-base) 12%, transparent);
-  border-right: 1px solid
-    color-mix(in srgb, var(--midground-base) 12%, transparent);
-  color: var(--midground-base);
-  text-align: center;
-}
-
-.agent-terminal-history-gate > div {
-  max-width: 520px;
-  padding: 24px;
-}
-
-.agent-terminal-history-gate strong {
-  display: block;
-  margin-bottom: 10px;
-  color: var(--foreground-base);
-  font: 900 13px/1 var(--theme-font-mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.agent-terminal-history-gate p {
-  margin: 0 0 18px;
-  color: color-mix(in srgb, var(--midground-base) 76%, transparent);
-  font: 700 13px/1.7 var(--theme-font-ui);
-}
-
-.agent-terminal-history-gate button {
-  border: 1px solid color-mix(in srgb, var(--gold-deep) 56%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--gold-deep) 10%, transparent);
-  color: var(--accent-text);
-  cursor: pointer;
-  font: 900 12px/1 var(--theme-font-ui);
-  letter-spacing: 0.06em;
-  padding: 10px 14px;
-}
-
-.agent-terminal-history-gate button:hover {
-  background: color-mix(in srgb, var(--gold-deep) 18%, transparent);
 }
 
 .agent-terminal-launcher-stage > div {
@@ -1652,34 +1466,6 @@ body.dark .agent-chat-status.is-online {
   padding: 12px 10px;
 }
 
-.whiteboard-terminal-pane {
-  width: 100%;
-  height: 100%;
-}
-
-.whiteboard-terminal-pane.is-idle {
-  opacity: 0.58;
-  filter: saturate(0.72);
-  pointer-events: none;
-}
-
-.chat-terminal-frame {
-  position: relative;
-  box-sizing: border-box;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  max-width: 100%;
-  padding-right: 0;
-  outline: none;
-}
-
-.chat-terminal-frame.is-dragging-file {
-  box-shadow:
-    inset 0 0 0 2px var(--gold-deep),
-    inset 0 0 44px color-mix(in srgb, var(--gold-deep) 16%, transparent);
-}
-
 .chat-terminal-host {
   box-sizing: border-box;
   min-width: 0;
@@ -1688,21 +1474,6 @@ body.dark .agent-chat-status.is-online {
   max-width: 100%;
   padding-right: 0;
   outline: none;
-}
-
-.pty-upload-drop-hint {
-  position: absolute;
-  inset: 12px;
-  z-index: 3;
-  display: grid;
-  place-items: center;
-  border: 1px dashed color-mix(in srgb, var(--gold-deep) 58%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface-base) 68%, transparent);
-  color: var(--midground-base);
-  font: 800 12px/1 var(--theme-font-mono);
-  letter-spacing: 0.08em;
-  pointer-events: none;
 }
 
 .chat-terminal-host .xterm {
@@ -1719,172 +1490,6 @@ body.dark .agent-chat-status.is-online {
   max-height: 100%;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-}
-
-.whiteboard-terminal-sleep {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-content: center;
-  gap: 4px;
-  border: 1px dashed color-mix(in srgb, var(--ink) 16%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--ink) 2.5%, transparent);
-  color: color-mix(in srgb, var(--ink) 52%, transparent);
-  font-family: var(--theme-font-mono);
-  text-align: center;
-  cursor: pointer;
-}
-
-.whiteboard-terminal-sleep:hover {
-  border-color: var(--gold-deep);
-  color: var(--ink);
-  background: color-mix(in srgb, var(--gold-deep) 8%, transparent);
-}
-
-.whiteboard-terminal-sleep strong {
-  max-width: 34ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.92rem;
-}
-
-.whiteboard-terminal-sleep span,
-.whiteboard-terminal-sleep small {
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.72;
-}
-
-.pty-adapter-events {
-  position: fixed;
-  z-index: 120;
-  right: 16px;
-  bottom: 16px;
-  display: grid;
-  width: min(430px, calc(100% - 32px));
-  gap: 8px;
-  pointer-events: none;
-}
-
-.pty-adapter-event {
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--midground-base) 15%, transparent);
-  border-left: 3px solid var(--gold-deep);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--panel) 96%, transparent);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
-  color: var(--midground-base);
-  pointer-events: auto;
-  animation: dialog-in 0.2s ease-out;
-}
-
-.pty-adapter-event.is-file {
-  border-left-color: var(--warning, #d98a55);
-}
-
-.pty-adapter-event.is-disconnected {
-  border-left-color: var(--danger);
-}
-
-.pty-adapter-event header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--midground-base) 8%, transparent);
-}
-
-.pty-adapter-event header > span {
-  color: var(--accent-text);
-  font: 700 8px/1 var(--theme-font-mono);
-  letter-spacing: 0.13em;
-}
-
-.pty-adapter-event.is-file header > span {
-  color: var(--warning, #d98a55);
-}
-
-.pty-adapter-event.is-disconnected header > span {
-  color: var(--danger);
-}
-
-.pty-adapter-event header strong {
-  font: 600 12px/1 var(--theme-font-ui);
-}
-
-.pty-adapter-event header button {
-  display: grid;
-  width: 18px;
-  height: 18px;
-  margin-left: auto;
-  place-items: center;
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
-}
-
-.pty-adapter-event header svg {
-  width: 12px;
-  height: 12px;
-}
-
-.pty-adapter-event p {
-  padding: 10px 12px 0;
-  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
-  font: 11px/1.55 var(--theme-font-ui);
-}
-
-.pty-adapter-event code {
-  display: block;
-  overflow: hidden;
-  padding: 7px 12px 0;
-  color: var(--midground-base);
-  font: 10px/1.4 var(--theme-font-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pty-adapter-event footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
-  padding: 11px 12px 12px;
-}
-
-.pty-adapter-event footer button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 0 3px;
-  border-bottom: 1px solid transparent;
-  color: color-mix(in srgb, var(--midground-base) 58%, transparent);
-  font: 700 9px/1 var(--theme-font-mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.pty-adapter-event footer button:hover {
-  color: var(--accent-text);
-}
-
-.pty-adapter-event footer button.is-primary {
-  border-bottom-color: var(--gold-deep);
-  color: var(--midground-base);
-}
-
-.pty-adapter-event footer svg {
-  width: 11px;
-  height: 11px;
-}
-
-.pty-file-preview {
-  width: 100%;
-  height: min(68vh, 680px);
-  border: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
-  border-radius: 8px;
-  background: var(--background-base);
 }
 
 @media (max-width: 980px) {
@@ -1914,11 +1519,6 @@ body.dark .agent-chat-status.is-online {
     min-height: 180px;
     border-top: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
     border-left: 0;
-  }
-
-  .pty-adapter-events {
-    right: 10px;
-    width: min(390px, calc(100% - 20px));
   }
 }
 
@@ -2081,11 +1681,6 @@ body.dark .agent-chat-status.is-online {
   perspective: 900px;
   transform-style: preserve-3d;
 }
-.ag-wheel-col .ag-colh {
-  position: absolute;
-  top: 16px;
-  left: 0;
-}
 .ag-wheel-col .ag-node {
   position: absolute;
   top: 50%;
@@ -2094,14 +1689,6 @@ body.dark .agent-chat-status.is-online {
   transform-origin: left center;
   will-change: transform, opacity;
   transition: color 0.15s;
-}
-.ag-colh {
-  padding-left: 2px;
-  color: color-mix(in srgb, var(--midground-base) 36%, transparent);
-  font: 700 8.5px/1 var(--theme-font-mono);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  white-space: nowrap;
 }
 .ag-root {
   cursor: pointer;
@@ -2461,11 +2048,6 @@ body.dark .ag-status:not(.idle) {
   color: var(--danger);
   font: 11px/1.5 var(--theme-font-mono);
 }
-.ag-phint {
-  margin-top: 12px;
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
-  font: 10px/1.5 var(--theme-font-mono);
-}
 
 @media (max-width: 980px) {
   .ag-panel {
@@ -2630,18 +2212,6 @@ body.dark .ag-status:not(.idle) {
   }
 }
 
-.kaus-engine-tag {
-  display: grid;
-  width: 15px;
-  height: 15px;
-  flex: none;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--midground-base) 16%, transparent);
-  border-radius: 4px;
-  color: color-mix(in srgb, var(--midground-base) 58%, transparent);
-  font: 700 8.5px/1 var(--theme-font-mono);
-}
-
 .kaus-conversation-time {
   flex: none;
   color: color-mix(in srgb, var(--midground-base) 38%, transparent);
@@ -2657,62 +2227,11 @@ body.dark .ag-status:not(.idle) {
   padding: 40px 28px;
 }
 
-/* batch42：顶上有铭牌时它是首页，铭牌贴着顶而不是整块悬在正中——悬在正中
-   会在铭牌上方留一大块空白，看着像还没加载完。 */
-.kaus-draft-page.has-plate {
-  align-items: flex-start;
-  padding-top: 28px;
-}
-
 .kaus-draft-window {
   display: flex;
   width: min(760px, 100%);
   flex-direction: column;
   gap: 18px;
-}
-
-.kaus-draft-config {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 18px;
-}
-
-.kaus-draft-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font: 11px/1 var(--theme-font-mono);
-}
-
-.kaus-draft-field > span:first-child {
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.kaus-draft-field select {
-  max-width: 240px;
-  padding: 6px 8px;
-  border: 1px solid color-mix(in srgb, var(--midground-base) 18%, transparent);
-  border-radius: 8px;
-  background: var(--surface-raised);
-  color: var(--midground-base);
-  font: 12px var(--theme-font-mono);
-}
-
-.kaus-draft-locked,
-.kaus-draft-select-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--midground-base);
-  font: 12px var(--theme-font-mono);
-}
-
-.kaus-draft-locked button,
-.kaus-draft-select-wrap button {
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  cursor: pointer;
 }
 
 .kaus-draft-empty {
@@ -2999,14 +2518,6 @@ button.kaus-conversation-title:hover {
   .kaus-card-time {
     transition: none;
   }
-}
-
-.kaus-msg-role {
-  margin-bottom: 3px;
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
-  font: 700 9px/1 var(--theme-font-mono);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
 }
 
 .kaus-msg-body {
@@ -3542,52 +3053,6 @@ button.kaus-conversation-title:hover {
   text-transform: uppercase;
 }
 
-.kaus-caret {
-  display: inline-block;
-  width: 7px;
-  height: 13px;
-  margin-left: 3px;
-  vertical-align: text-bottom;
-  background: var(--gold);
-  animation: kaus-pulse 1.1s ease-in-out infinite;
-}
-
-.kaus-lifecycle {
-  color: color-mix(in srgb, var(--midground-base) 38%, transparent);
-  font: 10px/1 var(--theme-font-mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.kaus-diagnostic {
-  display: flex;
-  gap: 8px;
-  border-left: 2px solid color-mix(in srgb, var(--danger) 45%, transparent);
-  padding: 4px 10px;
-  font-size: 12px;
-}
-
-.kaus-diagnostic-level {
-  color: var(--danger);
-  font: 700 9px/1.6 var(--theme-font-mono);
-  text-transform: uppercase;
-}
-
-.kaus-generic-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border: 1px dashed color-mix(in srgb, var(--midground-base) 20%, transparent);
-  border-radius: 8px;
-  padding: 7px 10px;
-  font-size: 11.5px;
-}
-
-.kaus-generic-type {
-  color: var(--accent-text);
-  font: 700 10px/1 var(--theme-font-mono);
-}
-
 /* ------------------------------------------------------------------ */
 /* 项目详情页（批次九第 4 件）。左边是次级导航（紧凑树，宽度沿用侧栏现值），   */
 /* 右边是分区。分区本身全部用现有 Card / Section / FieldRow，这里只排版。      */
@@ -3811,25 +3276,6 @@ button.kaus-conversation-title:hover {
   margin: 0;
   color: color-mix(in srgb, var(--midground-base) 52%, transparent);
   font: 11px/1.5 var(--theme-font-sans);
-}
-
-.kaus-external-degraded-cmd {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.kaus-external-degraded-cmd > code {
-  min-width: 0;
-  flex: 1;
-  overflow-x: auto;
-  border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
-  border-radius: 6px;
-  padding: 4px 6px;
-  background: var(--surface-raised);
-  color: var(--midground-base);
-  white-space: pre;
-  font: 11px/1.5 var(--theme-font-mono);
 }
 
 /* 降级说明的小字：中性，**不**用 --danger。 */
@@ -4618,27 +4064,7 @@ body.dark .kaus-cap-row.is-head {
   }
 }
 
-/* ------------------------------------------------------------------ *
- * batch40 / DESIGN ★L：概览页（工作台，不是封面）
- * ------------------------------------------------------------------ *
- * 一栏，最宽 900px，三张现有 Card 叠着。行是"一行一件事"：状态点 · 标题 ·
- * 项目 · 引擎 · 状态词 · 相对时间。全中性（★H），强调色只给运行点。
- */
-.kaus-overview {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: min(900px, 100%);
-  margin: 0 auto;
-  padding: 28px 24px 40px;
-}
-
-.kaus-overview-error {
-  padding: 6px 2px;
-  color: var(--danger);
-  font-size: 12px;
-}
-
+/* 草稿页「需要处理」列表（AttentionBlock）：一行一件事，全中性（★H），强调色只给运行点。 */
 .kaus-overview-list {
   display: flex;
   flex-direction: column;
@@ -4701,13 +4127,6 @@ body.dark .kaus-cap-row.is-head {
   color: color-mix(in srgb, var(--midground-base) 38%, transparent);
   text-align: right;
   font: 9.5px/1.6 var(--theme-font-mono);
-}
-
-.kaus-overview-empty {
-  padding: 6px 2px;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font-size: 12px;
-  line-height: 1.6;
 }
 
 /* ===== batch42 第 2 件：拖拽入组（DESIGN ★J-4 / §5.9 的拖拽目标规矩）=====

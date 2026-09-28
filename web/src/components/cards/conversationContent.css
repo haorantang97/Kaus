@@ -78,7 +78,6 @@
 .kaus-preview-frame { width: 100%; min-height: calc(100dvh - 190px); border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent); background: #fff; }
 .kaus-preview-source { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.75 var(--theme-font-mono); }
 .kaus-preview-markdown { max-width: 760px; margin: auto; }
-.kaus-preview-footnote { margin: 0 0 10px; color: color-mix(in srgb, var(--midground-base) 52%, transparent); font-size: 12px; }
 .kaus-preview-notice, .kaus-remote-image-consent { padding: 18px 0; color: color-mix(in srgb, var(--midground-base) 70%, transparent); }
 .kaus-preview-notice button, .kaus-remote-image-consent button { border: 1px solid color-mix(in srgb, var(--midground-base) 22%, transparent); border-radius: 7px; padding: 7px 12px; margin-top: 10px; cursor: pointer; color: var(--midground-base); }
 .kaus-preview-notice[role="alert"] { color: var(--danger); }

@@ -35,7 +35,6 @@
 }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-pill.is-button:hover { background: color-mix(in srgb, var(--midground-base) 7%, transparent); color: var(--midground-base); }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-pop { border-radius: 12px; box-shadow: 0 8px 32px rgb(0 0 0 / 12%); min-width: 240px; }
-:is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-option { font-family: var(--theme-font-sans); letter-spacing: 0; text-transform: none; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-filter { font: 13px/1.5 var(--theme-font-sans); letter-spacing: 0; text-transform: none; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-send { border-radius: 999px; padding: 0; width: 34px; height: 34px; flex: 0 0 34px; justify-content: center; }
 .kaus-composer-caption { display: flex; justify-content: space-between; gap: 12px; margin: 7px 5px 0; color: var(--chat-muted); font: 11px/1.5 var(--theme-font-sans); }
