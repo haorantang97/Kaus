@@ -615,7 +615,9 @@ export function App() {
         {mainIsSessionPage && route.name === "new" && (
           <div className="absolute inset-0 overflow-y-auto">
             <NewConversationPage
-              lockedProjectId={route.projectId}
+              key={`${route.projectId ?? ""}:${route.bindingId ?? ""}`}
+              initialProjectId={route.projectId}
+              initialBindingId={route.bindingId}
               indexGroups={conversationIndex.groups}
               indexProjectCount={conversationIndex.projects.length}
               onOpenConversation={(id) => navigate(conversationPath(id))}
@@ -649,7 +651,7 @@ export function App() {
               onSelectProject={(name) => navigate(projectPath(name))}
               onOpenMenu={openMenu}
               onOpenConversation={(conversationId) => navigate(conversationPath(conversationId))}
-              onNewConversation={(projectId) => navigate(newConversationPath(projectId))}
+              onNewConversation={(projectId, bindingId) => navigate(newConversationPath(projectId, bindingId))}
               onChanged={reload}
               /* 批次十五第 3 件：进项目页 = 记住轮盘焦点；kicker 的「← 轮盘」
                  与侧栏的「项目」走同一条路（`/agents` + 已记下的焦点）。 */
@@ -726,6 +728,10 @@ export function App() {
                 onClose={showHomeView}
                 onChanged={reload}
                 onGoProfile={goProfile}
+                onNewConversation={sessionOn ? (projectRef) => {
+                  setGraphFocus(projectRef);
+                  navigate(newConversationPath(projectRef));
+                } : undefined}
                 /* flag 开启时轮盘的「详情」进项目页；关闭时还是老抽屉。 */
                 onDetail={(n) => (sessionOn ? navigate(projectPath(n)) : setDetailName(n))}
                 onOpenMenu={openMenu}

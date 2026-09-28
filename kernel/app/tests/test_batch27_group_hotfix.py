@@ -263,7 +263,7 @@ def test_spawn_says_why_the_first_message_did_not_go_out(harness, client):
     assert "hermes gateway run" in error["hint"]
 
 
-def test_spawn_adopts_a_model_the_engine_will_not_take(harness, client):
+def test_spawn_adopts_engine_default_on_a_legacy_gateway(harness, client):
     """快照与引擎实际会用的不是一个 → **发得出去**（AD-155 / 批次三十一）。
 
     这条测试原来断言「说清楚为什么没发出去」。真机复测
@@ -279,7 +279,8 @@ def test_spawn_adopts_a_model_the_engine_will_not_take(harness, client):
         f"/api/groups/{group['id']}/spawn",
         json={
             "projectId": harness.project_id,
-            "modelId": "no-such-model",
+            "modelId": "claude-fable-5",
+            "providerId": "anthropic",
             "initialMessage": "你好",
         },
     )

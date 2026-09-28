@@ -1,10 +1,11 @@
+import { EngineIcon } from "../EngineIcon";
 /* 七种卡片共用的骨架（DESIGN.md §6.1，用现有 token 实现）。
  *
  * 头部固定四段：引擎标签（中性 chip）· 卡片类型 · 时间（右对齐）· 折叠箭头（可选）。
  * 状态**只**通过左侧一条 3px 竖条表达，正文文字永远是墨色——这是全局唯一的"状态上色"位置。
  * 流式中：时间位置换成状态点 + "生成中"，正文末尾一个不闪烁的块状光标（见 StreamCursor）。
  *
- * 这里不认识任何引擎：`engine` 是调用方给的纯展示文本（字母标签 + 显示名）。
+ * 这里不认识任何引擎：`engine` 是调用方给的纯展示身份。
  */
 
 import { useState, type CSSProperties, type ReactNode } from "react";
@@ -23,8 +24,8 @@ const STATUS_COLOR: Record<Exclude<CardStatus, "none">, string> = {
 };
 
 export interface EngineLabel {
-  /** 短标签，如 `H` / `C` / `CC`（DESIGN §2.4：引擎靠标签与图标区分，不分配颜色）。 */
-  label: string;
+  /** Retained for older card fixtures; rendering uses the shared engine icon. */
+  label?: string;
   /** 引擎显示名。 */
   name: string;
 }
@@ -83,7 +84,7 @@ export function CardShell({
             style={{ background: cream(7), color: cream(70), border: `1px solid ${cream(14)}` }}
             title={engine.name}
           >
-            {engine.label}
+            <EngineIcon engine={engine.name} size={14} />
           </span>
         )}
         {engine && (

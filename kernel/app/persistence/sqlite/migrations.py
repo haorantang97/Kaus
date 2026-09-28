@@ -458,6 +458,9 @@ MIGRATIONS: Final[tuple[Migration, ...]] = (
         "ALTER TABLE conversations ADD COLUMN archived_at TEXT",
         "CREATE INDEX conversations_by_archive ON conversations(archived_at, updated_at DESC, id DESC)",
     )),
+    Migration(version=14, name="conversation_engine_config", statements=(
+        "ALTER TABLE conversations ADD COLUMN config_options_json TEXT NOT NULL DEFAULT '{}'",
+    )),
 )
 """按版本升序排列的全部迁移。新的往后追加，旧的一律不动。"""
 

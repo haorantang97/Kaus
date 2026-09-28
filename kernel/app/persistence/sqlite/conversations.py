@@ -9,6 +9,7 @@ v1.0 §8.7：``(agent_binding_id, native_session_id)`` 唯一，由部分唯一�
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime
 from typing import Any, Sequence
@@ -42,6 +43,7 @@ def _row_to_conversation(row: sqlite3.Row) -> Conversation:
         reasoning_mode=row["reasoning_mode"],
         execution_mode=row["execution_mode"],
         approval_mode=row["approval_mode"],
+        config_options=json.loads(row["config_options_json"]),
         state=row["state"],
         archived_at=from_iso(row["archived_at"]),
         origin=row["origin"],
@@ -166,8 +168,8 @@ class SqliteConversationRepository:
                                        preferred_surface, model_id, provider_id,
                                        reasoning_mode, execution_mode, approval_mode, state, origin, visibility,
                                        retention, created_by_collaboration_id,
-                                       created_at, updated_at, archived_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                       created_at, updated_at, archived_at, config_options_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 project_id                   = excluded.project_id,
                 agent_binding_id             = excluded.agent_binding_id,
@@ -187,7 +189,8 @@ class SqliteConversationRepository:
                 retention                    = excluded.retention,
                 created_by_collaboration_id  = excluded.created_by_collaboration_id,
                 updated_at                   = excluded.updated_at,
-                archived_at                  = excluded.archived_at
+                archived_at                  = excluded.archived_at,
+                config_options_json          = excluded.config_options_json
             """,
             (
                 conversation.id,
@@ -211,6 +214,7 @@ class SqliteConversationRepository:
                 require_iso(conversation.created_at),
                 require_iso(conversation.updated_at),
                 to_iso(conversation.archived_at),
+                dump_json(conversation.config_options),
             ),
             conflict_message=(
                 "同一 Binding 下一个原生 Session 只能映射一条 Conversation（v1.0 §8.7）"

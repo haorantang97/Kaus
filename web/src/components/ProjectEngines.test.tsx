@@ -4,7 +4,13 @@ import userEvent from "@testing-library/user-event";
 
 import { ProjectEngines } from "./ProjectEngines";
 import * as api from "../lib/sessionApi";
+import { fetchEngineCatalog } from "../lib/enginePresets";
 import { ALL_SUPPORTED_UI_CAPABILITIES } from "./cards/capabilities";
+
+vi.mock("../lib/enginePresets", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../lib/enginePresets")>(),
+  fetchEngineCatalog: vi.fn(),
+}));
 
 /* batch26 第 5 件：物化入口的门控从「drift 读成没读成」改成
  * `GET /api/bindings/{id}/projection/_meta` 的 `supported`。
@@ -61,6 +67,7 @@ const backend = {
 };
 
 beforeEach(() => {
+  vi.mocked(fetchEngineCatalog).mockResolvedValue({ engines: [] });
   for (const spy of Object.values(mocked)) if (typeof spy?.mockReset === "function") spy.mockReset();
   mocked.fetchProjectBindings.mockResolvedValue({ projectId: "project:pronto", bindings: [binding], count: 1 });
   mocked.fetchBackendWithCapabilityDetail.mockResolvedValue(backend);
@@ -77,6 +84,19 @@ beforeEach(() => {
 });
 
 describe("引擎区：物化入口的 _meta 门控", () => {
+  it("接入目录排除测试驱动，保留用户注册的自定义引擎", async () => {
+    const user = userEvent.setup();
+    mocked.fetchProjectBindings.mockResolvedValue({ projectId: "project:pronto", bindings: [], count: 0 });
+    mocked.fetchBackends.mockResolvedValue({ backends: [
+      { ...backend, driverKind: "mock", displayName: "Test Only" },
+      { ...backend, id: "backend:custom", key: "custom", displayName: "My Engine" },
+    ], count: 2 });
+    render(<ProjectEngines projectId="project:pronto" />);
+    await user.click((await screen.findAllByRole("button", { name: "接入引擎…" }))[0]);
+    expect(await screen.findByRole("option", { name: /My Engine/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Test Only/ })).toBeNull();
+  });
+
   it("supported=true → 「应用到引擎」出现，并接着拉一次 drift", async () => {
     mocked.fetchProjectionMeta.mockResolvedValue({ bindingId: binding.id, supported: true });
     render(<ProjectEngines projectId="project:pronto" />);

@@ -342,6 +342,7 @@ export function spawnGroupMember(
     projectId: string;
     bindingId?: string | null;
     modelId?: string | null;
+    providerId?: string | null;
     title?: string | null;
     role?: string | null;
     initialMessage?: string | null;

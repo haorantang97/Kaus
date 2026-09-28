@@ -1116,6 +1116,8 @@ def open_session_runtime(
     terminal_router = build_terminal_router(preferences=terminal_preferences,
         launcher=launcher, repositories=repositories, auth_policy=auth_policy)
     router.routes.extend(terminal_router.routes)
+    from local_workspace import build_workspace_router
+    router.routes.extend(build_workspace_router(auth_policy=auth_policy).routes)
     # 批次二十二：Group 数据面。它要鉴权、要 Session Host（成员摘要里的
     # `runState` 与 spawn 的首句都得问它）、也要 Driver Registry（首句要
     # `register_binding`），三样都在这一层，所以和会话路由同批装配。

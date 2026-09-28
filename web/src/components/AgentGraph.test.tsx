@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { AgentGraph } from "./AgentGraph";
 import type { NetworkResp, OrgNode } from "../lib/api";
@@ -88,6 +88,31 @@ beforeEach(() => {
 });
 
 describe("轮盘项目节点的两种拖拽（★J-4，batch43）", () => {
+  it("选中项目只更新面板，新建对话和进入项目各自有明确入口", () => {
+    const onNewConversation = vi.fn();
+    const onGoProfile = vi.fn();
+    const onDetail = vi.fn();
+    render(<AgentGraph net={net} embedded mode="chat" onClose={() => {}} onChanged={() => {}}
+      onGoProfile={onGoProfile} onDetail={onDetail} onNewConversation={onNewConversation} onOpenMenu={() => {}} />);
+    const projectNode = screen.getByRole("button", { name: "Pronto" });
+    projectNode.focus();
+    fireEvent.keyDown(projectNode, { key: "Enter" });
+    fireEvent.click(projectNode);
+    expect(projectNode).toHaveFocus();
+    expect(projectNode).toHaveAttribute("aria-pressed", "true");
+    expect(onGoProfile).not.toHaveBeenCalled();
+    expect(onNewConversation).not.toHaveBeenCalled();
+    const panel = screen.getByRole("complementary");
+    fireEvent.click(within(panel).getByRole("button", { name: "新建对话" }));
+    expect(onNewConversation).toHaveBeenCalledWith("pronto");
+    fireEvent.click(within(panel).getByRole("button", { name: "进入项目" }));
+    expect(onDetail).toHaveBeenCalledWith("pronto");
+    fireEvent.pointerDown(document.querySelector(".ag-canvas")!);
+    expect(within(panel).getByRole("button", { name: "新建对话" })).toBeVisible();
+    fireEvent.click(within(projectNode).getByRole("button", { name: "进入项目" }));
+    expect(onGoProfile).toHaveBeenCalledWith("pronto");
+  });
+
   it("dragStart 往 dataTransfer 里写项目 MIME（值 = 节点 id）+ 显示名", () => {
     renderGraph();
     const projectNode = document.querySelector('.ag-node[data-id="pronto"]') as HTMLElement;

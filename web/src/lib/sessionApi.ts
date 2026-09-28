@@ -218,6 +218,7 @@ export interface ConversationWire {
   reasoningMode: string | null;
   approvalMode?: string | null;
   executionMode?: string | null;
+  configOptions?: Record<string, string | boolean>;
   archivedAt?: string | null;
   preferredSurface: string;
   visibility: string;
@@ -241,12 +242,13 @@ export interface ModelDescriptorWire {
   isCurrentProvider?: boolean;
   contextWindow: number | null;
   reasoningLevels: string[];
+  availability?: "available" | "configured" | "unknown" | "unavailable";
 }
 
 export interface ModelCatalogWire {
   bindingId: string;
   mode: string;
-  /** 已经由后端过滤过：这里列出的就是该 Binding 真能用的模型（batch13-backend）。 */
+  /** Engine candidates; availability distinguishes selectable evidence from an inventory. */
   models: ModelDescriptorWire[];
   defaultModelId: string | null;
   defaultProviderId: string | null;
@@ -268,9 +270,18 @@ export interface EffectiveSettingWire {
   source: SettingSource;
 }
 
+export interface ApprovalOptionWire { id: string; nativeId?: string; name: string; description?: string }
+
+export type EngineConfigOptionWire = { id: string; name: string; description?: string } & (
+  { type: "boolean"; currentValue: boolean } |
+  { type: "select"; currentValue: string; options: { value: string; name: string }[] }
+);
+
 export interface EffectiveSettingsWire {
   bindingId: string;
-  conversationControls?: { reasoning: boolean; reasoningDefault?: string | null; reasoningLevels?: string[]; approvalModes: string[]; approvalDefault?: string | null; executionModes?: { id: string; name: string }[]; executionDefault?: string | null };
+  modelCatalog?: ModelCatalogWire | null;
+  uiCapabilities?: UiCapabilities | null;
+  conversationControls?: { reasoning: boolean; reasoningDefault?: string | null; reasoningLevels?: string[]; approvalModes: string[]; approvalOptions?: ApprovalOptionWire[]; approvalDefault?: string | null; executionModes?: { id: string; name: string }[]; executionDefault?: string | null; configOptions?: EngineConfigOptionWire[] };
   model: EffectiveSettingWire;
   /** `levels` 为空 = 当前模型没有推理档位 → 那枚下拉不渲染。 */
   reasoningEffort: EffectiveSettingWire & { levels: string[] };
@@ -293,9 +304,12 @@ export function emptyEffectiveSettings(bindingId: string): EffectiveSettingsWire
 
 /** Binding 的有效设置：Binding → 引擎配置 → 目录默认，后端一次解析好。
  *  **404 不算错**：会话页在后端半边合并之前照样要能用（按"一项都没有"渲染）。 */
-export function fetchEffectiveSettings(bindingId: string, signal?: AbortSignal): Promise<EffectiveSettingsWire> {
+export function fetchEffectiveSettings(bindingId: string, signal?: AbortSignal, options?: { includeCatalog?: boolean; conversationId?: string }): Promise<EffectiveSettingsWire> {
+  const query = new URLSearchParams();
+  if (options?.includeCatalog) query.set("includeCatalog", "true");
+  if (options?.conversationId) query.set("conversationId", options.conversationId);
   return request<EffectiveSettingsWire>(
-    `/api/bindings/${encodeURIComponent(bindingId)}/effective-settings`,
+    `/api/bindings/${encodeURIComponent(bindingId)}/effective-settings${query.size ? `?${query}` : ""}`,
     { signal },
   ).catch((failure) => {
     if (failure instanceof SessionApiError && failure.status === 404) {
@@ -352,8 +366,8 @@ export function fetchProjects(signal?: AbortSignal): Promise<{ projects: Project
   return request("/api/projects", { signal });
 }
 
-export function fetchProjectBindings(projectId: string, signal?: AbortSignal): Promise<{ projectId: string; bindings: BindingWire[]; count: number }> {
-  return request(`/api/projects/${encodeURIComponent(projectId)}/bindings`, { signal });
+export function fetchProjectBindings(projectId: string, signal?: AbortSignal, options?: { includeStatus?: boolean }): Promise<{ projectId: string; bindings: BindingWire[]; count: number }> {
+  return request(`/api/projects/${encodeURIComponent(projectId)}/bindings${options?.includeStatus === false ? "?includeStatus=false" : ""}`, { signal });
 }
 
 export function fetchBinding(bindingId: string, signal?: AbortSignal): Promise<BindingWire> {
@@ -404,7 +418,7 @@ export function fetchRecentConversations(
 /** 改默认模型 / 通用 runtimeConfig 键（推理强度走 `reasoning_effort`）。 */
 export function patchBinding(
   bindingId: string,
-  body: { defaultModelId?: string | null; runtimeConfig?: Record<string, unknown> },
+  body: { defaultModelId?: string | null; defaultProviderId?: string | null; runtimeConfig?: Record<string, unknown> },
 ): Promise<BindingWire & { projectedToBackend?: boolean }> {
   return request(`/api/bindings/${encodeURIComponent(bindingId)}`, { method: "PATCH", body });
 }
@@ -417,7 +431,7 @@ export function patchBinding(
 // 不是这个；会话标题此前没有任何界面入口。
 export function patchConversation(
   conversationId: string,
-  body: { title?: string; modelId?: string | null; reasoningMode?: string; approvalMode?: string; executionMode?: string },
+  body: { title?: string; modelId?: string | null; providerId?: string | null; reasoningMode?: string; approvalMode?: string; executionMode?: string; configOptions?: Record<string, string | boolean> },
 ): Promise<{ conversation: ConversationWire; appliedToRuntime: boolean }> {
   return request(`/api/conversations/${encodeURIComponent(conversationId)}`, { method: "PATCH", body });
 }
@@ -445,6 +459,11 @@ export function createBinding(
   body: { backendId: string; discriminator?: string | null; displayName?: string | null },
 ): Promise<BindingWire> {
   return request(`/api/projects/${encodeURIComponent(projectId)}/bindings`, { method: "POST", body });
+}
+
+/** Use a global connection in this project, preserving any existing local configuration. */
+export function ensureProjectBinding(projectId: string, backendId: string): Promise<BindingWire> {
+  return request(`/api/projects/${encodeURIComponent(projectId)}/bindings/ensure`, { method: "POST", body: { backendId } });
 }
 
 /** 解除挂载。默认 Binding 与名下有活跃 Runtime 的会被后端挡成 409。 */
@@ -621,6 +640,11 @@ export function fetchBackends(signal?: AbortSignal): Promise<{ backends: Backend
   return request("/api/backends", { signal });
 }
 
+/** Active global connections, including native/custom drivers; no discovery or launch. */
+export function fetchConnectedBackends(signal?: AbortSignal): Promise<{ backends: BackendWire[]; count: number }> {
+  return request("/api/engine-connections", { signal });
+}
+
 /* ---- 能力（项目详情页 ③ 区） ---- */
 
 export interface EffectiveCapabilityEntryWire {
@@ -727,9 +751,9 @@ export function deleteProjectCapability(
   return request(capabilityPath(projectId, capabilityType, capabilityId), { method: "DELETE" });
 }
 
-export function fetchModelCatalog(backendId: string, bindingId: string, signal?: AbortSignal): Promise<ModelCatalogWire> {
+export function fetchModelCatalog(backendId: string, bindingId: string, signal?: AbortSignal, conversationId?: string): Promise<ModelCatalogWire> {
   return request(
-    `/api/backends/${encodeURIComponent(backendId)}/models?binding=${encodeURIComponent(bindingId)}`,
+    `/api/backends/${encodeURIComponent(backendId)}/models?binding=${encodeURIComponent(bindingId)}${conversationId ? `&conversationId=${encodeURIComponent(conversationId)}` : ""}`,
     { signal },
   );
 }

@@ -1,3 +1,6 @@
+import { BarMenu } from "./ComposerBar";
+import { useProfileModelCatalog } from "../lib/useProfileModelCatalog";
+import { modelValue } from "../lib/modelCatalogView";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, Clipboard, ExternalLink, History, Moon, Plus, RotateCw, Sun, Trash2, X } from "lucide-react";
 import { apiDelete, apiGet, apiPost, fetchSessionHealth, fetchSessions, getDashboardConfig, openTerminal, setDashboardConfig, type DashboardConfig, type OrgNode, type Session, type SessionHealth } from "../lib/api";
@@ -6,7 +9,7 @@ import { t } from "../i18n";
 
 interface KnownModel { default: string; provider?: string | null; base_url?: string | null; context_window?: number; reasoning_levels?: string[]; fast_mode?: boolean; family?: string; tier?: string; description?: string }
 interface Lever {
-  model: string | { default?: string } | null;
+  model: string | { default?: string; provider?: string | null } | null;
   model_own: boolean;
   model_reasoning_levels: string[];
   model_fast_mode: boolean;
@@ -131,6 +134,7 @@ export function Conversation({
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [sessionErr, setSessionErr] = useState<string | null>(null);
   const [lever, setLever] = useState<Lever | null>(null);
+  const profileModels = useProfileModelCatalog(name, lever);
   const [leverErr, setLeverErr] = useState<string | null>(null);
   const [showAllSessions, setShowAllSessions] = useState(false);
   const [sessionHealth, setSessionHealth] = useState<SessionHealth | null>(null);
@@ -152,7 +156,7 @@ export function Conversation({
     return [...selected.values()];
   }, [active, sessions]);
   const effectiveModel = typeof lever?.model === "object" ? lever.model?.default || null : lever?.model || node.model || null;
-  const effectiveProvider = lever?.known_models.find((item) => item.default === effectiveModel)?.provider || null;
+  const effectiveProvider = typeof lever?.model === "object" ? lever.model?.provider ?? null : null;
   const selectedCommand = commandFor(name, activeSession?.id ?? null);
   const newCommand = commandFor(name, null, effectiveModel, effectiveProvider);
 
@@ -359,8 +363,7 @@ export function Conversation({
 
   const leverLoaded = lever !== null;
   const curModel = leverLoaded ? (typeof lever.model === "object" ? lever.model?.default : lever.model) || "" : (node.model || "");
-  const knownModels = lever?.known_models || [];
-  const modelSelVal = knownModels.some((m) => m.default === curModel) ? curModel : "";
+  const modelSelVal = modelValue(curModel, typeof lever?.model === "object" ? (lever.model as KnownModel | null)?.provider : null, profileModels.catalog);
   const reasoningSelVal = lever ? (!lever.reasoning_own ? "__inherit__" : lever.reasoning_effort || "medium") : "medium";
   // 模型感知的推理强度选项：只展示当前模型支持的级别
   const availableReasoningLevels: string[] = lever?.model_reasoning_levels || [];
@@ -372,7 +375,7 @@ export function Conversation({
   const approvalsSelVal = lever?.approvals_mode || "manual";
 
   const setModel = async (val: string) => {
-    const selected = knownModels.find((m) => m.default === val);
+    const selected = profileModels.payloadFor(val);
     if (!selected) {
       toast("请选择模型白名单里的具体模型", "bad");
       return;
@@ -444,27 +447,9 @@ export function Conversation({
           {node.main_twin ? (
             <span>{curModel || "—"} · 化身</span>
           ) : (
-            <select
-              className="agent-chat-model"
-              value={modelSelVal}
-              onChange={(e) => { void setModel(e.target.value); }}
-              title={(() => {
-                const sel = knownModels.find(m => m.default === modelSelVal);
-                return sel?.description
-                  ? `${sel.default} — ${sel.description}\n推理: ${(sel.reasoning_levels || []).join(", ")}${sel.fast_mode ? "\n快速模式: 可用" : ""}`
-                  : "保存为该 agent 的默认模型；真实终端按 Hermes 当前配置启动";
-              })()}
-            >
-              {!leverLoaded && <option value="" disabled>{leverErr ? "模型加载失败" : "模型加载中…"}</option>}
-              {leverLoaded && !modelSelVal && <option value="" disabled>{curModel ? `${curModel}（未列入候选）` : "未配置模型"}</option>}
-              {knownModels.map((m) => (
-                <option key={m.default} value={m.default} title={
-                  (m.tier || m.family) ? `${m.family ? m.family + " · " : ""}${m.tier || ""}: ${m.reasoning_levels?.join(", ") || "未知"}` : ""
-                }>
-                  {m.default}{m.family ? ` (${m.family} ${m.tier || ""})` : ""}
-                </option>
-              ))}
-            </select>
+            <BarMenu label={t("bar.model")} value={modelSelVal} display={curModel || "—"}
+              options={profileModels.options} emptyNote={t("bar.model.empty")}
+              onSelect={(value) => { void setModel(value); }} />
           )}
           {leverErr && <span title={leverErr} style={{ color: "var(--danger)" }}>· 运行设置加载失败</span>}
           {!node.main_twin && (

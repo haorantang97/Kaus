@@ -290,6 +290,9 @@ class ModelDescriptor(_DriverModel):
     is_current_provider: bool = False
     context_window: int | None = None
     reasoning_levels: tuple[str, ...] = ()
+    # An authenticated provider can still return a generic product catalog.
+    # Keep that evidence separate from models the engine explicitly offers.
+    availability: Literal["available", "configured", "unknown", "unavailable"] = "available"
 
 
 class ModelCatalog(_DriverModel):

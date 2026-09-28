@@ -1,26 +1,16 @@
-/* 输入区工具栏（DESIGN ★ 定稿 I + H-4）。
- *
- * 一行，左起：工作目录 · 引擎 · 模型 ▾ · 推理强度 ▾ · 审批模式 ▾ ｜ 📎 · 发送。
- * 会话页与草稿页共用这一条（草稿页把项目下拉塞进 `leading`）。
- *
- * 三条硬规则：
- *  ① **全中性**（H-4）：这一条上没有任何强调色，可点的只多一个 `▾`。
- *  ② **不用原生 `<select>`**：Pill + 浮层菜单，形态与站内其它菜单一致。
- *  ③ **缺的不渲染**（AD-71）：`source === "none"`（⇒ `value === null`）的项整枚不出现，
- *     `levels` 为空时没有推理强度，附件能力缺失时没有 📎——都不留占位、不写备注。
- *
- * 取值一律来自 `GET /api/bindings/{id}/effective-settings`；`source !== "binding"`
- * 时悬停提示「来自引擎配置」（`catalog` 用「目录默认」）——提示是 `title`，
- * 不是另一枚 chip，工具栏不因此变长。
- */
+import { modelSelection } from "../lib/modelCatalogView";
+import { EngineIcon } from "./EngineIcon";
+import { WorkspacePicker } from "./WorkspacePicker";
+import { chooseNativeWorkspace } from "../lib/workspaceApi";
+/* Shared composer: context above the input, controls below it. */
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Folder, Paperclip } from "lucide-react";
+import { ChevronDown, CircleHelp, Folder, LoaderCircle, Plus, Settings2, Shield, ShieldAlert } from "lucide-react";
 import "../styles/conversation-polish.css";
 
 import { useLocale, type DictKey } from "../i18n";
-import type { EffectiveSettingWire, SettingSource } from "../lib/sessionApi";
+import type { ApprovalOptionWire, EffectiveSettingWire, EngineConfigOptionWire, SettingSource } from "../lib/sessionApi";
 
 /** 来源提示：本绑定自己的值不提示；其余按来源给一句话。 */
 export function sourceHint(source: SettingSource, t: (key: DictKey) => string): string | undefined {
@@ -29,7 +19,9 @@ export function sourceHint(source: SettingSource, t: (key: DictKey) => string): 
 }
 
 /** 审批模式取值 → AD-106 的文案。引擎给了别的值就原样显示，不猜语义。 */
-export function approvalLabel(value: string, t: (key: DictKey) => string): string {
+export function approvalLabel(value: string, t: (key: DictKey) => string, choices?: ApprovalOptionWire[]): string {
+  const choice = choices?.find(option => option.id === value);
+  if (choice) return choice.name;
   if (value === "bypass") return t("bar.approval.bypass");
   if (value === "read_only") return t("bar.approval.readOnly");
   if (value === "plan") return t("bar.approval.plan");
@@ -60,6 +52,7 @@ export function BarPill({ label, title, children }: { label: string; title?: str
 }
 
 export interface BarMenuOption {
+  providerId?: string | null;
   value: string;
   label: string;
   /** 层级缩进（草稿页的项目菜单，批次十六第 5 件）：只影响左内边距，不换形态。 */
@@ -70,6 +63,9 @@ export interface BarMenuOption {
   /** batch30 / ★I-3：这一条属于「当前那家 provider」。它的组默认展开，别的组
    *  折成一行组头 + 条数。 */
   groupCurrent?: boolean;
+  uncertain?: boolean;
+  icon?: ReactNode;
+  title?: string;
 }
 
 /** 默认展开哪个组（batch30 / ★I-3）。
@@ -135,6 +131,9 @@ export function BarMenu({
   emptyNote,
   degraded = false,
   floating = false,
+  iconOnly = false,
+  allowReselect = false,
+  icon,
   onSelect,
 }: {
   label: string;
@@ -147,6 +146,9 @@ export function BarMenu({
   emptyNote?: string | null;
   degraded?: boolean;
   floating?: boolean;
+  icon?: ReactNode;
+  iconOnly?: boolean;
+  allowReselect?: boolean;
   onSelect: (value: string) => void;
 }) {
   const { t } = useLocale();
@@ -154,6 +156,7 @@ export function BarMenu({
   /* 第 5 件：项数多时顶部一个过滤框。查询只活在"这次打开"里——关掉就清空，
      下次打开是整份清单，不会出现"上次筛过、这次看着像少了几条"。 */
   const [query, setQuery] = useState("");
+  const [showUncertain, setShowUncertain] = useState(false);
   /* batch30 / ★I-3：手动展开过哪些组。null = 还没动过，用默认那一档。
      **什么都不持久化**：关掉菜单就忘，下次打开又是"当前那家展开、别家折着"。 */
   const [expandedGroups, setExpandedGroups] = useState<string[] | null>(null);
@@ -189,17 +192,19 @@ export function BarMenu({
      用户会以为自己筛掉的是"另一个东西"。一个 provider 的引擎照旧一列到底。 */
   const showGroups = new Set(options.map((option) => option.group ?? "")).size > 1;
   const needle = query.trim().toLowerCase();
+  const uncertainCount = options.filter(option => option.uncertain && option.value !== value).length;
+  const visibleOptions = options.filter(option => !option.uncertain || option.value === value || showUncertain);
   const shown = needle
-    ? options.filter(
+    ? visibleOptions.filter(
         (option) =>
-          option.label.toLowerCase().includes(needle) || option.value.toLowerCase().includes(needle),
+          `${option.label} ${option.value}`.toLowerCase().includes(needle),
       )
-    : options;
+    : visibleOptions;
   /* batch30（真机 P2 / ★I-3）：47 个模型即使分了组，摊开仍旧长得要滚很久。默认
      只展开**引擎此刻在用的那家**，其余每组折成一行「组名 · N 个模型」，点组头
      展开。**正在过滤时全部展开**：这时用户要的是"哪儿有命中"，折叠只会把答案
      藏起来（筛空的组连组头一起不渲染，那一条没变）。 */
-  const fallbackExpanded = defaultExpandedGroup(options, value);
+  const fallbackExpanded = defaultExpandedGroup(visibleOptions, value);
   const expandedSet = new Set(expandedGroups ?? (fallbackExpanded ? [fallbackExpanded] : []));
   const filtering = needle !== "";
   const toggleGroup = (name: string) =>
@@ -214,6 +219,7 @@ export function BarMenu({
       setQuery("");
       // batch30：折叠状态也不跨"这次打开"（★I-3：不持久化任何东西）。
       setExpandedGroups(null);
+      setShowUncertain(false);
       return;
     }
     const onDocDown = (event: MouseEvent) => {
@@ -238,17 +244,18 @@ export function BarMenu({
     <span className="kaus-bar-menu" ref={ref} data-bar-item={label}>
       <button
         type="button"
-        className="kaus-bar-pill is-button"
+        className={`kaus-bar-pill is-button${iconOnly ? " is-icon-only" : ""}`}
         aria-label={label}
         aria-expanded={open}
         aria-haspopup="listbox"
         title={title ? `${label} · ${title}` : label}
         onClick={() => setOpen((current) => !current)}
       >
-        <span className="kaus-bar-value" title={display}>{display}</span>
+        {icon}
+        {!iconOnly && <span className="kaus-bar-value" title={display}>{display}</span>}
         {/* 降级的小点：中性色，解释挂在整枚 Pill 的 title 上（工具栏不因此变长）。 */}
         {degraded && <span className="kaus-bar-dot" data-testid="bar-degraded" aria-hidden />}
-        <ChevronDown className="kaus-bar-caret" size={12} aria-hidden />
+        {!iconOnly && <ChevronDown className="kaus-bar-caret" size={12} aria-hidden />}
       </button>
       {open && menuLayer(
         <span className="kaus-bar-pop" ref={menuRef} style={floating ? floatingStyle : undefined} role="listbox" aria-label={label}>
@@ -269,7 +276,7 @@ export function BarMenu({
               {emptyNote}
             </span>
           )}
-          {options.length > 0 && shown.length === 0 && (
+          {options.length > 0 && shown.length === 0 && needle && (
             <span className="kaus-bar-pop-note" data-testid="menu-filter-empty">
               {t("bar.filter.empty")}
             </span>
@@ -307,20 +314,27 @@ export function BarMenu({
                   type="button"
                   role="option"
                   aria-selected={option.value === value}
+                  title={option.title ?? (option.uncertain ? t("bar.model.unverifiedHint") : undefined)}
                   className={`kaus-bar-pop-item ${option.value === value ? "is-current" : ""}`}
                   /* 层级缩进：项目树在菜单里也看得出父子关系（第 5 件）。 */
                   style={option.depth ? { paddingLeft: 8 + option.depth * 12 } : undefined}
                   onClick={() => {
                     setOpen(false);
-                    if (option.value !== value) onSelect(option.value);
+                    if (allowReselect || option.value !== value) onSelect(option.value);
                   }}
                 >
-                  {option.label}
+                  {option.icon}{option.label}
+                  {option.uncertain && <CircleHelp size={12} className="kaus-model-uncertain-icon" aria-label={t("bar.model.unverified")} />}
                 </button>
               ))}
             </span>
             );
           })}
+          {uncertainCount > 0 && <button type="button" className="kaus-bar-pop-head is-button kaus-model-uncertain-toggle"
+            aria-expanded={showUncertain} onClick={() => setShowUncertain(current => !current)}>
+            <CircleHelp size={12} aria-hidden />{t("bar.model.unverified")}<span className="kaus-bar-pop-count">{uncertainCount}</span>
+            <ChevronDown size={12} aria-hidden style={{ transform: showUncertain ? "rotate(180deg)" : undefined }} />
+          </button>}
           {/* 目录降级时的一行小字：说明这份列表是怎么来的，不阻断选择。 */}
           {footnote && (
             <span className="kaus-bar-pop-note" data-testid="model-diagnostic">
@@ -333,113 +347,132 @@ export function BarMenu({
   );
 }
 
-/** 工作目录：平时一枚 Pill（末两级），点开换成一个小输入框，回车保存。 */
-export function WorkspacePill({
-  setting,
-  onSave,
-}: {
-  setting: EffectiveSettingWire;
-  onSave?: (path: string) => Promise<void>;
+/** Prefer the native dialog; the browser uses the same host directory selection. */
+export function WorkspacePill({ setting, onSave }: {
+  setting: EffectiveSettingWire; onSave?: (path: string) => Promise<void>;
 }) {
   const { t } = useLocale();
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(setting.value ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const alive = useRef(true);
+  const choosing = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const label = t("bar.workspace");
-
-  useEffect(() => {
-    setDraft(setting.value ?? "");
-  }, [setting.value]);
-
   if ((setting.source === "none" || setting.value === null) && !onSave) return null;
-
-  const commit = async () => {
-    const next = draft.trim();
-    if (!onSave || next === "" || next === setting.value) {
-      setEditing(false);
-      return;
-    }
+  const title = [setting.value, sourceHint(setting.source, t)].filter(Boolean).join(" · ");
+  const close = () => { setEditing(false); buttonRef.current?.focus(); };
+  async function choose() {
+    if (!onSave || choosing.current) return;
+    choosing.current = true;
     setBusy(true);
     setError(null);
     try {
-      await onSave(next);
-      setEditing(false);
+      const selected = await chooseNativeWorkspace(setting.value);
+      if (!alive.current) return;
+      if (selected === undefined) setEditing(true);
+      else if (selected && selected !== setting.value) await onSave(selected);
     } catch (failure) {
-      // 保留用户输入：路径打错时不能把他刚敲的那串抹掉。
-      setError(String((failure as Error)?.message ?? failure));
+      if (alive.current) setError(String((failure as Error)?.message ?? failure));
     } finally {
-      setBusy(false);
+      choosing.current = false;
+      if (alive.current) setBusy(false);
     }
-  };
-
-  if (editing) {
-    return (
-      <span className="kaus-bar-menu" data-bar-item={label}>
-        <input
-          autoFocus
-          aria-label={label}
-          className="kaus-bar-input"
-          value={draft}
-          disabled={busy}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return;
-            if (event.key === "Enter") {
-              event.preventDefault();
-              void commit();
-            }
-            if (event.key === "Escape") {
-              setEditing(false);
-              setDraft(setting.value ?? "");
-              setError(null);
-            }
-          }}
-        />
-        {error && (
-          <span className="kaus-bar-pop-note is-error" role="alert">
-            {error}
-          </span>
-        )}
-      </span>
-    );
   }
-
-  const hint = sourceHint(setting.source, t);
-  const title = [setting.value, hint].filter(Boolean).join(" · ");
-  if (!onSave) {
-    return (
-      <BarPill label={label} title={title}>
-        <Folder size={13} aria-hidden />
-        {setting.value ? tailSegments(setting.value) : t("bar.workspace.choose")}
-      </BarPill>
-    );
-  }
-  return (
-    <button
-      type="button"
-      className="kaus-bar-pill is-button"
-      aria-label={label}
-      title={`${label} · ${title}`}
-      data-bar-item={label}
-      onClick={() => setEditing(true)}
-    >
-      <Folder size={13} aria-hidden />
-      {setting.value ? tailSegments(setting.value) : t("bar.workspace.choose")}
+  if (!onSave) return <BarPill label={label} title={title}><Folder size={14} aria-hidden />{setting.value ? tailSegments(setting.value) : t("bar.workspace.choose")}</BarPill>;
+  return <span className="kaus-workspace-control" data-bar-item={label}>
+    <button ref={buttonRef} type="button" className="kaus-bar-pill is-button" aria-label={label} title={`${label} · ${title}`}
+      disabled={busy} aria-haspopup="dialog" onClick={() => void choose()}>
+      {busy ? <LoaderCircle size={14} className="kaus-ui-spin" aria-hidden /> : <Folder size={14} aria-hidden />}
+      <span className="kaus-bar-value">{setting.value ? tailSegments(setting.value) : t("bar.workspace.choose")}</span>
     </button>
-  );
+    {error && <span className="kaus-bar-pop-note is-error" role="alert">{error}</span>}
+    {editing && <WorkspacePicker initialPath={setting.value} onSelect={onSave} onClose={close} />}
+  </span>;
 }
 
 /* ------------------------------------------------------------------ *
  * 整条工具栏
  * ------------------------------------------------------------------ */
 
+type EngineConfigProps = {
+  options: EngineConfigOptionWire[];
+  values?: Record<string, string | boolean>;
+  onChange?: (key: string, value: string | boolean) => void;
+};
+
+export function EngineConfigFields({ options, values = {}, onChange }: EngineConfigProps) {
+  return <div className="kaus-engine-config-fields">{options.map(option => {
+    const value = values[option.id] ?? option.currentValue;
+    return <div key={option.id} className="kaus-engine-config-field" title={option.description}>
+      <span>{option.name}</span>
+      {option.type === "boolean" ? <button type="button" role="switch" aria-label={option.name}
+        aria-checked={value === true} className="kaus-engine-config-switch" disabled={!onChange}
+        onClick={() => onChange?.(option.id, value !== true)}><span /></button>
+        : onChange ? <BarMenu floating allowReselect label={option.name} value={String(value)}
+          display={option.options.find(item => item.value === value)?.name ?? String(value)}
+          options={option.options.map(item => ({ value: item.value, label: item.name }))}
+          onSelect={next => onChange(option.id, next)} />
+        : <BarPill label={option.name}>{option.options.find(item => item.value === value)?.name ?? String(value)}</BarPill>}
+    </div>;
+  })}</div>;
+}
+
+function EngineConfigMenu(props: EngineConfigProps) {
+  const { locale } = useLocale();
+  const label = locale === "en" ? "More settings" : "更多设置";
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const rect = anchor.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(340, window.innerWidth - 24);
+      const above = rect.top > window.innerHeight / 2;
+      setStyle({ position: "fixed", zIndex: 990, width,
+        left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
+        ...(above ? { bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8 }),
+        maxHeight: Math.max(120, (above ? rect.top : window.innerHeight - rect.bottom) - 20) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    panel.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
+    const close = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!anchor.current?.contains(target) && !panel.current?.contains(target) && !target.closest(".kaus-bar-pop")) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setOpen(false); anchor.current?.focus(); }
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); };
+  }, [open]);
+  return <>
+    <button ref={anchor} type="button" className="kaus-bar-pill is-button is-icon-only" aria-label={label} title={label}
+      aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)}><Settings2 size={16} aria-hidden /></button>
+    {open && createPortal(<div ref={panel} role="dialog" aria-label={label} style={style} className="kaus-engine-config-pop">
+      <EngineConfigFields {...props} />
+    </div>, document.body)}
+  </>;
+}
+
 export interface ComposerBarProps {
-  /** These values are project defaults, not proof of the current runtime policy. */
-  settingsAreDefaults?: boolean;
+  children?: ReactNode;
+  contextKey?: string;
   /** 草稿页把项目下拉塞在最左（会话页不传）。 */
   leading?: ReactNode;
   engineName?: string | null;
+  engineId?: string | null;
   workspaceRoot: EffectiveSettingWire;
   onChangeWorkspaceRoot?: (path: string) => Promise<void>;
   model: EffectiveSettingWire;
@@ -452,11 +485,14 @@ export interface ComposerBarProps {
   onChangeModel?: (modelId: string) => void;
   reasoning: EffectiveSettingWire & { levels: string[] };
   onChangeReasoning?: (level: string) => void;
-  approval: EffectiveSettingWire & { options: string[] };
+  approval: EffectiveSettingWire & { options: string[]; choices?: ApprovalOptionWire[] };
   onChangeApproval?: (mode: string) => void;
   executionMode?: string | null;
   executionOptions?: BarMenuOption[];
   onChangeExecutionMode?: (mode: string) => void;
+  configOptions?: EngineConfigOptionWire[];
+  configValues?: Record<string, string | boolean>;
+  onChangeConfig?: (key: string, value: string | boolean) => void;
   /** 引擎声明的 `card.attachments`。缺 / `none` / `unknown` ⇒ 不渲染 📎（AD-71）。 */
   attachments?: string | null;
   onAttach?: () => void;
@@ -465,9 +501,11 @@ export interface ComposerBarProps {
 }
 
 export function ComposerBar({
-  settingsAreDefaults = false,
+  children,
+  contextKey,
   leading,
   engineName,
+  engineId,
   workspaceRoot,
   onChangeWorkspaceRoot,
   model,
@@ -482,23 +520,62 @@ export function ComposerBar({
   executionMode,
   executionOptions = [],
   onChangeExecutionMode,
+  configOptions = [],
+  configValues,
+  onChangeConfig,
   attachments = null,
   onAttach,
   actions,
 }: ComposerBarProps) {
   const { t } = useLocale();
   const settingDisplay = (value: string) => value;
-  const settingHint = (source: EffectiveSettingWire["source"]) => settingsAreDefaults ? t("bar.defaults.hint") : sourceHint(source, t);
+  const approvalHint = [approval.value === "deny" ? t("bar.approval.noPromptHint") : null, sourceHint(approval.source, t)].filter(Boolean).join(" · ") || undefined;
   const modelLabel =
-    modelOptions.find((option) => option.value === model.value)?.label ?? model.value ?? "";
+    modelOptions.find((option) => option.value === model.value)?.label ?? (model.value ? modelSelection(model.value).modelId : "");
   const showAttachments = attachments !== null && attachments !== undefined && attachments !== "none" && attachments !== "unknown";
 
   return (
-    <div className="kaus-composer-bar" data-testid="composer-bar">
-      {leading}
-      <WorkspacePill setting={workspaceRoot} onSave={onChangeWorkspaceRoot} />
-      {engineName && <BarPill label={t("bar.engine")}>{engineName}</BarPill>}
+    <div className="kaus-composer-layout" data-testid="composer-bar">
+      <div className="kaus-composer-context">
+        {leading}
+        {engineName && <BarPill label={t("bar.engine")}><EngineIcon engine={engineId ?? engineName} />{engineName}</BarPill>}
+        <span className="kaus-bar-spacer" />
+        <WorkspacePill key={contextKey} setting={workspaceRoot} onSave={onChangeWorkspaceRoot} />
+      </div>
+      {children}
+      <div className="kaus-composer-bar">
+      {showAttachments && onAttach && (
+        <button type="button" className="kaus-bar-pill is-button kaus-composer-attach" aria-label={t("bar.attach")} title={t("bar.attach")} onClick={onAttach}>
+          <Plus size={18} aria-hidden />
+        </button>
+      )}
 
+      {approval.options.length > 0 && approval.source !== "none" && approval.value !== null && (
+        <BarMenu
+          label={t("bar.approval")}
+          value={approval.value}
+          display={approvalLabel(approval.value, t, approval.choices)}
+          iconOnly
+          allowReselect
+          icon={approval.value === "deny" || approval.value === "bypass" ? <ShieldAlert size={16} aria-hidden /> : <Shield size={16} aria-hidden />}
+          title={[approvalLabel(approval.value, t, approval.choices), approvalHint].filter(Boolean).join(" · ")}
+          options={onChangeApproval ? approval.options.map(option => ({ value: option, label: approvalLabel(option, t, approval.choices), title: approval.choices?.find(choice => choice.id === option)?.description })) : []}
+          emptyNote={`${approvalLabel(approval.value, t, approval.choices)} · ${approval.options.length === 0 ? t("bar.approval.engineManaged") : t("bar.approval.unavailable")}`}
+          onSelect={mode => onChangeApproval?.(mode)}
+        />
+      )}
+
+      {executionOptions.length > 0 && (onChangeExecutionMode ? <BarMenu
+        label={t("bar.execution")}
+        value={executionMode ?? null}
+        display={executionOptions.find(option => option.value === executionMode)?.label ?? executionMode ?? t("bar.execution")}
+        options={executionOptions}
+        onSelect={onChangeExecutionMode}
+      /> : <BarPill label={t("bar.execution")}>
+        {executionOptions.find(option => option.value === executionMode)?.label ?? executionMode}
+      </BarPill>)}
+      {configOptions.length > 0 && <EngineConfigMenu key={contextKey} options={configOptions} values={configValues} onChange={onChangeConfig} />}
+      <span className="kaus-bar-spacer" />
       {/* 第 5 件：**能写就有 `▾`**。目录只有一条、甚至一条都没有，菜单照旧点得开——
           "为什么切不了模型"这句话由菜单里的 diagnostics 回答，不是让 Pill 变哑。
           压根没有取值（`source === "none"`）时仍旧整枚不渲染（AD-71）。 */}
@@ -533,50 +610,18 @@ export function ComposerBar({
             value={reasoning.value}
             display={settingDisplay(reasoning.value ?? reasoning.levels[0])}
             options={reasoning.levels.map((level) => ({ value: level, label: level }))}
-            title={settingHint(reasoning.source)}
+            title={sourceHint(reasoning.source, t)}
             onSelect={onChangeReasoning}
           />
         ) : (
-          <BarPill label={t("bar.reasoning")} title={settingHint(reasoning.source)}>
+          <BarPill label={t("bar.reasoning")} title={sourceHint(reasoning.source, t)}>
             {settingDisplay(reasoning.value || "")}
           </BarPill>
         )
       )}
 
-      {approval.source !== "none" && approval.value !== null && (
-        approval.options.length > 0 && onChangeApproval ? (
-          <BarMenu
-            label={t("bar.approval")}
-            value={approval.value}
-            display={settingDisplay(approvalLabel(approval.value, t))}
-            options={approval.options.map((option) => ({ value: option, label: approvalLabel(option, t) }))}
-            title={settingHint(approval.source)}
-            onSelect={onChangeApproval}
-          />
-        ) : (
-          <BarPill label={t("bar.approval")} title={settingHint(approval.source)}>
-            {settingDisplay(approvalLabel(approval.value, t))}
-          </BarPill>
-        )
-      )}
-
-      {executionOptions.length > 0 && (onChangeExecutionMode ? <BarMenu
-        label={t("bar.execution")}
-        value={executionMode ?? null}
-        display={executionOptions.find(option => option.value === executionMode)?.label ?? executionMode ?? t("bar.execution")}
-        options={executionOptions}
-        onSelect={onChangeExecutionMode}
-      /> : <BarPill label={t("bar.execution")}>
-        {executionOptions.find(option => option.value === executionMode)?.label ?? executionMode}
-      </BarPill>)}
-      <span className="kaus-bar-spacer" />
-      {/* Attachment controls follow the engine's reported capability. */}
-      {showAttachments && onAttach && (
-        <button type="button" className="kaus-bar-pill is-button kaus-composer-attach" aria-label={t("bar.attach")} title={t("bar.attach")} onClick={onAttach}>
-          <Paperclip className="size-3" />
-        </button>
-      )}
       {actions}
+      </div>
     </div>
   );
 }

@@ -22,7 +22,7 @@ import { EnginePanel, type AttachableBackend, type EngineRow } from "./EnginePan
 import { DriftModal, MaterializeModal } from "./MaterializeModal";
 import { confirmAsync, cream, toast } from "./ui";
 import {
-  createBinding,
+  ensureProjectBinding,
   deleteBinding,
   fetchBackends,
   fetchBackendWithCapabilityDetail,
@@ -135,7 +135,7 @@ export function ProjectEngines({
       // 进项目页时每张卡先问一次 `_meta`（并发，失败静默），支持的才接着拉 drift。
       // 不 await：漂移那一行晚一点出现无所谓，引擎卡本身不该为它等着。
       for (const binding of bindings) loadProjection(binding.id);
-      setAttachable(all.backends.map((backend) => ({ id: backend.id, displayName: backend.displayName })));
+      setAttachable(all.backends.filter((backend) => backend.driverKind !== "mock").map((backend) => ({ id: backend.id, displayName: backend.displayName })));
       setRows(
         bindings.flatMap((binding) => {
           const backend = backends.get(binding.backendId);
@@ -222,8 +222,8 @@ export function ProjectEngines({
         }))}
         projectLabel={projectLabel}
         onNewConversation={onNewConversation}
-        onChangeModel={(row, modelId) =>
-          writeField(() => patchBinding(row.binding.id, { defaultModelId: modelId || null }))
+        onChangeModel={(row, modelId, providerId) =>
+          writeField(() => patchBinding(row.binding.id, { defaultModelId: modelId || null, defaultProviderId: providerId ?? null }))
         }
         onChangeReasoning={(row, level) =>
           writeField(() =>
@@ -269,7 +269,7 @@ export function ProjectEngines({
           attachable={attachable}
           onAttach={(backendId) => {
             setConnecting(false);
-            void write(t("engines.write.attach"), () => createBinding(projectId, { backendId }));
+            void write(t("engines.write.attach"), () => ensureProjectBinding(projectId, backendId));
           }}
           onClose={() => setConnecting(false)}
         />

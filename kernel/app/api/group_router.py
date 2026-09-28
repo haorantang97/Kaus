@@ -384,6 +384,7 @@ class SpawnMemberBody(_Body):
     project_id: str
     binding_id: str | None = None
     model_id: str | None = None
+    provider_id: str | None = None
     title: str | None = None
     role: str | None = None
     initial_message: str | None = None
@@ -1134,7 +1135,7 @@ def build_group_router(
                     provider_id=source.provider_id,
                     reasoning_mode=source.reasoning_mode,
                     retention="persistent",
-                ).evolve(approval_mode=source.approval_mode, execution_mode=source.execution_mode)
+                ).evolve(approval_mode=source.approval_mode, execution_mode=source.execution_mode, config_options=dict(source.config_options))
             )
         member = await repositories.members.save(
             CollaborationMember.create(
@@ -1493,13 +1494,27 @@ def build_group_router(
         if await repositories.projects.get(project_id) is None:
             raise _not_found("project_not_found", f"未知 Project：{body.project_id}")
         binding = await _resolve_binding(project_id, body.binding_id)
+        model_id = (body.model_id or "").strip() or None
+        provider_id = None
+        if model_id:
+            from drivers.model_selection import select_model
+            driver = registry.get(binding.backend_id)
+            await register_binding_snapshot(driver, binding, repositories.projects)
+            catalog = await driver.get_model_catalog(binding)
+            if catalog.models:
+                try:
+                    selected = select_model(catalog, model_id, body.provider_id)
+                except ValueError as exc:
+                    raise ApiError(400, "model_not_in_catalog", str(exc)) from exc
+                provider_id = selected.provider_id
         conversation = await repositories.conversations.save(
             Conversation.create_group_spawned(
                 project_id=project_id,
                 agent_binding_id=binding.id,
                 title=(body.title or "").strip() or binding.display_name,
                 collaboration_id=group.id,
-                model_id=(body.model_id or "").strip() or None,
+                model_id=model_id,
+                provider_id=provider_id,
             )
         )
         member = await repositories.members.save(
@@ -2774,7 +2789,7 @@ def build_group_router(
             if conv:
                 candidate = {"bindingId": conv.agent_binding_id, "modelId": conv.model_id,
                     "providerId": conv.provider_id, "reasoningMode": conv.reasoning_mode,
-                    "approvalMode": conv.approval_mode, "executionMode": conv.execution_mode}
+                    "approvalMode": conv.approval_mode, "executionMode": conv.execution_mode, "configOptions": conv.config_options}
         return {"config": group.settings.get(CONFIG_KEY), "candidate": candidate,
                 "defaults": await coordinator.defaults()}
 

@@ -447,6 +447,7 @@ describe("第 7 件：回到最新", () => {
     Object.defineProperty(timeline, "clientHeight", { value: 500, configurable: true });
     Object.defineProperty(timeline, "scrollTop", { value: 100, writable: true, configurable: true });
     act(() => {
+      timeline.dispatchEvent(new WheelEvent("wheel", { deltaY: -300, bubbles: true }));
       timeline.dispatchEvent(new Event("scroll"));
     });
 

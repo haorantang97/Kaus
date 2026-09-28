@@ -221,6 +221,28 @@ describe("侧栏自动收起的适用范围", () => {
 /* 批次七 d 第 7 条：进 /new 后点其他导航项要真的切走（以前 URL 还停在 /new，
    主区被草稿页占着，从外面看就是"点了没反应"）。 */
 describe("从草稿页点导航", () => {
+  it("轮盘新建对话后返回项目，仍选中刚才的项目", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubFetch(200);
+    const normalFetch = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/network") return { ok: true, status: 200, json: async () => ({
+        ...network,
+        nodes: {
+          default: { ...network.nodes.default, children: ["media"] },
+          media: { ...network.nodes.default, name: "media", label: "Media", parent: "default" },
+        },
+      }) } as Response;
+      return normalFetch(url);
+    });
+    renderApp("/agents");
+    await user.click(await screen.findByRole("button", { name: "Media" }));
+    await user.click(screen.getByRole("button", { name: "新建对话" }));
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/new");
+    await user.click(screen.getAllByRole("button", { name: "项目" })[0]);
+    expect(await screen.findByRole("button", { name: "Media" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("进入 /new 后点 Dashboard 能切换", async () => {
     const user = userEvent.setup();
     stubFetch(200);

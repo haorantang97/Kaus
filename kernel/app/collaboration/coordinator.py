@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from app.collaboration.room import RoomMember, resolve_display_names, resolve_everyone
+from app.conversations.approval import ConversationApprovalMode
+from app.conversations.configuration import ConversationConfig
 
 COORDINATOR_ID = "coordinator"
 CONFIG_KEY = "coordinator"
@@ -25,7 +27,8 @@ class CoordinatorConfig(WireModel):
     provider_id: str | None = None
     reasoning_mode: str | None = None
     execution_mode: str | None = Field(default=None, max_length=256)
-    approval_mode: Literal["ask", "auto", "bypass", "read_only", "plan"] | None = None
+    approval_mode: ConversationApprovalMode | None = None
+    config_options: ConversationConfig = Field(default_factory=dict)
     workspace_root: str | None = None
     instructions: str = Field(default="", max_length=12000)
     call_cap: int = Field(default=40, ge=2, le=200)

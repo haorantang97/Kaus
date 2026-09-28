@@ -1,3 +1,6 @@
+import { BarMenu } from "./ComposerBar";
+import { useProfileModelCatalog } from "../lib/useProfileModelCatalog";
+import { modelSelection, modelValue } from "../lib/modelCatalogView";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -14,7 +17,7 @@ interface ProfileDetail {
 interface MemoryResp { name: string; is_twin: boolean; memory: string; memory_size: number; user: string; user_size: number; }
 interface KnownModel { default: string; provider?: string | null; base_url?: string | null; }
 interface LeversResp {
-  name: string; is_twin: boolean; model: string | { default?: string } | null; model_own: boolean;
+  name: string; is_twin: boolean; model: string | { default?: string; provider?: string | null } | null; model_own: boolean;
   memory_enabled: boolean; memory_own: boolean; terminal_backend: string; terminal_own: boolean;
   approvals_mode: string; approvals_own: boolean; reasoning_effort: string; reasoning_own: boolean;
   known_models: KnownModel[];
@@ -220,6 +223,7 @@ const selStyle = { ...inputStyle(), padding: "6px 8px" };
 
 export function LeversSection({ name, onSaved, refreshKey = 0 }: { name: string; onSaved: () => void; refreshKey?: number }) {
   const [d, setD] = useState<LeversResp | null>(null);
+  const profileModels = useProfileModelCatalog(name, d);
   const [err, setErr] = useState<string | null>(null);
   const load = () => apiGet<LeversResp>(`/api/agent/${encodeURIComponent(name)}/levers`).then((r) => { setErr(null); setD(r); }).catch((e) => setErr(String(e?.message ?? e)));
   useEffect(() => { setFormTouched(false); setD(null); setErr(null); load(); }, [name]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -240,23 +244,20 @@ export function LeversSection({ name, onSaved, refreshKey = 0 }: { name: string;
   useEffect(() => {
     if (!d || d.is_twin || formTouched) return;
     const curModel = typeof d.model === "object" ? d.model?.default : d.model;
-    const known = d.known_models || [];
-    setModelSel(curModel && known.some((m) => m.default === curModel) ? `known:${curModel}` : "");
+    setModelSel(modelValue(curModel, typeof d.model === "object" ? d.model?.provider : null, profileModels.catalog) ?? "");
     setModelDirty(false);
     setReasoning(!d.reasoning_own ? "__inherit__" : d.reasoning_effort);
     setMem(!d.memory_own ? "__inherit__" : d.memory_enabled ? "on" : "off");
     setTerm(!d.terminal_own ? "__inherit__" : d.terminal_backend);
     setAppr(d.approvals_mode || "manual");
-  }, [d, formTouched]);
+  }, [d, formTouched, profileModels.catalog]);
 
   if (err) return <Section title="运行设置 · Runtime"><ErrLine e={err} /></Section>;
   if (d === null) return <Section title="运行设置 · Runtime"><Loading /></Section>;
   if (d.is_twin) return <Section title="运行设置 · Runtime"><Note>化身的运行设置与主 AI（X）完全一致、不可单独改。要改请去 X 的运行设置。</Note></Section>;
 
   const curModel = (typeof d.model === "object" ? d.model?.default : d.model) || "";
-  const known = d.known_models || [];
-  const isKnownSel = modelSel.startsWith("known:") && known.some((m) => `known:${m.default}` === modelSel);
-  const mname = modelSel.startsWith("known:") ? modelSel.slice(6) : curModel;
+  const mname = modelSel ? modelSelection(modelSel).modelId : curModel;
   const cap = REASONING_CAP.test(mname);
 
   const save = async () => {
@@ -269,9 +270,10 @@ export function LeversSection({ name, onSaved, refreshKey = 0 }: { name: string;
       if (!ok) return;
     }
     const payload: Record<string, unknown> = {};
-    if (modelDirty && modelSel.startsWith("known:")) {
-      const km = known.find((m) => m.default === modelSel.slice(6));
-      if (km) payload.model = km;
+    if (modelDirty) {
+      const selected = profileModels.payloadFor(modelSel);
+      if (!selected) { setMsg("请选择当前模型目录中的选项"); return; }
+      payload.model = selected;
     }
     payload.memory_enabled = mem === "__inherit__" ? "__inherit__" : mem === "on";
     payload.terminal_backend = term;
@@ -286,10 +288,9 @@ export function LeversSection({ name, onSaved, refreshKey = 0 }: { name: string;
   return (
     <Section title="运行设置 · Runtime">
       <FieldRow label="模型">
-        <select value={isKnownSel ? modelSel : ""} onChange={(e) => { setModelSel(e.target.value); setModelDirty(true); setFormTouched(true); }} style={selStyle}>
-          {!isKnownSel && <option value="" disabled>{curModel ? `${curModel}（未列入候选）` : "未配置模型"}</option>}
-          {known.map((m) => <option key={m.default} value={`known:${m.default}`}>{m.default}{m.provider ? `（${m.provider}）` : ""}</option>)}
-        </select>
+        <BarMenu label="模型" value={modelSel || null} display={mname || "—"}
+          options={profileModels.options} emptyNote="引擎未报告可用模型"
+          onSelect={(value) => { setModelSel(value); setModelDirty(true); setFormTouched(true); }} />
         <div className="mt-1.5">
           <button className="text-[0.7rem]" style={{ color: cream(55) }} onClick={() => setAdv(!adv)}>{adv ? "高级 ▴" : "高级 ▾"}</button>
           {adv && (

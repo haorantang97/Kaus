@@ -85,8 +85,8 @@ async def test_legacy_work_modes_and_explicit_options_reach_distinct_rpcs_and_re
             ("session/set_config_option", "choose-model", "model-b"),
             ("session/set_config_option", "budget", "high"),
         ]
-        controls = driver.conversation_controls(binding)
-        assert controls["approvalModes"] == ["bypass", "read_only"]
+        controls = driver.runtime_conversation_controls(runtime, binding)
+        assert controls["approvalModes"] == ["read_only", "native:workspace", "bypass"]
         assert controls["executionModes"] == MODES["availableModes"]
         assert controls["executionDefault"] == "plan" and controls["reasoningDefault"] == "high"
         assert [model.model_id for model in (await driver.get_model_catalog(binding)).models] == ["model-a", "model-b"]
@@ -129,8 +129,8 @@ async def test_unmapped_native_workspace_default_is_not_elevated_automatically(m
     runtime = await driver.start_runtime(conversation, "card")
     try:
         assert not permission_changes
-        assert driver.conversation_controls(binding)["approvalDefault"] is None
-        assert driver.conversation_controls(binding)["executionModes"] == []
+        assert driver.runtime_conversation_controls(runtime, binding)["approvalDefault"] == "native:workspace"
+        assert driver.runtime_conversation_controls(runtime, binding)["executionModes"] == []
     finally:
         await driver.stop_runtime(runtime)
 

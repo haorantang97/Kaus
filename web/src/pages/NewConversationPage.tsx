@@ -1,14 +1,18 @@
+import { EngineIcon } from "../components/EngineIcon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileText, LoaderCircle, Lock, Paperclip, ArrowUp, Unlock, X } from "lucide-react";
+import { FileText, LoaderCircle, Paperclip, ArrowUp, X } from "lucide-react";
 import { useLocale } from "../i18n";
 import { cream } from "../components/ui";
 import { BarMenu, ComposerBar, type BarMenuOption } from "../components/ComposerBar";
 import { AttentionBlock } from "../components/AttentionBlock";
-import { backendDisplay } from "../lib/backend-display";
+import { backendDisplay, engineBrand, engineFamily } from "../lib/backend-display";
+import { preferredEngineConnections } from "../lib/enginePresets";
 import type { SidebarGroup } from "../lib/conversationIndex";
 import {
   createConversation,
+  ensureProjectBinding,
   emptyEffectiveSettings,
+  fetchConnectedBackends,
   fetchEffectiveSettings,
   fetchModelCatalog,
   fetchProjectBindings,
@@ -18,6 +22,7 @@ import {
   patchProject,
   sendConversationMessage,
   type BindingWire,
+  type BackendWire,
   type EffectiveSettingsWire,
   type ModelCatalogWire,
   type ProjectWire,
@@ -26,7 +31,8 @@ import {
 } from "../lib/sessionApi";
 import { hasCapability, type UiCapabilities } from "../components/cards/capabilities";
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, fileSizeLabel, uploadConversationAttachment, type ConversationAttachment } from "../lib/attachmentsApi";
-import { modelEffort, modelOptionsFor } from "../lib/modelCatalogView";
+import { modelEffort, modelOptionsFor, modelSelection, modelValue } from "../lib/modelCatalogView";
+import { findProject, matchProjectId } from "../lib/projectRef";
 import { isConfirmedMessageRejection } from "../lib/messageDelivery";
 import { newClientRef } from "../lib/pendingMessages";
 import {
@@ -41,14 +47,14 @@ import {
  * 整屏居中的空对话窗。**发出第一条消息之前不建会话**——侧栏因此不会 +1，
  * 离开草稿页也不留垃圾会话。三个下拉的依赖是单向的：
  *
- *     项目 → 引擎（该项目的 bindings）→ 模型/推理（该 binding 的 Model Catalog）
+ *     项目 → 已接入引擎（首次选用建立 binding）→ 模型/推理（该 binding 的 Model Catalog）
  *
  * 模型下拉在拿不到 Catalog（501/空目录）时**整块不渲染**，不写「本引擎不支持」——AD-71。
  */
 
 /** 项目清单 → 菜单项：按项目树深度优先排开，`depth` 交给 `BarMenu` 做缩进。
  *  父不在清单里的当顶层处理，环（不该出现，但真出现时）靠 `seen` 兜住。 */
-export function projectMenuOptions(projects: ProjectWire[]): BarMenuOption[] {
+export function projectMenuOptions(projects: ProjectWire[], profiles: BindingWire[] = []): BarMenuOption[] {
   const ids = new Set(projects.map((project) => project.id));
   const children = new Map<string | null, ProjectWire[]>();
   for (const project of projects) {
@@ -60,11 +66,17 @@ export function projectMenuOptions(projects: ProjectWire[]): BarMenuOption[] {
   }
   const options: BarMenuOption[] = [];
   const seen = new Set<string>();
+  const append = (project: ProjectWire, depth: number) => {
+    options.push({ value: project.id, label: project.displayName || project.slug, depth });
+    for (const profile of profiles.filter((item) => item.projectId === project.id && item.enabled && item.discriminator)) {
+      options.push({ value: profile.id, label: profile.displayName || profile.discriminator!, depth: depth + 1 });
+    }
+  };
   const walk = (parent: string | null, depth: number) => {
     for (const project of children.get(parent) ?? []) {
       if (seen.has(project.id)) continue;
       seen.add(project.id);
-      options.push({ value: project.id, label: project.displayName || project.slug, depth });
+      append(project, depth);
       walk(project.id, depth + 1);
     }
   };
@@ -72,14 +84,15 @@ export function projectMenuOptions(projects: ProjectWire[]): BarMenuOption[] {
   // 环里的项目一个都不能丢：兜底补在末尾（顶层缩进）。
   for (const project of projects) {
     if (seen.has(project.id)) continue;
-    options.push({ value: project.id, label: project.displayName || project.slug, depth: 0 });
+    append(project, 0);
   }
   return options;
 }
 
 export interface NewConversationPageProps {
-  /** 从项目页进入时预填并锁定；用户可点解锁自行改。 */
-  lockedProjectId?: string | null;
+  /** 从项目入口预填，发送前仍可切换项目。 */
+  initialProjectId?: string | null;
+  initialBindingId?: string | null;
   /** 第二个参数是首句的占位（AD-94）：跳转时把它带到会话页，那边接着等回声。 */
   onCreated: (conversationId: string, pending?: { clientRef: string; text: string; attachments?: ConversationAttachment[] }) => void;
   /* batch42（2026-09-13 用户裁决：概览页取消）：铭牌与「需要处理」搬到了这一页
@@ -91,26 +104,63 @@ export interface NewConversationPageProps {
   onOpenConversation?: (conversationId: string) => void;
 }
 
+const DRAFT_OPTIONS_TTL_MS = 30_000;
+interface DraftEngineOptions {
+  bindingId: string;
+  catalog: ModelCatalogWire | null;
+  settings: EffectiveSettingsWire;
+  caps: UiCapabilities | null;
+}
+
+async function readDraftEngineOptions(binding: BindingWire): Promise<DraftEngineOptions> {
+  const settings = await fetchEffectiveSettings(binding.id, undefined, { includeCatalog: true })
+    .catch(() => emptyEffectiveSettings(binding.id));
+  // Older hosts do not include the bundle; explicit null means unavailable, not missing.
+  const [catalog, caps] = await Promise.all([
+    settings.modelCatalog !== undefined ? settings.modelCatalog : fetchModelCatalog(binding.backendId, binding.id).catch(() => null),
+    settings.uiCapabilities !== undefined ? settings.uiCapabilities : fetchBackendUiCapabilities(binding.backendId).catch(() => null),
+  ]);
+  return { bindingId: binding.id, catalog, settings, caps };
+}
+
+function engineLabel(backendId: string, backend?: BackendWire): string {
+  return engineBrand(backend?.productId ?? backendId)?.name ?? backend?.productName
+    ?? backend?.displayName ?? backendDisplay(backendId).displayName;
+}
+
 export function NewConversationPage({
-  lockedProjectId = null,
+  initialProjectId = null,
+  initialBindingId = null,
   onCreated,
   indexGroups,
   onOpenConversation,
 }: NewConversationPageProps) {
   const { t, tDynamic, locale } = useLocale();
   const [projects, setProjects] = useState<ProjectWire[]>([]);
-  const [projectId, setProjectId] = useState<string>(() => lockedProjectId || readDefaultDestination());
-  const [locked, setLocked] = useState<boolean>(Boolean(lockedProjectId));
+  const [projectId, setProjectId] = useState<string>(() => matchProjectId([], initialProjectId || readDefaultDestination()));
   const [bindings, setBindings] = useState<BindingWire[] | null>(null);
+  const [connectedBackends, setConnectedBackends] = useState<BackendWire[]>([]);
   const [bindingId, setBindingId] = useState<string>("");
-  const [catalog, setCatalog] = useState<ModelCatalogWire | null>(null);
-  /* 批次十三：模型 / 推理强度 / 审批模式 / 工作目录都改从有效设置读（DESIGN ★ I），
-     草稿页与会话页用**同一条**工具栏。端点不在时它自己回退成"四项都没有"。 */
-  const [settings, setSettings] = useState<EffectiveSettingsWire | null>(null);
-  const [caps, setCaps] = useState<UiCapabilities | null>(null);
+  const selectionEpoch = useRef(0);
+  // Remember each product's selected profile only for this draft, never in project defaults.
+  const selectedBindings = useRef(new Map<string, string>());
+  const binding = useMemo(
+    () => bindings?.find((item) => item.id === bindingId && item.projectId === projectId && item.enabled) ?? null,
+    [bindings, bindingId, projectId],
+  );
+  const [engineOptions, setEngineOptions] = useState<DraftEngineOptions | null>(null);
+  const currentOptions = engineOptions?.bindingId === binding?.id ? engineOptions : null;
+  const catalog = currentOptions?.catalog ?? null;
+  const settings = currentOptions?.settings ?? null;
+  const caps = currentOptions?.caps ?? null;
+  // Draft-local caches: returning to a selection is immediate; reopening the page reads afresh.
+  const bindingsCache = useRef(new Map<string, { value: BindingWire[]; expires: number }>());
+  const optionsCache = useRef(new Map<string, { value: DraftEngineOptions; expires: number }>());
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [selectedReasoning, setSelectedReasoning] = useState<string | null>(null);
   const [selectedApproval, setSelectedApproval] = useState<string | null>(null);
+  const [selectedExecution, setSelectedExecution] = useState<string | null>(null);
+  const [selectedConfig, setSelectedConfig] = useState<Record<string, string | boolean>>({});
   const [text, setText] = useState<string>(() => readDraftText());
   const [files, setFiles] = useState<File[]>([]);
   const filesRef = useRef<File[]>([]);
@@ -130,11 +180,19 @@ export function NewConversationPage({
 
   useEffect(() => {
     let cancelled = false;
+    void fetchConnectedBackends().then(({ backends }) => {
+      if (!cancelled) setConnectedBackends(backends ?? []);
+    }).catch((failure) => { if (!cancelled) setError(describeFailure(failure)); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     fetchProjects()
       .then(({ projects: list }) => {
         if (cancelled) return;
         setProjects(list);
-        setProjectId((current) => (list.some((p) => p.id === current) ? current : list[0]?.id ?? current));
+        setProjectId((current) => findProject(list, current)?.id ?? list[0]?.id ?? current);
       })
       .catch((failure) => {
         if (!cancelled) setError(describeFailure(failure));
@@ -147,19 +205,28 @@ export function NewConversationPage({
   useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
+    selectionEpoch.current += 1;
+    const applyBindings = (list: BindingWire[]) => {
+      setBindings(list);
+      const usable = list.filter((item) => item.enabled);
+      const preferred = usable.find((item) => item.id === initialBindingId) ?? usable.find((item) => item.isDefault) ?? usable[0];
+      setBindingId(preferred?.id ?? "");
+    };
+    setError(null);
+    const cached = bindingsCache.current.get(projectId);
+    if (cached && cached.expires > Date.now()) {
+      applyBindings(cached.value);
+      return () => { selectionEpoch.current += 1; };
+    }
     setBindings(null);
     setBindingId("");
-    setCatalog(null);
     // 每次换项目都先清错：上一个项目的失败（例如默认去向已被删掉、
     // 或首帧那个还没被项目列表纠正过来的 id）不该粘在新项目上。
-    setError(null);
-    fetchProjectBindings(projectId)
+    fetchProjectBindings(projectId, undefined, { includeStatus: false })
       .then(({ bindings: list }) => {
         if (cancelled) return;
-        const usable = list.filter((binding) => binding.enabled);
-        setBindings(usable);
-        const preferred = usable.find((binding) => binding.isDefault) ?? usable[0];
-        setBindingId(preferred?.id ?? "");
+        bindingsCache.current.set(projectId, { value: list, expires: Date.now() + DRAFT_OPTIONS_TTL_MS });
+        applyBindings(list);
       })
       .catch((failure) => {
         if (cancelled) return;
@@ -168,50 +235,119 @@ export function NewConversationPage({
       });
     return () => {
       cancelled = true;
+      selectionEpoch.current += 1;
     };
-  }, [projectId]);
+  }, [projectId, initialBindingId]);
 
-  const binding = useMemo(
-    () => bindings?.find((item) => item.id === bindingId) ?? null,
-    [bindings, bindingId],
-  );
+  const selectEngine = async (value: string) => {
+    if (sendLockRef.current || bindings === null) return;
+    const epoch = ++selectionEpoch.current;
+    setError(null);
+    setBindingId(value);
+    const backend = connectedBackends.find((item) => item.id === value);
+    if (!backend) return;
+    try {
+      const next = await ensureProjectBinding(projectId, backend.id);
+      if (selectionEpoch.current !== epoch) return;
+      const list = [...bindings.filter((item) => item.id !== next.id), next];
+      bindingsCache.current.set(projectId, { value: list, expires: Date.now() + DRAFT_OPTIONS_TTL_MS });
+      setBindings(list);
+      setBindingId(next.id);
+    } catch (failure) {
+      if (selectionEpoch.current === epoch) {
+        setBindingId(binding?.id ?? "");
+        setError(describeFailure(failure));
+      }
+    }
+  };
 
-  const reloadSettings = useCallback(async (bindingId: string) => {
-    const next = await fetchEffectiveSettings(bindingId).catch(() => emptyEffectiveSettings(bindingId));
-    setSettings(next);
+  const engineGroups = useMemo(() => {
+    const groups = new Map<string, { primary: BindingWire; choice: BindingWire }>();
+    const baseRank = (item: BindingWire) => Number(!item.discriminator) * 4 + Number(item.isDefault) * 2
+      + Number(connectedBackends.find((backend) => backend.id === item.backendId)?.preferred ?? false);
+    for (const item of bindings ?? []) {
+      if (!item.enabled || item.projectId !== projectId) continue;
+      const product = connectedBackends.find((backend) => backend.id === item.backendId)?.productId ?? engineFamily(item.backendId);
+      const remembered = selectedBindings.current.get(`${projectId}:${product}`);
+      const choiceRank = (candidate: BindingWire) => Number(candidate.id === bindingId) * 32
+        + Number(candidate.id === remembered) * 16 + baseRank(candidate);
+      const group = groups.get(product);
+      if (!group) groups.set(product, { primary: item, choice: item });
+      else {
+        if (baseRank(item) > baseRank(group.primary)) group.primary = item;
+        if (choiceRank(item) > choiceRank(group.choice)) group.choice = item;
+      }
+    }
+    return groups;
+  }, [bindings, connectedBackends, bindingId, projectId]);
+
+  const engineChoices: BarMenuOption[] = useMemo(() => {
+    if (bindings === null) return [];
+    // Profiles belong to the project menu. Each product gets one engine choice.
+    // An explicitly disabled association stays disabled.
+    const linked = new Set(bindings.map((item) => item.backendId));
+    return [
+      ...[...engineGroups].map(([product, { choice }]) => ({
+        value: choice.id, icon: <EngineIcon engine={product} />, label: engineLabel(choice.backendId, connectedBackends.find((item) => item.id === choice.backendId)),
+      })),
+      ...preferredEngineConnections(connectedBackends.filter((item) => !linked.has(item.id) && !engineGroups.has(item.productId ?? engineFamily(item.id)))).map((item) => ({
+        value: item.id, icon: <EngineIcon engine={item.productId ?? item.id} />, label: engineLabel(item.id, item),
+      })),
+    ];
+  }, [bindings, connectedBackends, engineGroups]);
+  const selectedBackendId = binding?.backendId ?? connectedBackends.find((item) => item.id === bindingId)?.id;
+  const selectedEngine = connectedBackends.find(item => item.id === selectedBackendId);
+  const selectedProduct = selectedEngine?.productId ?? engineFamily(selectedBackendId ?? "");
+
+  useEffect(() => {
+    if (binding) selectedBindings.current.set(`${projectId}:${selectedProduct}`, binding.id);
+  }, [binding, projectId, selectedProduct]);
+
+  const selectDestination = (value: string) => {
+    if (sendLockRef.current) return;
+    const profile = bindings?.find((item) => item.id === value && item.projectId === projectId && item.enabled && item.discriminator);
+    if (profile) {
+      void selectEngine(profile.id);
+    } else if (value === projectId) {
+      const primary = engineGroups.get(selectedProduct)?.primary;
+      if (primary) void selectEngine(primary.id);
+    } else if (projects.some((item) => item.id === value)) {
+      selectionEpoch.current += 1;
+      setProjectId(value);
+    }
+  };
+
+  const reloadSettings = useCallback(async (target: BindingWire) => {
+    optionsCache.current.clear();
+    const next = await readDraftEngineOptions(target);
+    optionsCache.current.set(target.id, { value: next, expires: Date.now() + DRAFT_OPTIONS_TTL_MS });
+    setEngineOptions((current) => current?.bindingId === target.id ? next : current);
   }, []);
 
   useEffect(() => {
     setSelectedReasoning(null);
     setSelectedApproval(null);
+    setSelectedExecution(null);
+    setSelectedConfig({});
+    setSelectedModelId(null);
     if (!binding) {
-      setCatalog(null);
-      setSettings(null);
-      setCaps(null);
-      setSelectedModelId(null);
+      setEngineOptions(null);
+      return;
+    }
+    const cached = optionsCache.current.get(binding.id);
+    if (cached && cached.expires > Date.now()) {
+      setEngineOptions(cached.value);
       return;
     }
     let cancelled = false;
-    setCatalog(null);
-    setSettings(null);
-    setCaps(null);
-    setSelectedModelId(null);
-    fetchModelCatalog(binding.backendId, binding.id)
-      .then((next) => {
-        if (!cancelled) setCatalog(next);
-      })
-      .catch(() => {
-        // 拿不到目录 = 这个引擎没有可选模型：下拉整块不渲染（AD-71），不解释。
-        if (!cancelled) setCatalog(null);
-      });
-    void fetchEffectiveSettings(binding.id)
-      .catch(() => emptyEffectiveSettings(binding.id))
-      .then((next) => {
-        if (!cancelled) setSettings(next);
-      });
-    void fetchBackendUiCapabilities(binding.backendId).then((next) => {
-      if (!cancelled) setCaps(next);
-    }).catch(() => { if (!cancelled) setCaps(null); });
+    setEngineOptions(null);
+    void readDraftEngineOptions(binding).then((next) => {
+      if (cancelled) return;
+      if (next.settings.model.source !== "none" || next.catalog !== null) {
+        optionsCache.current.set(binding.id, { value: next, expires: Date.now() + DRAFT_OPTIONS_TTL_MS });
+      }
+      setEngineOptions(next);
+    });
     return () => {
       cancelled = true;
     };
@@ -238,7 +374,9 @@ export function NewConversationPage({
   const modelDiagnostic = catalog?.diagnostics?.[0] ?? null;
   const modelDegraded = Boolean(catalog?.degraded);
   const controls = settings?.conversationControls;
-  const selectedDescriptor = catalog?.models.find(model => model.modelId === (selectedModelId || bar.model.value || catalog.defaultModelId));
+  const selectedValue = selectedModelId || modelValue(bar.model.value ?? catalog?.defaultModelId, catalog?.defaultProviderId ?? binding?.defaultProviderId, catalog);
+  const selection = selectedValue ? modelSelection(selectedValue) : null;
+  const selectedDescriptor = catalog?.models.find(model => model.modelId === selection?.modelId && (!selection?.providerId || model.providerId === selection.providerId));
   const reasoning = {
     ...bar.reasoningEffort,
     ...(modelEffort(selectedDescriptor) ? { value: modelEffort(selectedDescriptor), source: "catalog" as const } : {}),
@@ -250,6 +388,7 @@ export function NewConversationPage({
     ...(controls?.approvalDefault ? { value: controls.approvalDefault, source: "catalog" as const } : {}),
     ...(selectedApproval ? { value: selectedApproval } : {}),
     options: controls?.approvalModes ?? [],
+    choices: controls?.approvalOptions,
   };
 
   const updateFiles = (next: File[]) => { filesRef.current = next; setFiles(next); };
@@ -274,15 +413,15 @@ export function NewConversationPage({
       } catch (failure) {
         throw new Error(describeFailure(failure));
       }
-      if (bindingId) await reloadSettings(bindingId);
+      if (binding) await reloadSettings(binding);
     },
-    [bindingId, projectId, reloadSettings],
+    [binding, projectId, reloadSettings],
   );
 
   const send = useCallback(async () => {
     const body = text.trim();
     const stagedFiles = filesRef.current;
-    if ((!body && !stagedFiles.length) || !projectId || !bindingId || sendLockRef.current || unconfirmedRef.current) return;
+    if ((!body && !stagedFiles.length) || !projectId || !binding || !currentOptions || sendLockRef.current || unconfirmedRef.current) return;
     if (stagedFiles.length && !canAttach) { setError(t("conversation.attach.unsupported")); return; }
     if (caps?.card.attachments === "images" && stagedFiles.some((file) => !/^image\/(?:png|jpeg|webp|gif|avif)$/.test(file.type))) {
       setError(draftLabel("attachments.imagesOnly", "此引擎只支持图片，请选择 PNG、JPEG、WebP、GIF 或 AVIF。", "This engine accepts images only. Choose PNG, JPEG, WebP, GIF, or AVIF."));
@@ -301,19 +440,22 @@ export function NewConversationPage({
       let draft = createdDraftsRef.current.get(draftKey);
       if (!draft) {
         const conversation = await createConversation(projectId, { bindingId, title: (body || stagedFiles[0]?.name || "").slice(0, 40) });
-        draft = { id: conversation.id, modelId: conversation.modelId ?? null, uploads: new Map() };
+        draft = { id: conversation.id, modelId: modelValue(conversation.modelId, conversation.providerId, catalog), uploads: new Map() };
         createdDraftsRef.current.set(draftKey, draft);
       }
       conversationId = draft.id;
-      const requestedModel = selectedModelId || bar.model.value;
+      const requestedModel = selectedValue;
       if (requestedModel && canChooseModel && requestedModel !== draft.modelId) {
-        const updated = await patchConversation(draft.id, { modelId: requestedModel });
+        const requested = modelSelection(requestedModel);
+        const updated = await patchConversation(draft.id, { ...requested, ...(requested.providerId ? {} : { providerId: modelOptions.find(option => option.value === requestedModel)?.providerId ?? undefined }) });
         const adopted = updated.conversation.modelId;
-        if (adopted && adopted !== requestedModel) throw new Error(draftLabel("model.notApplied", "引擎没有采纳所选模型，请重新选择后发送。", "The engine did not accept the selected model. Choose a model before sending again."));
-        draft.modelId = adopted || requestedModel;
+        if (adopted && (adopted !== requested.modelId || (requested.providerId && updated.conversation.providerId !== requested.providerId))) throw new Error(draftLabel("model.notApplied", "引擎没有采纳所选模型，请重新选择后发送。", "The engine did not accept the selected model. Choose a model before sending again."));
+        draft.modelId = modelValue(adopted, updated.conversation.providerId, catalog) || requestedModel;
       }
       if (selectedReasoning) await patchConversation(draft.id, { reasoningMode: selectedReasoning });
       if (selectedApproval) await patchConversation(draft.id, { approvalMode: selectedApproval });
+      if (selectedExecution) await patchConversation(draft.id, { executionMode: selectedExecution });
+      for (const [key, value] of Object.entries(selectedConfig)) await patchConversation(draft.id, { configOptions: { [key]: value } });
       for (const file of stagedFiles) {
         let uploaded = draft.uploads.get(file);
         if (!uploaded) {
@@ -343,7 +485,7 @@ export function NewConversationPage({
       if (!completed) { sendLockRef.current = false; setSending(false); }
       setUploadingName(null);
     }
-  }, [bindingId, bar.model.value, canAttach, canChooseModel, caps?.card.attachments, onCreated, projectId, selectedModelId, selectedReasoning, selectedApproval, text, t, tDynamic, locale]);
+  }, [binding, bindingId, currentOptions, bar.model.value, canAttach, canChooseModel, caps?.card.attachments, onCreated, projectId, selectedModelId, selectedReasoning, selectedApproval, selectedExecution, selectedConfig, text, t, tDynamic, locale]);
 
   /* 第 4 件①：`Enter` 发送、`Shift+Enter` 换行，⌘/Ctrl+Enter 继续可用。
      中文输入法组字期间的 Enter 是"选词"，绝不能当发送（`isComposing`）。 */
@@ -361,7 +503,7 @@ export function NewConversationPage({
   const projectName = projects.find((item) => item.id === projectId)?.displayName ?? projectId;
   /* 第 5 件：项目菜单按项目树排（父在前、子跟着，`depth` 只用来缩进）。
      父不在这份清单里的（被过滤 / 权限外）当作顶层，不让它整枝消失。 */
-  const projectOptions: BarMenuOption[] = useMemo(() => projectMenuOptions(projects), [projects]);
+  const projectOptions: BarMenuOption[] = useMemo(() => projectMenuOptions(projects, bindings ?? []), [projects, bindings]);
 
   return (
     <div className="kaus-draft-page" data-testid="draft-page">
@@ -387,6 +529,67 @@ export function NewConversationPage({
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
           onDrop={(event) => { if (!event.dataTransfer.files.length) return; event.preventDefault(); setDragging(false); addFiles(Array.from(event.dataTransfer.files)); }}
         >
+          <ComposerBar
+            contextKey={projectId ?? "draft"}
+            leading={
+              <>
+                <BarMenu
+                  label={t("draft.field.project")}
+                  value={binding?.discriminator ? binding.id : projectId}
+                  display={binding?.discriminator ? `${projectName} · ${binding.displayName || binding.discriminator}` : projectName}
+                  options={projectOptions}
+                  onSelect={selectDestination}
+                />
+                {/* 引擎在草稿页是可选的（会话建出来之后就定死了，会话页那边只读）。 */}
+                <BarMenu
+                  label={t("draft.field.engine")}
+                  icon={selectedBackendId && <EngineIcon engine={selectedEngine?.productId ?? selectedBackendId} />}
+                  value={bindingId}
+                  display={
+                    binding
+                      ? engineLabel(binding.backendId, selectedEngine)
+                      : selectedBackendId ? engineLabel(selectedBackendId, selectedEngine)
+                      : bindings === null
+                        ? t("draft.engine.loading")
+                        : t("draft.engine.none")
+                  }
+                  options={engineChoices}
+                  onSelect={(next) => { void selectEngine(next); }}
+                />
+              </>
+            }
+            workspaceRoot={bar.workspaceRoot}
+            onChangeWorkspaceRoot={changeWorkspaceRoot}
+            model={{ ...bar.model, value: selectedValue }}
+            modelOptions={modelOptions}
+            modelDiagnostic={modelDiagnostic}
+            modelDegraded={modelDegraded}
+            onChangeModel={canChooseModel && !sending ? setSelectedModelId : undefined}
+            reasoning={reasoning}
+            onChangeReasoning={controls?.reasoning && !sending ? setSelectedReasoning : undefined}
+            approval={approval}
+            onChangeApproval={approval.options.length && !sending ? setSelectedApproval : undefined}
+            executionMode={selectedExecution ?? controls?.executionDefault}
+            executionOptions={controls?.executionModes?.map(option => ({ value: option.id, label: option.name }))}
+            onChangeExecutionMode={!sending ? setSelectedExecution : undefined}
+            configOptions={controls?.configOptions}
+            configValues={selectedConfig}
+            onChangeConfig={!sending ? (key, value) => setSelectedConfig(current => ({ ...current, [key]: value })) : undefined}
+            attachments={caps?.card.attachments}
+            onAttach={canAttach && !sending ? () => fileInputRef.current?.click() : undefined}
+            actions={
+              <button
+                type="button"
+                className="kaus-send"
+                aria-label={sending ? t("draft.sending") : t("draft.send")}
+                title={sending ? t("draft.sending") : t("draft.send")}
+                disabled={(!text.trim() && !files.length) || !binding || !currentOptions || sending || !!unconfirmed || (files.length > 0 && !canAttach)}
+                onClick={() => void send()}
+              >
+                {sending ? <LoaderCircle size={18} aria-hidden /> : <ArrowUp size={18} aria-hidden />}
+              </button>
+            }
+          >
           <input ref={fileInputRef} type="file" multiple hidden aria-label={t("bar.attach")} accept={caps?.card.attachments === "images" ? "image/png,image/jpeg,image/webp,image/gif,image/avif" : undefined} disabled={sending} onChange={(event) => { const selected = Array.from(event.target.files || []); event.target.value = ""; addFiles(selected); }} />
           {!!files.length && <div className="kaus-attachment-tray" aria-label={t("conversation.attach.list")}>
             {files.map((file, index) => <div className="kaus-attachment-chip" key={`${file.name}:${file.lastModified}:${index}`} title={file.name}>
@@ -409,84 +612,7 @@ export function NewConversationPage({
               onPaste={(event) => { if (!event.clipboardData.files.length) return; event.preventDefault(); addFiles(Array.from(event.clipboardData.files)); }}
             />
           </div>
-          <ComposerBar
-            settingsAreDefaults
-            leading={
-              <>
-                {locked ? (
-                  <span className="kaus-bar-pill" data-bar-item={t("draft.field.project")}>
-                    {projectName}
-                    <button type="button" disabled={sending} onClick={() => setLocked(false)} title={t("draft.unlock")}>
-                      <Lock className="size-3" />
-                    </button>
-                  </span>
-                ) : (
-                  <>
-                    <BarMenu
-                      label={t("draft.field.project")}
-                      value={projectId}
-                      display={projectName}
-                      options={projectOptions}
-                      onSelect={(next) => { if (!sendLockRef.current) setProjectId(next); }}
-                    />
-                    {lockedProjectId && (
-                      <button
-                        type="button"
-                        className="kaus-bar-pill is-button"
-                        disabled={sending}
-                        onClick={() => { setLocked(true); setProjectId(lockedProjectId); }}
-                        title={t("draft.relock")}
-                      >
-                        <Unlock className="size-3" />
-                      </button>
-                    )}
-                  </>
-                )}
-                {/* 引擎在草稿页是可选的（会话建出来之后就定死了，会话页那边只读）。 */}
-                <BarMenu
-                  label={t("draft.field.engine")}
-                  value={bindingId}
-                  display={
-                    binding
-                      ? `${backendDisplay(binding.backendId).displayName} · ${binding.displayName}`
-                      : bindings === null
-                        ? t("draft.engine.loading")
-                        : t("draft.engine.none")
-                  }
-                  options={(bindings ?? []).map((item) => ({
-                    value: item.id,
-                    label: `${backendDisplay(item.backendId).displayName} · ${item.displayName}`,
-                  }))}
-                  onSelect={(next) => { if (!sendLockRef.current) setBindingId(next); }}
-                />
-              </>
-            }
-            workspaceRoot={bar.workspaceRoot}
-            onChangeWorkspaceRoot={changeWorkspaceRoot}
-            model={selectedModelId ? { value: selectedModelId, source: "catalog" } : bar.model}
-            modelOptions={modelOptions}
-            modelDiagnostic={modelDiagnostic}
-            modelDegraded={modelDegraded}
-            onChangeModel={canChooseModel && !sending ? setSelectedModelId : undefined}
-            reasoning={reasoning}
-            onChangeReasoning={controls?.reasoning && !sending ? setSelectedReasoning : undefined}
-            approval={approval}
-            onChangeApproval={approval.options.length && !sending ? setSelectedApproval : undefined}
-            attachments={caps?.card.attachments}
-            onAttach={canAttach && !sending ? () => fileInputRef.current?.click() : undefined}
-            actions={
-              <button
-                type="button"
-                className="kaus-send"
-                aria-label={sending ? t("draft.sending") : t("draft.send")}
-                title={sending ? t("draft.sending") : t("draft.send")}
-                disabled={(!text.trim() && !files.length) || !bindingId || sending || !!unconfirmed || (files.length > 0 && !canAttach)}
-                onClick={() => void send()}
-              >
-                {sending ? <LoaderCircle size={18} aria-hidden /> : <ArrowUp size={18} aria-hidden />}
-              </button>
-            }
-          />
+          </ComposerBar>
         </div>
       </div>
     </div>

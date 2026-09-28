@@ -63,14 +63,32 @@ def build_engine_connection_router(*, registry: Any, repositories: Any, auth_pol
     from fastapi.responses import JSONResponse
     from app.api.api_errors import ApiError, json_error_endpoint
     from app.api.session_auth import auth_route_class, require_session_auth
+    from app.api.views import backend_to_wire
     from app.projects.models import Backend
     from drivers.acp.presets import PRESETS
+    from drivers.identity import product_identity, recommend_connections
     from session_bootstrap import BackendSpec, build_driver
 
     router = APIRouter(prefix="/api", tags=["engines"], route_class=auth_route_class())
     auth = Depends(require_session_auth(auth_policy))
     endpoint = json_error_endpoint(JSONResponse)
     lock = asyncio.Lock()
+
+    def identity(driver, record):
+        key = getattr(getattr(driver, "preset", None), "id", None) or getattr(driver, "product_id", None) or record.key
+        return product_identity(key, record.display_name)
+
+    async def connections() -> dict[str, Any]:
+        """Registered engines are shared; listing them never probes or creates bindings."""
+        rows = []
+        for driver in registry.list_drivers():
+            if driver.driver_kind == "mock":
+                continue
+            record = await repositories.backends.get(driver.backend_id)
+            if record is not None:
+                rows.append({**backend_to_wire(record), **identity(driver, record)})
+        recommend_connections(rows)
+        return {"backends": rows, "count": len(rows)}
 
     async def catalog() -> dict[str, Any]:
         rows = []
@@ -88,12 +106,26 @@ def build_engine_connection_router(*, registry: Any, repositories: Any, auth_pol
                     pass
             rows.append({
                 **preset.to_wire(),
+                **product_identity(preset.id, preset.label),
                 "backendId": driver.backend_id if driver else f"backend:{preset.id}",
                 "registered": driver is not None,
                 "detected": detected,
                 "probeState": record.probe_state if record else "unknown",
                 "installed": record.installed if record else None,
             })
+        # Native HTTP connections are part of the same catalog as ACP adapters.
+        # They are already configured; discovery never copies credentials or starts them.
+        covered = {row["backendId"] for row in rows}
+        for driver in registry.list_drivers():
+            if driver.backend_id in covered or driver.driver_kind == "mock":
+                continue
+            record = await repositories.backends.get(driver.backend_id)
+            if record is not None:
+                rows.append({"id": f"custom:{record.id}", "label": record.display_name,
+                    "backendId": record.id, "registered": True, "detected": bool(record.installed),
+                    "probeState": record.probe_state, "installed": record.installed,
+                    **identity(driver, record)})
+        recommend_connections(rows)
         return {"engines": rows}
 
     async def connect(body: dict = Body(...)) -> dict[str, Any]:
@@ -129,5 +161,6 @@ def build_engine_connection_router(*, registry: Any, repositories: Any, auth_pol
             return {"backendId": backend_id, "registered": True}
 
     router.add_api_route("/engine-catalog", endpoint(catalog), methods=["GET"], dependencies=[auth])
+    router.add_api_route("/engine-connections", endpoint(connections), methods=["GET"], dependencies=[auth])
     router.add_api_route("/engine-connections", endpoint(connect), methods=["POST"], dependencies=[auth])
     return router

@@ -491,7 +491,8 @@ class FakeAcpAgent:
         for option in entry.get("options", []):
             leaves.extend(option["options"] if "options" in option else [option])
         known = {option["value"] for option in leaves}
-        if not isinstance(value, str) or value not in known:
+        valid = isinstance(value, bool) and params.get("type") == "boolean" if entry.get("type") == "boolean" else isinstance(value, str) and value in known
+        if not valid:
             # 复刻真 agent 的口径：值必须是 options[] 里那个**逐字原文**。
             raise _RpcError(
                 -32602, f"unknown value: {value!r}", {"options": sorted(known)}

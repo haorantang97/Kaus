@@ -4833,3 +4833,47 @@ body.dark .kaus-cap-row.is-head {
 .kaus-group-overview > summary { cursor: pointer; }
 .kaus-group-overview .kaus-group-pane { padding: 0; border: 0; }
 .kaus-group-message-actions { display: flex; justify-content: flex-end; gap: 2px; float: right; margin-top: -4px; }
+
+/* Engine marks and model availability share the same compact control layout. */
+.kaus-engine-icon { display: inline-block; flex: 0 0 auto; vertical-align: middle; object-fit: contain; }
+.kaus-engine-icon--tile { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; background: var(--surface-raised); color: var(--midground-base); }
+.kaus-engine-icon-mask { width: 100%; height: 100%; background-color: currentColor; mask-size: contain; mask-repeat: no-repeat; mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; }
+
+/* Project actions: visible hierarchy, a raised surface and a short press response. */
+:root { --kaus-action-top: #3b4725; --kaus-action-bottom: #283418; --kaus-action-ink: #fffbe8; --kaus-action-border: #273116; }
+body.dark { --kaus-action-top: #acd8c6; --kaus-action-bottom: #8ec5b2; --kaus-action-ink: #142219; --kaus-action-border: #a5d9c6; }
+.kaus-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 34px; padding: 7px 13px; border: 1px solid color-mix(in srgb, var(--midground-base) 18%, transparent);
+  border-radius: 9px; background: var(--surface-raised); color: var(--midground-base);
+  font: 500 12px/1.4 var(--theme-font-sans); white-space: nowrap; cursor: pointer;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%), inset 0 1px 0 rgb(255 255 255 / 12%);
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+.kaus-button--primary {
+  background: linear-gradient(180deg, var(--kaus-action-top), var(--kaus-action-bottom));
+  color: var(--kaus-action-ink); border-color: var(--kaus-action-border); font-weight: 600;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 12%), inset 0 1px 0 rgb(255 255 255 / 17%);
+}
+.kaus-button--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.kaus-button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 3px 8px rgb(0 0 0 / 13%), inset 0 1px 0 rgb(255 255 255 / 16%); }
+.kaus-button:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 3px rgb(0 0 0 / 14%); }
+.kaus-button:focus-visible, .kaus-project-conversation:focus-visible, .ag-node-enter:focus-visible, .ag-node:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; }
+.kaus-button:disabled { cursor: default; opacity: .42; box-shadow: none; }
+.kaus-project-primary, .kaus-project-secondary { min-height: 42px; padding: 10px 16px; font-size: 13px; }
+.ag-node-enter { position: relative; z-index: 1; display: inline-grid; place-items: center; align-self: center; width: 30px; height: 30px; margin-left: 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent-text) 25%, transparent); color: var(--accent-text); background: var(--surface-raised); cursor: pointer; }
+.ag-node-enter:hover { background: var(--gold-soft); }
+.kaus-project-conversation { min-height: 52px; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent); border-radius: 10px; background: var(--surface-raised); font: 500 13px/1.5 var(--theme-font-sans); cursor: pointer; transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease; }
+.kaus-project-conversation:hover { border-color: color-mix(in srgb, var(--accent-text) 42%, transparent); background: color-mix(in srgb, var(--surface-raised) 94%, var(--gold)); box-shadow: 0 2px 6px rgb(0 0 0 / 5%); }
+.kaus-project-conversation-icon { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; border-radius: 8px; color: var(--accent-text); background: var(--gold-soft); }
+.kaus-project-conversation-arrow { flex-shrink: 0; color: var(--accent-text); }
+.kaus-engine-transports { margin-top: 14px; font-size: 12px; color: color-mix(in srgb, var(--midground-base) 70%, transparent); }
+.kaus-engine-transports summary { cursor: pointer; }
+.kaus-engine-transports select { width: 100%; margin-top: 10px; }
+@media (prefers-reduced-motion: reduce) {
+  .kaus-button, .kaus-project-conversation { transition: none; }
+  .kaus-button:hover:not(:disabled), .kaus-button:active:not(:disabled) { transform: none; }
+}
+.kaus-bar-pop-item { display: flex; align-items: center; gap: 7px; }
+.kaus-model-uncertain-icon { flex: 0 0 auto; margin-left: auto; opacity: .55; }
+.kaus-model-uncertain-toggle { display: flex; align-items: center; gap: 6px; margin-top: 4px; border-top: 1px solid var(--border-subtle, #8883); padding-top: 8px; }

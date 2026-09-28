@@ -92,3 +92,17 @@ describe("模型下拉的 provider 分组（batch29 / ★I-3）", () => {
     expect(modelOptionsFor(flat, binding).every((option) => option.group === undefined)).toBe(true);
   });
 });
+
+describe("account-scoped model selection", () => {
+  it("removes denied models and marks only uncertain candidates", () => {
+    const result = modelOptionsFor(catalog(binding.id, [
+      model("ready", { availability: "available" }), model("current", { availability: "configured" }),
+      model("guess", { availability: "unknown" }), model("blocked", { availability: "unavailable" }),
+    ]), binding);
+    expect(result.map(option => [option.value, !!option.uncertain])).toEqual([["ready", false], ["current", false], ["guess", true]]);
+  });
+  it("does not collapse the same model name from different providers", () => {
+    const result = modelOptionsFor(catalog(binding.id, [model("same", { providerId: "one" }), model("same", { providerId: "two" })]), binding);
+    expect(result.map(option => option.value)).toEqual(['["one","same"]', '["two","same"]']);
+  });
+});

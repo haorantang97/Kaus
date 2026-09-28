@@ -1,3 +1,4 @@
+import { EngineIcon } from "./EngineIcon";
 import "./attention.css";
 /* 「需要处理」（原概览页第 ② 段，DESIGN ★L-1）。
  *
@@ -39,7 +40,7 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (id: stri
       )}
       <span className="kaus-overview-title">{item.title}</span>
       <span className="kaus-overview-meta">{item.projectDisplayName}</span>
-      {engine && <span className="kaus-overview-meta">{engine.displayName}</span>}
+      {engine && <span className="kaus-overview-meta"><EngineIcon engine={item.backendId} size={13} />{engine.displayName}</span>}
       <span
         className="kaus-overview-state"
         data-testid="overview-attention-kind"

@@ -337,3 +337,80 @@ describe("工具栏 chip 只显示值（★L 第 5、7 条）", () => {
     expect(bar).toHaveTextContent("medium");
   });
 });
+
+describe("unverified model choices", () => {
+  it("hides guesses by default, allows an explicit choice, and resets on reopen", async () => {
+    const user = userEvent.setup();
+    const pick = renderMenu([{ value: "current", label: "Current" }, { value: "guess", label: "Candidate", uncertain: true }]);
+    await user.click(screen.getByRole("button", { name: "模型" }));
+    expect(screen.queryByRole("option", { name: /Candidate/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /待确认/ }));
+    await user.click(screen.getByRole("option", { name: /Candidate/ }));
+    expect(pick).toHaveBeenCalledWith("guess");
+    await user.click(screen.getByRole("button", { name: "模型" }));
+    expect(screen.queryByRole("option", { name: /Candidate/ })).not.toBeInTheDocument();
+  });
+  it("keeps a selected unverified model visible without expanding candidates", async () => {
+    const user = userEvent.setup();
+    renderMenu([{ value: "current", label: "Current", uncertain: true }, { value: "guess", label: "Candidate", uncertain: true }]);
+    await user.click(screen.getByRole("button", { name: "模型" }));
+    expect(screen.getByRole("option", { name: /Current/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("option", { name: /Candidate/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("native approval choices", () => {
+  it("keeps the control as an icon and sends the exact native selection", async () => {
+    const { ComposerBar } = await import("./ComposerBar");
+    const setting = (value: string) => ({ value, source: "binding" as const });
+    const user = userEvent.setup();
+    const pick = vi.fn();
+    render(<ComposerBar workspaceRoot={setting("/tmp")} model={setting("mock-small")} modelOptions={[]}
+      reasoning={{ ...setting("low"), levels: [] }} approval={{ ...setting("ask"), options: ["ask", "native:smart_approve", "native:chat"], choices: [
+      { id: "ask", nativeId: "approve", name: "Approve" },
+      { id: "native:smart_approve", nativeId: "smart_approve", name: "Smart approve", description: "Ask for sensitive operations" },
+      { id: "native:chat", nativeId: "chat", name: "Chat" },
+    ] }} onChangeApproval={pick} />);
+    const button = screen.getByRole("button", { name: "审批模式" });
+    expect(button.textContent).toBe("");
+    await user.click(button);
+    expect(screen.getByRole("option", { name: "Smart approve" })).toHaveAttribute("title", "Ask for sensitive operations");
+    await user.click(screen.getByRole("option", { name: "Smart approve" }));
+    expect(pick).toHaveBeenCalledWith("native:smart_approve");
+    expect(screen.queryByText("native:smart_approve")).not.toBeInTheDocument();
+    await user.click(button);
+    await user.click(screen.getByRole("option", { name: "Approve" }));
+    expect(pick).toHaveBeenLastCalledWith("ask");
+  });
+});
+
+it("扩展配置收在图标中，保持原生类型；未声明的权限入口隐藏", async () => {
+  const { ComposerBar } = await import("./ComposerBar");
+  const setting = { value: null, source: "none" as const };
+  const change = vi.fn();
+  const user = userEvent.setup();
+  const { rerender } = render(<ComposerBar workspaceRoot={setting} model={setting} modelOptions={[]}
+    reasoning={{ ...setting, levels: [] }} approval={{ value: "ask", source: "engine", options: [] }}
+    configOptions={[
+      { id: "custom", name: "Tool policy", type: "select", currentValue: "ask", options: [{ value: "ask", name: "Review" }, { value: "auto", name: "Automatic" }] },
+      { id: "network", name: "Network", type: "boolean", currentValue: false },
+    ]} onChangeConfig={change} />);
+  expect(screen.queryByRole("button", { name: "审批模式" })).toBeNull();
+  expect(screen.queryByText("Tool policy")).toBeNull();
+  const button = screen.getByRole("button", { name: "更多设置" });
+  expect(button.textContent).toBe("");
+  await user.click(button);
+  await user.click(screen.getByRole("button", { name: "Tool policy" }));
+  await user.click(screen.getByRole("option", { name: "Automatic" }));
+  expect(change).toHaveBeenCalledWith("custom", "auto");
+  expect(screen.getByRole("dialog", { name: "更多设置" })).toBeVisible();
+  await user.click(screen.getByRole("switch", { name: "Network" }));
+  expect(change).toHaveBeenCalledWith("network", true);
+  // No optimistic state: native confirmation must arrive through props.
+  expect(screen.getByRole("switch", { name: "Network" })).toHaveAttribute("aria-checked", "false");
+  await user.keyboard("{Escape}");
+  expect(button).toHaveFocus();
+  rerender(<ComposerBar workspaceRoot={setting} model={setting} modelOptions={[]}
+    reasoning={{ ...setting, levels: [] }} approval={{ ...setting, options: [] }} />);
+  expect(screen.queryByRole("button", { name: "更多设置" })).toBeNull();
+});

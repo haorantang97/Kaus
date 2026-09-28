@@ -624,7 +624,8 @@ class HermesRunTranslator:
             else list(APPROVAL_CHOICES)
         )
         options = tuple(
-            InteractionOption(option_id=CHOICE_TO_OPTION[c], label=CHOICE_LABELS[c])
+            InteractionOption(option_id=CHOICE_TO_OPTION[c], label=CHOICE_LABELS[c],
+                              kind="allow_once" if c == "once" else "reject_once" if c == "deny" else "allow_always")
             for c in choices
             if c in CHOICE_TO_OPTION
         )

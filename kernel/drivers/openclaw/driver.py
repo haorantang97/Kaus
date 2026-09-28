@@ -1,7 +1,7 @@
-"""OpenClaw's ACP stream with native, session-scoped Gateway model controls.
+"""OpenClaw's ACP stream with native, session-scoped Gateway controls.
 
 The ACP bridge remains responsible for turns, tools, reasoning and approvals.
-Only model discovery/selection uses the official ``gateway call`` CLI. That
+Model and permission selection use the official ``gateway call`` CLI. That
 entrypoint owns configuration/auth discovery and requests the least privilege
 scope for each method. In particular, a model-only ``sessions.patch`` requests
 operator.write, never operator.admin: native sticky model preferences therefore
@@ -23,6 +23,11 @@ from runtime.capability_matrix import ModelCapabilities, declare
 
 _GATEWAY_METHODS = frozenset({"models.list", "sessions.resolve", "sessions.describe", "sessions.patch"})
 _MODEL_OPTION = "kaus_gateway_model"
+_PERMISSION_OPTION = "kaus_gateway_permission"
+_PERMISSION_OPTIONS = (
+    ("inherit", "Engine default"), ("read-only", "Read only"),
+    ("guarded", "Guarded"), ("workspace", "Workspace"), ("full", "Full access"),
+)
 _PRIVATE_SNAPSHOT = "_kausOpenClawModels"
 
 
@@ -56,8 +61,13 @@ class OpenClawGateway:
     async def call(self, method: str, params: Mapping[str, Any]) -> dict[str, Any]:
         if method not in _GATEWAY_METHODS:
             raise ValueError("Unsupported Gateway operation")
-        if method == "sessions.patch" and set(params) - {"key", "agentId", "expectedSessionId", "expectedLifecycleRevision", "model"}:
-            raise ValueError("Only session model selection is allowed")
+        if method == "sessions.patch":
+            if set(params) - {"key", "agentId", "expectedSessionId", "expectedLifecycleRevision", "model", "permissionMode", "expectedPermissionMode"}:
+                raise ValueError("Only session model or permission selection is allowed")
+            if "model" in params and "permissionMode" in params:
+                raise ValueError("Model and permission changes must be separate")
+            if "permissionMode" in params and params["permissionMode"] not in {None, "read-only", "guarded", "workspace", "full"}:
+                raise ValueError("Unknown session permission mode")
         env = self.spec.build_env()
         env.update({"OPENCLAW_HIDE_BANNER": "1", "OPENCLAW_SUPPRESS_NOTES": "1", "NO_COLOR": "1"})
         # CLI Gateway has no --token-file flag. Keep explicit ACP credentials out
@@ -142,6 +152,9 @@ class OpenClawAcpDriver(AcpDriver):
         except ValueError:
             # Explicit non-native wrapper commands can still speak ordinary ACP.
             self.gateway = None
+        if self.preset is not None:
+            self.preset = replace(self.preset, approval_option_id=_PERMISSION_OPTION,
+                                  approval_mode_ids={"ask": "guarded", "auto": "workspace", "bypass": "full", "read_only": "read-only"})
 
     def _absorb_initialize(self, result: Any) -> None:
         super()._absorb_initialize(result)
@@ -189,6 +202,8 @@ class OpenClawAcpDriver(AcpDriver):
     async def _resume_session(self, connection: Any, session_id: str, cwd: str) -> Any:
         result = await super()._resume_session(connection, session_id, cwd)
         await self._augment_models(result, session_id)
+        if isinstance(result, dict) and _PRIVATE_SNAPSHOT in result:
+            result[_PRIVATE_SNAPSHOT]["resumed"] = True
         return result
 
     async def _augment_models(self, result: Any, session_id: str) -> None:
@@ -216,12 +231,14 @@ class OpenClawAcpDriver(AcpDriver):
                     continue
                 seen.add(model_id)
                 models.append({"model_id": model_id, "display_name": row.get("alias") or row.get("name") or model,
+                               "availability": "unavailable" if row.get("available") is False else "available" if row.get("available") is True else "configured",
                                "provider_id": provider, "provider_label": provider,
                                "reasoning_levels": tuple(level["id"] for level in row["thinkingLevels"] if isinstance(level, dict) and isinstance(level.get("id"), str)) if isinstance(row.get("thinkingLevels"), list) else None,
                                "context_window": row.get("contextWindow") if isinstance(row.get("contextWindow"), int) and row["contextWindow"] > 0 else None})
             current = _current_model(description.get("session"))
             row = description.get("session")
             result[_PRIVATE_SNAPSHOT] = {"models": models, "current": current, "key": key, "exists": isinstance(row, dict),
+                                        "permissionMode": row.get("permissionMode") if isinstance(row, dict) else None,
                                         "sessionId": row.get("sessionId") if isinstance(row, dict) else None,
                                         "lifecycleRevision": row.get("lifecycleRevision") if isinstance(row, dict) else None}
             self._install_model_option(result)
@@ -230,13 +247,17 @@ class OpenClawAcpDriver(AcpDriver):
 
     def _install_model_option(self, result: dict[str, Any]) -> None:
         snapshot = result.get(_PRIVATE_SNAPSHOT, {})
-        models = snapshot.get("models", [])
-        if not models:
+        if not snapshot or snapshot.get("error"):
             return
-        options = [entry for entry in result.get("configOptions", []) if isinstance(entry, dict) and entry.get("id") != _MODEL_OPTION]
-        options.append({"id": _MODEL_OPTION, "name": "Model", "category": "model", "type": "select",
-                        "currentValue": snapshot.get("current") or "", "options": [
-                            {"value": row["model_id"], "name": row["display_name"]} for row in models]})
+        models = snapshot.get("models", [])
+        options = [entry for entry in result.get("configOptions", []) if isinstance(entry, dict) and entry.get("id") not in {_MODEL_OPTION, _PERMISSION_OPTION}]
+        if models:
+            options.append({"id": _MODEL_OPTION, "name": "Model", "category": "model", "type": "select",
+                            "currentValue": snapshot.get("current") or "", "options": [
+                                {"value": row["model_id"], "name": row["display_name"]} for row in models]})
+        options.append({"id": _PERMISSION_OPTION, "name": "Permissions", "type": "select",
+                        "currentValue": snapshot.get("permissionMode") or "inherit", "options": [
+                            {"value": value, "name": name} for value, name in _PERMISSION_OPTIONS]})
         result["configOptions"] = options
 
     def _snapshot_from_session(self, result: Any) -> _CatalogSnapshot:
@@ -267,26 +288,9 @@ class OpenClawAcpDriver(AcpDriver):
         native = state.session_result.get(_PRIVATE_SNAPSHOT, {})
         if model_id not in {row["model_id"] for row in native.get("models", [])}:
             raise AcpRpcError(-32602, "模型不在当前 OpenClaw 会话的可选目录中")
-        if not native.get("exists") and not state.handle.metadata.get("resumed"):
-            # ACP newSession initially owns only an event ledger, not a Gateway
-            # row. Ask that exact ACP session to retain inherited usage reporting
-            # before resolving a mutable Gateway identity. Catalog
-            # probes remain read-only and an absent resumed row is never rebuilt.
-            preference = next((entry for entry in state.session_result.get("configOptions", []) if isinstance(entry, dict) and entry.get("id") == "response_usage"), None)
-            if not preference or preference.get("currentValue") != "inherit":
-                raise AcpTransportError("OpenClaw 尚未建立可修改的原生会话")
-            await state.connection.call("session/set_config_option", {"sessionId": state.session_id, "configId": "response_usage", "value": "inherit"}, timeout=self._call_timeout)
-        # Cache only a Gateway-confirmed identity. The atomic expected identity
-        # guards every later selection against resets without three CLI launches
-        # on each dropdown change. A missing/stale row is never recreated here.
-        key = native.get("key")
-        if not native.get("sessionId"):
-            key = await self.gateway.session_key(state.session_id, require_existing=True)
-            described = await self.gateway.call("sessions.describe", {"key": key})
-            session = described.get("session")
-            if not isinstance(session, dict) or not isinstance(session.get("sessionId"), str):
-                raise AcpTransportError("OpenClaw 原生会话已变化，未修改模型")
-            native.update({"key": key, "sessionId": session["sessionId"], "lifecycleRevision": session.get("lifecycleRevision")})
+        await self._ensure_gateway_identity(state.connection, state.session_id, state.session_result,
+                                            resumed=bool(state.handle.metadata.get("resumed")))
+        key = native["key"]
         params = {"key": key, "expectedSessionId": native["sessionId"], "model": model_id}
         if native.get("lifecycleRevision"):
             params["expectedLifecycleRevision"] = native["lifecycleRevision"]
@@ -304,6 +308,56 @@ class OpenClawAcpDriver(AcpDriver):
         native["selectionPending"] = False
         self._install_model_option(state.session_result)
         self._accept_config_update(state, state.session_result)
+
+    async def _ensure_gateway_identity(self, connection: Any, session_id: str, result: dict, *, resumed: bool = False) -> None:
+        native = result.get(_PRIVATE_SNAPSHOT, {})
+        if not native.get("exists") and not resumed:
+            # ACP newSession initially owns only an event ledger, not a Gateway
+            # row. Ask that exact ACP session to retain inherited usage reporting
+            # before resolving a mutable Gateway identity. Catalog
+            # probes remain read-only and an absent resumed row is never rebuilt.
+            preference = next((entry for entry in result.get("configOptions", []) if isinstance(entry, dict) and entry.get("id") == "response_usage"), None)
+            if not preference or preference.get("currentValue") != "inherit":
+                raise AcpTransportError("OpenClaw 尚未建立可修改的原生会话")
+            await connection.call("session/set_config_option", {"sessionId": session_id, "configId": "response_usage", "value": "inherit"}, timeout=self._call_timeout)
+        # Cache only a Gateway-confirmed identity. The atomic expected identity
+        # guards every later selection against resets without three CLI launches
+        # on each dropdown change. A missing/stale row is never recreated here.
+        key = native.get("key")
+        if not native.get("sessionId"):
+            key = await self.gateway.session_key(session_id, require_existing=True)
+            described = await self.gateway.call("sessions.describe", {"key": key})
+            session = described.get("session")
+            if not isinstance(session, dict) or not isinstance(session.get("sessionId"), str):
+                raise AcpTransportError("OpenClaw 原生会话已变化，未修改设置")
+            native.update({"key": key, "sessionId": session["sessionId"], "lifecycleRevision": session.get("lifecycleRevision"),
+                           "permissionMode": session.get("permissionMode")})
+
+    async def _set_permission_mode(self, connection: Any, session_id: str, result: dict, mode_id: str) -> None:
+        if self.gateway is None or self._config_options(result).approval_option_id != _PERMISSION_OPTION:
+            return await super()._set_permission_mode(connection, session_id, result, mode_id)
+        if mode_id not in {value for value, _ in _PERMISSION_OPTIONS}:
+            raise AcpRpcError(-32602, "OpenClaw 未提供这个权限选项")
+        native = result[_PRIVATE_SNAPSHOT]
+        await self._ensure_gateway_identity(connection, session_id, result, resumed=native.get("resumed", False))
+        observed = (await self.gateway.call("sessions.describe", {"key": native["key"]})).get("session")
+        if not isinstance(observed, dict) or observed.get("sessionId") != native["sessionId"]:
+            raise AcpTransportError("OpenClaw 原生会话已变化，未修改权限")
+        value = None if mode_id == "inherit" else mode_id
+        params = {"key": native["key"], "expectedSessionId": native["sessionId"],
+                  "expectedPermissionMode": observed.get("permissionMode"), "permissionMode": value}
+        if native.get("lifecycleRevision") is not None:
+            params["expectedLifecycleRevision"] = native["lifecycleRevision"]
+        reply = await self.gateway.call("sessions.patch", params)
+        row = reply.get("entry")
+        if not isinstance(row, dict):
+            row = (await self.gateway.call("sessions.describe", {"key": native["key"]})).get("session")
+        if (reply.get("ok") is False or not isinstance(row, dict) or row.get("sessionId") != native["sessionId"]
+                or row.get("permissionMode") != value or row.get("permissionModePending")):
+            raise AcpTransportError("OpenClaw 未确认所选权限，未保存选择")
+        native["permissionMode"] = value
+        native["exists"] = True
+        self._install_model_option(result)
 
     async def _send_message_locked(self, runtime: RuntimeHandle, content: Any) -> None:
         state = self._state(runtime)

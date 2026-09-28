@@ -5,7 +5,10 @@ import userEvent from "@testing-library/user-event";
 import { ConnectEngineModal } from "./ConnectEngineModal";
 import { connectEngine, fetchEngineCatalog, type EnginePreset } from "../lib/enginePresets";
 
-vi.mock("../lib/enginePresets", () => ({ fetchEngineCatalog: vi.fn(), connectEngine: vi.fn() }));
+vi.mock("../lib/enginePresets", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../lib/enginePresets")>(),
+  fetchEngineCatalog: vi.fn(), connectEngine: vi.fn(),
+}));
 
 const engine = (id: string, extra: Partial<EnginePreset> = {}): EnginePreset => ({
   id, label: `${id} Agent`, backendId: `backend:${id}`, registered: false,
@@ -25,6 +28,59 @@ beforeEach(() => {
 });
 
 describe("接入引擎面板", () => {
+  it("DeepSeek 只显示一个产品入口，自动连接推荐的实际后端", async () => {
+    const user = userEvent.setup();
+    const attach = vi.fn();
+    vi.mocked(fetchEngineCatalog).mockResolvedValue({ engines: [
+      engine("dsh", { label: "DeepSeek Harness", installCommand: "install-native-dsh" }),
+      engine("deepseek-acp", { label: "DeepSeek ACP", installCommand: "install-community-dsh" }),
+    ] });
+    vi.mocked(connectEngine).mockResolvedValue({ backendId: "backend:deepseek-acp", registered: true });
+    render(<ConnectEngineModal onClose={() => {}} onAttach={attach} />);
+    const list = await screen.findByRole("listbox", { name: "选一个引擎" });
+    expect(within(list).getAllByRole("option")).toHaveLength(1);
+    expect(within(list).getByRole("option")).toHaveTextContent("DeepSeek Harness");
+    expect(screen.getByTestId("connect-details")).toHaveTextContent("install-community-dsh");
+    expect(screen.queryByRole("combobox", { name: "接入方式" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "添加到项目" }));
+    await waitFor(() => expect(connectEngine).toHaveBeenCalledWith("deepseek-acp"));
+    expect(attach).toHaveBeenCalledWith("backend:deepseek-acp");
+  });
+
+  it("DeepSeek 优先使用本机已接入的实现，不诱导重复安装另一个实现", async () => {
+    const user = userEvent.setup();
+    const attach = vi.fn();
+    vi.mocked(fetchEngineCatalog).mockResolvedValue({ engines: [
+      engine("dsh", { label: "DeepSeek Harness", registered: true, detected: true, probeState: "available" }),
+      engine("deepseek-acp", { label: "DeepSeek ACP", installCommand: "install-community-dsh" }),
+    ] });
+    render(<ConnectEngineModal onClose={() => {}} onAttach={attach} attachable={[{ id: "backend:dsh", displayName: "DeepSeek" }]} />);
+    await screen.findByTestId("connect-preset-deepseek-harness");
+    expect(screen.queryByText(/接入方式/)).toBeNull();
+    expect(screen.queryByText("install-community-dsh")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "添加到项目" }));
+    expect(connectEngine).not.toHaveBeenCalled();
+    expect(attach).toHaveBeenCalledWith("backend:dsh");
+  });
+
+  it("Hermes 的已接 HTTP 与 ACP 合并，连接既有通道且不重复注册", async () => {
+    const user = userEvent.setup();
+    const attach = vi.fn();
+    vi.mocked(fetchEngineCatalog).mockResolvedValue({ engines: [
+      engine("hermes-acp", { label: "Hermes (ACP)", detected: true, productId: "hermes", productName: "Hermes" }),
+      engine("custom:backend:my-http", { label: "Hermes HTTP", backendId: "backend:my-http", registered: true,
+        probeState: "available", productId: "hermes", productName: "Hermes", preferred: true }),
+    ] });
+    render(<ConnectEngineModal onClose={() => {}} onAttach={attach} attachable={[{ id: "backend:my-http", displayName: "Hermes HTTP" }]} />);
+    const list = await screen.findByRole("listbox", { name: "选一个引擎" });
+    expect(within(list).getAllByRole("option")).toHaveLength(1);
+    expect(within(list).getByRole("option")).toHaveTextContent(/^Hermes$/);
+    expect(screen.queryByText(/Hermes \(ACP\)|Hermes HTTP/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "添加到项目" }));
+    expect(connectEngine).not.toHaveBeenCalled();
+    expect(attach).toHaveBeenCalledWith("backend:my-http");
+  });
+
   it("目录来自后端，新增厂家不依赖前端手抄清单", async () => {
     render(<ConnectEngineModal onClose={() => {}} />);
     const list = await screen.findByRole("listbox", { name: "选一个引擎" });

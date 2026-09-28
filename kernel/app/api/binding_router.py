@@ -63,6 +63,7 @@ router 里，早晚会有人漏挂一条。
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -83,6 +84,7 @@ from app.errors import InvalidIdentifierError
 from app.ids import binding_id as make_binding_id
 from app.persistence.base import RepositorySet
 from app.projects.models import AgentBinding
+from app.projects.binding_snapshot import register_binding_snapshot
 from drivers.base import APPROVAL_MODES
 
 #: ``runtime_config`` 里允许通过 ``PATCH`` 写的**通用**键。
@@ -149,6 +151,7 @@ class PatchBindingBody(_Body):
     """
 
     default_model_id: str | None = None
+    default_provider_id: str | None = None
     runtime_config: dict[str, Any] | None = None
 
     def provided(self, name: str) -> bool:
@@ -176,6 +179,10 @@ class CreateBindingBody(_Body):
     backend_id: str = Field(min_length=1)
     discriminator: str | None = None
     display_name: str | None = None
+
+
+class EnsureBindingBody(_Body):
+    backend_id: str = Field(min_length=1)
 
 
 def build_binding_write_router(
@@ -206,6 +213,7 @@ def build_binding_write_router(
     router = APIRouter(prefix=prefix, tags=[tag], route_class=auth_route_class())
     _auth = Depends(require_session_auth(auth_policy))
     _endpoint = json_error_endpoint(JSONResponse)
+    ensure_lock = asyncio.Lock()
 
     def _now() -> datetime:
         return datetime.now(tz=timezone.utc)
@@ -322,6 +330,20 @@ def build_binding_write_router(
 
         if body.provided("default_model_id"):
             changes["default_model_id"] = body.default_model_id
+            changes["default_provider_id"] = None
+            if body.default_model_id and registry is not None:
+                from drivers.model_selection import select_model
+                try:
+                    driver = registry.get(binding.backend_id)
+                    await register_binding_snapshot(driver, binding, repositories.projects)
+                    catalog = await driver.get_model_catalog(binding)
+                    if catalog.models:
+                        selected = select_model(catalog, body.default_model_id, body.default_provider_id)
+                        changes["default_provider_id"] = selected.provider_id
+                except ValueError as exc:
+                    raise ApiError(400, "model_not_in_catalog", str(exc)) from exc
+            elif body.default_model_id is None:
+                changes["default_provider_id"] = None
 
         if body.provided("runtime_config"):
             incoming = body.runtime_config or {}
@@ -430,6 +452,43 @@ def build_binding_write_router(
         )
         saved = await repositories.bindings.save(binding)
         return JSONResponse(status_code=201, content=binding_to_wire(saved))
+
+    @_endpoint
+    async def ensure_binding(project_id: str, body: EnsureBindingBody = Body(...)) -> Any:
+        """First use of a global engine creates only a project association.
+
+        Reuse the project's existing configuration. Do not copy another project's
+        model, permissions, native scope or Group execution snapshot.
+        """
+        normalized = normalize_project_id(project_id)
+        backend_id = normalize_backend_key_id(body.backend_id)
+        async with ensure_lock:
+            project = await repositories.projects.get(normalized)
+            if project is None:
+                raise ApiError(404, "project_not_found", f"未知 Project：{project_id}")
+            backend = await repositories.backends.get(backend_id)
+            driver = registry.try_get(backend_id) if registry is not None else None
+            if backend is None or driver is None or driver.driver_kind == "mock":
+                raise ApiError(409, "engine_not_connected", "请先接入这个引擎")
+            ordinary = [
+                item for item in await repositories.bindings.list_for_backend(normalized, backend_id)
+                if not item.runtime_config.get("group_execution")
+            ]
+            enabled = [item for item in ordinary if item.enabled]
+            if enabled:
+                chosen = next((item for item in enabled if item.is_default), None)
+                chosen = chosen or next((item for item in enabled if item.discriminator is None), enabled[0])
+                return binding_to_wire(chosen)
+            if ordinary:
+                raise ApiError(409, "binding_disabled", "此项目已停用这个引擎，请先在项目中启用")
+            new_id = make_binding_id(project.slug, backend.key)
+            if await repositories.bindings.get(new_id) is not None:
+                raise ApiError(409, "binding_id_conflict", "这个关联标识已被占用")
+            binding = AgentBinding.create(
+                project=project, backend=backend, display_name=backend.display_name,
+                is_default=False, origin="domain",
+            )
+            return binding_to_wire(await repositories.bindings.save(binding))
 
     # --- 项目工作目录 -------------------------------------------------------- #
 
@@ -766,6 +825,7 @@ def build_binding_write_router(
             "binding_make_default",
         ),
         ("/projects/{project_id}/bindings", create_binding, ["POST"], "binding_create"),
+        ("/projects/{project_id}/bindings/ensure", ensure_binding, ["POST"], "binding_ensure"),
         ("/projects/{project_id}", patch_project, ["PATCH"], "project_patch"),
         ("/bindings/{binding_id}", delete_binding, ["DELETE"], "binding_delete"),
         (

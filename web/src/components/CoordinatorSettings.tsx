@@ -1,20 +1,24 @@
+import { EngineIcon } from "./EngineIcon";
+import { bindingDisplayName } from "../lib/backend-display";
+import { distinctEngineBindings } from "../lib/enginePresets";
 import "./coordinator.css";
 import { projectPath } from "../lib/routes";
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowUpRight, ChevronDown, Settings2 } from "lucide-react";
-import { BarMenu, approvalLabel } from "./ComposerBar";
+import { BarMenu, approvalLabel, EngineConfigFields } from "./ComposerBar";
 import { Button, Modal, ModalTitle, inputStyle } from "./ui";
 import { useLocale } from "../i18n";
 import { fetchModelCatalog, fetchEffectiveSettings, sessionRequest,
   type BindingWire, type ModelCatalogWire, type EffectiveSettingsWire } from "../lib/sessionApi";
 import { refreshGroups } from "../lib/groupStore";
 import type { GroupWire } from "../lib/groupsApi";
-import { modelOptionsFor } from "../lib/modelCatalogView";
+import { modelOptionsFor, modelSelection } from "../lib/modelCatalogView";
 
 export interface CoordinatorConfig {
   bindingId: string; modelId?: string | null; providerId?: string | null;
   reasoningMode?: string | null; approvalMode?: string | null; workspaceRoot?: string | null;
   executionMode?: string | null;
+  configOptions?: Record<string, string | boolean>;
   instructions?: string; callCap?: number; timeLimitMinutes?: number; revision?: number; sourceRevision?: number | null;
 }
 type ConfigurationView = { config: CoordinatorConfig | null; candidate?: CoordinatorConfig | null; defaults?: CoordinatorConfig | null };
@@ -73,11 +77,12 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
       .catch(e => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [open, draft.bindingId, bindings]);
-  const models = catalog?.models ?? [];
+  const models = catalog?.models.filter(model => model.availability !== "unavailable") ?? [];
   const engineDefault = models.length === 0 && catalog?.engineDefaultAvailable === true && catalog.degraded !== true;
   const catalogReady = !!catalog && (models.length > 0 || engineDefault);
   const catalogError = catalog && !catalogReady ? catalog.diagnostics?.[0] ?? "引擎未提供可用模型" : "";
-  const modelOptions = modelOptionsFor(catalog, bindings.find(b => b.id === draft.bindingId), draft.modelId ?? undefined);
+  const selectedBinding = bindings.find(b => b.id === draft.bindingId);
+  const modelOptions = modelOptionsFor(catalog, selectedBinding, draft.modelId ?? undefined);
   const selected = models.find(m => m.modelId === draft.modelId && (!draft.providerId || m.providerId === draft.providerId));
   const reasoning = selected?.reasoningLevels ?? (engineDefault ? effective?.conversationControls?.reasoningLevels : undefined) ?? effective?.reasoningEffort.levels ?? [];
   const approval = effective?.conversationControls?.approvalModes ?? [];
@@ -109,12 +114,12 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
       <div className="kaus-coordinator-settings kaus-settings-sheet" aria-busy={loading}>
         {loading && <span role="status" className="kaus-group-dim">读取配置…</span>}
         <div className="kaus-coordinator-grid">
-        <CoordinatorField label="Agent" wide><BarMenu floating label="Agent" value={draft.bindingId} display={bindings.find(b => b.id === draft.bindingId)?.displayName ?? "选择 Agent"}
-          options={bindings.map(b => ({ value: b.id, label: b.displayName, group: b.projectName }))}
+        <CoordinatorField label="Agent" wide><BarMenu floating label="Agent" icon={<EngineIcon engine={selectedBinding?.backendId} />} value={draft.bindingId} display={selectedBinding ? bindingDisplayName(selectedBinding.backendId, selectedBinding.displayName) : "选择 Agent"}
+          options={distinctEngineBindings(bindings, draft.bindingId).map(b => ({ value: b.id, label: bindingDisplayName(b.backendId, b.displayName), icon: <EngineIcon engine={b.backendId} />, group: b.projectName }))}
           onSelect={bindingId => setDraft({ bindingId, revision: Math.max(1, revision), instructions: draft.instructions, callCap: draft.callCap, timeLimitMinutes: draft.timeLimitMinutes })} /></CoordinatorField>
         <CoordinatorField label="模型" wide><BarMenu floating label="模型" value={draft.modelId ? modelKey(draft.modelId, draft.providerId) : engineDefault ? engineDefaultKey : null}
           display={selected?.displayName ?? draft.modelId ?? (engineDefault ? "引擎默认" : "选择模型")}
-          options={engineDefault ? [{ value: engineDefaultKey, label: "引擎默认" }] : modelOptions.map(m => ({ ...m, value: modelKey(m.value, m.providerId) }))}
+          options={engineDefault ? [{ value: engineDefaultKey, label: "引擎默认" }] : modelOptions.map(m => ({ ...m, value: modelKey(modelSelection(m.value).modelId, m.providerId) }))}
           emptyNote={catalogError || "读取模型…"}
           onSelect={value => {
             if (value === engineDefaultKey) { set({ modelId: null, providerId: null }); return; }
@@ -124,8 +129,8 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
         {effective?.conversationControls?.reasoning && reasoning.length > 0 && <CoordinatorField label="推理强度"><BarMenu floating label="推理强度" value={draft.reasoningMode ?? null}
           display={draft.reasoningMode ?? "默认推理强度"} options={[{ value: "", label: "默认" }, ...reasoning.map(value => ({ value, label: value }))]}
           onSelect={reasoningMode => set({ reasoningMode: reasoningMode || null })} /></CoordinatorField>}
-        {approval.length > 0 && <CoordinatorField label="权限"><BarMenu floating label="权限" value={draft.approvalMode ?? null} display={draft.approvalMode ? approvalLabel(draft.approvalMode, t) : "默认权限"}
-          options={[{ value: "", label: "默认" }, ...approval.map(value => ({ value, label: approvalLabel(value, t) }))]}
+        {approval.length > 0 && <CoordinatorField label="权限"><BarMenu floating label="权限" value={draft.approvalMode ?? null} display={draft.approvalMode ? approvalLabel(draft.approvalMode, t, effective?.conversationControls?.approvalOptions) : "默认权限"}
+          options={[{ value: "", label: "默认" }, ...approval.map(value => ({ value, label: approvalLabel(value, t, effective?.conversationControls?.approvalOptions), title: effective?.conversationControls?.approvalOptions?.find(option => option.id === value)?.description }))]}
           onSelect={approvalMode => set({ approvalMode: approvalMode || null })} /></CoordinatorField>}
         {execution.length > 0 && <CoordinatorField label={t("bar.execution")}><BarMenu floating label={t("bar.execution")} value={draft.executionMode ?? null}
           display={execution.find(option => option.id === draft.executionMode)?.name ?? "默认模式"}
@@ -134,6 +139,9 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
         </div>
         <button type="button" className="kaus-coordinator-more" onClick={() => setMore(!more)} aria-expanded={more}><ChevronDown size={13} aria-hidden className={more ? "is-expanded" : ""} />更多设置</button>
         {more && <div className="kaus-coordinator-fields">
+          {!!effective?.conversationControls?.configOptions?.length && <div className="is-wide"><EngineConfigFields
+            options={effective.conversationControls.configOptions} values={draft.configOptions}
+            onChange={!busy ? (key, value) => set({ configOptions: { ...draft.configOptions, [key]: value } }) : undefined} /></div>}
           {bindings.find(b => b.id === draft.bindingId) && <a className="kaus-coordinator-project-link" href={projectPath(bindings.find(b => b.id === draft.bindingId)!.projectId)} target="_blank" rel="noreferrer">插件与规则<ArrowUpRight size={13} aria-hidden /></a>}
           <label className="is-wide">工作目录<input style={inputStyle()} value={draft.workspaceRoot ?? ""} placeholder={effective?.workspaceRoot.value ?? "使用配置目录"} onChange={e => set({ workspaceRoot: e.target.value || null })} /></label>
           <label className="is-wide">主持要求<textarea style={inputStyle()} rows={4} value={draft.instructions ?? ""} onChange={e => set({ instructions: e.target.value })} /></label>

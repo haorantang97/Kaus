@@ -86,3 +86,76 @@
 .kaus-group-workspace .kaus-group-message.is-user { align-self: flex-end; max-width: 88%; margin-block: 10px; padding: 12px 14px; border: 0; border-radius: 14px; background: color-mix(in srgb, var(--midground-base) 6%, transparent); }
 .kaus-group-workspace .kaus-group-message.is-user .kaus-group-message-head { justify-content: flex-end; }
 .kaus-group-workspace .kaus-group-thread .kaus-group-icon-btn { margin-left: auto; }
+
+/* Composer hierarchy: context, message, then compact actions. */
+.kaus-composer-layout { width: 100%; min-width: 0; }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-context { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; margin: -3px -5px 10px; }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-context .kaus-bar-pill { font-size: 11px; color: var(--chat-muted); }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-bar { flex-wrap: wrap; gap: 3px; margin: 7px -3px -2px; padding: 0; border: 0; }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-bar .kaus-bar-pill.is-icon-only,
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-attach { width: 30px; height: 30px; padding: 0; justify-content: center; }
+.kaus-composer-bar > .kaus-send { margin-left: 5px; }
+.kaus-workspace-control { position: relative; min-width: 0; }
+.kaus-workspace-picker { color: var(--midground-base); font: 13px/1.5 var(--theme-font-sans); }
+.kaus-workspace-picker header, .kaus-workspace-picker footer { display: flex; align-items: center; gap: 8px; }
+.kaus-workspace-picker header { justify-content: space-between; margin-bottom: 16px; }
+.kaus-workspace-picker header strong { font-size: 15px; font-weight: 600; }
+.kaus-workspace-path { display: flex; align-items: center; gap: 4px; padding-bottom: 12px; }
+.kaus-workspace-path input { min-width: 0; flex: 1; border: 1px solid color-mix(in srgb, var(--midground-base) 18%, transparent); border-radius: 8px; padding: 7px 9px; background: transparent; font: inherit; }
+.kaus-workspace-folders { display: flex; flex-direction: column; gap: 2px; height: min(340px, 45vh); overflow: auto; border-block: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent); padding-block: 7px; }
+.kaus-workspace-folders > button { display: flex; align-items: center; gap: 10px; text-align: left; border: 0; background: transparent; color: inherit; border-radius: 7px; padding: 9px; font: inherit; cursor: pointer; }
+.kaus-workspace-folders > button:hover, .kaus-workspace-folders > button:focus-visible { background: color-mix(in srgb, var(--midground-base) 7%, transparent); }
+.kaus-workspace-folders > button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kaus-workspace-folders svg { flex-shrink: 0; }
+.kaus-workspace-folders > svg, .kaus-workspace-empty { margin: auto; opacity: .5; }
+.kaus-workspace-picker footer { justify-content: flex-end; padding-top: 14px; }
+.kaus-workspace-picker footer button { border-radius: 8px; padding: 8px 12px; font: inherit; cursor: pointer; }
+.kaus-workspace-select { display: flex; align-items: center; gap: 6px; border: 0; background: var(--midground-base); color: var(--background-base); }
+.kaus-workspace-cancel { background: transparent; color: inherit; border: 1px solid color-mix(in srgb, var(--midground-base) 16%, transparent); }
+.kaus-workspace-picker button:disabled { opacity: .4; cursor: default; }
+.kaus-workspace-picker p { margin: 8px 0 0; font-size: 12px; }
+.kaus-workspace-picker [role="alert"] { color: var(--danger); }
+
+/* A slim message index sits outside the scrolling transcript. */
+.kaus-timeline-shell { position: relative; display: flex; min-height: 0; flex: 1; }
+.kaus-timeline-shell > .kaus-timeline { min-width: 0; width: 100%; }
+.kaus-jump-rail { position: absolute; z-index: 8; right: 7px; top: 50%; transform: translateY(-50%); }
+.kaus-jump-track { display: flex; flex-direction: column; max-height: min(60vh, 480px); overflow-y: auto; scrollbar-width: none; padding: 5px 0; }
+.kaus-jump-track::-webkit-scrollbar { display: none; }
+.kaus-jump-track button { display: grid; place-items: center; flex: 0 0 19px; width: 30px; height: 19px; border: 0; border-radius: 5px; background: transparent; cursor: pointer; padding: 0; }
+.kaus-jump-track button span { display: block; height: 3px; width: 10px; border-radius: 3px; background: color-mix(in srgb, var(--midground-base) 24%, transparent); transition: width 130ms, background 130ms; }
+.kaus-jump-track button[aria-current] span { width: 20px; background: color-mix(in srgb, var(--midground-base) 75%, transparent); }
+.kaus-jump-track button:hover span, .kaus-jump-track button:focus-visible span { width: 20px; background: var(--midground-base); }
+.kaus-jump-track button:focus-visible { outline: 2px solid var(--chat-border); outline-offset: 1px; }
+.kaus-jump-preview { position: absolute; right: 38px; width: min(280px, 65vw); pointer-events: none; transform: translateY(-50%); padding: 12px 14px; border: 1px solid var(--chat-border); border-radius: 12px; background: var(--panel); box-shadow: 0 5px 22px rgb(0 0 0 / 10%); font: 12px/1.6 var(--theme-font-sans); }
+.kaus-jump-preview > span { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--chat-muted); }
+.kaus-jump-preview p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; overflow-wrap: anywhere; margin: 4px 0 0; white-space: pre-wrap; }
+@media (max-width: 700px) {
+  .kaus-jump-rail { right: 0; }
+  .kaus-jump-track button { width: 24px; }
+  .kaus-timeline-shell .kaus-thread { padding-right: 32px; }
+  :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-context .kaus-bar-pill { max-width: 150px; }
+}
+@media (prefers-reduced-motion: reduce) { .kaus-jump-track button span { transition: none; } }
+
+.kaus-engine-config-pop {
+  padding: 10px 14px;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--midground-base) 16%, transparent);
+  border-radius: 14px;
+  background: var(--surface-raised);
+  color: var(--midground-base);
+  font-family: var(--theme-font-sans);
+  box-shadow: 0 10px 36px #0002;
+}
+.kaus-engine-config-fields { display: grid; gap: 6px; min-width: 0; }
+.kaus-engine-config-field { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 36px; font-size: 13px; }
+.kaus-engine-config-field > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.kaus-engine-config-field .kaus-bar-menu { max-width: 65%; }
+.kaus-engine-config-field .kaus-bar-pill { font: inherit; letter-spacing: 0; text-transform: none; border-radius: 6px; padding: 5px 7px; }
+.kaus-engine-config-switch { width: 32px; height: 20px; flex-shrink: 0; padding: 3px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--midground-base) 25%, transparent); cursor: pointer; transition: background .15s; }
+.kaus-engine-config-switch > span { display: block; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0002; transition: transform .15s; }
+.kaus-engine-config-switch[aria-checked="true"] { background: var(--accent-text); }
+.kaus-engine-config-switch[aria-checked="true"] > span { transform: translateX(12px); }
+.kaus-engine-config-switch:disabled { opacity: .5; cursor: default; }
+.kaus-engine-config-switch:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; }

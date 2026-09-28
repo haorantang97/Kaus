@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PDFPreview } from "./PDFPreview";
+// Compile the local font/CMap asset map before timing document lifecycle checks.
+import "./pdfLocalAssets";
 import { setLocalePref } from "../../i18n";
 
 const engine = vi.hoisted(() => ({ getDocument: vi.fn(), GlobalWorkerOptions: { workerSrc: "" } }));

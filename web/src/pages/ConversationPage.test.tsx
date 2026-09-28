@@ -344,6 +344,7 @@ describe("自动跟随（G-9）", () => {
     Object.defineProperty(timeline, "scrollHeight", { value: 2000, configurable: true });
     Object.defineProperty(timeline, "clientHeight", { value: 400, configurable: true });
     Object.defineProperty(timeline, "scrollTop", { value: 0, writable: true, configurable: true });
+    fireEvent.wheel(timeline, { deltaY: -300 });
     fireEvent.scroll(timeline);
     const jump = await screen.findByRole("button", { name: /回到最新/ });
 

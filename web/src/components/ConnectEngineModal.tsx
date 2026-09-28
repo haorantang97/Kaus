@@ -1,10 +1,11 @@
+import { EngineIcon } from "./EngineIcon";
 import { useEffect, useState } from "react";
 import { Check, Copy, ExternalLink, LoaderCircle, RefreshCw, Search } from "lucide-react";
 
 import { useLocale, type DictKey } from "../i18n";
 import { Button, Modal, ModalTitle, cream, inputStyle, toast } from "./ui";
 import type { AttachableBackend } from "./EnginePanel";
-import { connectEngine, fetchEngineCatalog, type EnginePreset } from "../lib/enginePresets";
+import { connectEngine, fetchEngineCatalog, groupEnginePresets, type EnginePreset } from "../lib/enginePresets";
 import { describeFailure } from "../lib/sessionApi";
 
 function statusKey(preset: EnginePreset): DictKey {
@@ -85,8 +86,9 @@ export function ConnectEngineModal({
       id: `custom:${backend.id}`, label: backend.displayName, backendId: backend.id,
       registered: true, detected: false, installed: null, probeState: "unknown",
     }))];
-  const filtered = entries.filter((row) => `${row.label} ${row.id}`.toLowerCase().includes(query.trim().toLowerCase()));
-  const preset = filtered.find((row) => row.id === current) ?? filtered[0];
+  const filtered = groupEnginePresets(entries).filter((row) => `${row.label} ${row.variants.map((entry) => `${entry.label} ${entry.id}`).join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const selectedGroup = filtered.find((row) => row.variants.some((entry) => entry.id === current)) ?? filtered[0];
+  const preset = selectedGroup?.variants.find((entry) => entry.id === current) ?? selectedGroup?.variants.find((entry) => entry.id === selectedGroup.preferred.id);
   const attached = !!onAttach && !!preset?.registered && !attachable.some((row) => row.id === preset.backendId);
   const connect = async () => {
     if (!preset || busy) return;
@@ -145,24 +147,24 @@ export function ConnectEngineModal({
                   key={row.id}
                   type="button"
                   role="option"
-                  aria-selected={row.id === preset?.id}
-                  tabIndex={row.id === preset?.id ? 0 : -1}
+                  aria-selected={row.id === selectedGroup?.id}
+                  tabIndex={row.id === selectedGroup?.id ? 0 : -1}
                   data-testid={`connect-preset-${row.id}`}
-                  onClick={() => setCurrent(row.id)}
+                  onClick={() => setCurrent(row.preferred.id)}
                   onKeyDown={(event) => {
                     const next = event.key === "ArrowDown" ? (index + 1) % filtered.length
                       : event.key === "ArrowUp" ? (index + filtered.length - 1) % filtered.length
                       : event.key === "Home" ? 0 : event.key === "End" ? filtered.length - 1 : null;
                     if (next === null) return;
                     event.preventDefault();
-                    setCurrent(filtered[next].id);
+                    setCurrent(filtered[next].preferred.id);
                     event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("button")[next]?.focus();
                   }}
                   className="mb-1 flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs"
-                  style={{ background: row.id === preset?.id ? cream(8) : "transparent", color: row.id === preset?.id ? cream(95) : cream(60) }}
+                  style={{ background: row.id === selectedGroup?.id ? cream(8) : "transparent", color: row.id === selectedGroup?.id ? cream(95) : cream(60) }}
                 >
-                  <span>{row.label}</span>
-                  {row.registered && <Check size={12} className="shrink-0" aria-label={t("engines.connect.registered")} />}
+                  <span className="inline-flex items-center gap-2"><EngineIcon engine={row.preferred.productId ?? (row.preferred.id.startsWith("custom:") ? row.preferred.backendId : row.preferred.id)} />{row.label}</span>
+                  {row.variants.some((entry) => entry.registered) && <Check size={12} className="shrink-0" aria-label={t("engines.connect.registered")} />}
                 </button>
               ))}
               {!filtered.length && <p className="p-2 text-xs" style={{ color: cream(45) }}>{t("engines.connect.empty")}</p>}
@@ -170,7 +172,7 @@ export function ConnectEngineModal({
             {preset && (
               <div className="min-w-0 flex-1" data-testid="connect-details">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-medium" style={{ color: cream(95) }}>{preset.label}</h3>
+                  <h3 className="inline-flex items-center gap-2 text-sm font-medium" style={{ color: cream(95) }}><EngineIcon engine={preset.productId ?? (preset.id.startsWith("custom:") ? preset.backendId : preset.id)} size={20} />{selectedGroup?.label}</h3>
                   {preset.setupUrl && (
                     <a href={preset.setupUrl} target="_blank" rel="noreferrer" aria-label={t("engines.connect.docs")} title={t("engines.connect.docs")} className="rounded p-1.5 hover:bg-white/5" style={{ color: cream(55) }}>
                       <ExternalLink size={15} />

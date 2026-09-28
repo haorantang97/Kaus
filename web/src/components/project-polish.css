@@ -1,9 +1,19 @@
 .agent-browser .agent-browser-head h1 { font-family:var(--theme-font-sans); font-size:22px; font-weight:600; letter-spacing:-.02em; }
 .agent-browser .ag-ph2 { font-family:var(--theme-font-sans); font-size:27px; font-weight:600; line-height:1.25; letter-spacing:-.03em; overflow-wrap:anywhere; }
 .agent-browser .ag-ptag { font-size:11px; letter-spacing:.04em; }
-.agent-browser .ag-pactions { display:flex; gap:6px; }
-.agent-browser .ag-pactions .ag-act { display:grid; place-items:center; width:32px; height:32px; padding:0; border:0; border-radius:6px; }
-.agent-browser .ag-pactions .ag-act:hover { background:color-mix(in srgb,var(--midground-base) 7%,transparent); }
+.ag-panel .ag-pactions { position:relative; display:block; height:94px; margin-top:24px; }
+.ag-panel .ag-pactions .kaus-project-primary { position:relative; z-index:1; justify-content:center; width:50%; height:42px; padding-inline:10px; }
+.ag-panel .ag-pactions .kaus-project-enter { position:absolute; inset:0; width:100%; height:100%; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
+.ag-panel .kaus-project-enter-shape { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+.ag-panel .kaus-project-enter-shape > path { fill:var(--surface-raised); stroke:color-mix(in srgb, var(--midground-base) 24%, transparent); stroke-width:2; transition:fill 150ms ease, stroke 150ms ease; }
+.ag-panel .kaus-project-enter-icon { position:absolute; top:13px; right:17px; }
+.ag-panel .kaus-project-enter-label { position:absolute; bottom:13px; left:17px; }
+.ag-panel .kaus-project-enter:hover:not(:disabled), .ag-panel .kaus-project-enter:active:not(:disabled) { background:transparent; box-shadow:none; }
+.ag-panel .kaus-project-enter:hover .kaus-project-enter-shape > path { fill:color-mix(in srgb, var(--surface-raised) 92%, var(--gold)); stroke:color-mix(in srgb, var(--accent-text) 45%, transparent); }
+.ag-panel .kaus-project-enter:active .kaus-project-enter-shape > path { fill:var(--gold-soft); }
+.ag-panel .kaus-project-enter:focus-visible { outline:none; }
+.ag-panel .kaus-project-enter:focus-visible .kaus-project-enter-shape > path { stroke:var(--accent-text); stroke-width:4; }
+@media (prefers-reduced-motion:reduce) { .ag-panel .kaus-project-enter-shape > path { transition:none; } }
 .agent-browser .ag-prow { gap:18px; align-items:start; font-size:12px; line-height:1.6; }
 .agent-browser .ag-prow span:last-child { text-align:right; min-width:0; overflow-wrap:anywhere; }
 .agent-browser .ag-stat-row strong { font-family:var(--theme-font-sans); font-size:23px; font-weight:600; line-height:1.5; }

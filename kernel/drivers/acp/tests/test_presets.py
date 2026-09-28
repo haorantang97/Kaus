@@ -148,14 +148,15 @@ def test_set_mode_and_set_model_where_we_really_called_them() -> None:
     - ``opencode`` 1.18.29：批次三十二拿**当前值**空跑，两个都回 ``{}``；批次
       三十四在中继真机上带着真实会话再跑一次，``session/new`` 一个 mode 都没报、
       ``set_mode`` 回 ``-32602``——所以这一位改回 ``False``（AD-158）。空跑当前值
-      是个假阳性来源，记在这里是为了下次不再上同一个当。
+      是个假阳性来源。当前官方实现有真实模式目录与 setter，声明接入但不标记真机验收。
     """
     claude_code = get_preset("claude-code").quirks
     assert claude_code.supports_set_mode is True
     assert claude_code.supports_set_model is False
 
     opencode = get_preset("opencode").quirks
-    assert opencode.supports_set_mode is False
+    assert opencode.supports_set_mode is True
+    assert "supports_set_mode" not in get_preset("opencode").verified_bits
     assert opencode.supports_set_model is True
 
 

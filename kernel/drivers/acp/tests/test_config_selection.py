@@ -46,7 +46,7 @@ async def test_mode_and_effort_reach_separate_rpc_ids_before_first_prompt(monkey
     runtime = await driver.start_runtime(conversation, "card")
     try:
         assert calls == [("work-style", "debug"), ("choose-model", MODEL), ("compute-budget", "high")]
-        controls = driver.conversation_controls(binding)
+        controls = driver.runtime_conversation_controls(runtime, binding)
         assert controls["reasoning"] and controls["approvalModes"] == []
         assert controls["executionModes"] == [{"id": "code", "name": "Code"}, {"id": "debug", "name": "Debug"}]
         assert controls["executionDefault"] == "debug"
@@ -83,7 +83,7 @@ async def test_model_switch_uses_engine_returned_reasoning_default(monkeypatch):
         applied = await driver.set_conversation_selection(runtime, conversation.evolve(model_id="route-b/shared-name"))
         assert applied.reasoning_mode == "low"
         assert state.conversation.reasoning_mode == "low"
-        assert driver.conversation_controls(binding)["reasoningDefault"] == "low"
+        assert driver.runtime_conversation_controls(runtime, binding)["reasoningDefault"] == "low"
     finally:
         await driver.stop_runtime(runtime)
 
@@ -134,8 +134,9 @@ async def test_config_update_is_session_bound_and_changes_available_efforts():
         assert one.session_result["configOptions"][0]["id"] == "choose-model"
         driver._on_notification(two, "session/update", {"sessionId": two.session_id, "update": {
             "sessionUpdate": "config_option_update", "configOptions": changed}})
-        assert driver._catalog[binding.id].models[0].reasoning_levels == ("medium",)
-        # Binding catalog now belongs to two. One must still send its own id.
+        assert driver.runtime_conversation_controls(second, binding)["reasoningLevels"] == ["medium"]
+        assert driver.runtime_conversation_controls(first, binding)["reasoningLevels"] == ["low", "high"]
+        # A config notification must stay on its own session, including native ids.
         await driver.set_conversation_model(first, MODEL)
         assert one.session_result["configOptions"][0]["id"] == "choose-model"
     finally:
@@ -196,7 +197,7 @@ async def test_permissions_are_independent_from_execution_and_rejected_changes_d
     runtime = await driver.start_runtime(conv, "card")
     state = driver._state(runtime)
     try:
-        controls = driver.conversation_controls(b)
+        controls = driver.runtime_conversation_controls(runtime, b)
         assert controls['approvalModes'] == ['ask', 'bypass']
         assert controls['executionDefault'] == 'debug'
         applied = await driver.set_conversation_selection(runtime, conv.evolve(approval_mode='bypass'))

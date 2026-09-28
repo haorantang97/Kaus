@@ -88,6 +88,15 @@ from typing import Literal, Mapping
 #: 登录发生在各家 CLI 自己的流程里，仪表盘不代登录、也查不到状态。
 AUTH_MODEL: str = "own-auth"
 
+# Display identity for alternate connections to one product. Drivers retain their IDs.
+PRODUCT_IDENTITIES = {
+    "hermes": ("hermes", "Hermes", 1),
+    "hermes-http": ("hermes", "Hermes", 1),
+    "hermes-acp": ("hermes", "Hermes", 0),
+    "dsh": ("deepseek-harness", "DeepSeek Harness", 0),
+    "deepseek-acp": ("deepseek-harness", "DeepSeek Harness", 1),
+}
+
 #: ``resume_argv_template`` 里唯一允许的占位符。
 SESSION_ID_PLACEHOLDER: str = "{native_session_id}"
 
@@ -289,6 +298,7 @@ class AcpPreset:
     approval_mode_ids: Mapping[str, str] = field(default_factory=dict)
     #: 与工作模式分列的权限配置项；只认显式声明，不靠 id 猜权限。
     approval_option_id: str | None = None
+    host_approval: bool = False
     #: 部分实现将思考项归入 model，明确声明它自己的 id，避免把档位当模型。
     thought_option_id: str | None = None
     #: 仅创建本地记录/静态目录的桥不能据此声称模型已登录。
@@ -518,6 +528,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="opencode",
+                host_approval=True,
                 process_env={"NODE_USE_SYSTEM_CA": "1"},
                 executable="opencode",
                 setup_url="https://opencode.ai/docs/acp/",
@@ -536,7 +547,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 quirks=AgentQuirks(
                     supports_session_resume=True,
                     supports_session_load=True,
-                    supports_set_mode=False,
+                    supports_set_mode=True,
                     mode_semantics="none",
                     supports_set_model=True,
                     model_switch="set_model",
@@ -546,7 +557,6 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                         "tool_update_cumulative",
                         "supports_session_resume",
                         "supports_session_load",
-                        "supports_set_mode",
                         "supports_set_model",
                         "thought_chunks",
                     }
@@ -556,9 +566,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                     "登录走它自己的 CLI（authMethods 的说明原话：`opencode auth login`）。",
                     "取证 1.18.29（AD-156）：**未登录也能开会话**——session/new 直接成功，"
                     "登录与否要到 session/prompt 才见分晓。",
-                    "取证 1.18.29（AD-158，中继真机）：**session/new 一个 modes 都不报**，"
-                    "set_mode 回 -32602 Invalid params——批次三十二那次「回 {}」是拿"
-                    "当前值空跑的假阳性，本行 supports_set_mode 因此改回 false。",
+                    "当前官方 ACP 提供 setSessionMode；仅显示会话实际报告的模式。旧版 1.18.29 未报告 modes，保持隐藏。新模式切换尚待真机验收。",
                     "取证 1.18.29：set_model 认，但 modelId 是 `provider/model` 形状；"
                     "resume 与 load 两条 RPC 都真的通。",
                 ),
@@ -588,12 +596,15 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 quirks=AgentQuirks(
                     supports_session_resume=False,
                     needs_client_fs=True,
-                    mode_semantics="none",
+                    supports_set_mode=True,
+                    mode_semantics="approval",
                 ),
                 verified_bits=frozenset(),
                 notes=(
                     "工作目录指令文件按它的**公开约定**填 GEMINI.md（未经真机取证）。",
                     "ACP 面带 --experimental 前缀，形状可能随版本变。",
+                    "2026-09-28 核对 0.61.0 发布包：session/set_mode 支持 default/autoEdit/yolo"
+                    "及启用时的 plan；按会话实际上报的选项开放，尚未做原生调用验收。",
                     "续接命令未实测，因此不提供「在 CLI 里打开」入口。",
                     "取证 0.58.0（AD-156）：agentCapabilities **整个没有 sessionCapabilities**"
                     "（只有 loadSession=true）。这一位此前填 True 是没有依据的猜测，"
@@ -859,13 +870,14 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="hermes-acp",
+                host_approval=True,
                 executable="hermes",
                 setup_url="https://github.com/NousResearch/hermes-agent",
                 config_root_default="~/.hermes",
                 config_root_env="HERMES_HOME",
                 config_watch_files=("config.yaml",),
                 group_isolation_adapter="drivers.hermes.group_execution",
-                label="Hermes (ACP)",
+                label="Hermes",
                 command=("hermes", "acp"),
                 resume_argv_template=None,
                 quirks=AgentQuirks(
@@ -898,12 +910,13 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="dsh",
+                host_approval=True,
                 executable="dsh",
                 setup_url="https://github.com/deepseek-ai/DeepSeek-Harness",
                 config_root_default="~/.dsh",
                 config_root_env="DSH_HOME",
                 config_watch_files=("config.yaml", "settings.yaml", "profiles/*/cordis.patch.yml"),
-                label="DeepSeek Harness (ACP)",
+                label="DeepSeek Harness",
                 command=("dsh", "--profile", "acp"),
                 resume_argv_template=None,
                 # authMethods 是空数组，靠环境变量（AD-158 取证）。
@@ -952,7 +965,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 executable="deepseek-acp",
                 setup_url="https://www.npmjs.com/package/deepseek-acp",
                 install_command="npm install -g deepseek-acp",
-                label="DeepSeek ACP",
+                label="DeepSeek Harness",
                 command=("npx", "-y", "deepseek-acp"),
                 resume_argv_template=None,
                 login_command="deepseek-acp --setup",
@@ -1014,6 +1027,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="kilo",
+                host_approval=True,
                 process_env={"NODE_USE_SYSTEM_CA": "1"},
                 executable="kilo",
                 setup_url="https://kilo.ai/docs/code-with-ai/platforms/cli",
@@ -1095,6 +1109,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="cursor",
+                host_approval=True,
                 label="Cursor CLI",
                 command=("cursor-agent", "acp"),
                 executable="cursor-agent",
@@ -1134,6 +1149,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="copilot",
+                host_approval=True,
                 label="GitHub Copilot CLI",
                 command=("copilot", "--acp", "--stdio"),
                 executable="copilot",
@@ -1228,6 +1244,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="grok",
+                host_approval=True,
                 label="Grok Build",
                 command=("grok", "--no-auto-update", "agent", "stdio"),
                 executable="grok",

@@ -425,3 +425,34 @@ def test_static_catalog_file_is_optional(tmp_path: Path) -> None:
     good = tmp_path / "good.json"
     good.write_text(json.dumps(STATIC), encoding="utf-8")
     assert set(catalog.load_static_catalog(good)) == set(STATIC)
+
+
+def test_authenticated_inventory_is_not_a_model_entitlement():
+    payload = {"providers": [
+        {"slug": "one", "name": "One", "authenticated": True,
+         "models": ["current", "generic", {"id": "denied", "available": True}],
+         "unavailable_models": ["denied"]},
+        {"slug": "two", "authenticated": True, "models_verified": True,
+         "models": ["confirmed", {"id": "blocked", "available": False}]},
+        {"slug": "signed-out", "authenticated": False, "models": ["hidden"]},
+    ]}
+    merged = catalog.merge_catalog(binding_id="b", dynamic=catalog.parse_model_options(payload), static={},
+                                   default_model_id="current", default_provider_id="one")
+    states = {model.model_id: model.availability for model in merged.catalog.models}
+    assert states == {"current": "configured", "generic": "unknown", "denied": "unavailable",
+                      "confirmed": "available", "blocked": "unavailable"}
+
+
+def test_saved_custom_model_and_same_name_resellers_keep_their_routes():
+    payload = {"providers": [
+        {"slug": "original", "authenticated": True, "models": ["same"]},
+        {"slug": "reseller", "authenticated": True, "models": ["same"]},
+    ]}
+    static = catalog.parse_static_catalog({"same": {"provider": "original", "context_window": 999}})
+    merged = catalog.merge_catalog(binding_id="b", dynamic=catalog.parse_model_options(payload), static=static,
+                                   default_model_id="custom", default_provider_id="private")
+    models = {(model.provider_id, model.model_id): model for model in merged.catalog.models}
+    assert len(models) == 3
+    assert models[("original", "same")].context_window == 999
+    assert models[("reseller", "same")].context_window is None
+    assert models[("private", "custom")].availability == "configured"

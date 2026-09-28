@@ -51,4 +51,12 @@ describe("路由解析", () => {
       projectId: "project:x",
     });
   });
+
+  it("引擎卡片的新建对话保留项目和绑定，刷新后仍能还原所选引擎", () => {
+    const url = new URL(newConversationPath("project:pronto", "binding:pronto:deepseek/acp"), "http://localhost");
+    expect(parseRoute(url.pathname, url.search)).toEqual({
+      name: "new", projectId: "project:pronto", bindingId: "binding:pronto:deepseek/acp",
+    });
+    expect(parseRoute("/new", "?project=pronto&binding=")).toEqual({ name: "new", projectId: "pronto" });
+  });
 });

@@ -1,3 +1,4 @@
+import { EngineIcon } from "./EngineIcon";
 import { useEffect, useState } from "react";
 import { Archive, ArchiveRestore, ArrowUpRight, Bot, ChevronRight, Settings2, SlidersHorizontal, Terminal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -96,7 +97,7 @@ export function ConfigOverlay({ onClose, refreshKey = 0 }: { onClose: () => void
           {error && archived && <p role="alert" style={{ color: "var(--danger)", fontSize: 12 }}>{error}</p>}
           <AsyncState data={archived} err={archived ? null : error}>{items => items.length === 0 ? <p className="kaus-settings-empty">{zh ? "暂无归档" : "No archived conversations"}</p> :
             <div className="kaus-archive-list">{items.map(item => <div key={item.id} className="kaus-archive-row">
-              <div><strong>{item.title}</strong><span>{projects.find(p => p.id === item.projectId)?.displayName}{item.backendId ? ` · ${backendDisplay(item.backendId).displayName}` : ""}</span></div>
+              <div><strong>{item.backendId && <EngineIcon engine={item.backendId} size={13} />}{item.title}</strong><span>{projects.find(p => p.id === item.projectId)?.displayName}{item.backendId ? ` · ${backendDisplay(item.backendId).displayName}` : ""}</span></div>
               <button type="button" title={zh ? "查看" : "View"} aria-label={`${zh ? "查看" : "View"} ${item.title}`}
                 onClick={() => navigate(conversationPath(item.id))}><ArrowUpRight size={16} /></button>
               <button type="button" disabled={busyId !== null} title={zh ? "恢复" : "Restore"} aria-label={`${zh ? "恢复" : "Restore"} ${item.title}`}

@@ -39,7 +39,7 @@ async def test_request_settings_stay_on_the_conversation_and_none_disables_reaso
             ("model-one", "provider-one", {"enabled": True, "effort": "high"}),
             ("model-two", "provider-two", {"enabled": False}),
         ]
-        assert driver.conversation_controls(binding)["approvalModes"] == []
+        assert driver.conversation_controls(binding)["approvalModes"] == ["host:ask", "host:auto"]
         assert binding.default_model_id is None
     finally:
         for runtime in runtimes:

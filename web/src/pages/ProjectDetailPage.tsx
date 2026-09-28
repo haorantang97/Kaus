@@ -1,10 +1,10 @@
 /* 项目详情页（IA §2.3 / §3，替代 ProfileDrawer 的借位）。
  *
- * 分区顺序（IA §3.1，批次九按任务书取前四区 + 旧面板折叠区）：
- *   ① 头部      面包屑 · 显示名 · slug · 状态 chip · 新会话 / 到终端打开 / 设置
- *   ② 已接引擎  <ProjectEngines> → <EnginePanel>，写端点已接上
- *   ③ 能力      effective-capabilities 表：类型 / 内容摘要 / 来源 / 操作
- *   ④ 会话      `GET /api/conversations?project=`
+ * 分区顺序：
+ *   ① 头部      面包屑 · 显示名 · slug · 状态 chip · 新建对话 / 到终端打开 / 设置
+ *   ② 会话      `GET /api/conversations?project=`
+ *   ③ 已接引擎  <ProjectEngines> → <EnginePanel>，写端点已接上
+ *   ④ 能力      effective-capabilities 表：类型 / 内容摘要 / 来源 / 操作
  *   ⑤ 其余      原 ProfileDrawer 的面板（宪法 / 技能 / 记忆 / 看板…）**原样复用**，
  *               只是不再是抽屉，收进一个折叠区。
  *
@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, MessageSquare, MoreHorizontal, Plus, Settings, Sparkles, Terminal } from "lucide-react";
+import { ArrowUpRight, ChevronRight, MessageSquare, MoreHorizontal, Plus, Settings, Sparkles, Terminal } from "lucide-react";
 
 import { useLocale } from "../i18n";
 import { ConstitutionEditor } from "../components/ConstitutionEditor";
@@ -97,7 +97,7 @@ export interface ProjectDetailPageProps {
   onSelectProject: (name: string) => void;
   onOpenMenu: (name: string, rect: DOMRect) => void;
   onOpenConversation: (conversationId: string) => void;
-  onNewConversation: (projectRef: string) => void;
+  onNewConversation: (projectRef: string, bindingId?: string) => void;
   /** 旧域数据被改动（停用、技能、宪法…）时通知外壳重取。 */
   onChanged: () => void;
   /** 第 3 件：进本页时把该项目写进外壳的 `graphFocus`，「项目」导航回轮盘时就落在它上面。 */
@@ -315,9 +315,9 @@ export function ProjectDetailPage({
               </Pill>
             )}
             <span className="ml-auto flex flex-wrap items-center gap-2">
-              <Button variant="primary" onClick={() => onNewConversation(projectId)}>
+              <Button variant="primary" className="kaus-project-primary" onClick={() => onNewConversation(projectId)}>
                 <span className="inline-flex items-center gap-1">
-                  <Plus className="size-3" /> {t("project.action.newConversation")}
+                  <Plus className="size-4" /> {t("project.action.newConversation")}
                 </span>
               </Button>
               <Button onClick={() => void openInTerminal()} disabled={!project?.workspaceRoot || openingTerminal}
@@ -338,24 +338,7 @@ export function ProjectDetailPage({
           )}
         </header>
 
-        {/* ② 已接引擎 */}
-        <ProjectEngines
-          projectId={projectId}
-          projectLabel={projectLabel}
-          onNewConversation={() => onNewConversation(projectId)}
-          onChanged={reload}
-          refreshToken={refreshKey}
-        />
-
-        {/* ③ 能力 */}
-        <CapabilitiesSection
-          projectId={projectId}
-          capabilities={capabilities}
-          projectLabel={projectLabel}
-          onChanged={reloadCapabilities}
-        />
-
-        {/* ④ 会话 */}
+        {/* 对话入口优先于配置表，已有记录整行可打开。 */}
         <Card
           title={t("project.conversations.title")}
           icon={MessageSquare}
@@ -378,10 +361,12 @@ export function ProjectDetailPage({
                   className="kaus-project-conversation"
                   onClick={() => onOpenConversation(conversation.id)}
                 >
+                  <span className="kaus-project-conversation-icon"><MessageSquare size={17} /></span>
                   <span className="min-w-0 flex-1 truncate">{conversation.title || conversation.id}</span>
                   <span className="shrink-0 text-[0.65rem]" style={{ color: cream(45) }}>
                     {tDynamic(`project.conversationStatus.${conversation.status}`, conversation.status)}
                   </span>
+                  <ArrowUpRight size={17} className="kaus-project-conversation-arrow" aria-hidden="true" />
                 </button>
               ))}
               {!showAllConversations && conversations.length > CONVERSATION_PREVIEW && (
@@ -394,6 +379,23 @@ export function ProjectDetailPage({
             </div>
           )}
         </Card>
+
+        {/* ③ 已接引擎 */}
+        <ProjectEngines
+          projectId={projectId}
+          projectLabel={projectLabel}
+          onNewConversation={(row) => onNewConversation(projectId, row.binding.id)}
+          onChanged={reload}
+          refreshToken={refreshKey}
+        />
+
+        {/* ④ 能力 */}
+        <CapabilitiesSection
+          projectId={projectId}
+          capabilities={capabilities}
+          projectLabel={projectLabel}
+          onChanged={reloadCapabilities}
+        />
 
         {/* ⑤ 其余面板：内容组件原样复用，只是不再是抽屉。 */}
         <details

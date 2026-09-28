@@ -78,12 +78,6 @@ export function Button({
   className?: string;
   "aria-pressed"?: boolean;
 }) {
-  const base: CSSProperties =
-    variant === "primary"
-      ? { background: "var(--gold-soft)", color: "var(--accent-text)", border: `1px solid color-mix(in srgb, var(--gold) 40%, transparent)` }
-      : variant === "danger"
-        ? { background: "transparent", color: "var(--danger)", border: `1px solid color-mix(in srgb, var(--danger) 30%, transparent)` }
-        : { background: "transparent", color: cream(70), border: HAIR };
   return (
     <button
       type="button"
@@ -91,8 +85,7 @@ export function Button({
       disabled={disabled}
       title={title}
       aria-pressed={ariaPressed}
-      className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition-colors disabled:opacity-40 ${className}`}
-      style={base}
+      className={`kaus-button kaus-button--${variant} ${className}`}
     >
       {children}
     </button>

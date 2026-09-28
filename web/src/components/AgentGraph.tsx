@@ -1,6 +1,6 @@
 import "./project-polish.css";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { MessageSquare, MoreHorizontal, Plus, Settings2 } from "lucide-react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { CornerDownLeft, MessageSquare, MoreHorizontal, Plus } from "lucide-react";
 import { type NetworkResp } from "../lib/api";
 import { t, useLocale, type DictKey } from "../i18n";
 import { Button, cream, dname, Overlay } from "./ui";
@@ -15,6 +15,7 @@ const roleFull = (role: string | null | undefined): string =>
     : t("graph.value.standalone");
 /** 每列末尾那个「+ 添加项目」虚节点的 id（不是真 profile，`nodes[]` 里查不到）。 */
 export const ADD_NODE_ID = "__add-child__";
+const PROJECT_ENTER_SHAPE = "M .57 .01 H .97 Q .997 .01 .997 .096 V .904 Q .997 .99 .97 .99 H .03 Q .003 .99 .003 .904 V .649 Q .003 .563 .03 .563 H .51 Q .54 .563 .54 .477 V .096 Q .54 .01 .57 .01 Z";
 type AgentGraphMode = "chat" | "governance";
 type WheelColumnState = { current: number; target: number; selected: number; key: string };
 type ColumnGeometry = { left: number; centerY: number; items: { id: string; width: number }[] };
@@ -24,12 +25,13 @@ type WheelGeometry = { columns: ColumnGeometry[]; statics: Record<string, { l: {
    保留旧版全部能力:拖拽改父级(+ReparentModal 影响预览)/ 顶层拖放区 / 草稿暂存 /
    ⋯菜单(置顶·改名·fork·删除,经 onOpenMenu→CtxMenu)/ 分身挂 X(非下属)/ 停用·gateway·角色元信息 /
    默认是对话浏览;治理模式才启用组织维护动作。 */
-export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onOpenMenu, onAddChild, embedded = false, focusName = null, mode = "governance", onModeChange }: {
+export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onNewConversation, onOpenMenu, onAddChild, embedded = false, focusName = null, mode = "governance", onModeChange }: {
   net: NetworkResp;
   onClose: () => void;
   onChanged: () => void;
   onGoProfile: (n: string) => void;
   onDetail: (n: string) => void;
+  onNewConversation?: (projectRef: string) => void;
   onOpenMenu: (name: string, rect: DOMRect) => void;
   /** 「+ 添加项目」：父级 = 该列的父节点（批次七 d 第 5 条）。不传则不显示虚节点。 */
   onAddChild?: (parentId: string) => void;
@@ -39,6 +41,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
   onModeChange?: (mode: AgentGraphMode) => void;
 }) {
   const { t } = useLocale();
+  const enterShapeId = useId();
   const nodes = net.nodes;
   const canGovern = !embedded || mode === "governance";
   const displayName = (id: string) => dname(nodes[id] ?? { name: id });
@@ -57,7 +60,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
   const initialFocus = focusName && nodes[focusName] ? focusName : "default";
   const [path, setPath] = useState<string[]>(() => focusPath(initialFocus));
   const [sel, setSel] = useState<string>(initialFocus);
-  const [panelVisible, setPanelVisible] = useState(true);
   const pathRef = useRef<string[]>(path);
   const selRef = useRef<string>(sel);
   const [drag, setDrag] = useState<string | null>(null);
@@ -85,7 +87,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
     // 点击/键盘胜过还没到期的吸附:否则 110ms 后那次提交会把点击结果顶掉。
     if (wheelSnapTimer.current !== null) { window.clearTimeout(wheelSnapTimer.current); wheelSnapTimer.current = null; }
     wheelInteracting.current = null;
-    setPanelVisible(true);
     const nextPath = focusPath(id);
     selRef.current = id;
     pathRef.current = nextPath;
@@ -95,14 +96,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
     setPath(nextPath);
   }
   const activeIdForColumn = (columnIndex: number) => columnIndex === 0 ? "default" : (pathRef.current[columnIndex] || selRef.current);
-  const isSettledFront = (columnIndex: number, id: string) => {
-    const columnsEl = colsRef.current;
-    const column = columnsEl?.querySelectorAll<HTMLElement>(".graph-col")[columnIndex];
-    const items = [...(column?.querySelectorAll<HTMLElement>(".ag-node") || [])];
-    const index = items.findIndex((item) => item.dataset.id === id);
-    const state = wheelState.current[columnIndex];
-    return index >= 0 && !!state && Math.abs(state.current - index) < 0.02 && Math.abs(state.target - index) < 0.02;
-  };
   const stateKeyForColumn = (columnIndex: number) => columnIndex === 0 ? "__root__" : (pathRef.current[columnIndex - 1] || "__missing__");
   const commitWheelSelection = (columnIndex: number, items: HTMLElement[], index: number) => {
     const id = items[index]?.dataset.id;
@@ -542,18 +535,10 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
     });
     const id = hit?.dataset.id;
     if (!id || !nodes[id]) return;
-    if (selRef.current === id && isSettledFront(columnIndex, id)) {
-      onGoProfile(id);
-      return;
-    }
     focusNode(id, columnIndex, true);
   };
-  const handleBlankPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest(".ag-panel,.ag-node,.ag-dots,.ag-root,.ag-twin,.ag-twincluster,.ag-draft,.ag-droptop,.ag-act,button,a,input,textarea,select")) return;
-    setPanelVisible(false);
-  };
 
-  const Node = ({ id, ci }: { id: string; ci: number }): ReactNode => {
+  const renderNode = (id: string, ci: number): ReactNode => {
     const n = nodes[id]; if (!n) return null;
     const kids = domainKids(id);
     const dead = n.killed || n.effective_killed;
@@ -561,8 +546,17 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
     const roleLabel = id === "default" ? t("graph.value.mainAgent") : roleFull(n.role);
     return (
       <div
+        key={id}
         className={`ag-node ${id === sel ? "sel" : ""} ${path.includes(id) && id !== sel ? "path" : ""}`}
         data-id={id}
+        role="button"
+        tabIndex={0}
+        aria-label={dname(n)}
+        aria-pressed={id === sel}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); focusNode(id, ci, true); }
+        }}
         draggable={canGovern && id !== "default"}
         /* batch43 第 2 件（★J-4 追加）：同一次拖拽现在有两个去处，互不打架——
            拖到**别的项目节点**上仍是改父级（那条路只看下面的 `drag` state，
@@ -581,7 +575,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
         onClick={(e) => {
           if (suppressNodeClick.current) return;
           if ((e.target as HTMLElement).closest(".ag-dots")) return;
-          if (sel === id && isSettledFront(ci, id)) { onGoProfile(id); return; }
           focusNode(id, ci, true);
         }}
         onDoubleClick={() => onGoProfile(id)}
@@ -594,6 +587,8 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
         <span className="ag-rl">{roleLabel} · {n.skill_count}{sl.length ? ` · 🔗${sl.length}` : ""}</span>
         {dead && <span className="ag-bad">{t("graph.value.disabled")}</span>}
         {kids.length > 0 && <span className="ag-cn">▸{kids.length}</span>}
+        {id === sel && <button type="button" className="ag-node-enter" title={t("graph.openProject")} aria-label={t("graph.openProject")}
+          onClick={(event) => { event.stopPropagation(); onGoProfile(id); }}><CornerDownLeft size={16} aria-hidden="true" /></button>}
         {canGovern && <button className="ag-dots" title={t("common.more")} onClick={(e) => { e.stopPropagation(); onOpenMenu(id, (e.currentTarget as HTMLElement).getBoundingClientRect()); }}><MoreHorizontal className="size-3.5" /></button>}
       </div>
     );
@@ -614,9 +609,8 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
       {canGovern && <div className="ag-droptop" {...dropProps(null)}>{t("graph.dropTop")}</div>}
 
         <div
-          className={`${embedded ? "agent-browser-body" : "flex"} ${panelVisible ? "" : "is-panel-hidden"}`}
+          className={embedded ? "agent-browser-body" : "flex"}
           style={embedded ? undefined : { height: "70vh" }}
-          onPointerDownCapture={handleBlankPointerDown}
         >
         <div className="ag-canvas" ref={canvasRef}>
           <svg className="ag-edges" ref={svgRef} />
@@ -653,7 +647,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
                   </>
                 ) : (
                   <>
-                    {ids.map((id) => <Node key={id} id={id} ci={ci} />)}
+                    {ids.map((id) => renderNode(id, ci))}
                     {onAddChild && path[ci - 1] && (
                       /* 每列子级末尾的虚节点：样式沿用 .ag-node（所以它跟着轮盘一起滚），
                          虚线框 + 淡色区分。根列（X 那一列）不加。 */
@@ -678,8 +672,8 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
           </div>
         </div>
 
-        {/* 详情面板:摘要 + 进入对话 / 详情(→ProfileDrawer 全字段) */}
-        {panelVisible && <aside className="ag-panel">
+        {/* 项目摘要和稳定可见的主操作。 */}
+        <aside className="ag-panel">
           {node && (
             <>
               <div className="ag-panel-head">
@@ -689,8 +683,17 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
                 <h2 className="ag-ph2">{dname(node)}</h2>
                 <div className="ag-prole"><span className={`ag-status ${node.gateway === "running" ? "" : "idle"}`} />{(sel === "default" ? t("graph.value.mainAgent") : roleFull(node.role))}{node.twin_mode ? ` · ${node.twin_mode}` : ""}{(node.killed || node.effective_killed) ? ` · ${t("graph.value.disabled")}` : ""}</div>
                 <div className="ag-pactions">
-                  <button type="button" className="ag-act p" onClick={() => onGoProfile(sel)} title={t("graph.openChat")} aria-label={t("graph.openChat")}><MessageSquare size={17} /></button>
-                  <button type="button" className="ag-act g" onClick={() => onDetail(sel)} title={t("graph.details")} aria-label={t("graph.details")}><Settings2 size={17} /></button>
+                  <Button variant="primary" className="kaus-project-primary" onClick={() => (onNewConversation ?? onGoProfile)(sel)}>
+                    <MessageSquare size={17} /><span>{t(onNewConversation ? "graph.newConversation" : "graph.openChat")}</span>
+                  </Button>
+                  <button type="button" className="kaus-button kaus-project-secondary kaus-project-enter" style={{ clipPath: `url("#${enterShapeId}")` }} title={t(onNewConversation ? "graph.openProject" : "graph.details")} onClick={() => onDetail(sel)}>
+                    <svg className="kaus-project-enter-shape" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+                      <defs><clipPath id={enterShapeId} clipPathUnits="objectBoundingBox"><path d={PROJECT_ENTER_SHAPE} /></clipPath></defs>
+                      <path d={PROJECT_ENTER_SHAPE} vectorEffect="non-scaling-stroke" />
+                    </svg>
+                    <CornerDownLeft className="kaus-project-enter-icon" size={22} aria-hidden="true" />
+                    <span className="kaus-project-enter-label">{t(onNewConversation ? "graph.openProject" : "graph.details")}</span>
+                  </button>
                 </div>
               </div>
               <div className="ag-panel-section">
@@ -715,7 +718,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
               </div>
             </>
           )}
-        </aside>}
+        </aside>
       </div>
 
       {canGovern && reparent && <ReparentModal node={reparent.node} target={reparent.target} onClose={() => setReparent(null)} onDone={() => { setReparent(null); onChanged(); }} />}

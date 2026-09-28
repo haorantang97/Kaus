@@ -116,6 +116,7 @@ from app.api.session_auth import (
     require_session_auth,
 )
 from app.api.views import (
+    backend_to_wire,
     effective_capability_entry_to_wire,
     normalize_backend_key_id,
     normalize_project_id,
@@ -127,6 +128,7 @@ from app.capabilities.models import (
 )
 from app.capabilities.effective import resolve_effective_for_project
 from app.errors import CapabilityTypeError
+from app.conversations.configuration import ConversationConfig, validate_config_values
 from app.conversations.models import Conversation
 from app.conversations.repository import DEFAULT_RECENT_LIMIT, MAX_RECENT_LIMIT
 from app.persistence.base import RepositorySet
@@ -148,6 +150,7 @@ from drivers.base import (
     plain_text,
 )
 from runtime.event_envelope import AgentError, RunFailed
+from drivers.model_selection import select_model
 from runtime.event_reducer import TimelineState
 from runtime.session_host import (
     BindingNotFoundError,
@@ -248,9 +251,11 @@ class PatchConversationBody(_Body):
 
     title: str | None = None
     model_id: str | None = None
+    provider_id: str | None = None
     reasoning_mode: str | None = None
     approval_mode: str | None = None
     execution_mode: str | None = Field(default=None, max_length=256)
+    config_options: ConversationConfig | None = None
 
 
 class PutCapabilityBody(_Body):
@@ -854,7 +859,7 @@ def build_session_router(
     async def patch_conversation(
         conversation_id: str, body: PatchConversationBody = Body(...)
     ) -> Any:
-        if body.model_id or body.reasoning_mode or body.approval_mode:
+        if body.model_id or body.reasoning_mode or body.approval_mode or body.execution_mode or body.config_options:
             try:
                 async with host.conversation_control(conversation_id):
                     return await _patch_conversation_locked(conversation_id, body)
@@ -885,13 +890,18 @@ def build_session_router(
         conversation = await _load_conversation(conversation_id)
         model_id = (body.model_id or "").strip() or None
         reasoning_mode = (body.reasoning_mode or "").strip() or None
+        config_options = body.config_options or {}
+        if config_options and (body.model_id or body.reasoning_mode or body.approval_mode or body.execution_mode):
+            raise SessionApiError(400, "settings_separate", "请分别修改扩展设置和其他设置。")
+        if len(config_options) > 1:
+            raise SessionApiError(400, "settings_separate", "请逐项修改扩展设置。")
         approval_mode = (body.approval_mode or "").strip() or None
         execution_mode = (body.execution_mode or "").strip() or None
         if execution_mode and (model_id or reasoning_mode or approval_mode):
             raise SessionApiError(400, "mixed_settings_patch", "运行模式与其他设置请分别修改。")
         if approval_mode and (model_id or reasoning_mode):
             raise SessionApiError(400, "mixed_settings_patch", "权限与模型设置请分别修改。")
-        if model_id is None and reasoning_mode is None and approval_mode is None and execution_mode is None and body.title is None:
+        if model_id is None and reasoning_mode is None and approval_mode is None and execution_mode is None and not config_options and body.title is None:
             raise SessionApiError(
                 400,
                 "empty_patch",
@@ -917,7 +927,7 @@ def build_session_router(
             )
             # 活跃 runtime 手上那份也换一下（同下面模型快照那一步的理由）。
             host.update_conversation(conversation)
-            if model_id is None and reasoning_mode is None and approval_mode is None and execution_mode is None:
+            if model_id is None and reasoning_mode is None and approval_mode is None and execution_mode is None and not config_options:
                 return {
                     "conversation": conversation_to_wire(
                         conversation, run_state=await host.run_state_of(conversation)
@@ -957,12 +967,22 @@ def build_session_router(
             )
 
         provider_id: str | None = None
+        live_handle = host.handle_for(conversation.id)
+        scoped_catalog = getattr(driver, "runtime_model_catalog", None)
         try:
-            catalog = await driver.get_model_catalog(binding)
+            catalog = await scoped_catalog(live_handle, binding) if live_handle is not None and callable(scoped_catalog) else await driver.get_model_catalog(binding)
         except UnsupportedCapabilityError:
             catalog = None
         controls_reader = getattr(driver, "conversation_controls", None)
         controls = controls_reader(binding) if callable(controls_reader) else {}
+        scoped_controls = getattr(driver, "runtime_conversation_controls", None)
+        live_handle = host.handle_for(conversation.id)
+        if live_handle is not None and callable(scoped_controls):
+            controls = scoped_controls(live_handle, binding)
+        try:
+            validate_config_values(config_options, controls.get("configOptions", []))
+        except ValueError as exc:
+            raise SessionApiError(501, "conversation_config_unsupported", str(exc)) from exc
         if reasoning_mode and not controls.get("reasoning", False):
             raise SessionApiError(501, "conversation_reasoning_unsupported", "当前引擎不支持会话推理设置。")
         if approval_mode and approval_mode not in controls.get("approvalModes", []):
@@ -970,20 +990,16 @@ def build_session_router(
         if execution_mode and execution_mode not in [option['id'] for option in controls.get('executionModes', [])]:
             raise SessionApiError(501, "conversation_execution_unsupported", "当前引擎未提供这个运行模式。")
         if catalog is not None and catalog.models:
-            descriptor = next(
-                (m for m in catalog.models if m.model_id == (model_id or conversation.model_id or catalog.default_model_id)),
-                None,
-            )
-            if model_id is not None and descriptor is None:
-                raise SessionApiError(
-                    400,
-                    "model_not_in_catalog",
-                    f"模型 {model_id!r} 不在这条 Binding 的目录里",
-                    detail={
+            target_model = model_id or conversation.model_id or catalog.default_model_id
+            try:
+                descriptor = select_model(catalog, target_model, body.provider_id if model_id else conversation.provider_id) if target_model else None
+            except ValueError as exc:
+                if model_id is not None:
+                    raise SessionApiError(400, "model_not_in_catalog", str(exc), detail={
                         "modelId": model_id,
-                        "available": [m.model_id for m in catalog.models],
-                    },
-                )
+                        "available": [model.model_id for model in catalog.models if model.availability != "unavailable"],
+                    }) from exc
+                descriptor = None
             if descriptor is not None:
                 provider_id = descriptor.provider_id
                 if (
@@ -1016,6 +1032,10 @@ def build_session_router(
             provider_id=provider_id if model_id is not None else None,
             reasoning_mode=reasoning_mode,
         )
+        if model_id is not None:
+            updated = updated.evolve(provider_id=provider_id)
+        if config_options:
+            updated = updated.evolve(config_options={**conversation.config_options, **config_options})
         if approval_mode:
             updated = updated.evolve(approval_mode=approval_mode)
         if execution_mode:
@@ -1031,14 +1051,14 @@ def build_session_router(
                 if callable(apply_selection):
                     applied_selection = await apply_selection(handle, updated)
                     if isinstance(applied_selection, Conversation):
-                        updated = updated.evolve(reasoning_mode=applied_selection.reasoning_mode)
+                        updated = updated.evolve(reasoning_mode=applied_selection.reasoning_mode, config_options=applied_selection.config_options)
                 else:
                     await apply_model(handle, model_id)
             except TurnAlreadyRunningError as exc:
                 raise SessionApiError(409, "turn_already_running", "上一轮尚未结束，请结束后再切换模型。") from exc
             except UnsupportedCapabilityError as exc:
                 # 能力表说支持、下发面说不支持：以实测为准，但这不是 500。
-                if approval_mode or reasoning_mode or execution_mode:
+                if approval_mode or reasoning_mode or execution_mode or config_options:
                     raise SessionApiError(501, "conversation_setting_unsupported", str(exc)) from None
                 raise _unsupported_model_switch() from None
             except ModelRejectedError as exc:
@@ -1752,7 +1772,8 @@ def build_session_router(
     # --- Model Catalog ------------------------------------------------------ #
 
     @_endpoint
-    async def get_models(backend_id: str, binding: str | None = Query(None)) -> Any:
+    async def get_models(backend_id: str, binding: str | None = Query(None),
+                         conversation_id: str | None = Query(None, alias="conversationId")) -> Any:
         normalized = normalize_backend_key_id(backend_id)
         if not binding:
             raise SessionApiError(
@@ -1764,6 +1785,9 @@ def build_session_router(
         record = await repositories.bindings.get(binding)
         if record is None:
             raise _not_found("binding_not_found", f"未知 Binding：{binding}")
+        conversation = await _load_conversation(conversation_id) if conversation_id else None
+        if conversation is not None and conversation.agent_binding_id != record.id:
+            raise SessionApiError(400, "binding_mismatch", "对话不属于这个引擎配置。")
         if record.backend_id != normalized:
             raise SessionApiError(
                 400,
@@ -1776,7 +1800,9 @@ def build_session_router(
             raise _driver_not_registered(normalized) from exc
         await register_binding_snapshot(driver, record, repositories.projects)
         try:
-            catalog = await driver.get_model_catalog(record)
+            handle = host.handle_for(conversation_id) if conversation_id else None
+            scoped_catalog = getattr(driver, "runtime_model_catalog", None)
+            catalog = await scoped_catalog(handle, record) if handle is not None and callable(scoped_catalog) else await driver.get_model_catalog(record)
         except UnsupportedCapabilityError as exc:
             raise SessionApiError(501, "unsupported_capability", str(exc)) from exc
         return model_catalog_to_wire(catalog)
@@ -1784,7 +1810,10 @@ def build_session_router(
     # --- 有效设置（批次十三第 1 件） ----------------------------------------- #
 
     @_endpoint
-    async def get_effective_settings(binding_id: str) -> Any:
+    async def get_effective_settings(
+        binding_id: str, include_catalog: bool = Query(False, alias="includeCatalog"),
+        conversation_id: str | None = Query(None, alias="conversationId"),
+    ) -> Any:
         """``GET /bindings/{id}/effective-settings``：工具栏那四栏显示什么、谁定的。
 
         为什么这条 GET 住在会话 router 而不是只读领域 router：它要问 Driver
@@ -1797,6 +1826,9 @@ def build_session_router(
         binding = await repositories.bindings.get(binding_id)
         if binding is None:
             raise _not_found("binding_not_found", f"未知 Binding：{binding_id}")
+        conversation = await _load_conversation(conversation_id) if conversation_id else None
+        if conversation is not None and conversation.agent_binding_id != binding_id:
+            raise SessionApiError(400, "binding_mismatch", "对话不属于这个引擎配置。")
         project = await repositories.projects.get(binding.project_id)
 
         engine = None
@@ -1814,7 +1846,9 @@ def build_session_router(
                 except Exception:  # noqa: BLE001 - 少一层来源，不是这条请求失败
                     engine = None
             try:
-                catalog = await driver.get_model_catalog(binding)
+                handle = host.handle_for(conversation_id) if conversation_id else None
+                scoped_catalog = getattr(driver, "runtime_model_catalog", None)
+                catalog = await scoped_catalog(handle, binding) if handle is not None and callable(scoped_catalog) else await driver.get_model_catalog(binding)
             except Exception:  # noqa: BLE001 - 同上
                 catalog = None
         payload = effective_settings_to_wire(
@@ -1822,6 +1856,16 @@ def build_session_router(
         )
         controls_reader = getattr(driver, "conversation_controls", None)
         payload["conversationControls"] = controls_reader(binding) if callable(controls_reader) else {"reasoning": False, "approvalModes": []}
+        handle = host.handle_for(conversation_id) if conversation_id else None
+        scoped_controls = getattr(driver, "runtime_conversation_controls", None)
+        if handle is not None and callable(scoped_controls):
+            payload["conversationControls"] = scoped_controls(handle, binding)
+        if include_catalog:
+            # The toolbar uses the same catalog already read to resolve its defaults.
+            # Keep the capability projection identical to GET /backends/{id}.
+            backend = await repositories.backends.get(binding.backend_id)
+            payload["modelCatalog"] = model_catalog_to_wire(catalog) if catalog is not None else None
+            payload["uiCapabilities"] = backend_to_wire(backend)["capabilities"]["ui"] if backend is not None else None
         return payload
 
     # --- 取证（只在 DASH_DEBUG=1 时挂载） ------------------------------------ #

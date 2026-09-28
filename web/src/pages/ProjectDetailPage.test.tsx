@@ -39,7 +39,7 @@ vi.mock("../lib/sessionApi", async () => {
     fetchRecentConversations: vi.fn(),
     patchBinding: vi.fn(),
     makeBindingDefault: vi.fn(),
-    createBinding: vi.fn(),
+    ensureProjectBinding: vi.fn(),
     deleteBinding: vi.fn(),
   };
 });
@@ -183,12 +183,12 @@ beforeEach(() => {
   });
   mocked.patchBinding.mockResolvedValue(binding());
   mocked.makeBindingDefault.mockResolvedValue({ ...binding(), changed: true });
-  mocked.createBinding.mockResolvedValue(binding({ id: "binding:pronto:other", isDefault: false }));
+  mocked.ensureProjectBinding.mockResolvedValue(binding({ id: "binding:pronto:other", isDefault: false }));
   mocked.deleteBinding.mockResolvedValue({ bindingId: "binding:pronto:mock", deleted: true });
 });
 
 describe("项目详情页", () => {
-  it("四个分区按顺序渲染：头部 / 已接引擎 / 能力 / 会话", async () => {
+  it("项目先展示对话入口与已有会话，再展示引擎和能力配置", async () => {
     renderPage();
 
     // ① 头部：显示名 · slug · 状态 chip · 三个动作
@@ -196,15 +196,16 @@ describe("项目详情页", () => {
     const head = screen.getByRole("banner");
     expect(within(head).getByText("pronto")).toBeInTheDocument();
     expect(within(head).getByText("运行中")).toBeInTheDocument();
-    for (const label of ["新会话", "到终端打开", "设置"]) {
+    for (const label of ["新建对话", "到终端打开", "设置"]) {
       expect(within(head).getByRole("button", { name: label })).toBeInTheDocument();
     }
-    // ② 已接引擎 ③ 能力 ④ 会话
+    // 会话优先于配置，首屏能直接继续已有对话。
     expect(await screen.findByText("已接引擎")).toBeInTheDocument();
     expect(await screen.findByText("能力")).toBeInTheDocument();
     expect(screen.getByText("会话")).toBeInTheDocument();
     expect(await screen.findByText("第一段")).toBeInTheDocument();
-    // ④ 是按 `GET /api/conversations?project=` 取的
+    expect(screen.getByText("会话").compareDocumentPosition(screen.getByText("已接引擎")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("已接引擎").compareDocumentPosition(screen.getByText("能力")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(mocked.fetchRecentConversations).toHaveBeenCalledWith(undefined, { project: "project:pronto", limit: 50 });
 
     // ③ 能力表的四列与 AD-45 的「禁止」文案
@@ -236,7 +237,7 @@ describe("项目详情页", () => {
     expect(mocked.patchBinding).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() =>
-      expect(mocked.patchBinding).toHaveBeenCalledWith("binding:pronto:mock", { defaultModelId: "mock-large" }),
+      expect(mocked.patchBinding).toHaveBeenCalledWith("binding:pronto:mock", { defaultModelId: "mock-large", defaultProviderId: null }),
     );
   });
 
@@ -300,7 +301,7 @@ describe("项目详情页", () => {
     await user.click(await screen.findByTestId("connect-preset-custom:backend:other"));
     await user.click(screen.getByRole("button", { name: "添加到项目" }));
     await waitFor(() =>
-      expect(mocked.createBinding).toHaveBeenCalledWith("project:pronto", { backendId: "backend:other" }),
+      expect(mocked.ensureProjectBinding).toHaveBeenCalledWith("project:pronto", "backend:other"),
     );
   });
 
@@ -507,13 +508,18 @@ describe("项目详情页", () => {
     expect(screen.getByRole("button", { name: "到终端打开" })).toBeDisabled();
   });
 
-  it("会话列表点一条 → 进会话页；头部「新会话」带项目", async () => {
+  it("会话列表打开原对话，项目和引擎的新建入口分别保留对应去向", async () => {
     const user = userEvent.setup();
     const props = renderPage();
     await user.click(await screen.findByText("第一段"));
     expect(props.onOpenConversation).toHaveBeenCalledWith("conversation:1");
-    await user.click(screen.getByRole("button", { name: "新会话" }));
+    const header = screen.getByRole("banner");
+    await user.click(within(header).getByRole("button", { name: "新建对话" }));
     expect(props.onNewConversation).toHaveBeenCalledWith("project:pronto");
+    const engineAction = screen.getAllByRole("button", { name: "新建对话" }).find((button) => !header.contains(button));
+    expect(engineAction).toBeDefined();
+    await user.click(engineAction!);
+    expect(props.onNewConversation).toHaveBeenLastCalledWith("project:pronto", "binding:pronto:mock");
   });
 });
 

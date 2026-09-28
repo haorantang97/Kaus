@@ -83,3 +83,16 @@ describe("独立组长", () => {
     expect(await screen.findByTestId("reasoning-row")).toBeInTheDocument();
   });
 });
+
+it("组长保存同一套原生扩展配置", async () => {
+  api.fetchEffectiveSettings.mockResolvedValue({ reasoningEffort: { levels: [] }, workspaceRoot: { value: "/tmp" },
+    conversationControls: { reasoning: false, approvalModes: [], configOptions: [{ id: "network", name: "Network", type: "boolean", currentValue: false }] } });
+  render(<CoordinatorSettings group={group} />);
+  fireEvent.click(screen.getByRole("button", { name: "组长配置" }));
+  await screen.findByText("vendor-a 模型");
+  fireEvent.click(screen.getByRole("button", { name: "更多设置" }));
+  fireEvent.click(screen.getByRole("switch", { name: "Network" }));
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(api.sessionRequest).toHaveBeenCalledWith("/api/groups/g1/coordinator", expect.objectContaining({
+    method: "PUT", body: expect.objectContaining({ config: expect.objectContaining({ configOptions: { network: true } }) }) })));
+});

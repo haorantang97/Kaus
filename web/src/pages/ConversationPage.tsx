@@ -1,3 +1,4 @@
+import { ConversationJumpRail } from "../components/ConversationJumpRail";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Ellipsis, Square, Terminal, FileText, X, LoaderCircle, Paperclip } from "lucide-react";
 import { useLocale } from "../i18n";
@@ -73,7 +74,7 @@ import {
   type SurfaceKind,
 } from "../lib/externalSurface";
 import { parseGroupChange } from "../lib/groupsApi";
-import { catalogForBinding, hasModelCatalog, modelOptionsFor, modelEffort } from "../lib/modelCatalogView";
+import { catalogForBinding, hasModelCatalog, modelOptionsFor, modelEffort, modelSelection, modelValue } from "../lib/modelCatalogView";
 import { refreshGroups } from "../lib/groupStore";
 import type { MessageActions } from "../components/cards/TextCard";
 import {
@@ -297,17 +298,8 @@ function itemSeconds(state: PageState, item: TimelineItem): number | undefined {
   return spanSeconds(state.spans[item.itemId]);
 }
 
-/** 字母标签：从显示名机械推导（DESIGN §2.4），不查引擎名表。 */
 function engineLabel(displayName: string | null): EngineLabel | undefined {
-  if (!displayName) return undefined;
-  const words = displayName.trim().split(/[\s\-_]+/).filter(Boolean);
-  const label =
-    words.length === 0
-      ? "?"
-      : words.length === 1
-        ? words[0].slice(0, 1).toUpperCase()
-        : words.slice(0, 2).map((word) => word.slice(0, 1).toUpperCase()).join("");
-  return { label, name: displayName };
+  return displayName ? { name: displayName } : undefined;
 }
 
 /** 第 1 件：发出中断后等引擎确认的上限。超时不改状态，只把按钮放开并补一句提示。 */
@@ -474,7 +466,16 @@ export function ConversationPage({
      `runningRef` 进去；`stopping` 是本地 state，直接进依赖。 */
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const jumpIntent = useRef(false);
+  const userScrollIntent = useRef(false);
   const engineName = binding ? backendDisplay(binding.backendId).displayName : null;
+
+  useEffect(() => {
+    jumpIntent.current = false;
+    userScrollIntent.current = false;
+    setFollow(true);
+    setUnread(0);
+  }, [conversationId]);
 
   useEffect(() => {
     lastSequenceRef.current = after;
@@ -539,10 +540,10 @@ export function ConversationPage({
 
   /* 有效设置（DESIGN ★ I）：换 Binding 就重取一次。 */
   const reloadSettings = useCallback(async (bindingId: string) => {
-    const next = await fetchEffectiveSettings(bindingId).catch(() => emptyEffectiveSettings(bindingId));
+    const next = await fetchEffectiveSettings(bindingId, undefined, { conversationId }).catch(() => emptyEffectiveSettings(bindingId));
     setSettings(next);
     return next;
-  }, []);
+  }, [conversationId]);
 
   useEffect(() => {
     if (!binding) {
@@ -550,7 +551,7 @@ export function ConversationPage({
       return;
     }
     let cancelled = false;
-    void fetchEffectiveSettings(binding.id)
+    void fetchEffectiveSettings(binding.id, undefined, { conversationId })
       .catch(() => emptyEffectiveSettings(binding.id))
       .then((next) => {
         if (!cancelled) setSettings(next);
@@ -558,7 +559,7 @@ export function ConversationPage({
     return () => {
       cancelled = true;
     };
-  }, [binding]);
+  }, [binding, conversationId]);
 
   /* 模型目录（后端已按 Binding 过滤过）。`degraded` 时 `models` 可以是空的——
      那是合法状态，下拉照旧不渲染，但 `diagnostics[0]` 仍会在有下拉时垫在底部。
@@ -571,7 +572,7 @@ export function ConversationPage({
     setCatalog(null);
     if (!binding || !caps || caps.models.mode === "fixed") return;
     let cancelled = false;
-    fetchModelCatalog(binding.backendId, binding.id)
+    fetchModelCatalog(binding.backendId, binding.id, undefined, conversationId)
       .then((next) => {
         if (!cancelled) setCatalog(next);
       })
@@ -581,7 +582,7 @@ export function ConversationPage({
     return () => {
       cancelled = true;
     };
-  }, [binding, caps]);
+  }, [binding, caps, conversationId]);
 
   /* ------------------------------------------------------------------ *
    * 双表面：状态、事件、两条交接路径（任务书第 1—4 件）
@@ -935,6 +936,8 @@ export function ConversationPage({
 
   /* 自动跟随（G-9）：在底部附近才跟；用户上翻后不打扰，只亮「回到最新 ↓」。 */
   const scrollToBottom = useCallback(() => {
+    jumpIntent.current = false;
+    userScrollIntent.current = false;
     // jsdom / 老浏览器里没有 scrollIntoView，滚动锚定不该让整页崩。
     bottomRef.current?.scrollIntoView?.({ block: "end" });
     setFollow(true);
@@ -942,14 +945,16 @@ export function ConversationPage({
   }, []);
 
   useEffect(() => {
-    if (!follow) return;
+    if (!follow || jumpIntent.current) return;
     bottomRef.current?.scrollIntoView?.({ block: "end" });
   }, [follow, timeline.lastSequence, page.pending.length]);
 
   useEffect(() => {
     const flow = scrollRef.current?.firstElementChild;
     if (!follow || !flow || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => bottomRef.current?.scrollIntoView?.({ block: "end" }));
+    const observer = new ResizeObserver(() => {
+      if (!jumpIntent.current) bottomRef.current?.scrollIntoView?.({ block: "end" });
+    });
     observer.observe(flow);
     return () => observer.disconnect();
   }, [follow]);
@@ -958,7 +963,15 @@ export function ConversationPage({
     const el = scrollRef.current;
     if (!el) return;
     const bottom = atBottom(el);
-    setFollow(bottom);
+    // Smooth navigation starts at the bottom. Its first scroll event must not
+    // re-enable following before the animation has left that region.
+    if (jumpIntent.current && bottom) return;
+    // Content growth and history replay also emit scroll events. Only a user's
+    // navigation may turn following off; automatic reflow must keep it on.
+    if (bottom) setFollow(true);
+    else if (userScrollIntent.current || jumpIntent.current) setFollow(false);
+    jumpIntent.current = false;
+    userScrollIntent.current = false;
     // 回到底部就把未读清零：那些消息现在正看着。
     if (bottom) setUnread(0);
   }, []);
@@ -1109,13 +1122,16 @@ export function ConversationPage({
   /* Model choice belongs to this conversation. A catalog alone does not imply a writable runtime. */
   const changeModel = useCallback(
     async (next: string) => {
-      if (!binding || !hasCapability(caps?.models.conversationScoped) || runningRef.current || settingsBusy || next === detail?.conversation?.modelId) return;
-      const label = catalog?.models.find((item) => item.modelId === next)?.displayName || next;
+      if (!binding || !hasCapability(caps?.models.conversationScoped) || runningRef.current || settingsBusy) return;
+      const selection = modelSelection(next);
+      if (selection.modelId === detail?.conversation?.modelId && (!selection.providerId || selection.providerId === detail?.conversation?.providerId)) return;
+      const selected = catalog?.models.find(item => item.modelId === selection.modelId && (!selection.providerId || item.providerId === selection.providerId));
+      const label = selected?.displayName || selection.modelId;
       setSettingsBusy(true);
       try {
-        const result = await patchConversation(conversationId, { modelId: next });
+        const result = await patchConversation(conversationId, { ...selection, providerId: selection.providerId ?? selected?.providerId ?? undefined });
         setDetail(current => current ? { ...current, conversation: result.conversation } : current);
-        const [nextCatalog] = await Promise.all([fetchModelCatalog(binding.backendId, binding.id), reloadSettings(binding.id)]);
+        const [nextCatalog] = await Promise.all([fetchModelCatalog(binding.backendId, binding.id, undefined, conversationId), reloadSettings(binding.id)]);
         setCatalog(nextCatalog);
       } catch (failure) {
         /* batch26：引擎自己把这个模型顶回来了（400 `model_rejected`）。**快照没写**，
@@ -1131,17 +1147,17 @@ export function ConversationPage({
         setSettingsBusy(false);
       }
     },
-    [binding, caps?.models.conversationScoped, catalog, conversationId, detail?.conversation?.modelId, reloadSettings, settingsBusy, t],
+    [binding, caps?.models.conversationScoped, catalog, conversationId, detail?.conversation?.modelId, detail?.conversation?.providerId, reloadSettings, settingsBusy, t],
   );
 
-  const changeSessionSetting = useCallback(async (patch: { reasoningMode?: string; approvalMode?: string; executionMode?: string }) => {
+  const changeSessionSetting = useCallback(async (patch: { reasoningMode?: string; approvalMode?: string; executionMode?: string; configOptions?: Record<string, string | boolean> }) => {
     if (!binding || runningRef.current || sendLockRef.current || settingsBusy) return;
     setSettingsBusy(true);
     setError(null);
     try {
       const result = await patchConversation(conversationId, patch);
       setDetail(current => current ? { ...current, conversation: result.conversation } : current);
-      const [nextCatalog] = await Promise.all([fetchModelCatalog(binding.backendId, binding.id), reloadSettings(binding.id)]);
+      const [nextCatalog] = await Promise.all([fetchModelCatalog(binding.backendId, binding.id, undefined, conversationId), reloadSettings(binding.id)]);
       setCatalog(nextCatalog);
     } catch (failure) {
       setError(describeFailure(failure));
@@ -1364,6 +1380,8 @@ export function ConversationPage({
   /* 批次二十八第 4 件：没有卡的扩展事件在这里就被滤掉，连那一层 <div> 都不生成
      ——只让 CardRenderer 返回 null 的话，DOM 里会留下一串空壳。 */
   const rows = useMemo(() => groupRows(items.filter((item) => !isHiddenTimelineItem(item))), [items]);
+  const jumpEntries = useMemo(() => items.filter(item => item.kind === "message" && item.role === "user")
+    .map(item => ({ id: item.itemId, preview: item.kind === "message" ? (messageText(item).replace(/\s+/g, " ").trim() || t("conversation.navigation.attachment")).slice(0, 220) : "" })), [items, t]);
   /* G-10 + batch18 第 1 件：首屏三档由 `lib/historyReplay.ts` 判（骨架 / 空 / 历史没到）。
      以前这里只看 `detail === null`：快照一回来骨架就收，重放还没到，页面于是先说
      "这条会话还没有消息"——真机上"重开为空"看到的正是这句话。 */
@@ -1384,7 +1402,7 @@ export function ConversationPage({
     ...(detail?.conversation?.modelId ? { model: { value: detail.conversation.modelId, source: "engine" as const } } : {}),
     ...(detail?.runtime?.workspaceRoot ? { workspaceRoot: { value: detail.runtime.workspaceRoot, source: "engine" as const } } : {}),
   };
-  const selectedModel = catalogForBinding(catalog, binding)?.models.find(model => model.modelId === bar.model.value);
+  const selectedModel = catalogForBinding(catalog, binding)?.models.find(model => model.modelId === bar.model.value && (!detail?.conversation?.providerId || model.providerId === detail.conversation.providerId));
   const conversationControls = settings?.conversationControls;
   const reasoning = {
     ...bar.reasoningEffort,
@@ -1398,6 +1416,7 @@ export function ConversationPage({
     ...(conversationControls?.approvalDefault ? { value: conversationControls.approvalDefault, source: "catalog" as const } : {}),
     ...(detail?.conversation?.approvalMode ? { value: detail.conversation.approvalMode, source: "engine" as const } : {}),
     options: conversationControls?.approvalModes ?? [],
+    choices: conversationControls?.approvalOptions,
   };
   /* batch27 第 5 件（真机 D4 / DESIGN ★I）：下拉**只列本引擎目录里的模型**。
      认领与过滤都在 `lib/modelCatalogView.ts` 里（纯函数，直接受测）：目录的
@@ -1562,7 +1581,12 @@ export function ConversationPage({
         </div>
       )}
 
-      <div className="kaus-timeline" data-testid="timeline" ref={scrollRef} onScroll={onScroll}>
+      <div className="kaus-timeline-shell">
+      <div className="kaus-timeline" data-testid="timeline" ref={scrollRef} onScroll={onScroll}
+        onWheelCapture={() => { userScrollIntent.current = true; }}
+        onTouchStart={() => { userScrollIntent.current = true; }}
+        onPointerDown={event => { if (event.target === event.currentTarget) userScrollIntent.current = true; }}
+        onKeyDownCapture={event => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) userScrollIntent.current = true; }}>
         <div className="kaus-thread kaus-thread-flow">
           {loading && (
             <div data-testid="timeline-skeleton" aria-label={t("conversation.loading")}>
@@ -1599,7 +1623,7 @@ export function ConversationPage({
                 ))}
               </RowGroup>
             ) : (
-              <div key={row.key}>{renderCard(row.item)}</div>
+              <div key={row.key} data-message-anchor={row.item.kind === "message" && row.item.role === "user" ? row.item.itemId : undefined}>{renderCard(row.item)}</div>
             ),
           )}
           {/* 占位气泡（AD-94）：沿用 `kaus-msg is-user`，只加一个淡化态，不新造颜色。 */}
@@ -1667,6 +1691,9 @@ export function ConversationPage({
         </div>
       </div>
 
+      <ConversationJumpRail key={conversationId} entries={jumpEntries} scrollRef={scrollRef} onJump={() => { jumpIntent.current = true; setFollow(false); }} />
+      </div>
+
       <div className="kaus-thread kaus-composer-wrap">
         {/* G-9：上翻之后才出现，点一下回到底。 */}
         {/* 第 7 件：上翻就出现，未读有数就把数报出来（走查里没找到这枚 Pill）。 */}
@@ -1708,6 +1735,62 @@ export function ConversationPage({
             void addFiles(Array.from(event.dataTransfer.files));
           }}
         >
+          <ComposerBar
+            contextKey={conversationId}
+            engineName={engineName}
+            engineId={binding?.backendId}
+            workspaceRoot={bar.workspaceRoot}
+            onChangeWorkspaceRoot={readOnly || running || settingsBusy ? undefined : changeWorkspaceRoot}
+            model={{ ...bar.model, value: modelValue(bar.model.value, detail?.conversation?.providerId ?? catalog?.defaultProviderId, catalog) }}
+            modelOptions={modelOptions}
+            modelDiagnostic={modelDiagnostic}
+            modelDegraded={modelDegraded}
+            onChangeModel={
+              readOnly || running || settingsBusy || !modelCatalogPresent || !hasCapability(effectiveCaps.models.conversationScoped) ? undefined : (next) => void changeModel(next)
+            }
+            reasoning={reasoning}
+            onChangeReasoning={!readOnly && !running && !settingsBusy && conversationControls?.reasoning ? (level) => void changeSessionSetting({ reasoningMode: level }) : undefined}
+            approval={approval}
+            onChangeApproval={!readOnly && !running && !settingsBusy && approval.options.length ? (mode) => void changeSessionSetting({ approvalMode: mode }) : undefined}
+            executionMode={detail?.conversation?.executionMode ?? conversationControls?.executionDefault}
+            executionOptions={conversationControls?.executionModes?.map(option => ({ value: option.id, label: option.name }))}
+            onChangeExecutionMode={!readOnly && !running && !settingsBusy ? (mode) => void changeSessionSetting({ executionMode: mode }) : undefined}
+            configOptions={conversationControls?.configOptions}
+            configValues={detail?.conversation?.configOptions}
+            onChangeConfig={!readOnly && !running && !settingsBusy ? (key, value) => void changeSessionSetting({ configOptions: { [key]: value } }) : undefined}
+            attachments={readOnly ? null : effectiveCaps.card.attachments ?? null}
+            onAttach={canAttach && !readOnly ? () => fileInputRef.current?.click() : undefined}
+            actions={
+              /* G-6：运行中主按钮变「停止」；`interrupt` 能力缺失时不显示停止，
+                 只把发送禁掉（AD-71：不留占位、不写备注）。 */
+              running && canInterrupt && !external ? (
+                /* 第 1 件：正在停止时按钮禁用并改文字；8 秒没等到确认再放开（文字
+                   变回「停止」，提示在页尾那一行）。 */
+                <button
+                  type="button"
+                  className="kaus-send is-stop"
+                  data-testid="stop-button"
+                  aria-label={stopping && !showStopUnconfirmed ? t("conversation.stopping") : t("conversation.stop")}
+                  title={stopping && !showStopUnconfirmed ? t("conversation.stopping") : t("conversation.stop")}
+                  disabled={stopping && !showStopUnconfirmed}
+                  onClick={() => void stop()}
+                >
+                  <Square className="size-3.5" aria-hidden />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="kaus-send"
+                  aria-label={t("conversation.send")}
+                  title={t("conversation.send")}
+                  disabled={(!text.trim() && !draft.attachments.length) || sending || settingsBusy || running || readOnly || uploading.length > 0}
+                  onClick={() => void send()}
+                >
+                  <ArrowUp size={18} aria-hidden />
+                </button>
+              )
+            }
+          >
           <input ref={fileInputRef} type="file" multiple hidden aria-label={t("bar.attach")} accept={effectiveCaps.card.attachments === "images" ? "image/png,image/jpeg,image/webp,image/gif" : undefined} onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ""; void addFiles(files); }} />
           {(draft.attachments.length > 0 || uploading.length > 0) && (
             <div className="kaus-attachment-tray" aria-label={t("conversation.attach.list")}>
@@ -1753,60 +1836,7 @@ export function ConversationPage({
             />
           </div>
 
-          {/* DESIGN ★ I：输入框底部一条工具栏，左起 工作目录 · 引擎 · 模型 ▾ ·
-             推理强度 ▾ · 审批模式 ▾，右侧 📎 与 发送/停止。全中性（H-4）。 */}
-          {/* 外部态下整条工具栏**只读**（第 2 件）：不传写回调，Pill 自己就变成只读形态。 */}
-          <ComposerBar
-            engineName={engineName}
-            workspaceRoot={bar.workspaceRoot}
-            onChangeWorkspaceRoot={readOnly || running || settingsBusy ? undefined : changeWorkspaceRoot}
-            model={bar.model}
-            modelOptions={modelOptions}
-            modelDiagnostic={modelDiagnostic}
-            modelDegraded={modelDegraded}
-            onChangeModel={
-              readOnly || running || settingsBusy || !modelCatalogPresent || !hasCapability(effectiveCaps.models.conversationScoped) ? undefined : (next) => void changeModel(next)
-            }
-            reasoning={reasoning}
-            onChangeReasoning={!readOnly && !running && !settingsBusy && conversationControls?.reasoning ? (level) => void changeSessionSetting({ reasoningMode: level }) : undefined}
-            approval={approval}
-            onChangeApproval={!readOnly && !running && !settingsBusy && approval.options.length ? (mode) => void changeSessionSetting({ approvalMode: mode }) : undefined}
-            executionMode={detail?.conversation?.executionMode ?? conversationControls?.executionDefault}
-            executionOptions={conversationControls?.executionModes?.map(option => ({ value: option.id, label: option.name }))}
-            onChangeExecutionMode={!readOnly && !running && !settingsBusy ? (mode) => void changeSessionSetting({ executionMode: mode }) : undefined}
-            attachments={readOnly ? null : effectiveCaps.card.attachments ?? null}
-            onAttach={canAttach && !readOnly ? () => fileInputRef.current?.click() : undefined}
-            actions={
-              /* G-6：运行中主按钮变「停止」；`interrupt` 能力缺失时不显示停止，
-                 只把发送禁掉（AD-71：不留占位、不写备注）。 */
-              running && canInterrupt && !external ? (
-                /* 第 1 件：正在停止时按钮禁用并改文字；8 秒没等到确认再放开（文字
-                   变回「停止」，提示在页尾那一行）。 */
-                <button
-                  type="button"
-                  className="kaus-send is-stop"
-                  data-testid="stop-button"
-                  aria-label={stopping && !showStopUnconfirmed ? t("conversation.stopping") : t("conversation.stop")}
-                  title={stopping && !showStopUnconfirmed ? t("conversation.stopping") : t("conversation.stop")}
-                  disabled={stopping && !showStopUnconfirmed}
-                  onClick={() => void stop()}
-                >
-                  <Square className="size-3.5" aria-hidden />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="kaus-send"
-                  aria-label={t("conversation.send")}
-                  title={t("conversation.send")}
-                  disabled={(!text.trim() && !draft.attachments.length) || sending || settingsBusy || running || readOnly || uploading.length > 0}
-                  onClick={() => void send()}
-                >
-                  <ArrowUp size={18} aria-hidden />
-                </button>
-              )
-            }
-          />
+          </ComposerBar>
         </div>
         {storageFailed && <div className="kaus-composer-caption" role="status">{t("conversation.draft.failed")}</div>}
         {/* batch39 第 1 件：运行中按了 Enter 之后的那一句。中性到底（★H）——它说的是

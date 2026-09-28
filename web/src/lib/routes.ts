@@ -40,7 +40,7 @@ export function shellViewPath(view: ShellViewName): string {
 
 export type KausRoute =
   | { name: ShellViewName }
-  | { name: "new"; projectId: string | null }
+  | { name: "new"; projectId: string | null; bindingId?: string }
   | { name: "conversation"; conversationId: string; after: number | null }
   | { name: "project"; projectRef: string }
   | { name: "unknown"; pathname: string };
@@ -59,7 +59,7 @@ export function parseRoute(pathname: string, search = ""): KausRoute {
     if (view) return { name: view };
   }
   if (segments[0] === "new" && segments.length === 1) {
-    return { name: "new", projectId: params.get("project") };
+    return { name: "new", projectId: params.get("project"), ...(params.get("binding") ? { bindingId: params.get("binding")! } : {}) };
   }
   if (segments[0] === "conversations" && segments.length === 2) {
     const raw = params.get("after");
@@ -80,6 +80,9 @@ export function projectPath(projectRef: string): string {
   return `/projects/${encodeURIComponent(projectRef)}`;
 }
 
-export function newConversationPath(projectId?: string | null): string {
-  return projectId ? `/new?project=${encodeURIComponent(projectId)}` : "/new";
+export function newConversationPath(projectId?: string | null, bindingId?: string | null): string {
+  const params = new URLSearchParams();
+  if (projectId) params.set("project", projectId);
+  if (bindingId) params.set("binding", bindingId);
+  return `/new${params.size ? `?${params}` : ""}`;
 }

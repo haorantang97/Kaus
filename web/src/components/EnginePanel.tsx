@@ -1,10 +1,12 @@
+import { EngineIcon } from "./EngineIcon";
+import { backendDisplay, bindingDisplayName } from "../lib/backend-display";
 /* 「已接引擎」面板（项目详情页 ② 区，IA §3.2）。
  *
- * 一个项目的每条 Binding = 一张卡：字母标签 · 显示名 · 状态 chip（读 `probeState`）·
+ * 一个项目的每条 Binding = 一张卡：引擎图标 · 显示名 · 状态 chip（读 `probeState`）·
  * 模型与推理强度 · 引擎侧身份 · 原生会话数 · 能力清单 · 登录状态与「去登录」。
  *
  * 三条边界：
- *  1. **不按 backendId 分支**（component-boundaries 边界①）。字母标签由显示名机械推导，
+ *  1. **不按 backendId 分支**（component-boundaries 边界①）。图标由共享展示映射提供，
  *     引擎差异一律通过能力值表达；表里查不到的新引擎不改代码也能显示。
  *  2. **这里是全站唯一显示能力 note 的地方**（AD-71）：能力清单读 `capabilities.detail`，
  *     带 `note` 与 `verification`。对话页那棵子树只读 `ui`，类型上就没有这两个字段。
@@ -22,12 +24,14 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { LogIn, Plug } from "lucide-react";
+import { LogIn, MessageSquare, Plug } from "lucide-react";
 
 import { useLocale, type DictKey } from "../i18n";
 import { approvalLabel, BarMenu, sourceHint } from "./ComposerBar";
 import { hasCapability, type UiCapabilities } from "./cards/capabilities";
-import type { BindingDriftWire, EffectiveSettingsWire } from "../lib/sessionApi";
+import { modelOptionsFor, modelSelection, modelValue } from "../lib/modelCatalogView";
+import type { BarMenuOption } from "./ComposerBar";
+import type { BindingDriftWire, EffectiveSettingsWire, ModelDescriptorWire } from "../lib/sessionApi";
 import { Button, Card, FieldRow, Pill, cream } from "./ui";
 
 /* ------------------------------------------------------------------ *
@@ -65,6 +69,9 @@ export interface BackendWire {
   id: string;
   key: string;
   displayName: string;
+  productId?: string;
+  productName?: string;
+  preferred?: boolean;
   driverKind: string;
   installed: boolean;
   version?: string | null;
@@ -132,13 +139,14 @@ export interface EngineAuthState {
 }
 
 /** 模型目录里的一项（`GET /api/backends/{id}/models?binding=`，只取显示要用的字段）。 */
-export interface EngineModelOption {
+export interface EngineModelOption extends Partial<ModelDescriptorWire> {
   modelId: string;
   displayName?: string | null;
   reasoningLevels: string[];
 }
 
 export interface EngineModelCatalog {
+  defaultProviderId?: string | null;
   models: EngineModelOption[];
   defaultModelId?: string | null;
   supportsReasoning?: boolean;
@@ -184,7 +192,7 @@ export interface AttachableBackend {
 export interface EngineWriteActions {
   /** `PATCH /bindings/{id}` 的 defaultModelId。返回的 Promise **必须**在失败时 reject：
    *  字段旁的错误提示与"保留用户输入"靠它（批次十一第 2 件）。 */
-  onChangeModel?: (row: EngineRow, modelId: string) => void | Promise<void>;
+  onChangeModel?: (row: EngineRow, modelId: string, providerId?: string) => void | Promise<void>;
   /** `PATCH /bindings/{id}` 的 runtimeConfig.reasoning_effort。同上。 */
   onChangeReasoning?: (row: EngineRow, level: string) => void | Promise<void>;
   /** `PATCH /bindings/{id}` 的 runtimeConfig.approval_mode（批次十三）。同上。 */
@@ -205,17 +213,6 @@ export interface EngineWriteActions {
 /* ------------------------------------------------------------------ *
  * 展示助手
  * ------------------------------------------------------------------ */
-
-/** 字母标签（DESIGN §2.4）：从显示名机械推导，不查任何引擎名表。 */
-export function engineInitials(displayName: string): string {
-  const words = displayName.trim().split(/[\s\-_]+/).filter(Boolean);
-  if (words.length === 0) return "?";
-  if (words.length === 1) return words[0].slice(0, 1).toUpperCase();
-  return words
-    .slice(0, 2)
-    .map((word) => word.slice(0, 1).toUpperCase())
-    .join("");
-}
 
 const PROBE_TONE: Record<BackendWire["probeState"], "success" | "gold" | "danger" | "muted"> = {
   available: "success",
@@ -290,7 +287,7 @@ function EditableSelect({
   ariaLabel: string;
   /** 上一次保存成功的服务器值。它一变（= 容器重取到了新值）就重置草稿。 */
   serverValue: string;
-  options: { value: string; label: string }[];
+  options: BarMenuOption[];
   /** 菜单底部那行小字（目录降级 / 只有一条模型时的 `diagnostics[0]`）。 */
   footnote?: string | null;
   /** 一条选项都没有时菜单里那句话。 */
@@ -321,7 +318,7 @@ function EditableSelect({
     }
   };
 
-  const display = options.find((option) => option.value === draft)?.label ?? draft;
+  const display = options.find((option) => option.value === draft)?.label ?? modelSelection(draft).modelId;
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       {/* 批次十五第 4 件：原生 `<select>` 换成与输入区工具栏同一枚 Pill + 菜单
@@ -720,6 +717,17 @@ export function EngineCard({
      「问不出来」说成了「你没设」——两句完全不同的话，用户会去改一个改不了的字段。 */
   const unsetLabel = signedOut ? t("engine.value.signInFirst") : t("engine.value.unset");
   const models = row.catalog?.models ?? [];
+  const sharedCatalog = row.catalog ? {
+    ...row.catalog,
+    bindingId: binding.id,
+    mode: "constrained",
+    supportsReasoning: !!row.catalog.supportsReasoning,
+    defaultModelId: row.catalog.defaultModelId ?? null,
+    defaultProviderId: row.catalog.defaultProviderId ?? null,
+    models: models.map(item => ({ displayName: null, providerId: null, contextWindow: null, ...item })),
+  } : null;
+  const selectedValue = modelValue(model, row.catalog?.defaultProviderId ?? binding.defaultProviderId, sharedCatalog);
+  const modelOptions = modelOptionsFor(sharedCatalog, binding, selectedValue);
   /* 第 5 件：**有目录就可点开**（哪怕只有一条、甚至空目录）。目录整个拿不到
      （`catalog === null`：501 / 请求失败）才退回只读——那是"没有目录"，不是"没得选"。 */
   const hasCatalog = row.catalog !== null && row.catalog !== undefined;
@@ -749,7 +757,7 @@ export function EngineCard({
       {canChangeModel ? (
         <EditableSelect
           ariaLabel={t("engine.model.aria", { name: binding.displayName })}
-          serverValue={model ?? ""}
+          serverValue={selectedValue ?? ""}
           /* 只有一条时也把原因说清楚（批次十五第 5 件）。 */
           footnote={modelDegraded || models.length <= 1 ? modelDiagnostic : null}
           emptyNote={t("bar.model.empty")}
@@ -760,12 +768,9 @@ export function EngineCard({
               ? [{ value: model, label: model }]
               : []),
             ...(model ? [] : [{ value: "", label: unsetLabel }]),
-            ...models.map((item) => ({
-              value: item.modelId,
-              label: item.displayName || item.modelId,
-            })),
+            ...modelOptions,
           ]}
-          onSave={(value) => onChangeModel?.(row, value)}
+          onSave={(value) => { const selection = modelSelection(value); return onChangeModel?.(row, selection.modelId, selection.providerId ?? modelOptions.find(option => option.value === value)?.providerId ?? undefined); }}
         />
       ) : (
         <span className="inline-flex items-center gap-2 text-xs">
@@ -809,17 +814,17 @@ export function EngineCard({
         <span
           className="grid size-6 shrink-0 place-items-center rounded-[2px] text-[0.65rem] font-bold"
           style={{ background: cream(7), color: cream(70), border: `1px solid ${cream(14)}` }}
-          title={backend.displayName}
+          title={backendDisplay(backend.preset?.id ?? backend.id, backend.displayName).displayName}
         >
-          {engineInitials(backend.displayName)}
+          <EngineIcon engine={backend.preset?.id ?? backend.key ?? backend.id} size={18} />
         </span>
         <span className="text-sm font-semibold" style={{ color: "var(--midground-base)" }}>
-          {binding.displayName}
+          {bindingDisplayName(backend.preset?.id ?? binding.backendId, binding.displayName)}
         </span>
         {/* batch40（★L 第 3 条）：摘要第一行 = 引擎名 · 版本 · 状态 · 默认。
             引擎名与版本原来只在卡里那一行 FieldRow 上，现在提到卡头，那一行删掉。 */}
         <span className="inline-flex items-baseline gap-1.5 text-[0.7rem]" style={{ color: cream(45) }} data-testid="engine-name">
-          <span>{backend.displayName}</span>
+          <span>{backendDisplay(backend.preset?.id ?? backend.id, backend.displayName).displayName}</span>
           {backend.version && <span>{backend.version}</span>}
         </span>
         {binding.isDefault && <Pill tone="gold">{t("engine.badge.default")}</Pill>}
@@ -851,7 +856,7 @@ export function EngineCard({
             </Button>
           )}
           {onNewConversation && (
-            <Button onClick={() => onNewConversation(row)}>{t("engine.action.newConversation")}</Button>
+            <Button variant="primary" onClick={() => onNewConversation(row)}><MessageSquare size={15} />{t("engine.action.newConversation")}</Button>
           )}
           {!binding.isDefault && onMakeDefault && (
             <Button onClick={() => onMakeDefault(row)}>{t("engine.action.makeDefault")}</Button>

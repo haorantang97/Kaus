@@ -12,6 +12,7 @@ import time
 import urllib.request
 
 import webview
+from workspace_bridge import WorkspaceBridge
 
 URL = "http://127.0.0.1:8877/"
 HEALTH = "http://127.0.0.1:8877/api/health"
@@ -75,13 +76,16 @@ def main() -> None:
         "<code>launchctl kickstart -k gui/$(id -u)/com.hermes.dashboard.backend</code>"
         " 后重开本 App。</p>"
     )
-    webview.create_window(
+    bridge = WorkspaceBridge()
+    window = webview.create_window(
         "Kaus",
         target,
         width=1500,
         height=940,
         min_size=(1080, 700),
+        js_api=bridge,
     )
+    bridge._bind(window)
     webview.start()
 
 

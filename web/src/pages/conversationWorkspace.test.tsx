@@ -13,6 +13,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { fetchWorkspaceDirectories } from "../lib/workspaceApi";
+vi.mock("../lib/workspaceApi", async () => ({
+  ...await vi.importActual<typeof import("../lib/workspaceApi")>("../lib/workspaceApi"),
+  fetchWorkspaceDirectories: vi.fn(),
+}));
+
 import { ConversationPage } from "./ConversationPage";
 import * as api from "../lib/sessionApi";
 import { ALL_SUPPORTED_UI_CAPABILITIES } from "../components/cards/capabilities";
@@ -168,6 +174,35 @@ beforeEach(() => {
  * ------------------------------------------------------------------ */
 
 describe("会话工作区配色收敛（★ H）", () => {
+  it("历史回放引起的内容增高不会关闭自动跟随", async () => {
+    render(<ConversationPage conversationId="conversation:1" />);
+    await attached();
+    const scroller = screen.getByTestId("timeline");
+    Object.defineProperties(scroller, { scrollHeight: { value: 3000 }, clientHeight: { value: 400 } });
+    push(envelope(1, { type: "extension.event", namespace: "kaus", name: "user.message", data: { text: "历史问题", role: "user" } }));
+    fireEvent.scroll(scroller);
+    expect(screen.queryByTestId("jump-latest")).not.toBeInTheDocument();
+  });
+
+  it("书签跳转离开底部前不会重新启用自动跟随，回到最新可恢复", async () => {
+    const user = userEvent.setup();
+    render(<ConversationPage conversationId="conversation:1" />);
+    await attached();
+    push(envelope(1, { type: "extension.event", namespace: "kaus", name: "user.message", data: { text: "第一条", role: "user" } }));
+    push(envelope(2, { type: "extension.event", namespace: "kaus", name: "user.message", data: { text: "第二条", role: "user" } }));
+    const scroller = screen.getByTestId("timeline");
+    Object.defineProperties(scroller, { scrollHeight: { value: 1000 }, clientHeight: { value: 400 } });
+    scroller.scrollTop = 600;
+    scroller.scrollTo = vi.fn(() => { fireEvent.scroll(scroller); });
+    await user.click(screen.getByRole("button", { name: /跳到第 1 条消息/ }));
+    expect(scroller.scrollTo).toHaveBeenCalled();
+    expect(screen.getByTestId("jump-latest")).toBeInTheDocument();
+    push(envelope(3, { type: "message.delta", messageId: "m-new", text: "继续输出" }));
+    expect(screen.getByTestId("jump-latest")).toBeInTheDocument();
+    await user.click(screen.getByTestId("jump-latest"));
+    expect(screen.queryByTestId("jump-latest")).not.toBeInTheDocument();
+  });
+
   it("完整一回合之后，带强调色的元素只有运行状态点与审批卡边框", async () => {
     const { container } = render(<ConversationPage conversationId="conversation:1" />);
     await attached();
@@ -234,14 +269,14 @@ describe("输入区工具栏（★ I）", () => {
     expect(mocked.patchConversation).toHaveBeenCalledWith("conversation:1", { reasoningMode: "high" });
     await user.click(barButton("审批模式"));
     await user.click(screen.getByRole("option", { name: "只读" }));
-    await waitFor(() => expect(barButton("审批模式")).toHaveTextContent("每次询问"));
+    await waitFor(() => expect(barButton("审批模式")).toHaveAttribute("title", expect.stringContaining("每次询问")));
     expect(screen.queryByRole("button", { name: "引擎" })).toBeNull();
     expect(mocked.patchBinding).not.toHaveBeenCalled();
     expect(await screen.findByRole("alert")).toHaveTextContent("设置未生效");
   });
   it("没有有效设置时保留首次选择工作位置的入口，其他空值隐藏", async () => {
     render(<ConversationPage conversationId="conversation:1" />);
-    await waitFor(() => expect(mocked.fetchEffectiveSettings).toHaveBeenCalledWith("binding:1"));
+    await waitFor(() => expect(mocked.fetchEffectiveSettings).toHaveBeenCalledWith("binding:1", undefined, { conversationId: "conversation:1" }));
     const bar = await screen.findByTestId("composer-bar");
     expect(within(bar).getByRole("button", { name: "工作目录" })).toHaveTextContent("选择工作位置");
     for (const label of ["模型", "推理强度", "审批模式"]) {
@@ -250,7 +285,7 @@ describe("输入区工具栏（★ I）", () => {
     }
   });
 
-  it("有值的项才出现：工作目录只显示末两级，模型 / 审批模式各是一枚可点 Pill", async () => {
+  it("工作目录显示末两级，没有会话权限能力时隐藏图标", async () => {
     mocked.fetchEffectiveSettings.mockResolvedValue({
       ...noSettings,
       model: { value: "mock-small", source: "binding" },
@@ -261,9 +296,8 @@ describe("输入区工具栏（★ I）", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "工作目录" })).toHaveTextContent("code/kaus"));
     expect(barButton("模型")).toHaveTextContent("Mock Small");
-    // AD-106 的三档文案。
-    expect(screen.getByText("每次询问")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "审批模式" })).toBeNull();
+    expect(screen.queryByRole("option")).toBeNull();
     expect(screen.queryByRole("button", { name: "推理强度" })).toBeNull();
   });
 
@@ -294,10 +328,11 @@ describe("输入区工具栏（★ I）", () => {
       ...noSettings,
       model: { value: "mock-small", source: "engine" },
       approvalMode: { value: "auto", source: "catalog", options: ["ask", "auto", "deny"] },
+      conversationControls: { reasoning: false, approvalModes: ["ask", "auto", "deny"] },
     });
     render(<ConversationPage conversationId="conversation:1" />);
     await waitFor(() => expect(barButton("模型")).toHaveAttribute("title", "模型 · 来自引擎配置"));
-    expect(screen.getByText("自动放行").getAttribute("title")).toContain("目录默认");
+    expect(screen.getByRole("button", { name: "审批模式" }).getAttribute("title")).toContain("目录默认");
   });
 
   it("目录 degraded 时，模型下拉底部垫一行 diagnostics[0]", async () => {
@@ -325,32 +360,24 @@ describe("输入区工具栏（★ I）", () => {
       approvalMode: { value: "ask", source: "binding", options: ["ask", "auto", "deny"] },
     });
     render(<ConversationPage conversationId="conversation:1" />);
-    expect(await screen.findByText("每次询问")).toBeInTheDocument();
+    await screen.findByTestId("composer-bar");
     expect(screen.queryByRole("button", { name: "审批模式" })).toBeNull();
+    expect(screen.queryByRole("option")).toBeNull();
     expect(mocked.patchBinding).not.toHaveBeenCalled();
   });
 
-  it("改工作目录：小输入框回车写 PATCH /api/projects，失败时原地报错且不丢输入", async () => {
-    mocked.fetchEffectiveSettings.mockResolvedValue({
-      ...noSettings,
-      workspaceRoot: { value: "/home/me/code/kaus", source: "project" },
-    });
-    mocked.patchProject.mockRejectedValueOnce(
-      new api.SessionApiError(400, "workspace_root_not_absolute", "工作目录必须是绝对路径"),
-    );
+  it("选择本机目录后保存项目，失败保留选择以便重试", async () => {
+    mocked.fetchEffectiveSettings.mockResolvedValue({ ...noSettings, workspaceRoot: { value: "/work", source: "project" } });
+    vi.mocked(fetchWorkspaceDirectories).mockResolvedValue({ path: "/work", parent: "/", home: "/home", directories: [], truncated: false });
+    mocked.patchProject.mockRejectedValueOnce(new api.SessionApiError(400, "workspace_root_unavailable", "目录暂不可用"));
     const user = userEvent.setup();
     render(<ConversationPage conversationId="conversation:1" />);
-
     await user.click(await screen.findByRole("button", { name: "工作目录" }));
-    const input = screen.getByLabelText("工作目录");
-    await user.clear(input);
-    await user.type(input, "relative/path{Enter}");
-    await waitFor(() =>
-      expect(mocked.patchProject).toHaveBeenCalledWith("project:x", { workspaceRoot: "relative/path" }),
-    );
-    expect(await screen.findByRole("alert")).toHaveTextContent("工作目录必须是绝对路径");
-    // 重试比重填便宜：用户敲的那串留着。
-    expect(screen.getByLabelText("工作目录")).toHaveValue("relative/path");
+    await waitFor(() => expect(screen.getByRole("button", { name: "选择此文件夹" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "选择此文件夹" }));
+    await waitFor(() => expect(mocked.patchProject).toHaveBeenCalledWith("project:x", { workspaceRoot: "/work" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("目录暂不可用");
+    expect(screen.getByRole("textbox", { name: "工作目录" })).toHaveValue("/work");
   });
 });
 

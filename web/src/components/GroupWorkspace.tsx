@@ -1,3 +1,4 @@
+import { EngineIcon } from "./EngineIcon";
 /* 协作组工作区：默认呈现对话，成员与共享资料通过标签切换。
  * 三个视图保持挂载，草稿、分页、运行输出与资料编辑不因切换丢失。
  * 普通输入由后端路由，前端只在用户定向时传目标成员；投递失败原地保留。
@@ -748,6 +749,7 @@ function ContextPacketPane({
                       {member.displayName || member.title}
                     </span>
                     <span className="kaus-group-packet-meta">
+                      {member.backendId && <EngineIcon engine={member.backendId} size={13} />}
                       {/* 可选键**缺席就是没有这一段**：不写「未知」，也不留一个占位。 */}
                       {[
                         member.backendId ? backendDisplay(member.backendId).displayName : null,

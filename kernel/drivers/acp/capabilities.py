@@ -478,14 +478,16 @@ class SessionConfigOptions:
     current_mode_id: str | None = None
     approval_option_id: str | None = None
     approval_ids: tuple[str, ...] = ()
+    approval_definitions: tuple[Any, ...] = ()
     current_approval_id: str | None = None
+    config_options: tuple[dict[str, Any], ...] = ()
     thought_levels: tuple[str, ...] = ()
     thought_option_id: str | None = None
     current_thought_level: str | None = None
 
     @property
     def is_empty(self) -> bool:
-        return not (self.models or self.mode_ids or self.thought_levels or self.approval_ids)
+        return not (self.models or self.mode_ids or self.thought_levels or self.approval_ids or self.config_options)
 
 
 def _config_entries(result: Any) -> tuple[Mapping[str, Any], ...]:
@@ -524,6 +526,24 @@ def _option_values(entry: Mapping[str, Any]) -> tuple[tuple[str, str | None], ..
     return tuple(pairs)
 
 
+def _option_definitions(entry: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
+    """Preserve semantic metadata (notably permission kinds) on select values."""
+    raw = entry.get("options")
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        return ()
+    leaves = []
+    for item in raw:
+        if isinstance(item, Mapping) and isinstance(item.get("options"), list):
+            leaves.extend(item["options"])
+        else:
+            leaves.append(item)
+    by_id = {item.get("value"): item for item in leaves if isinstance(item, Mapping) and isinstance(item.get("value"), str)}
+    return tuple({"id": value, "name": name or value,
+                  **({"description": by_id[value]["description"]} if isinstance(by_id.get(value, {}).get("description"), str) else {}),
+                  **({"_meta": by_id[value]["_meta"]} if isinstance(by_id.get(value, {}).get("_meta"), Mapping) else {})}
+                 for value, name in _option_values(entry))
+
+
 def config_options_from_session_result(result: Any, *, approval_option_id: str | None = None,
                                        thought_option_id: str | None = None) -> SessionConfigOptions:
     """``session/new`` / ``session/resume`` 结果里的 ``configOptions[]``。
@@ -544,6 +564,7 @@ def config_options_from_session_result(result: Any, *, approval_option_id: str |
     selected_thought_id: str | None = None
     approval_id: str | None = None
     approval_ids: tuple[str, ...] = ()
+    approval_definitions: tuple[Any, ...] = ()
     current_approval: str | None = None
     for entry in _config_entries(result):
         if entry.get("type", "select") != "select":
@@ -554,9 +575,13 @@ def config_options_from_session_result(result: Any, *, approval_option_id: str |
         current = entry.get("currentValue")
         current = current if isinstance(current, str) and current else None
         values = _option_values(entry)
-        if approval_option_id is not None and option_id == approval_option_id:
+        metadata = entry.get("_meta")
+        kaus = metadata.get("kaus", {}) if isinstance(metadata, Mapping) else {}
+        declared_approval = category == "_kaus_approval" or (isinstance(kaus, Mapping) and kaus.get("role") == "approval")
+        if (approval_option_id is not None and option_id == approval_option_id) or (declared_approval and approval_id is None):
             approval_id = option_id
             approval_ids = tuple(value for value, _name in values)
+            approval_definitions = _option_definitions(entry)
             current_approval = current
         elif thought_option_id is not None and option_id == thought_option_id:
             thought_levels = tuple(value for value, _name in values)
@@ -573,12 +598,33 @@ def config_options_from_session_result(result: Any, *, approval_option_id: str |
         elif category == CONFIG_CATEGORY_MODE and not mode_ids:
             mode_ids = tuple(value for value, _name in values)
             mode_option_id = option_id
-            mode_definitions = tuple({"id": value, "name": name or value} for value, name in values)
+            mode_definitions = _option_definitions(entry)
             current_mode = current
         elif category == CONFIG_CATEGORY_THOUGHT and not thought_levels:
             thought_levels = tuple(value for value, _name in values)
             selected_thought_id = option_id
             current_thought = current
+    reserved = {model_option_id, mode_option_id, approval_id, selected_thought_id}
+    extras = []
+    seen = set()
+    for entry in _config_entries(result):
+        key, current = entry.get("id"), entry.get("currentValue")
+        if not isinstance(key, str) or not key or len(key) > 200 or key in reserved or key in seen:
+            continue
+        kind = entry.get("type", "select")
+        option = {"id": key, "name": entry.get("name") or key, "type": kind, "currentValue": current}
+        if isinstance(entry.get("description"), str):
+            option["description"] = entry["description"]
+        if kind == "boolean" and isinstance(current, bool):
+            pass
+        elif kind == "select" and isinstance(current, str):
+            option["options"] = [{"value": value, "name": name or value} for value, name in _option_values(entry)]
+            if not option["options"] or current not in [item["value"] for item in option["options"]]:
+                continue
+        else:
+            continue
+        seen.add(key)
+        extras.append(option)
     return SessionConfigOptions(
         models=models,
         current_model_id=current_model,
@@ -589,7 +635,9 @@ def config_options_from_session_result(result: Any, *, approval_option_id: str |
         current_mode_id=current_mode,
         approval_option_id=approval_id,
         approval_ids=approval_ids,
+        approval_definitions=approval_definitions,
         current_approval_id=current_approval,
+        config_options=tuple(extras),
         thought_levels=thought_levels,
         thought_option_id=selected_thought_id,
         current_thought_level=current_thought,
@@ -696,6 +744,9 @@ def resolve_conversation_mode_id(
     explicit_mode_ids: Mapping[str, str] | None = None,
 ) -> str | None:
     """Explicit session policies; do not reuse the ambiguous legacy deny value."""
+    if isinstance(policy, str) and policy.startswith("native:"):
+        native_id = policy.removeprefix("native:")
+        return native_id if native_id in _mode_ids(available) else None
     kinds = {"standard": "ask", "auto_review": "auto", "full_access": "bypass"}
     unclassified = []
     for mode in available:
@@ -712,12 +763,36 @@ def resolve_conversation_mode_id(
         return candidate if candidate in ids else None
     candidates = {
         "ask": ("default", "ask", "askEveryTime", "normal", "manual"),
-        "auto": ("acceptEdits", "accept_edits", "auto_edit", "auto", "agent"),
+        "auto": ("acceptEdits", "accept_edits", "autoEdit", "auto_edit", "auto", "agent"),
         "bypass": ("bypassPermissions", "yolo", "full-access", "agent-full-access"),
         "read_only": ("readOnly", "read-only", "deny"),
         "plan": ("plan",),
     }
     return next((value for value in candidates.get(policy, ()) if value in ids), None)
+
+
+def conversation_permission_options(
+    available: Sequence[Any], explicit_mode_ids: Mapping[str, str] | None = None,
+) -> list[dict[str, str]]:
+    """Keep every advertised permission choice, in native order, without merging it."""
+    aliases = {}
+    for policy in ("ask", "auto", "bypass", "read_only", "plan"):
+        native_id = resolve_conversation_mode_id(policy, available, explicit_mode_ids)
+        if native_id:
+            aliases.setdefault(native_id, policy)
+    options = []
+    seen = set()
+    for item in available:
+        native_id = next(iter(_mode_ids((item,))), None)
+        if not native_id or native_id in seen or len(native_id) > 200 or any(c in native_id for c in "\r\n"):
+            continue
+        seen.add(native_id)
+        name = item.get("name") if isinstance(item, Mapping) else None
+        description = item.get("description") if isinstance(item, Mapping) else None
+        options.append({"id": aliases.get(native_id, "native:" + native_id),
+                        "nativeId": native_id, "name": name if isinstance(name, str) and name else native_id,
+                        **({"description": description} if isinstance(description, str) and description else {})})
+    return options
 
 
 def resolve_thought_level_id(effort: str, available: Sequence[Any]) -> str | None:
@@ -740,20 +815,20 @@ def available_modes(session_result: Any, *, approval_option_id: str | None = Non
                     thought_option_id: str | None = None) -> tuple[Any, ...]:
     """``session/new`` / ``session/resume`` 结果里的可选原生模式。
 
-    先看 ``modes.availableModes``（协议里那一处）；它整段不存在时**回落到**
-    ``configOptions`` 里 ``category == "mode"`` 的那一项（批次三十二取证：两家
-    只在这里给模式）。回落产出的形状与前者一致（``{id, name}``），这样
-    :func:`resolve_mode_id` 一个字都不用改——两处来源，一种形状。
+    ACP prefers configOptions over legacy modes when both are present. Explicit
+    permission/thought options are excluded from the work-mode axis first.
     """
     if not isinstance(session_result, Mapping):
         return ()
+    config = config_options_from_session_result(session_result,
+        approval_option_id=approval_option_id, thought_option_id=thought_option_id)
+    if config.mode_option_id is not None:
+        return config.mode_definitions
     modes = session_result.get("modes")
     if isinstance(modes, Mapping):
         available = modes.get("availableModes")
         if isinstance(available, Sequence) and not isinstance(available, (str, bytes)):
             return tuple(available)
-    config = config_options_from_session_result(session_result,
-        approval_option_id=approval_option_id, thought_option_id=thought_option_id)
     return config.mode_definitions
 
 

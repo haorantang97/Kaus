@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NewConversationPage } from "./NewConversationPage";
 import * as api from "../lib/sessionApi";
@@ -17,6 +17,8 @@ vi.mock("../lib/sessionApi", async () => {
     ...actual,
     fetchProjects: vi.fn(),
     fetchProjectBindings: vi.fn(),
+    fetchConnectedBackends: vi.fn(),
+    ensureProjectBinding: vi.fn(),
     fetchModelCatalog: vi.fn(),
     fetchEffectiveSettings: vi.fn(),
     fetchBackendUiCapabilities: vi.fn(),
@@ -31,6 +33,8 @@ vi.mock("../lib/sessionApi", async () => {
 const mocked = api as unknown as {
   fetchProjects: ReturnType<typeof vi.fn>;
   fetchProjectBindings: ReturnType<typeof vi.fn>;
+  fetchConnectedBackends: ReturnType<typeof vi.fn>;
+  ensureProjectBinding: ReturnType<typeof vi.fn>;
   fetchModelCatalog: ReturnType<typeof vi.fn>;
   fetchEffectiveSettings: ReturnType<typeof vi.fn>;
   fetchBackendUiCapabilities: ReturnType<typeof vi.fn>;
@@ -79,6 +83,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocked.fetchProjects.mockResolvedValue(projects);
   mocked.fetchProjectBindings.mockResolvedValue({ projectId: "project:pronto", bindings: [binding], count: 1 });
+  mocked.fetchConnectedBackends.mockResolvedValue({ backends: [], count: 0 });
+  mocked.ensureProjectBinding.mockReset();
   mocked.fetchEffectiveSettings.mockResolvedValue(noSettings);
   mocked.fetchBackendUiCapabilities.mockResolvedValue({ ...ALL_SUPPORTED_UI_CAPABILITIES, card: { ...ALL_SUPPORTED_UI_CAPABILITIES.card, attachments: "files" } });
   mocked.createConversation.mockResolvedValue({ id: "conversation:new" });
@@ -88,7 +94,357 @@ beforeEach(() => {
   vi.mocked(uploadConversationAttachment).mockImplementation(async (_id, file) => ({ kind: "file", ref: `file:///tmp/${file.name}`, name: file.name, mimeType: file.type, size: file.size }));
 });
 
+function toolbarBundle(target: api.BindingWire, name: string): api.EffectiveSettingsWire {
+  return {
+    ...api.emptyEffectiveSettings(target.id),
+    model: { value: name, source: "engine" },
+    modelCatalog: {
+      bindingId: target.id, mode: "catalog", defaultModelId: name, defaultProviderId: null, supportsReasoning: false,
+      models: [{ modelId: name, displayName: name, providerId: null, contextWindow: null, reasoningLevels: [], availability: "available" }],
+    },
+    uiCapabilities: ALL_SUPPORTED_UI_CAPABILITIES,
+  };
+}
+
+describe("全局引擎在项目中选用", () => {
+  const connected = { id: "backend:codex", displayName: "Codex", key: "codex" };
+  const linked = { ...binding, id: "binding:pronto:codex", backendId: connected.id, displayName: "codex", isDefault: false, nativeScopeRef: null };
+
+  it("同产品只选一次，后台推荐的自定义 HTTP 关联后继续保留其真实标识", async () => {
+    const native = { id: "backend:custom-http", productId: "hermes", productName: "Hermes", probeState: "available", preferred: true };
+    const nativeBinding = { ...binding, id: "binding:pronto:http", backendId: native.id, displayName: "Hermes HTTP", isDefault: false };
+    mocked.fetchConnectedBackends.mockResolvedValue({ backends: [
+      { id: "backend:hermes-acp", productId: "hermes", productName: "Hermes", probeState: "unknown" }, native,
+    ] });
+    mocked.ensureProjectBinding.mockResolvedValue(nativeBinding);
+    mocked.fetchEffectiveSettings.mockImplementation(async (id: string) => toolbarBundle(id === binding.id ? binding : nativeBinding, "Ready model"));
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("Ready model"));
+    await user.click(barButton("引擎"));
+    expect(screen.getAllByRole("option", { name: "Hermes" })).toHaveLength(1);
+    await user.click(screen.getByRole("option", { name: "Hermes" }));
+    await waitFor(() => expect(mocked.ensureProjectBinding).toHaveBeenCalledWith("project:pronto", native.id));
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent(/^Hermes$/));
+    await user.click(barButton("引擎"));
+    expect(screen.getAllByRole("option", { name: "Hermes" })).toHaveLength(1);
+    expect(screen.queryByText(/Hermes HTTP|Hermes ACP/)).toBeNull();
+    await user.click(screen.getByRole("option", { name: "Hermes" }));
+    await user.type(screen.getByLabelText("消息"), "测试所选产品");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(mocked.createConversation).toHaveBeenCalledWith("project:pronto", { bindingId: nativeBinding.id, title: "测试所选产品" }));
+    expect(mocked.ensureProjectBinding).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists global engines without creating records, then creates one association on selection and sends with it", async () => {
+    mocked.fetchConnectedBackends.mockResolvedValue({ backends: [connected] });
+    mocked.ensureProjectBinding.mockResolvedValue(linked);
+    mocked.fetchEffectiveSettings.mockImplementation(async (id: string) => toolbarBundle(id === binding.id ? binding : linked, id === binding.id ? "Current model" : "New engine model"));
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={onCreated} />);
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("Current model"));
+    expect(mocked.ensureProjectBinding).not.toHaveBeenCalled();
+    await pick(user, "引擎", "Codex");
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("New engine model"));
+    expect(mocked.ensureProjectBinding).toHaveBeenCalledWith("project:pronto", connected.id);
+    expect(mocked.createConversation).not.toHaveBeenCalled();
+    await pick(user, "引擎", "Mock");
+    await pick(user, "引擎", "Codex");
+    expect(mocked.ensureProjectBinding).toHaveBeenCalledTimes(1);
+    expect(barButton("引擎")).toHaveTextContent(/^Codex$/);
+    await user.type(screen.getByLabelText("消息"), "use the selected engine");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(mocked.createConversation).toHaveBeenCalledWith("project:pronto", { bindingId: linked.id, title: "use the selected engine" });
+    expect(mocked.patchBinding).not.toHaveBeenCalled();
+  });
+
+  it("lets an empty project select a global engine and retry a failed association", async () => {
+    mocked.fetchProjectBindings.mockResolvedValue({ bindings: [] });
+    mocked.fetchConnectedBackends.mockResolvedValue({ backends: [connected] });
+    mocked.ensureProjectBinding.mockRejectedValueOnce(new Error("connection failed")).mockResolvedValue(linked);
+    mocked.fetchEffectiveSettings.mockResolvedValue(toolbarBundle(linked, "New engine model"));
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("选择引擎"));
+    expect(mocked.ensureProjectBinding).not.toHaveBeenCalled();
+    await pick(user, "引擎", "Codex");
+    expect(await screen.findByRole("alert")).toHaveTextContent("connection failed");
+    await user.type(screen.getByLabelText("消息"), "unsent draft");
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    await pick(user, "引擎", "Codex");
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("New engine model"));
+    expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
+    expect(mocked.ensureProjectBinding).toHaveBeenCalledTimes(2);
+    expect(mocked.createConversation).not.toHaveBeenCalled();
+  });
+
+  it("does not switch the new project back when an old association request finishes", async () => {
+    const root = { ...binding, id: "binding:default:mock", projectId: "project:default", displayName: "Root" };
+    let finish!: (value: api.BindingWire) => void;
+    const pending = new Promise<api.BindingWire>((resolve) => { finish = resolve; });
+    mocked.fetchProjectBindings.mockImplementation(async (id: string) => ({ bindings: [id === root.projectId ? root : binding] }));
+    mocked.fetchConnectedBackends.mockResolvedValue({ backends: [connected] });
+    mocked.ensureProjectBinding.mockReturnValue(pending);
+    mocked.fetchEffectiveSettings.mockImplementation(async (id: string) => toolbarBundle(id === binding.id ? binding : root, id === binding.id ? "First model" : "Root model"));
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("First model"));
+    await pick(user, "引擎", "Codex");
+    expect(screen.queryByRole("button", { name: "模型" })).toBeNull();
+    await pick(user, "项目", "X");
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("Root model"));
+    await act(async () => { finish(linked); await pending; });
+    expect(barButton("项目")).toHaveTextContent("X");
+    expect(barButton("引擎")).toHaveTextContent("Mock");
+    expect(barButton("模型")).toHaveTextContent("Root model");
+  });
+
+  it("does not bypass a disabled association or duplicate existing named profiles", async () => {
+    mocked.fetchProjectBindings.mockResolvedValue({ bindings: [binding, { ...linked, enabled: false }] });
+    mocked.fetchConnectedBackends.mockResolvedValue({ backends: [connected, { id: binding.backendId }] });
+    mocked.fetchEffectiveSettings.mockResolvedValue(toolbarBundle(binding, "Current model"));
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("Current model"));
+    await user.click(barButton("引擎"));
+    expect(screen.queryByRole("option", { name: "Codex" })).toBeNull();
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(mocked.ensureProjectBinding).not.toHaveBeenCalled();
+  });
+});
+
+describe("项目与分身选择", () => {
+  const native = { ...binding, id: "binding:pronto:hermes", backendId: "backend:hermes" };
+  const architect = { ...native, id: `${native.id}:architect`, displayName: "architect", discriminator: "architect", nativeScopeRef: "architect", isDefault: false };
+  const steward = { ...architect, id: `${native.id}:steward`, displayName: "steward", discriminator: "steward", nativeScopeRef: "steward" };
+  const codex = { ...binding, id: "binding:pronto:codex", backendId: "backend:codex", displayName: "codex", isDefault: false };
+  const acp = { ...native, id: "binding:pronto:hermes-acp", backendId: "backend:hermes-acp", displayName: "Hermes ACP", isDefault: false };
+
+  beforeEach(() => {
+    mocked.fetchProjectBindings.mockResolvedValue({ bindings: [native, architect, steward, codex, acp] });
+    mocked.fetchConnectedBackends.mockResolvedValue({ backends: [
+      { id: native.backendId, productId: "hermes", productName: "Hermes", preferred: true },
+      { id: acp.backendId, productId: "hermes", productName: "Hermes" },
+      { id: codex.backendId, productId: "codex", productName: "codex" },
+      { id: "backend:claude-code", displayName: "claude-code", productId: "claude-code", productName: "claude-code" },
+    ] });
+    mocked.fetchEffectiveSettings.mockImplementation(async (id: string) => {
+      const target = [native, architect, steward, codex, acp].find((item) => item.id === id)!;
+      return toolbarBundle(target, `${target.displayName} model`);
+    });
+  });
+
+  it("引擎每个产品一项；项目菜单选择分身，发送仍使用它的真实配置", async () => {
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("default model"));
+    await user.click(barButton("引擎"));
+    expect(screen.getAllByRole("option").map((item) => item.textContent)).toEqual(["Hermes", "Codex", "Claude Code"]);
+    await user.click(screen.getByRole("option", { name: "Hermes" }));
+    await user.click(barButton("项目"));
+    expect(screen.getAllByRole("option").map((item) => item.textContent)).toEqual(["X", "Pronto", "architect", "steward"]);
+    expect(screen.getByRole("option", { name: "architect" }).style.paddingLeft).toBe("20px");
+    await user.click(screen.getByRole("option", { name: "steward" }));
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("steward model"));
+    expect(barButton("项目")).toHaveTextContent("Pronto · steward");
+    expect(barButton("引擎")).toHaveTextContent(/^Hermes$/);
+    await user.type(screen.getByLabelText("消息"), "使用所选分身");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(mocked.createConversation).toHaveBeenCalledWith("project:pronto", { bindingId: steward.id, title: "使用所选分身" }));
+    expect(mocked.fetchEffectiveSettings).toHaveBeenCalledWith(steward.id, undefined, { includeCatalog: true });
+    expect(mocked.ensureProjectBinding).not.toHaveBeenCalled();
+    expect(mocked.patchBinding).not.toHaveBeenCalled();
+  });
+
+  it("分身深链、引擎切回和返回项目配置都保留正确归属", async () => {
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" initialBindingId={architect.id} onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("architect model"));
+    expect(barButton("项目")).toHaveTextContent("Pronto · architect");
+    expect(barButton("引擎")).toHaveTextContent(/^Hermes$/);
+    await user.type(screen.getByLabelText("消息"), "保留草稿");
+    await pick(user, "引擎", "Codex");
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("codex model"));
+    expect(barButton("项目")).toHaveTextContent(/^Pronto$/);
+    await pick(user, "引擎", "Hermes");
+    expect(barButton("项目")).toHaveTextContent("Pronto · architect");
+    expect(barButton("模型")).toHaveTextContent("architect model");
+    await pick(user, "项目", "Pronto");
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("default model"));
+    expect(barButton("项目")).toHaveTextContent(/^Pronto$/);
+    expect(screen.getByLabelText("消息")).toHaveValue("保留草稿");
+    expect(mocked.createConversation).not.toHaveBeenCalled();
+    expect(mocked.patchBinding).not.toHaveBeenCalled();
+  });
+
+  it("停用分身不出现，旧接入请求也不能覆盖后来选中的分身", async () => {
+    mocked.fetchProjectBindings.mockResolvedValue({ bindings: [native, architect, { ...steward, enabled: false }] });
+    let finish!: (value: api.BindingWire) => void;
+    const pending = new Promise<api.BindingWire>((resolve) => { finish = resolve; });
+    mocked.ensureProjectBinding.mockReturnValue(pending);
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("default model"));
+    await pick(user, "引擎", "Codex");
+    await user.click(barButton("项目"));
+    expect(screen.queryByRole("option", { name: "steward" })).toBeNull();
+    await user.click(screen.getByRole("option", { name: "architect" }));
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("architect model"));
+    await act(async () => { finish(codex); await pending; });
+    expect(barButton("项目")).toHaveTextContent("Pronto · architect");
+    expect(barButton("引擎")).toHaveTextContent(/^Hermes$/);
+    expect(barButton("模型")).toHaveTextContent("architect model");
+  });
+});
+
+describe("草稿切换加载", () => {
+  it("uses one bundle and restores a recently used engine without waiting; expires after 30 seconds", async () => {
+    const other = { ...binding, id: "binding:pronto:other", backendId: "backend:other", displayName: "Other", isDefault: false };
+    mocked.fetchProjectBindings.mockResolvedValue({ bindings: [binding, other] });
+    mocked.fetchEffectiveSettings.mockImplementation(async (id: string) => toolbarBundle(id === binding.id ? binding : other, id === binding.id ? "First model" : "Other model"));
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("First model"));
+    await pick(user, "引擎", "other");
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("Other model"));
+    await pick(user, "引擎", "Mock");
+    expect(barButton("模型")).toHaveTextContent("First model");
+    expect(mocked.fetchEffectiveSettings).toHaveBeenCalledTimes(2);
+    expect(mocked.fetchModelCatalog).not.toHaveBeenCalled();
+    expect(mocked.fetchBackendUiCapabilities).not.toHaveBeenCalled();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 31_000);
+    try {
+      await pick(user, "引擎", "other");
+      await waitFor(() => expect(barButton("模型")).toHaveTextContent("Other model"));
+      expect(mocked.fetchEffectiveSettings).toHaveBeenCalledTimes(3);
+    } finally { clock.mockRestore(); }
+  });
+
+  it("restores project options without fetching status or leaking another project's model", async () => {
+    const root = { ...binding, id: "binding:default:mock", projectId: "project:default", displayName: "Root" };
+    mocked.fetchProjectBindings.mockImplementation(async (id: string) => ({ bindings: [id === root.projectId ? root : binding] }));
+    mocked.fetchEffectiveSettings.mockImplementation(async (id: string) => toolbarBundle(id === binding.id ? binding : root, id === binding.id ? "Pronto model" : "Root model"));
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("Pronto model"));
+    await pick(user, "项目", "X");
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("Root model"));
+    await pick(user, "项目", "Pronto");
+    expect(barButton("模型")).toHaveTextContent("Pronto model");
+    expect(mocked.fetchProjectBindings).toHaveBeenCalledTimes(2);
+    expect(mocked.fetchEffectiveSettings).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores a late reply from an engine that is no longer selected", async () => {
+    const other = { ...binding, id: "binding:pronto:other", backendId: "backend:other", displayName: "Other", isDefault: false };
+    let finish!: (settings: api.EffectiveSettingsWire) => void;
+    const slow = new Promise<api.EffectiveSettingsWire>((resolve) => { finish = resolve; });
+    mocked.fetchProjectBindings.mockResolvedValue({ bindings: [binding, other] });
+    mocked.fetchEffectiveSettings.mockImplementation((id: string) => id === binding.id ? slow : Promise.resolve(toolbarBundle(other, "Other model")));
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(mocked.fetchEffectiveSettings).toHaveBeenCalledWith(binding.id, undefined, { includeCatalog: true }));
+    await user.type(screen.getByLabelText("消息"), "keep this draft");
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    await pick(user, "引擎", "other");
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("Other model"));
+    expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
+    await act(async () => { finish(toolbarBundle(binding, "Late model")); await slow; });
+    expect(barButton("模型")).toHaveTextContent("Other model");
+    expect(screen.queryByText("Late model")).toBeNull();
+  });
+});
+
 describe("新会话草稿页", () => {
+  it("项目入口只预填；切换项目保留正文，并清掉原引擎的会话设置", async () => {
+    const rootBinding = { ...binding, id: "binding:default:mock", projectId: "project:default", displayName: "Root engine" };
+    mocked.fetchProjectBindings.mockImplementation(async (projectId: string) => ({
+      projectId, bindings: [projectId === "project:default" ? rootBinding : binding], count: 1,
+    }));
+    mocked.fetchModelCatalog.mockResolvedValue({ bindingId: binding.id, models: [], supportsReasoning: true });
+    mocked.fetchEffectiveSettings.mockImplementation(async (bindingId: string) => bindingId === binding.id ? {
+      ...noSettings,
+      reasoningEffort: { value: "low", source: "engine", levels: ["low", "high"] },
+      approvalMode: { value: "ask", source: "engine", options: ["ask", "read_only"] },
+      conversationControls: { reasoning: true, approvalModes: ["ask", "read_only"] },
+    } : {
+      ...noSettings, bindingId,
+      reasoningEffort: { value: "medium", source: "engine", levels: ["low", "medium"] },
+      approvalMode: { value: "deny", source: "engine", options: ["ask", "auto", "deny"] },
+      conversationControls: { reasoning: true, approvalModes: [] },
+    });
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={onCreated} />);
+    await waitFor(() => expect(barButton("项目")).toHaveTextContent("Pronto"));
+    await screen.findByRole("button", { name: "推理强度" });
+    await pick(user, "推理强度", "high");
+    await pick(user, "审批模式", "只读");
+    await user.type(screen.getByLabelText("消息"), "保留这段草稿");
+
+    await pick(user, "项目", "X");
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Mock"));
+    await waitFor(() => expect(barButton("推理强度")).toHaveTextContent("medium"));
+    expect(screen.queryByRole("button", { name: "审批模式" })).toBeNull();
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.getByLabelText("消息")).toHaveValue("保留这段草稿");
+    expect(mocked.createConversation).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(mocked.createConversation).toHaveBeenCalledWith("project:default", { bindingId: rootBinding.id, title: "保留这段草稿" });
+    expect(mocked.patchConversation).not.toHaveBeenCalled();
+    expect(mocked.patchBinding).not.toHaveBeenCalled();
+  });
+
+  it("从引擎入口预选后仍能改引擎，首条消息使用最终选择", async () => {
+    const alternate = { ...binding, id: "binding:pronto:alternate", backendId: "backend:alternate", displayName: "Alternate", isDefault: false };
+    mocked.fetchConnectedBackends.mockResolvedValue({ backends: [{ id: "backend:alternate", displayName: "Alternate" }] });
+    mocked.fetchProjectBindings.mockResolvedValue({ projectId: "project:pronto", bindings: [binding, alternate], count: 2 });
+    mocked.fetchModelCatalog.mockResolvedValue({ bindingId: binding.id, models: [], supportsReasoning: false });
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" initialBindingId={alternate.id} onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Alternate"));
+    await pick(user, "引擎", "Mock");
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Mock"));
+    await user.type(screen.getByLabelText("消息"), "使用当前引擎");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(mocked.sendConversationMessage).toHaveBeenCalled());
+    expect(mocked.createConversation).toHaveBeenCalledWith("project:pronto", { bindingId: binding.id, title: "使用当前引擎" });
+    expect(mocked.patchBinding).not.toHaveBeenCalled();
+  });
+
+  it("轮盘传入项目 slug，引擎卡片传入绑定；首条消息落到对应项目与引擎", async () => {
+    const selected = { ...binding, id: "binding:pronto:alternate", backendId: "backend:alternate", displayName: "Alternate", isDefault: false };
+    mocked.fetchConnectedBackends.mockResolvedValue({ backends: [{ id: "backend:alternate", displayName: "Alternate" }] });
+    mocked.fetchProjectBindings.mockResolvedValue({ projectId: "project:pronto", bindings: [binding, selected], count: 2 });
+    mocked.fetchModelCatalog.mockResolvedValue({ bindingId: selected.id, models: [], supportsReasoning: false });
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" initialBindingId={selected.id} onCreated={() => {}} />);
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Alternate"));
+    expect(mocked.fetchProjectBindings).toHaveBeenCalledWith("project:pronto", undefined, { includeStatus: false });
+    expect(mocked.fetchProjectBindings).toHaveBeenCalledTimes(1);
+    expect(mocked.fetchModelCatalog).toHaveBeenCalledWith("backend:alternate", selected.id);
+    expect(mocked.createConversation).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText("消息"), "开始吧");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(mocked.sendConversationMessage).toHaveBeenCalled());
+    expect(mocked.createConversation).toHaveBeenCalledWith("project:pronto", { bindingId: selected.id, title: "开始吧" });
+    expect(mocked.patchBinding).not.toHaveBeenCalled();
+  });
+
+  it("链接中的引擎已被停用时回到本项目有效的默认引擎", async () => {
+    const disabled = { ...binding, id: "binding:pronto:disabled", displayName: "Disabled", enabled: false, isDefault: false };
+    mocked.fetchProjectBindings.mockResolvedValue({ projectId: "project:pronto", bindings: [binding, disabled], count: 2 });
+    mocked.fetchModelCatalog.mockResolvedValue({ bindingId: binding.id, models: [], supportsReasoning: false });
+    render(<NewConversationPage initialProjectId="project:pronto" initialBindingId={disabled.id} onCreated={() => {}} />);
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Mock"));
+    await waitFor(() => expect(mocked.fetchModelCatalog).toHaveBeenCalledWith("backend:mock", binding.id));
+    expect(mocked.createConversation).not.toHaveBeenCalled();
+  });
+
   it("推理与权限保存在当前草稿，发送时写入会话而不修改绑定", async () => {
     mocked.fetchModelCatalog.mockResolvedValue({ bindingId: binding.id, models: [], supportsReasoning: true });
     mocked.fetchEffectiveSettings.mockResolvedValue({
@@ -98,7 +454,7 @@ describe("新会话草稿页", () => {
       conversationControls: { reasoning: true, approvalModes: ["ask", "read_only"] },
     });
     const user = userEvent.setup();
-    render(<NewConversationPage lockedProjectId="project:pronto" onCreated={() => {}} />);
+    render(<NewConversationPage initialProjectId="project:pronto" onCreated={() => {}} />);
     await screen.findByRole("button", { name: "推理强度" });
     await pick(user, "推理强度", "high");
     await pick(user, "审批模式", "只读");
@@ -113,10 +469,10 @@ describe("新会话草稿页", () => {
   });
   it("三个下拉依赖单向：项目 → 引擎 → 模型；拿不到模型目录时模型下拉整块不渲染（AD-71）", async () => {
     mocked.fetchModelCatalog.mockRejectedValue(new Error("501 unsupported_capability"));
-    render(<NewConversationPage lockedProjectId="project:pronto" onCreated={() => {}} />);
+    render(<NewConversationPage initialProjectId="project:pronto" onCreated={() => {}} />);
 
-    await waitFor(() => expect(mocked.fetchProjectBindings).toHaveBeenCalledWith("project:pronto"));
-    await waitFor(() => expect(barButton("引擎")).toHaveTextContent(binding.displayName));
+    await waitFor(() => expect(mocked.fetchProjectBindings).toHaveBeenCalledWith("project:pronto", undefined, { includeStatus: false }));
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Mock"));
     await waitFor(() => expect(mocked.fetchModelCatalog).toHaveBeenCalledWith("backend:mock", binding.id));
     await waitFor(() => expect(screen.queryByRole("button", { name: "模型" })).toBeNull());
     expect(screen.queryByText(/不支持/)).toBeNull();
@@ -124,7 +480,7 @@ describe("新会话草稿页", () => {
 
   /* 批次十三：模型的**取值**来自有效设置，可选项来自目录；推理强度只在
      有效设置报了 levels 时才出现（DESIGN ★ I）。 */
-  it("模型选择只作用于新会话，在发送前写入会话快照，不改项目默认模型", async () => {
+  it("模型选择只作用于新会话，在发送前写入会话快照，不改绑定默认值", async () => {
     mocked.fetchModelCatalog.mockResolvedValue({
       bindingId: binding.id,
       mode: "catalog",
@@ -148,7 +504,7 @@ describe("新会话草稿页", () => {
       });
     mocked.patchBinding.mockResolvedValue(binding);
     const user = userEvent.setup();
-    render(<NewConversationPage lockedProjectId="project:pronto" onCreated={() => {}} />);
+    render(<NewConversationPage initialProjectId="project:pronto" onCreated={() => {}} />);
 
     await waitFor(() => expect(barButton("模型")).toHaveTextContent("Mock Small"));
     expect(screen.queryByRole("button", { name: "推理强度" })).toBeNull();
@@ -171,9 +527,9 @@ describe("新会话草稿页", () => {
     mocked.sendConversationMessage.mockResolvedValue({ conversationId: "conversation:new", runId: "run:1", runIdPending: false, acceptedAfterSequence: 0 });
     const onCreated = vi.fn();
     const user = userEvent.setup();
-    render(<NewConversationPage lockedProjectId="project:pronto" onCreated={onCreated} />);
+    render(<NewConversationPage initialProjectId="project:pronto" onCreated={onCreated} />);
 
-    await waitFor(() => expect(barButton("引擎")).toHaveTextContent(binding.displayName));
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Mock"));
     await user.type(screen.getByLabelText("消息"), "第一句");
     // 打完字仍然没有会话——侧栏不 +1（★定稿 C）
     expect(mocked.createConversation).not.toHaveBeenCalled();
@@ -203,7 +559,7 @@ describe("新会话草稿页", () => {
     await waitFor(() => expect(screen.getByText(/未知 Project/)).toBeInTheDocument());
     await pick(user, "项目", "Pronto");
     await waitFor(() => expect(screen.queryByText(/未知 Project/)).not.toBeInTheDocument());
-    expect(barButton("引擎")).toHaveTextContent(binding.displayName);
+    expect(barButton("引擎")).toHaveTextContent("Mock");
   });
 
   /* 批次十一第 4 件①：Enter 发送、Shift+Enter 换行。 */
@@ -212,8 +568,8 @@ describe("新会话草稿页", () => {
     mocked.createConversation.mockResolvedValue({ id: "conversation:new" });
     mocked.sendConversationMessage.mockResolvedValue({ conversationId: "conversation:new", runId: null, runIdPending: true, acceptedAfterSequence: null });
     const user = userEvent.setup();
-    render(<NewConversationPage lockedProjectId="project:pronto" onCreated={() => {}} />);
-    await waitFor(() => expect(barButton("引擎")).toHaveTextContent(binding.displayName));
+    render(<NewConversationPage initialProjectId="project:pronto" onCreated={() => {}} />);
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Mock"));
 
     const box = screen.getByLabelText("消息");
     await user.type(box, "第一行{Shift>}{Enter}{/Shift}第二行");
@@ -233,8 +589,8 @@ describe("新会话草稿页", () => {
     mocked.deleteConversation.mockResolvedValue({ conversationId: "conversation:new", deleted: true });
     const onCreated = vi.fn();
     const user = userEvent.setup();
-    render(<NewConversationPage lockedProjectId="project:pronto" onCreated={onCreated} />);
-    await waitFor(() => expect(barButton("引擎")).toHaveTextContent(binding.displayName));
+    render(<NewConversationPage initialProjectId="project:pronto" onCreated={onCreated} />);
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Mock"));
 
     await user.type(screen.getByLabelText("消息"), "发不出去的一句");
     await user.click(screen.getByRole("button", { name: /发送/ }));
@@ -255,8 +611,8 @@ describe("新会话草稿页", () => {
     mocked.deleteConversation.mockRejectedValue(new Error("404 端点还没上线"));
     const onCreated = vi.fn();
     const user = userEvent.setup();
-    render(<NewConversationPage lockedProjectId="project:pronto" onCreated={onCreated} />);
-    await waitFor(() => expect(barButton("引擎")).toHaveTextContent(binding.displayName));
+    render(<NewConversationPage initialProjectId="project:pronto" onCreated={onCreated} />);
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Mock"));
     await user.type(screen.getByLabelText("消息"), "发不出去的一句");
     await user.click(screen.getByRole("button", { name: /发送/ }));
     expect(await screen.findByText("引擎没起来")).toBeInTheDocument();
@@ -270,10 +626,10 @@ describe("新会话草稿页", () => {
   it("草稿正文存 sessionStorage，重新挂载还在", async () => {
     mocked.fetchModelCatalog.mockRejectedValue(new Error("no catalog"));
     const user = userEvent.setup();
-    const view = render(<NewConversationPage lockedProjectId="project:pronto" onCreated={() => {}} />);
+    const view = render(<NewConversationPage initialProjectId="project:pronto" onCreated={() => {}} />);
     await user.type(screen.getByLabelText("消息"), "半句话");
     view.unmount();
-    render(<NewConversationPage lockedProjectId="project:pronto" onCreated={() => {}} />);
+    render(<NewConversationPage initialProjectId="project:pronto" onCreated={() => {}} />);
     expect(screen.getByLabelText("消息")).toHaveValue("半句话");
   });
 });
@@ -317,8 +673,8 @@ describe("草稿页的选择器", () => {
 describe("first-message attachments and delivery boundaries", () => {
   async function ready(onCreated = vi.fn()) {
     mocked.fetchModelCatalog.mockRejectedValue(new Error("no catalog"));
-    const view = render(<NewConversationPage lockedProjectId="project:pronto" onCreated={onCreated} />);
-    await waitFor(() => expect(barButton("引擎")).toHaveTextContent(binding.displayName));
+    const view = render(<NewConversationPage initialProjectId="project:pronto" onCreated={onCreated} />);
+    await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Mock"));
     await waitFor(() => expect(screen.getByRole("button", { name: "添加附件" })).toBeInTheDocument());
     return { ...view, onCreated, input: view.container.querySelector<HTMLInputElement>('input[type="file"]')! };
   }
@@ -391,7 +747,7 @@ describe("first-message attachments and delivery boundaries", () => {
   it("does not expose attachment support when capability is unknown", async () => {
     mocked.fetchBackendUiCapabilities.mockResolvedValue({ ...ALL_SUPPORTED_UI_CAPABILITIES, card: { ...ALL_SUPPORTED_UI_CAPABILITIES.card, attachments: "unknown" } });
     mocked.fetchModelCatalog.mockRejectedValue(new Error("no catalog"));
-    render(<NewConversationPage lockedProjectId="project:pronto" onCreated={vi.fn()} />);
+    render(<NewConversationPage initialProjectId="project:pronto" onCreated={vi.fn()} />);
     await waitFor(() => expect(mocked.fetchBackendUiCapabilities).toHaveBeenCalled());
     expect(screen.queryByRole("button", { name: "添加附件" })).toBeNull();
     fireEvent.paste(screen.getByLabelText("消息"), { clipboardData: { files: [new File(["x"], "x.png", { type: "image/png" })] } });
@@ -434,9 +790,50 @@ describe("first-message attachments and delivery boundaries", () => {
     mocked.fetchBackendUiCapabilities.mockResolvedValue({ ...ALL_SUPPORTED_UI_CAPABILITIES, models: { ...ALL_SUPPORTED_UI_CAPABILITIES.models, conversationScoped: "unsupported" } });
     mocked.fetchEffectiveSettings.mockResolvedValue({ ...noSettings, model: { value: "model-a", source: "binding" } });
     mocked.fetchModelCatalog.mockResolvedValue({ bindingId: binding.id, models: [{ modelId: "model-a", displayName: "Model A" }, { modelId: "model-b", displayName: "Model B" }] });
-    render(<NewConversationPage lockedProjectId="project:pronto" onCreated={vi.fn()} />);
+    render(<NewConversationPage initialProjectId="project:pronto" onCreated={vi.fn()} />);
     expect(await screen.findByText("Model A")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "模型" })).toBeNull();
     expect(mocked.patchBinding).not.toHaveBeenCalled();
   });
+});
+
+it("sends the chosen vendor for a same-name model before sending the first message", async () => {
+  mocked.fetchEffectiveSettings.mockResolvedValue({ ...noSettings, model: { value: "same", source: "engine" } });
+  mocked.fetchModelCatalog.mockResolvedValue({ bindingId: binding.id, defaultModelId: "same", defaultProviderId: "one", models: [
+    { modelId: "same", providerId: "one", displayName: "Vendor One", reasoningLevels: [] },
+    { modelId: "same", providerId: "two", displayName: "Vendor Two", reasoningLevels: [] },
+  ] });
+  mocked.patchConversation.mockImplementation(async (_id: string, body: { modelId: string; providerId: string }) => ({ conversation: { id: "conversation:new", ...body }, appliedToRuntime: false }));
+  const user = userEvent.setup();
+  const created = vi.fn();
+  render(<NewConversationPage initialProjectId="project:pronto" onCreated={created} />);
+  await screen.findByText("Vendor One");
+  await pick(user, "模型", "Vendor Two");
+  await user.type(screen.getByLabelText("消息"), "Use the selected vendor");
+  await user.click(screen.getByRole("button", { name: "发送" }));
+  await waitFor(() => expect(created).toHaveBeenCalledOnce());
+  expect(mocked.patchConversation).toHaveBeenCalledWith("conversation:new", { modelId: "same", providerId: "two" });
+  expect(mocked.patchBinding).not.toHaveBeenCalled();
+});
+
+it("新对话先保存工作模式和扩展配置，再发送首条消息", async () => {
+  mocked.fetchEffectiveSettings.mockResolvedValue({ ...toolbarBundle(binding, "Test model"), conversationControls: {
+    reasoning: false, approvalModes: [], executionDefault: "build", executionModes: [{ id: "build", name: "Build" }, { id: "plan", name: "Plan" }],
+    configOptions: [{ id: "custom-network", name: "Network access", type: "boolean", currentValue: false }],
+  } });
+  const user = userEvent.setup();
+  const onCreated = vi.fn();
+  render(<NewConversationPage initialProjectId="pronto" onCreated={onCreated} />);
+  await screen.findByRole("button", { name: "运行模式" });
+  await pick(user, "运行模式", "Plan");
+  await user.click(screen.getByRole("button", { name: "更多设置" }));
+  await user.click(screen.getByRole("switch", { name: "Network access" }));
+  await user.keyboard("{Escape}");
+  await user.type(screen.getByLabelText("消息"), "synthetic draft");
+  await user.click(screen.getByRole("button", { name: "发送" }));
+  await waitFor(() => expect(onCreated).toHaveBeenCalled());
+  expect(mocked.patchConversation).toHaveBeenCalledWith("conversation:new", { executionMode: "plan" });
+  expect(mocked.patchConversation).toHaveBeenCalledWith("conversation:new", { configOptions: { "custom-network": true } });
+  expect(Math.max(...mocked.patchConversation.mock.invocationCallOrder)).toBeLessThan(mocked.sendConversationMessage.mock.invocationCallOrder[0]);
+  expect(mocked.patchBinding).not.toHaveBeenCalled();
 });

@@ -188,6 +188,7 @@ class DynamicModel(NamedTuple):
     is_current_provider: bool = False
     fast: bool = False
     reasoning: bool = False
+    availability: str = "available"
 
 
 class ModelOptions(list):
@@ -222,6 +223,7 @@ def parse_model_options(payload: Any) -> ModelOptions:
         provider_label: str | None = None,
         is_current: bool = False,
         capabilities: Mapping[str, Any] | None = None,
+        availability: str = "unknown",
     ) -> None:
         model_id = (
             entry.get("id")
@@ -240,6 +242,8 @@ def parse_model_options(payload: Any) -> ModelOptions:
                 provider_label,
                 is_current,
                 capabilities,
+                "unavailable" if availability == "unavailable" or entry.get("available") is False or entry.get("enabled") is False
+                else "available" if entry.get("available") is True else availability,
             )
         )
 
@@ -271,6 +275,10 @@ def parse_model_options(payload: Any) -> ModelOptions:
                 is_current = bool(provider.get("is_current"))
                 caps = provider.get("capabilities")
                 caps = caps if isinstance(caps, Mapping) else None
+                # Credentials alone do not attest to a model entitlement. Hermes
+                # also reports curated, virtual and public product catalogs here.
+                availability = "available" if provider.get("models_verified") is True else "unknown"
+                denied = {item for item in (provider.get("unavailable_models") or ()) if isinstance(item, str)}
                 for entry in provider.get("models") or ():
                     if isinstance(entry, Mapping):
                         _take(
@@ -279,9 +287,11 @@ def parse_model_options(payload: Any) -> ModelOptions:
                             provider_label=label,
                             is_current=is_current,
                             capabilities=caps,
+                            availability="unavailable" if (entry.get("id") or entry.get("model_id") or entry.get("modelId") or entry.get("model")) in denied else availability,
                         )
                     elif isinstance(entry, str) and entry:
-                        out.append(_dynamic(entry, slug, None, label, is_current, caps))
+                        out.append(_dynamic(entry, slug, None, label, is_current, caps,
+                                            "unavailable" if entry in denied else availability))
             if seen and not authenticated:
                 out.diagnostics = ("引擎没有任何已登录的 provider",)
     elif isinstance(payload, list):
@@ -298,6 +308,7 @@ def _dynamic(
     provider_label: str | None,
     is_current: bool,
     capabilities: Mapping[str, Any] | None,
+    availability: str = "available",
 ) -> DynamicModel:
     """一条动态模型 + 它在 ``capabilities[model]`` 里的两位（缺就是 False）。"""
     entry = capabilities.get(model_id) if isinstance(capabilities, Mapping) else None
@@ -310,6 +321,7 @@ def _dynamic(
         is_current_provider=is_current,
         fast=bool(entry.get("fast")),
         reasoning=bool(entry.get("reasoning")),
+        availability=availability,
     )
 
 
@@ -488,8 +500,37 @@ def merge_catalog(
 
     models: list[ModelDescriptor] = []
     fast: set[str] = set(dynamic_fast)
-    for model_id in ids:
+    choices = entries if dynamic else [DynamicModel(model_id, providers.get(model_id), displays.get(model_id), availability="unknown") for model_id in ids]
+    # Configured custom endpoints may not appear in a gateway's global catalog.
+    # Preserve the selection, but never promote it to an entitlement guarantee.
+    configured_id = default_model_id or engine_model_id
+    configured_provider = default_provider_id or engine_provider_id
+    if configured_id and not any(item.model_id == configured_id and
+                                 (not configured_provider or normalize_provider(item.provider_id) == normalize_provider(configured_provider)) for item in choices):
+        choices = [DynamicModel(configured_id, configured_provider, availability="configured"), *choices]
+    if configured_provider:
+        choices = _order_by_provider([item._replace(is_current_provider=normalize_provider(item.provider_id) == normalize_provider(configured_provider)) for item in choices])
+    seen_choices: set[tuple[str | None, str]] = set()
+    configured_routes = {normalize_provider(route): route for route in (*tuple(provider_ids or ()), engine_provider_id, default_provider_id) if route}
+    for choice in choices:
+        model_id = choice.model_id
         entry = static.get(model_id)
+        provider_id = choice.provider_id or (configured_routes.get(normalize_provider(entry.provider_id), entry.provider_id) if entry else None)
+        key = (provider_id, model_id)
+        if key in seen_choices:
+            continue
+        seen_choices.add(key)
+        # A reseller and the original vendor may publish the same model id.
+        # Static metadata must not rewrite the route returned by the engine.
+        if entry and entry.provider_id and provider_id and normalize_provider(entry.provider_id) != normalize_provider(provider_id):
+            entry = None
+        availability = choice.availability
+        configured = model_id == (default_model_id or engine_model_id) and (
+            not (default_provider_id or engine_provider_id)
+            or normalize_provider(provider_id) == normalize_provider(default_provider_id or engine_provider_id)
+        )
+        if configured and availability == "unknown":
+            availability = "configured"
         if entry is not None and entry.fast_mode:
             fast.add(model_id)
         models.append(
@@ -498,11 +539,12 @@ def merge_catalog(
                 # 批次二十九：给人看的 provider 名与「这是引擎当前的 provider 吗」。
                 # 前端据这两项分组（当前 provider 的组排第一），静态目录不覆盖它们
                 # ——它们说的是**引擎此刻**的状态，本地静态表答不了。
-                provider_label=labels.get(model_id),
-                is_current_provider=model_id in current_ids,
+                provider_label=choice.provider_label,
+                is_current_provider=choice.is_current_provider,
                 # 规格 §2.3 映射表：display/provider 以静态覆盖动态，与现有 UI 一致。
-                display_name=(entry.display_name if entry else None) or displays.get(model_id),
-                provider_id=(entry.provider_id if entry else None) or providers.get(model_id),
+                display_name=(entry.display_name if entry else None) or choice.display_name,
+                provider_id=provider_id,
+                availability=availability,
                 # R-14 的两个消费者字段一律取静态。
                 context_window=entry.context_window if entry else None,
                 # 批次十四第 3 件：静态目录说不出档位 → Hermes 的通用档位。

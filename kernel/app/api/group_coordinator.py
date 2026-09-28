@@ -14,6 +14,7 @@ from pathlib import Path
 from tempfile import gettempdir
 from typing import Any
 
+from app.conversations.configuration import validate_config_values
 from app.api.api_errors import ApiError
 from app.collaboration.coordinator import (
     CONFIG_KEY, COORDINATOR_ID, DEFAULTS_KEY, Assignment, CoordinatorConfig,
@@ -26,6 +27,7 @@ from app.conversations.models import Conversation
 from app.projects.models import AgentBinding
 from app.projects.binding_snapshot import register_binding_snapshot, binding_workspace_root
 from drivers.base import MessageInput
+from drivers.model_selection import select_model
 from drivers.error_text import safe_error_text, safe_exception_message
 
 
@@ -81,18 +83,21 @@ class GroupCoordinator:
             reasoning_levels = controls.get('reasoningLevels', ())
         else:
             model_id = config.model_id or binding.default_model_id or catalog.default_model_id
-            provider_id = config.provider_id or binding.default_provider_id or catalog.default_provider_id
-            matches = [m for m in catalog.models if m.model_id == model_id and
-                       (not provider_id or m.provider_id == provider_id)]
-            if len(matches) != 1:
-                raise ApiError(400, 'model_not_available', '请选择明确的厂家与模型组合')
-            selected = matches[0]
+            provider_id = config.provider_id if config.model_id else (catalog.default_provider_id or binding.default_provider_id)
+            try:
+                selected = select_model(catalog, model_id, provider_id)
+            except ValueError as exc:
+                raise ApiError(400, 'model_not_available', str(exc)) from exc
             model_id, provider_id = selected.model_id, selected.provider_id
             reasoning_levels = selected.reasoning_levels
         if config.reasoning_mode and config.reasoning_mode not in reasoning_levels:
             raise ApiError(400, 'reasoning_not_supported', '该模型不支持所选推理强度')
         config = config.model_copy(update={'model_id': model_id, 'provider_id': provider_id,
              'workspace_root': config.workspace_root or binding_workspace_root(snapshot)})
+        try:
+            validate_config_values(config.config_options, controls.get('configOptions', []))
+        except ValueError as exc:
+            raise ApiError(400, 'config_not_supported', str(exc)) from exc
         if config.approval_mode and config.approval_mode not in controls.get('approvalModes', ()):
             raise ApiError(400, 'approval_not_supported', '引擎不支持所选权限模式')
         if config.reasoning_mode and not controls.get('reasoning'):
@@ -135,8 +140,12 @@ class GroupCoordinator:
                 raise ApiError(409, 'configuration_changed', '本组配置已变化，请重新打开')
             config = await self.validate_config(raw)
             config = config.model_copy(update={'revision': old.get('revision', 0) + 1})
-            ranks = {'read_only': 0, 'plan': 0, 'ask': 1, 'auto': 2, 'bypass': 3}
-            if ranks.get(config.approval_mode, 1) < ranks.get(old.get('approvalMode'), 1):
+            ranks = {'read_only': 0, 'plan': 0, 'ask': 1, 'host:ask': 1, 'auto': 2, 'host:auto': 2, 'bypass': 3}
+            old_approval = old.get('approvalMode')
+            native_change = config.approval_mode != old_approval and any(
+                isinstance(value, str) and value.startswith('native:')
+                for value in (config.approval_mode, old_approval))
+            if native_change or config.config_options != old.get('configOptions', {}) or ranks.get(config.approval_mode, 1) < ranks.get(old_approval, 1):
                 await self.stop(group_id, reason='configuration_changed')
             current = await self.repos.collaborations.get(group_id)
             group = await self.repos.collaborations.save(current.evolve(
@@ -258,7 +267,7 @@ class GroupCoordinator:
         await self.repos.bindings.save(binding)
         conv = Conversation.create_group_spawned(project_id=source.project_id, agent_binding_id=binding.id, title='组长',
             model_id=config.model_id, provider_id=config.provider_id, reasoning_mode=config.reasoning_mode,
-            visibility='group_only', retention='ephemeral', collaboration_id=group.id).evolve(approval_mode=config.approval_mode, execution_mode=config.execution_mode)
+            visibility='group_only', retention='ephemeral', collaboration_id=group.id).evolve(approval_mode=config.approval_mode, execution_mode=config.execution_mode, config_options=config.config_options)
         return await self.repos.conversations.save(conv)
 
     async def call(self, group, state, conversation, prompt, speaker):

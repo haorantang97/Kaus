@@ -121,6 +121,47 @@ def _settings(client: TestClient, binding_id: str) -> dict:
     return response.json()
 
 
+def test_toolbar_bundle_reads_catalog_once_and_reuses_backend_capabilities(rig):
+    harness, client = rig
+    catalog_reader = harness.driver.get_model_catalog
+    calls = []
+
+    async def read_catalog(binding):
+        calls.append(binding.id)
+        return await catalog_reader(binding)
+
+    harness.driver.get_model_catalog = read_catalog
+    response = client.get(
+        f"/api/bindings/{harness.binding.id}/effective-settings",
+        params={"includeCatalog": "true"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert calls == [harness.binding.id]
+    assert body["modelCatalog"]["bindingId"] == harness.binding.id
+    assert body["model"]["value"] == body["modelCatalog"]["defaultModelId"]
+    backend = client.get(f"/api/backends/{harness.binding.backend_id}").json()
+    assert body["uiCapabilities"] == backend["capabilities"]["ui"]
+    default = _settings(client, harness.binding.id)
+    assert "modelCatalog" not in default
+    assert "uiCapabilities" not in default
+
+
+def test_toolbar_bundle_does_not_invent_a_catalog_when_the_driver_fails(rig):
+    harness, client = rig
+
+    async def unavailable(_binding):
+        raise RuntimeError("catalog unavailable")
+
+    harness.driver.get_model_catalog = unavailable
+    response = client.get(
+        f"/api/bindings/{harness.binding.id}/effective-settings?includeCatalog=true"
+    )
+    assert response.status_code == 200
+    assert response.json()["modelCatalog"] is None
+    assert response.json()["model"] == {"value": None, "source": "none"}
+
+
 # --------------------------------------------------------------------------- #
 # 1. 有效设置的三种来源
 # --------------------------------------------------------------------------- #

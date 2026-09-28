@@ -53,6 +53,8 @@ from typing import Any, AsyncIterator, Literal, Mapping, Sequence
 
 from app.capabilities.models import EffectiveCapabilities
 from app.conversations.models import Conversation
+from app.conversations.configuration import validate_config_values
+from drivers.approval import host_approval_options, is_host_approval, allow_once_option
 from app.ids import normalize_backend_id
 from app.projects.models import AgentBinding, Project
 from drivers.acp.capabilities import (
@@ -60,6 +62,7 @@ from drivers.acp.capabilities import (
     DEFAULT_THOUGHT_LEVEL,
     agent_name,
     config_options_from_session_result,
+    conversation_permission_options,
     current_model_from_session_result,
     agent_version,
     available_modes,
@@ -219,7 +222,9 @@ class _CatalogSnapshot:
     mode_option_id: str | None = None
     approval_option_id: str | None = None
     approval_ids: tuple[str, ...] = ()
+    approval_definitions: tuple[Any, ...] = ()
     current_approval_id: str | None = None
+    config_options: tuple[dict[str, Any], ...] = ()
     auth_state: Literal["signed_in", "signed_out", "unknown"] = "unknown"
     engine_default_available: bool = False
     degraded: bool = False
@@ -262,6 +267,8 @@ class _RuntimeState:
     control_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     #: AD-118：这条 Binding 的审批档（``ask`` / ``auto`` / ``deny``）。
     approval_mode: str = "ask"
+    permission_pending: bool = False
+    config_pending: set[str] = field(default_factory=set)
     available_modes: tuple[Any, ...] = ()
     session_result: dict[str, Any] = field(default_factory=dict)
     config_revision: int = 0
@@ -460,7 +467,7 @@ class AcpDriver:
 
     def _permission_modes(self, result: Any) -> tuple[Any, ...]:
         config = self._config_options(result)
-        return config.approval_ids if config.approval_option_id else self._available_modes(result)
+        return (config.approval_definitions or config.approval_ids) if config.approval_option_id else self._available_modes(result)
 
     def _available_modes(self, result: Any) -> tuple[Any, ...]:
         return available_modes(result,
@@ -471,25 +478,35 @@ class AcpDriver:
         return bool(config.approval_option_id or (self.quirks.mode_semantics == "approval" and (self.quirks.supports_set_mode or config.mode_option_id)))
 
     def conversation_controls(self, binding: AgentBinding) -> dict[str, Any]:
-        snapshot = self._catalog.get(binding.id)
+        return self._controls_from_snapshot(binding, self._catalog.get(binding.id))
+
+    def runtime_conversation_controls(self, runtime: RuntimeHandle, binding: AgentBinding) -> dict[str, Any]:
+        state = self._state(runtime)
+        return self._controls_from_snapshot(binding, self._snapshot_from_session(state.session_result))
+
+    def _controls_from_snapshot(self, binding: AgentBinding, snapshot: _CatalogSnapshot | None) -> dict[str, Any]:
         modes = (snapshot.mode_definitions or snapshot.mode_ids) if snapshot is not None else ()
-        permission_options = snapshot.approval_ids if snapshot and snapshot.approval_option_id else modes
-        permission_modes = ()
+        permission_options = (snapshot.approval_definitions or snapshot.approval_ids) if snapshot and snapshot.approval_option_id else modes
+        choices = []
         if (snapshot and snapshot.approval_option_id) or ((self.quirks.supports_set_mode or (snapshot and snapshot.mode_option_id)) and self.quirks.mode_semantics == "approval"):
-            permission_modes = tuple(
-                mode for mode in ("ask", "auto", "bypass", "read_only", "plan")
-                if resolve_conversation_mode_id(mode, permission_options, self.preset.approval_mode_ids or None if self.preset else None)
-            )
-        legacy_mode = resolve_mode_id(self._approval_mode_for(binding.id), permission_options, self.preset.approval_mode_ids or None if self.preset else None) or ((snapshot.current_approval_id if snapshot.approval_option_id else snapshot.current_mode_id) if snapshot else None)
-        approval_default = next((mode for mode in permission_modes if resolve_conversation_mode_id(mode, permission_options, self.preset.approval_mode_ids or None if self.preset else None) == legacy_mode), None)
+            choices = conversation_permission_options(permission_options, self.preset.approval_mode_ids or None if self.preset else None)
+        delegated = not choices and bool(getattr(self.preset, "host_approval", False))
+        if delegated:
+            choices = host_approval_options()
+        native_default = (snapshot.current_approval_id if snapshot.approval_option_id else snapshot.current_mode_id) if snapshot else None
+        if binding.runtime_config.get("approval_mode") in ("ask", "auto", "deny"):
+            native_default = resolve_mode_id(self._approval_mode_for(binding.id), permission_options, self.preset.approval_mode_ids or None if self.preset else None) or native_default
+        approval_default = next((option["id"] for option in choices if option.get("nativeId") == native_default), None)
         return {
             "reasoning": self.quirks.model_id_format == "effort_suffix"
             or (self.quirks.supports_set_mode and self.quirks.mode_semantics == "thought_level")
             or bool(snapshot and snapshot.thought_option_id and snapshot.thought_levels),
             "reasoningDefault": snapshot.current_thought_level if snapshot else None,
             "reasoningLevels": list((snapshot.thought_levels or (snapshot.mode_ids if self.quirks.mode_semantics == "thought_level" else ())) if snapshot else ()),
-            "approvalModes": list(permission_modes),
-            "approvalDefault": approval_default,
+            "approvalModes": [option["id"] for option in choices],
+            "approvalOptions": choices,
+            "approvalDefault": "host:ask" if delegated else approval_default,
+            "configOptions": list(snapshot.config_options) if snapshot else [],
             "executionModes": list(modes) if snapshot and (snapshot.mode_option_id or self.quirks.supports_set_mode) and self.quirks.mode_semantics == "none" else [],
             "executionDefault": snapshot.current_mode_id if snapshot and (snapshot.mode_option_id or self.quirks.supports_set_mode) and self.quirks.mode_semantics == "none" else None,
         }
@@ -594,6 +611,14 @@ class AcpDriver:
         self._assert_binding(binding)
         capabilities = await self.get_capabilities()
         snapshot = await self._catalog_snapshot(binding)
+        return self._model_catalog_from_snapshot(binding, snapshot, capabilities)
+
+    async def runtime_model_catalog(self, runtime: RuntimeHandle, binding: AgentBinding) -> ModelCatalog:
+        snapshot = self._snapshot_from_session(self._state(runtime).session_result)
+        return self._model_catalog_from_snapshot(binding, snapshot, await self.get_capabilities())
+
+    @staticmethod
+    def _model_catalog_from_snapshot(binding, snapshot, capabilities) -> ModelCatalog:
         return ModelCatalog(
             binding_id=binding.id,
             mode=capabilities.models.mode,
@@ -772,8 +797,11 @@ class AcpDriver:
             mode_option_id=config.mode_option_id,
             approval_option_id=config.approval_option_id,
             approval_ids=config.approval_ids,
+            approval_definitions=config.approval_definitions,
             current_approval_id=config.current_approval_id,
-            current_mode_id=(result.get("modes", {}).get("currentModeId") if isinstance(result, Mapping) and isinstance(result.get("modes"), Mapping) else None) or config.current_mode_id,
+            config_options=config.config_options,
+            current_mode_id=(config.current_mode_id if config.mode_option_id else
+                             (result.get("modes", {}).get("currentModeId") if isinstance(result, Mapping) and isinstance(result.get("modes"), Mapping) else None)),
             thought_levels=config.thought_levels,
             thought_option_id=config.thought_option_id,
             current_thought_level=config.current_thought_level,
@@ -1241,7 +1269,7 @@ class AcpDriver:
         if semantics == "thought_level" and config.thought_option_id:
             return None  # Applied after model selection using its own config id.
         wanted = thought_level if semantics == "thought_level" else mode
-        available = self._permission_modes(session_result)
+        available = self._available_modes(session_result) if semantics == "thought_level" else self._permission_modes(session_result)
         if not available:
             self._warn(
                 f"set_mode_unavailable：agent 没有报 modes.availableModes（{wanted}）"
@@ -1259,7 +1287,10 @@ class AcpDriver:
             )
             return None
         try:
-            await self._set_permission_mode(connection, session_id, session_result, mode_id)
+            if semantics == "thought_level":
+                await self._set_session_mode(connection, session_id, session_result, mode_id)
+            else:
+                await self._set_permission_mode(connection, session_id, session_result, mode_id)
         except (AcpRpcError, AcpTransportError) as exc:
             self._warn(f"set_mode_failed：{wanted} → {mode_id} 被拒（{exc}）")
             return None
@@ -1370,18 +1401,24 @@ class AcpDriver:
                 result, _params = await self._new_session(connection, options)
                 session_id = _require_session_id(result)
                 resumed = False
-            if conversation.approval_mode is not None:
+            mode_id = None
+            # Cache the engine's defaults before applying this conversation's overrides.
+            self._remember_models(conversation.agent_binding_id, result)
+            if is_host_approval(conversation.approval_mode):
+                if not getattr(self.preset, "host_approval", False):
+                    raise UnsupportedCapabilityError("当前引擎未提供审批委托。")
+            elif conversation.approval_mode is not None:
                 mode_id = resolve_conversation_mode_id(conversation.approval_mode, self._permission_modes(result), self.preset.approval_mode_ids or None if self.preset else None)
                 if not self._supports_permissions(self._config_options(result)) or mode_id is None:
                     raise UnsupportedCapabilityError("引擎未提供这条会话的权限选项。")
                 await self._set_permission_mode(connection, session_id, result, mode_id)
-            elif (conversation.reasoning_mode is not None and self.quirks.mode_semantics == "thought_level"
-                  and not self._config_options(result).thought_option_id):
+            if (conversation.reasoning_mode is not None and self.quirks.mode_semantics == "thought_level"
+                    and not self._config_options(result).thought_option_id):
                 mode_id = resolve_thought_level_id(conversation.reasoning_mode, self._available_modes(result))
                 if not self.quirks.supports_set_mode or mode_id is None:
                     raise UnsupportedCapabilityError("引擎未提供这条会话的推理选项。")
                 await connection.call("session/set_mode", {"sessionId": session_id, "modeId": mode_id}, timeout=self._call_timeout)
-            else:
+            elif conversation.approval_mode is None:
                 mode_id = await self._apply_set_mode(
                     connection, session_id, result, approval_mode,
                     thought_level=self._binding_reasoning_effort(conversation.agent_binding_id) or DEFAULT_THOUGHT_LEVEL,
@@ -1408,7 +1445,6 @@ class AcpDriver:
             await connection.aclose()
             raise
 
-        self._remember_models(conversation.agent_binding_id, result)
         self.session_ledger.setdefault(conversation.agent_binding_id, {}).setdefault(
             session_id,
             NativeSession(
@@ -1503,6 +1539,8 @@ class AcpDriver:
             wanted_effort = conversation.reasoning_mode or self._binding_reasoning_effort(conversation.agent_binding_id)
             if config.thought_option_id and wanted_effort:
                 await self._set_reasoning_config(state, wanted_effort)
+            for key, value in conversation.config_options.items():
+                await self._apply_extra_config(connection, session_id, state.session_result, key, value)
         except BaseException:
             self._runtimes.pop(handle.runtime_id, None)
             state.closed = True
@@ -1534,10 +1572,32 @@ class AcpDriver:
                 raise TurnAlreadyRunningError("上一轮尚未结束。", failure=turn_already_running_hint())
             previous = state.conversation
             config_revision = state.config_revision
-            permission_changed = conversation.approval_mode != previous.approval_mode
+            permission_changed = conversation.approval_mode != previous.approval_mode or state.permission_pending
             effort_changed = conversation.reasoning_mode != previous.reasoning_mode
             model_changed = conversation.model_id != previous.model_id
             execution_changed = conversation.execution_mode != previous.execution_mode
+            extra_changed = conversation.config_options != previous.config_options or bool(state.config_pending)
+            if extra_changed:
+                if permission_changed or effort_changed or model_changed or execution_changed:
+                    raise UnsupportedCapabilityError("请分别修改扩展设置和其他设置。")
+                changed = {key: value for key, value in conversation.config_options.items() if key not in previous.config_options or previous.config_options[key] != value or key in state.config_pending}
+                if len(changed) != 1:
+                    raise UnsupportedCapabilityError("请逐项修改扩展设置。")
+                key, value = next(iter(changed.items()))
+                try:
+                    await self._apply_extra_config(state.connection, state.session_id, state.session_result, key, value)
+                except AcpRpcError as exc:
+                    raise ModelRejectedError("设置未生效", reason=str(exc)) from exc
+                except (AcpTransportError, asyncio.TimeoutError, asyncio.CancelledError) as exc:
+                    state.config_pending.add(key)
+                    if isinstance(exc, asyncio.CancelledError):
+                        raise
+                    raise ModelRejectedError("设置尚未确认", reason="请重新选择该设置后继续。") from exc
+                self._accept_config_update(state, state.session_result)
+                state.config_pending.discard(key)
+                conversation = self._confirmed_config_values(conversation, state.session_result)
+                state.conversation = conversation
+                return conversation
             config = self._config_options(state.session_result)
             if execution_changed:
                 if permission_changed or effort_changed or model_changed:
@@ -1556,7 +1616,12 @@ class AcpDriver:
                 raise UnsupportedCapabilityError("请分别修改模型和推理设置。")
             if model_changed and effort_changed and self.quirks.mode_semantics == "thought_level":
                 raise UnsupportedCapabilityError("请分别修改模型和推理设置。")
-            if permission_changed:
+            if permission_changed and is_host_approval(conversation.approval_mode):
+                if not getattr(self.preset, "host_approval", False):
+                    raise UnsupportedCapabilityError("当前引擎未提供审批委托。")
+                state.approval_mode = conversation.approval_mode
+                state.permission_pending = False
+            elif permission_changed:
                 if not self._supports_permissions(config):
                     raise UnsupportedCapabilityError("当前引擎不支持会话权限切换。")
                 mode_id = resolve_conversation_mode_id(conversation.approval_mode, self._permission_modes(state.session_result), self.preset.approval_mode_ids or None if self.preset else None)
@@ -1565,9 +1630,15 @@ class AcpDriver:
                 try:
                     await self._set_permission_mode(state.connection, state.session_id, state.session_result, mode_id)
                     self._accept_config_update(state, state.session_result)
-                except (AcpRpcError, AcpTransportError) as exc:
+                except AcpRpcError as exc:
                     raise ModelRejectedError("权限设置未生效", reason=str(exc)) from exc
+                except (AcpTransportError, asyncio.TimeoutError, asyncio.CancelledError) as exc:
+                    state.permission_pending = True
+                    if isinstance(exc, asyncio.CancelledError):
+                        raise
+                    raise ModelRejectedError("权限切换尚未确认", reason="请重新选择权限后继续。") from exc
                 state.approval_mode = conversation.approval_mode
+                state.permission_pending = False
             elif effort_changed and config.thought_option_id:
                 await self._set_reasoning_config(state, conversation.reasoning_mode)
             elif effort_changed and self.quirks.mode_semantics == "thought_level":
@@ -1594,6 +1665,7 @@ class AcpDriver:
                 applied = self._config_options(state.session_result)
                 if applied.thought_option_id and applied.current_thought_level:
                     conversation = conversation.evolve(reasoning_mode=applied.current_thought_level)
+            conversation = self._confirmed_config_values(conversation, state.session_result)
             state.conversation = conversation
             return conversation
 
@@ -1699,17 +1771,46 @@ class AcpDriver:
         except (AcpRpcError, AcpTransportError) as exc:
             raise ModelRejectedError("推理设置未生效", reason=str(exc)) from exc
 
+    async def _apply_extra_config(self, connection, session_id: str, result: dict, key: str, value: str | bool) -> None:
+        options = list(self._config_options(result).config_options)
+        try:
+            validate_config_values({key: value}, options)
+        except ValueError as exc:
+            raise UnsupportedCapabilityError(str(exc)) from exc
+        reply = await self._call_config_option(connection, session_id, key, value)
+        entries = reply.get("configOptions") if isinstance(reply, Mapping) else None
+        if isinstance(entries, list):
+            actual = next((item.get("currentValue") for item in entries if isinstance(item, Mapping) and item.get("id") == key), None)
+            if type(actual) is not type(value) or actual != value:
+                raise AcpTransportError("引擎未确认所选配置")
+            result["configOptions"] = entries
+        else:
+            raise AcpTransportError("引擎未返回配置状态")
+
     async def _set_permission_mode(self, connection: AcpConnection, session_id: str, result: dict, mode_id: str) -> None:
         config = self._config_options(result)
         if not config.approval_option_id:
             await self._set_session_mode(connection, session_id, result, mode_id)
             return
         reply = await self._call_config_option(connection, session_id, config.approval_option_id, mode_id)
-        if isinstance(reply, Mapping) and isinstance(reply.get("configOptions"), list):
+        self._accept_mode_reply(result, reply, mode_id, config.approval_option_id)
+
+    @staticmethod
+    def _accept_mode_reply(result: dict, reply: Any, mode_id: str, option_id: str | None = None) -> None:
+        # An authoritative catalog must confirm the requested value. Never
+        # overwrite a refusal/stale reply with our desired selection.
+        if option_id and isinstance(reply, Mapping) and isinstance(reply.get("configOptions"), list):
+            actual = next((entry.get("currentValue") for entry in reply["configOptions"]
+                           if isinstance(entry, Mapping) and entry.get("id") == option_id), None)
+            if actual != mode_id:
+                raise AcpTransportError("引擎未确认所选权限或模式")
             result["configOptions"] = reply["configOptions"]
         else:
+            modes = reply.get("modes") if isinstance(reply, Mapping) else None
+            if isinstance(modes, Mapping) and modes.get("currentModeId") != mode_id:
+                raise AcpTransportError("引擎未确认所选权限或模式")
             for entry in result.get("configOptions", []):
-                if isinstance(entry, dict) and entry.get("id") == config.approval_option_id:
+                if option_id and isinstance(entry, dict) and entry.get("id") == option_id:
                     entry["currentValue"] = mode_id
 
     async def _set_session_mode(self, connection: AcpConnection, session_id: str, result: dict, mode_id: str) -> None:
@@ -1721,24 +1822,23 @@ class AcpDriver:
                 if exc.code != -32601 or not self.quirks.supports_set_mode:
                     raise
                 reply = await connection.call("session/set_mode", {"sessionId": session_id, "modeId": mode_id}, timeout=self._call_timeout)
-            if isinstance(reply, Mapping) and isinstance(reply.get("configOptions"), list):
-                result["configOptions"] = reply["configOptions"]
-            else:
-                for entry in result.get("configOptions", []):
-                    if isinstance(entry, dict) and entry.get("id") == config.mode_option_id:
-                        entry["currentValue"] = mode_id
+            self._accept_mode_reply(result, reply, mode_id, config.mode_option_id)
         else:
-            await connection.call("session/set_mode", {"sessionId": session_id, "modeId": mode_id}, timeout=self._call_timeout)
-            if isinstance(result.get("modes"), dict):
-                result["modes"]["currentModeId"] = mode_id
+            reply = await connection.call("session/set_mode", {"sessionId": session_id, "modeId": mode_id}, timeout=self._call_timeout)
+            self._accept_mode_reply(result, reply, mode_id)
+        if isinstance(result.get("modes"), dict):
+            result["modes"]["currentModeId"] = mode_id
 
     def _accept_config_update(self, state: _RuntimeState, result: Mapping) -> None:
         state.session_result.update(result)
         state.config_revision += 1
         state.available_modes = self._available_modes(state.session_result)
-        self._remember_models(state.handle.binding_id, state.session_result)
 
-    async def _call_config_option(self, connection: AcpConnection, session_id: str, option_id: str, value: str) -> Any:
+    def _confirmed_config_values(self, conversation: Conversation, result: Mapping) -> Conversation:
+        current = {item["id"]: item["currentValue"] for item in self._config_options(result).config_options}
+        return conversation.evolve(config_options={key: current[key] for key in conversation.config_options if key in current})
+
+    async def _call_config_option(self, connection: AcpConnection, session_id: str, option_id: str, value: str | bool) -> Any:
         # 字段名各家不一定同名，沿用 session/new 那条形状协商的做法（只在
         # -32602 时换下一种，别的错误原样上抛）。**但报错要报第一条**，见下。
         shapes: list[dict[str, Any]] = [
@@ -1751,6 +1851,9 @@ class AcpDriver:
             },
             {"sessionId": session_id, "id": option_id, "value": value},
         ]
+        if isinstance(value, bool):
+            for params in shapes:
+                params["type"] = "boolean"
         first_error: AcpRpcError | None = None
         for params in shapes:
             try:
@@ -1810,6 +1913,8 @@ class AcpDriver:
 
     async def _send_message_locked(self, runtime: RuntimeHandle, content: MessageInput) -> None:
         state = self._state(runtime)
+        if state.permission_pending or state.config_pending:
+            raise ModelRejectedError("设置切换尚未确认", reason="请重新选择尚未确认的设置后继续。")
         if state.prompt_task is not None and not state.prompt_task.done():
             # R7（批次三十七）：这不是故障，是「等一等」。此前抛的是一个裸
             # ``RuntimeError``，从会话端点漏进统一 500 兜底——真机上用户看到的是
@@ -2097,6 +2202,12 @@ class AcpDriver:
                 )
                 return
             self._push(state, envelopes)
+            if state.approval_mode == "host:auto":
+                selected = allow_once_option(params.get("options", []))
+                if selected:
+                    pending = next((p for p in state.translator.pending_permissions() if p.rpc_id == rpc_id), None)
+                    if pending:
+                        await self.resolve_interaction(state.handle, pending.request_id, InteractionResponse(kind="permission", option_id=selected))
             return
         if method in ("fs/read_text_file", "fs/write_text_file"):
             await self._on_fs_request(state, rpc_id, method, params)
@@ -2164,7 +2275,7 @@ class AcpDriver:
                 rpc_id, error={"code": -32602, "message": "content must be a string"}
             )
             return
-        if state.approval_mode in ("auto", "bypass"):
+        if state.approval_mode in ("auto", "bypass", "host:auto"):
             self._commit_write(state, rpc_id, resolved, content)
             return
         if state.approval_mode in ("deny", "read_only", "plan"):

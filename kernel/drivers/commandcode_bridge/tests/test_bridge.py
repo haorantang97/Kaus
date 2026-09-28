@@ -202,7 +202,7 @@ async def test_shared_driver_applies_model_effort_and_only_offers_real_permissio
         model_id="vendor/second", reasoning_mode="high", approval_mode="plan")
     runtime = await driver.start_runtime(conversation, "card")
     try:
-        controls = driver.conversation_controls(binding)
+        controls = driver.runtime_conversation_controls(runtime, binding)
         assert set(controls["approvalModes"]) == {"plan", "bypass"}
         assert controls["approvalDefault"] == "plan"
         assert controls["executionModes"] == []

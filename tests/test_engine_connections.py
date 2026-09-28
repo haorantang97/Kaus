@@ -76,3 +76,68 @@ def test_malformed_persisted_data_does_not_silently_spawn_commands(tmp_path):
     path.write_text(json.dumps({'version':1,'presets':['sh']}))
     with pytest.raises(ValueError):
         read_connections(path)
+
+
+def test_global_connections_include_registered_custom_drivers_without_starting_them(tmp_path):
+    from app.projects.models import Backend
+    from drivers.mock.driver import MockDriver
+
+    client, runtime, auth = application(tmp_path)
+    try:
+        assert client.get('/api/engine-connections').status_code == 401
+        assert client.get('/api/engine-connections', headers=auth).json()['backends'] == []
+        native = MockDriver(backend_key='custom-native')
+        native.driver_kind = 'native'
+        runtime.registry.register(native)
+        asyncio.run(runtime.repositories.backends.save(Backend.create(key='custom-native', driver_kind='native')))
+        asyncio.run(runtime.repositories.backends.save(Backend.create(key='orphan', driver_kind='native')))
+        rows = client.get('/api/engine-connections', headers=auth).json()['backends']
+        assert [row['id'] for row in rows] == ['backend:custom-native']
+        assert native._session_counter == 0
+        assert not (tmp_path/'engine-connections.json').exists()
+        assert not asyncio.run(runtime.repositories.bindings.list_for_backend('project:default', native.backend_id))
+    finally:
+        asyncio.run(runtime.aclose())
+
+
+def test_product_catalog_unifies_native_and_acp_without_changing_connections(tmp_path, monkeypatch):
+    from app.projects.models import Backend
+    from drivers.mock.driver import MockDriver
+    from drivers.acp.presets import PRESETS
+
+    monkeypatch.setattr('engine_connections.shutil.which', lambda _: None)
+    monkeypatch.setattr('managed_runtimes.managed_launch', lambda _: None)
+
+    client, runtime, auth = application(tmp_path)
+    native = MockDriver(backend_key='custom-hermes-http')
+    native.driver_kind = 'native'
+    native.product_id = 'hermes'
+    runtime.registry.register(native)
+    record = Backend.create(key='custom-hermes-http', display_name='Hermes HTTP', driver_kind='native').evolve(probe_state='available', installed=True)
+    asyncio.run(runtime.repositories.backends.save(record))
+    try:
+        rows = client.get('/api/engine-catalog', headers=auth).json()['engines']
+        product = [r for r in rows if r['productId'] == 'hermes']
+        assert len(product) == 2
+        assert {r['productName'] for r in product} == {'Hermes'}
+        assert [r['backendId'] for r in product if r['preferred']] == [native.backend_id]
+        assert {r['id'] for r in rows if r['productId'] == 'deepseek-harness'} == {'dsh', 'deepseek-acp'}
+        assert [r['id'] for r in rows if r['productId'] == 'deepseek-harness' and r['preferred']] == ['deepseek-acp']
+        connected = client.get('/api/engine-connections', headers=auth).json()['backends']
+        assert connected[0]['productName'] == 'Hermes' and connected[0]['id'] == native.backend_id
+        assert native._session_counter == 0
+        assert not (tmp_path/'engine-connections.json').exists()
+        assert asyncio.run(runtime.repositories.backends.get(native.backend_id)) == record
+
+        # A known available adapter wins over an unavailable old native route.
+        asyncio.run(runtime.repositories.backends.save(record.evolve(probe_state='unavailable')))
+        acp = MockDriver(backend_key='my-hermes-acp')
+        acp.driver_kind = 'acp'
+        acp.preset = PRESETS['hermes-acp']
+        runtime.registry.register(acp)
+        asyncio.run(runtime.repositories.backends.save(Backend.create(key='my-hermes-acp', driver_kind='acp').evolve(probe_state='available')))
+        rows = client.get('/api/engine-catalog', headers=auth).json()['engines']
+        assert [r['backendId'] for r in rows if r['productId'] == 'hermes' and r['preferred']] == [acp.backend_id]
+        assert acp._session_counter == 0
+    finally:
+        asyncio.run(runtime.aclose())

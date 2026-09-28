@@ -3219,13 +3219,13 @@ async def api_switch_pty_model(runtime_id: str, req: PtyModelReq):
         raise HTTPException(400, "非法模型名")
     if provider and not _MODEL_TOKEN_RE.match(provider):
         raise HTTPException(400, "非法 provider 名")
-    known = _known_model(model)
-    if not known:
-        raise HTTPException(400, "模型不在候选白名单中")
-    provider = known.get("provider") or provider
     runtime = _PTY_RUNTIMES.get(runtime_id)
     if not runtime or runtime.closed or runtime.proc.poll() is not None:
         return {"ok": True, "active": False, "model": model}
+    selected = await _profile_model_choice(runtime.name, {"default": model, "provider": provider or None})
+    provider = selected.get("provider") or ""
+    if provider and not _MODEL_TOKEN_RE.match(provider):
+        raise HTTPException(400, "非法 provider 名")
     command = f"/model {model}"
     if provider:
         command += f" --provider {provider}"
@@ -3743,6 +3743,8 @@ def _canonical_model_entry(value) -> dict | None:
     known = _known_model(entry.get("default"))
     if not known:
         return entry
+    if entry.get("provider") and re.sub(r"[-_\s]+", "-", str(entry["provider"]).lower()) != re.sub(r"[-_\s]+", "-", str(known.get("provider") or "").lower()):
+        return entry
     if entry.get("provider"):
         known["provider"] = entry["provider"]
     if entry.get("base_url"):
@@ -3810,8 +3812,41 @@ _REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 _INHERIT = "__inherit__"
 
 
+async def _profile_model_choice(name: str, value: dict | str) -> dict:
+    """Legacy profile edits use the same scoped catalog and selector as chat."""
+    entry = _model_entry(value)
+    if not entry:
+        raise HTTPException(400, "非法模型配置")
+    runtime = _SESSION_RUNTIME
+    if runtime is None:
+        raise HTTPException(503, "模型目录暂不可用，请稍后重试")
+    from app.projects.binding_snapshot import register_binding_snapshot
+    from drivers.model_selection import select_model
+    from drivers.hermes.model_catalog import normalize_provider
+    bindings = await runtime.repositories.bindings.list_for_project(f"project:{name}")
+    binding = next((item for item in bindings if item.native_scope_ref == name
+                    and item.backend_id == "backend:hermes"), None)
+    if binding is None:
+        raise HTTPException(400, "未找到此 Agent 的引擎配置")
+    try:
+        driver = runtime.registry.get(binding.backend_id)
+        await register_binding_snapshot(driver, binding, runtime.repositories.projects)
+        catalog = await driver.get_model_catalog(binding)
+        selected = select_model(catalog, entry["default"], entry.get("provider"))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, "模型目录暂不可用，请稍后重试") from exc
+    known = _known_model(selected.model_id) or {}
+    # A catalog entry with the same model name may route to another vendor.
+    # Never reuse that entry's endpoint, reasoning defaults or service tier.
+    if normalize_provider(known.get("provider")) != normalize_provider(selected.provider_id):
+        known = {}
+    return {**known, "default": selected.model_id, "provider": selected.provider_id}
+
+
 @app.post("/api/agent/{name}/levers")
-def api_set_levers(name: str, req: LeversReq):
+async def api_set_levers(name: str, req: LeversReq):
     """写运行杠杆。model 是软继承：自有则写本地，继承则删本地并沿父链解析；
        memory 是真实继承键；terminal/approvals 是非继承本地键。"""
     if name != "default" and not _PROFILE_ID_RE.match(name):
@@ -3820,6 +3855,7 @@ def api_set_levers(name: str, req: LeversReq):
         raise HTTPException(404, "profile 不存在")
     if is_main_twin(name):
         raise HTTPException(409, "分身的 config 是 symlink 到 default，请直接编辑 default（X）")
+    selected_model = await _profile_model_choice(name, req.model) if isinstance(req.model, (dict, str)) and req.model and req.model != _INHERIT else None
     cfg = _read_config(name)
     track = _load_inherit_track(name)
 
@@ -3827,12 +3863,7 @@ def api_set_levers(name: str, req: LeversReq):
     if req.model == _INHERIT:
         cfg.pop("model", None); track.pop("model", None)
     elif isinstance(req.model, (dict, str)) and req.model:
-        entry = _model_entry(req.model)
-        if not entry:
-            raise HTTPException(400, "非法模型配置")
-        known = _known_model(entry.get("default"))
-        if not known:
-            raise HTTPException(400, "模型不在候选白名单中")
+        known = selected_model
         cfg["model"] = known; track.pop("model", None)
         if not bool(known.get("fast_mode", False)):
             ag = dict(cfg.get("agent") or {})

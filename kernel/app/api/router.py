@@ -91,7 +91,7 @@ def build_domain_router(
     tag: str = "domain",
 ) -> Any:
     """装配只读路由。返回一个框架的 ``APIRouter``，由调用方 include。"""
-    from fastapi import APIRouter
+    from fastapi import APIRouter, Query
     from fastapi.responses import JSONResponse
 
     router = APIRouter(prefix=prefix, tags=[tag])
@@ -120,7 +120,9 @@ def build_domain_router(
         return payload
 
     @_endpoint
-    async def list_project_bindings(project_id: str) -> dict[str, Any]:
+    async def list_project_bindings(
+        project_id: str, include_status: bool = Query(True, alias="includeStatus")
+    ) -> dict[str, Any]:
         normalized = normalize_project_id(project_id)
         project = await repositories.projects.get(normalized)
         if project is None:
@@ -132,7 +134,7 @@ def build_domain_router(
         # 键**整个不出现**，前端按缺字段静默不渲染那两行（AD-71），而不是收到 null
         # 再去猜是「没有」还是「没读到」。
         provider = status_provider()
-        if provider is not None:
+        if include_status and provider is not None:
             for binding, row in zip(bindings, rows):
                 try:
                     extra = await provider(binding)

@@ -32,6 +32,8 @@ from datetime import datetime, timezone
 from typing import Any, ClassVar, Literal, Self
 
 from pydantic import Field, model_validator
+from app.conversations.approval import ConversationApprovalMode
+from app.conversations.configuration import ConversationConfig
 
 from app.base import DomainModel
 from app.errors import DomainInvariantError
@@ -94,7 +96,8 @@ class Conversation(DomainModel):
     provider_id: str | None = None
     reasoning_mode: str | None = None
     execution_mode: str | None = Field(default=None, max_length=256)
-    approval_mode: Literal["ask", "auto", "bypass", "read_only", "plan"] | None = None
+    approval_mode: ConversationApprovalMode | None = None
+    config_options: ConversationConfig = Field(default_factory=dict)
     state: ConversationState = "idle"
 
     # --- N §9.5 Group 可见性与保留策略 ------------------------------------- #

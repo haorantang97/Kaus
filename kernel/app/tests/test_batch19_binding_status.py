@@ -133,6 +133,26 @@ def test_status_endpoint_returns_auth_count_and_probe(client, harness):
     assert "checkedAt" in auth
 
 
+def test_binding_selector_skips_live_status_without_changing_the_default(client, harness):
+    calls = []
+
+    async def provider(binding):
+        calls.append(binding.id)
+        return {"nativeSessionCount": 2}
+
+    status_mod.set_status_provider(provider)
+    path = f"/api/projects/{harness.project_id}/bindings"
+    light = client.get(path, params={"includeStatus": "false"})
+    assert light.status_code == 200
+    assert light.json()["bindings"][0]["id"] == harness.binding.id
+    assert "nativeSessionCount" not in light.json()["bindings"][0]
+    assert calls == []
+
+    full = client.get(path)
+    assert full.json()["bindings"][0]["nativeSessionCount"] == 2
+    assert calls == [harness.binding.id]
+
+
 def test_status_endpoint_requires_auth(harness):
     """AD-72 的免鉴权口径只给只读领域端点；这条问的是本机凭据配置，必须鉴权。"""
     with TestClient(harness.app) as anonymous:

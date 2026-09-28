@@ -4,6 +4,8 @@ import {
   conversationEventsUrl,
   fetchBindingStatus,
   fetchProjects,
+  fetchProjectBindings,
+  fetchEffectiveSettings,
   probeCapabilityWrite,
   resetSessionAuth,
   SessionApiError,
@@ -25,6 +27,22 @@ beforeEach(() => {
 });
 
 describe("会话鉴权接入", () => {
+  it("draft requests opt into a light binding list and a single toolbar bundle", async () => {
+    const fetchMock = vi.fn(async (url: string) => jsonResponse(url === "/api/session-auth/bootstrap" ? { token: "t1" } : {}));
+    vi.stubGlobal("fetch", fetchMock);
+    await fetchProjectBindings("project:demo", undefined, { includeStatus: false });
+    await fetchEffectiveSettings("binding:demo", undefined, { includeCatalog: true });
+    await fetchProjectBindings("project:demo");
+    await fetchEffectiveSettings("binding:demo");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/session-auth/bootstrap",
+      "/api/projects/project%3Ademo/bindings?includeStatus=false",
+      "/api/bindings/binding%3Ademo/effective-settings?includeCatalog=true",
+      "/api/projects/project%3Ademo/bindings",
+      "/api/bindings/binding%3Ademo/effective-settings",
+    ]);
+  });
+
   it("bootstrap 拿 token，普通请求带 Bearer；token 不落 localStorage", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url === "/api/session-auth/bootstrap") return jsonResponse({ token: "t1" });

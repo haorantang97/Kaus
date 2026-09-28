@@ -30,6 +30,7 @@ from typing import Any, AsyncIterator, Callable, Literal, Mapping
 
 from app.capabilities.models import EffectiveCapabilities
 from app.conversations.models import Conversation
+from drivers.approval import host_approval_options, is_host_approval, allow_once_option
 from app.ids import normalize_backend_id
 from app.projects.models import AgentBinding, Project
 from drivers.base import (
@@ -134,6 +135,7 @@ class _RunState:
     #: 字的内容）。SSE 流健康自检端点就读它——真机上「回合中途还在、收尾丢了」
     #: 这类问题，第一件要确认的就是「网关到底发了哪些事件、发了几条」。
     stream_event_types: list[str] = field(default_factory=list)
+    auto_approval_ids: set[str] = field(default_factory=set)
     #: 批次二十一：`/stop` 之后那条「等一个终态」的后台任务（见 ``interrupt``）。
     stop_task: "asyncio.Task[None] | None" = None
     #: 批次二十一第 2 件：这一轮停止的**取证记录**（只有状态词与结果词，没有
@@ -173,6 +175,7 @@ class HermesDriver:
     """
 
     driver_kind: Literal["native"] = "native"
+    product_id = "hermes"
 
     def __init__(
         self,
@@ -376,9 +379,13 @@ class HermesDriver:
         return self._apply_live_evidence(self._capabilities or BackendCapabilities())
 
     def conversation_controls(self, binding: AgentBinding) -> dict[str, Any]:
+        delegated = bool(self._capabilities and self._capabilities.card.permissions.value == "protocol")
+        choices = host_approval_options() if delegated else []
         return {
             "reasoning": bool(self._capabilities and self._capabilities.models.conversation_scoped.is_supported),
-            "approvalModes": [],
+            "approvalModes": [item["id"] for item in choices],
+            "approvalOptions": choices,
+            "approvalDefault": "host:ask" if choices else None,
         }
 
     def group_context_isolation(self) -> bool:
@@ -393,6 +400,11 @@ class HermesDriver:
         state = self._state(runtime)
         if state.run is not None and not state.run.finalized:
             raise TurnAlreadyRunningError("上一轮尚未结束。")
+        if conversation.approval_mode != state.conversation.approval_mode:
+            if conversation.approval_mode not in self.conversation_controls(state.binding)["approvalModes"]:
+                raise UnsupportedCapabilityError("网关未提供审批委托。")
+            state.conversation = conversation
+            return
         if not (await self.get_capabilities()).models.conversation_scoped.is_supported:
             raise UnsupportedCapabilityError("当前网关不支持会话设置。")
         # /v1/runs accepts model/provider/model_options per request. Keep the
@@ -478,23 +490,19 @@ class HermesDriver:
             except HermesHttpError as exc:
                 notes.append(f"动态模型目录请求失败：{redact(str(exc))}")
 
-        provider_ids: tuple[str, ...] = ()
-        engine_model_id: str | None = None
-        engine_provider_id: str | None = None
-        if not dynamic:
-            # 只在需要兜底时才去读引擎配置：动态目录好用的时候没有理由碰磁盘。
-            # 批次十四：引擎当前配置的模型一定要在列——它就是这台引擎正在用的那个。
-            engine = await self.read_engine_settings(binding)
-            provider_ids = engine.provider_ids
-            engine_model_id = engine.model_id
-            engine_provider_id = engine.model_provider_id
+        # The gateway's current provider belongs to its own profile, not this
+        # binding. Read this profile's non-secret settings for the saved choice.
+        engine = await self.read_engine_settings(binding)
+        provider_ids = engine.provider_ids
+        engine_model_id = engine.model_id
+        engine_provider_id = engine.model_provider_id
 
         merged = catalog_mod.merge_catalog(
             binding_id=binding.id,
             dynamic=dynamic or None,
             static=static,
-            default_model_id=binding.default_model_id,
-            default_provider_id=binding.default_provider_id,
+            default_model_id=binding.default_model_id or engine_model_id,
+            default_provider_id=(binding.default_provider_id if binding.default_model_id else engine_provider_id),
             provider_ids=provider_ids,
             engine_model_id=engine_model_id,
             engine_provider_id=engine_provider_id,
@@ -1181,6 +1189,19 @@ class HermesDriver:
                         run.stream_event_types.append(_event_name(event))
                         for envelope in run.translator.translate_sse(event):
                             await state.queue.put(envelope)
+                            request = envelope.event
+                            if (state.conversation.approval_mode == "host:auto"
+                                    and request.type == "permission.requested"
+                                    and request.request.request_id not in run.auto_approval_ids
+                                    and not state.closed and not run.finalized and not run.stop_owns_finalize):
+                                option_id = allow_once_option(request.request.options)
+                                if option_id:
+                                    run.auto_approval_ids.add(request.request.request_id)
+                                    try:
+                                        await self.resolve_interaction(state.handle, request.request.request_id,
+                                            InteractionResponse(kind="permission", option_id=option_id))
+                                    except DriverError:
+                                        await state.queue.put(run.translator.notice("warn", "自动批准未成功，请手动处理本次请求"))
                         if run.translator.saw_run_completed:
                             # **规格 §3.4：「终态后 Driver 关闭该 run 的 SSE」——
                             # 关流是我们的事，不是网关的事。** 0.21 的网关在 run

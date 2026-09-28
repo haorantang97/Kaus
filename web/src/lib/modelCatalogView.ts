@@ -41,6 +41,25 @@ export interface ModelOption {
   /** batch30：这一条属于「引擎此刻在用的那家 provider」。菜单据此决定哪个组默认
    *  展开——47 个模型平铺开来太长（真机 P2），其余的组先折成一行组头。 */
   groupCurrent?: boolean;
+  uncertain?: boolean;
+}
+
+/** Preserve the provider when two vendors publish the same model id. */
+export function modelSelection(value: string): { modelId: string; providerId?: string } {
+  if (value.startsWith("[")) {
+    try {
+      const pair: unknown = JSON.parse(value);
+      if (Array.isArray(pair) && pair.length === 2 && typeof pair[0] === "string" && typeof pair[1] === "string")
+        return { providerId: pair[0], modelId: pair[1] };
+    } catch { /* A literal engine model id may contain brackets. */ }
+  }
+  return { modelId: value };
+}
+
+export function modelValue(modelId: string | null | undefined, providerId: string | null | undefined, catalog: Pick<ModelCatalogWire, "models"> | null | undefined): string | null {
+  if (!modelId) return null;
+  const matches = catalog?.models.filter(m => m.modelId === modelId) ?? [];
+  return matches.length > 1 && providerId ? JSON.stringify([providerId, modelId]) : modelId;
 }
 
 /**
@@ -76,20 +95,23 @@ export function modelOptionsFor(
 ): ModelOption[] {
   const own = catalogForBinding(catalog, binding);
   if (!own || !binding) return [];
+  const selectedId = selectedModelId ? modelSelection(selectedModelId).modelId : null;
   const grouped = new Map<string, ModelDescriptorWire>();
   for (const model of own.models ?? []) {
     if (model.backendId && model.backendId !== binding.backendId) continue;
+    if (model.availability === "unavailable") continue;
     const base = modelEffort(model) ? model.modelId.replace(/\[[^\[\]]+\]$/, "") : model.modelId;
     const key = `${model.providerId ?? ""}\u0000${base}`;
     const existing = grouped.get(key);
-    if (!existing || model.modelId === selectedModelId || (existing.modelId !== selectedModelId && model.modelId === own.defaultModelId)) grouped.set(key, model);
+    if (!existing || model.modelId === selectedId || (existing.modelId !== selectedId && model.modelId === own.defaultModelId)) grouped.set(key, model);
   }
   return [...grouped.values()]
     .map((model) => ({
-      value: model.modelId,
+      value: modelValue(model.modelId, model.providerId, own)!,
       ...(model.providerId ? { providerId: model.providerId } : {}),
       label: modelEffort(model) ? (model.displayName || model.modelId).replace(/\s*(?:\([^()]+\)|\[[^\[\]]+\])$/, "") : model.displayName || model.modelId,
       group: model.providerLabel || undefined,
+      ...(model.availability === "unknown" ? { uncertain: true } : {}),
       /* batch30：哪一组默认展开由后端这个键决定，不是"选中项在哪组"的推断。
          不是当前那家就整个不带这个键——`false` 与"没说"在 wire 上是两件事，
          这一层不替后端把"没说"翻成"不是"（AD-71）。 */

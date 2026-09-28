@@ -1,3 +1,4 @@
+import { EngineIcon } from "./EngineIcon";
 /* Group 浮窗（DESIGN ★ 定稿 J，batch23 第 2 件）。
  *
  * 右下角常驻一枚中性 Pill「协作组 · N」；点开是一个固定在右下、宽 420px、最高 60vh
@@ -25,6 +26,7 @@ import "../styles/conversation-polish.css";
 
 import { useLocale, type DictKey } from "../i18n";
 import { BarMenu, type BarMenuOption } from "./ComposerBar";
+import { modelOptionsFor, modelSelection, modelValue } from "../lib/modelCatalogView";
 import {
   GroupWorkspace,
   memberDisplayName,
@@ -290,6 +292,7 @@ function MemberRow({
       {/* batch26：左栏只有 216px，标题与元信息挤在一行会把标题截成「文…」。
           第二行放角色/状态标、项目、引擎、表面图标——标题永远读得完整。 */}
       <span className="kaus-group-member-meta">
+        {conversation && <EngineIcon engine={conversation.backendId} size={13} />}
         {/* batch48：组长的标记。**沿用角色/状态那一枚小标**（`kaus-group-tag`），
             不新造一种强调——这一片唯一的强调色仍旧只有运行点（★H / ★J-2）。 */}
         {member.isLeader && (
@@ -362,7 +365,7 @@ function SpawnForm({
 }: {
   projects: ProjectWire[];
   defaultProjectId: string | null;
-  onSubmit: (body: { projectId: string; bindingId: string | null; modelId: string | null; initialMessage: string | null }) => Promise<void>;
+  onSubmit: (body: { projectId: string; bindingId: string | null; modelId: string | null; providerId?: string; initialMessage: string | null }) => Promise<void>;
   onCancel: () => void;
 }) {
   const { t } = useLocale();
@@ -397,10 +400,10 @@ function SpawnForm({
     const controller = new AbortController();
     fetchModelCatalog(binding.backendId, binding.id, controller.signal)
       .then((catalog) => {
-        setModels(
-          catalog.models.map((model) => ({ value: model.modelId, label: model.displayName || model.modelId })),
-        );
-        setModelId(catalog.defaultModelId ?? catalog.models[0]?.modelId ?? null);
+        if (controller.signal.aborted) return;
+        const options = modelOptionsFor(catalog, binding);
+        setModels(options);
+        setModelId(modelValue(catalog.defaultModelId, catalog.defaultProviderId, catalog) ?? options.find(option => !option.uncertain)?.value ?? null);
       })
       // 目录取不到就不给模型下拉：后端会用 Binding 的默认模型（AD-71）。
       .catch(() => setModels([]));
@@ -414,7 +417,7 @@ function SpawnForm({
       await onSubmit({
         projectId,
         bindingId: binding?.id ?? null,
-        modelId,
+        ...(modelId ? { ...modelSelection(modelId), providerId: modelSelection(modelId).providerId ?? models.find(model => model.value === modelId)?.providerId ?? undefined } : { modelId: null }),
         initialMessage: first.trim() || null,
       });
     } finally {
@@ -434,14 +437,14 @@ function SpawnForm({
       {/* 引擎只读（会话里不允许切引擎）。没有默认 Binding 就整枚不渲染。 */}
       {binding && (
         <span className="kaus-bar-pill" data-testid="group-spawn-engine">
-          {backendDisplay(binding.backendId).displayName}
+          <EngineIcon engine={binding.backendId} />{backendDisplay(binding.backendId).displayName}
         </span>
       )}
-      {models.length > 0 && modelId && (
+      {models.length > 0 && (
         <BarMenu
           label={t("group.spawn.model")}
           value={modelId}
-          display={models.find((model) => model.value === modelId)?.label ?? modelId}
+          display={models.find((model) => model.value === modelId)?.label ?? modelId ?? t("group.spawn.model")}
           options={models}
           onSelect={setModelId}
         />
@@ -490,6 +493,7 @@ function ExistingPicker({
         setOptions(
           payload.conversations.map((row) => ({
             value: row.id,
+            icon: row.backendId ? <EngineIcon engine={row.backendId} /> : undefined,
             /* batch52 第 5 件（真机「藏过头了」第 1 条）：一行由「只有标题」改成
                「标题 · 引擎 · 项目」。长列表里几条同名的旧会话此前长得一模一样，
                靠标题分不出该点哪一条。缺的那一段**整个不出现**（AD-71：不写
