@@ -11,8 +11,16 @@
 .kaus-content-message .kaus-msg-action:disabled { cursor: default; opacity: .4; }
 .kaus-content-message .kaus-msg-time { opacity: 1; display: inline; margin: 0; color: color-mix(in srgb, var(--midground-base) 43%, transparent); font: 11px/1.4 var(--theme-font-sans); }
 .kaus-content-message .kaus-msg-attachments { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
-.kaus-content-message.is-failed .kaus-msg-body { outline: 1px solid var(--danger); }
-.kaus-content-message.is-delivery-unconfirmed .kaus-msg-note { color: color-mix(in srgb, var(--midground-base) 65%, transparent); font: 11px/1.5 var(--theme-font-sans); }
+.kaus-msg-delivery { display: inline-flex; align-items: center; gap: 3px; }
+.kaus-msg-delivery-status { position: relative; display: inline-flex; }
+.kaus-msg-delivery[data-state="failed"] .kaus-msg-delivery-toggle { color: var(--danger); }
+.kaus-msg-delivery-detail { position: absolute; z-index: 10; right: 0; bottom: calc(100% + 7px); width: max-content; max-width: min(320px, calc(100vw - 48px)); padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent); border-radius: 8px; background: var(--surface-raised); color: var(--midground-base); font: 12px/1.5 var(--theme-font-sans); text-align: left; overflow-wrap: anywhere; box-shadow: 0 4px 16px rgb(0 0 0 / 10%); visibility: hidden; pointer-events: none; }
+.kaus-msg-delivery-detail small { display: block; margin-top: 5px; font-size: 11px; color: color-mix(in srgb, var(--midground-base) 65%, transparent); white-space: pre-wrap; }
+.kaus-msg-delivery-status[data-open] .kaus-msg-delivery-detail { visibility: visible; pointer-events: auto; }
+.kaus-msg-delivery-toggle:focus-visible + .kaus-msg-delivery-detail { visibility: visible; }
+@media (hover: hover) {
+  .kaus-msg-delivery-toggle:hover + .kaus-msg-delivery-detail { visibility: visible; }
+}
 .kaus-markdown-content { min-width: 0; overflow-wrap: anywhere; }
 .kaus-markdown-content > :first-child { margin-top: 0; }
 .kaus-markdown-content > :last-child { margin-bottom: 0; }

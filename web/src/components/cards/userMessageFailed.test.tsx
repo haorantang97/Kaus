@@ -1,9 +1,4 @@
-/* batch38 第 2 件 / 批次三十七 R6：那句没被接下的话在界面上长什么样。
- *
- * reducer 那一半在 `lib/timeline/userMessageFailed.test.ts` 里。这里验界面：
- * 气泡置灰、接一行原因、给一枚「重发」（重发 = 用同一段正文再发一次），
- * 以及配不上编号时那条中性系统提示确实出现——被藏起来的失败等于骗人说它发出去了。
- */
+/* Receipt controls retain delivery semantics and make recovery accessible. */
 
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -49,13 +44,13 @@ function renderItem(
 }
 
 describe("投递失败的用户消息（R6）", () => {
-  it("正常那条不置灰、也没有原因行", () => {
+  it("正常消息没有失败状态控件", () => {
     const { container } = renderItem(userMessage());
     expect(container.querySelector(".kaus-msg.is-undelivered")).toBeNull();
-    expect(screen.queryByTestId("message-failed-note")).toBeNull();
+    expect(screen.queryByRole("button", { name: /未发送|发送结果未确认/ })).toBeNull();
   });
 
-  it("历史拒绝事件按错误码显示短状态，保留原始诊断和图标重发", async () => {
+  it("历史拒绝事件显示图标，按需查看原始诊断并可重发", async () => {
     const onRetryFailed = vi.fn();
     const { container } = renderItem(
       userMessage({
@@ -72,11 +67,15 @@ describe("投递失败的用户消息（R6）", () => {
     expect(bubble).toHaveAttribute("data-delivery", "failed");
     // 正文一个字不少：那句话确实被说出来过。
     expect(screen.getByText("帮我跑一下测试")).toBeInTheDocument();
-    expect(screen.getByTestId("message-failed-note")).toHaveTextContent(
-      "未发送 · 上一轮未结束",
-    );
-    expect(screen.getByTestId("message-failed-note")).not.toHaveTextContent("上一轮还在运行");
-    expect(screen.getByTitle("上一轮还在运行，等它结束再发，或先点停止")).toBeInTheDocument();
+    const status = screen.getByRole("button", { name: "未发送 · 上一轮未结束" });
+    expect(status).toHaveTextContent(/^$/);
+    expect(status).toHaveAttribute("aria-expanded", "false");
+    expect(status.closest(".kaus-msg-footer")).not.toBeNull();
+    expect(screen.queryByText("上一轮还在运行，等它结束再发，或先点停止")).toBeNull();
+    await userEvent.click(status);
+    expect(status).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("note")).toHaveTextContent("上一轮还在运行，等它结束再发，或先点停止");
+    expect(onRetryFailed).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "重发" })).toHaveTextContent(/^$/);
 
     await userEvent.click(screen.getByRole("button", { name: "重发" }));
@@ -86,7 +85,7 @@ describe("投递失败的用户消息（R6）", () => {
 
   it("缺少诊断文本时根据已知错误码显示原因；无回调时不提供重发", () => {
     renderItem(userMessage({ deliveryStatus: "failed", failureCode: "unsupported_capability" }), () => ({}));
-    expect(screen.getByTestId("message-failed-note")).toHaveTextContent("未发送 · 引擎不支持此操作");
+    expect(screen.getByRole("button", { name: "未发送 · 引擎不支持此操作" })).toHaveTextContent(/^$/);
     expect(screen.queryByRole("button", { name: "重发" })).toBeNull();
   });
 
@@ -94,9 +93,10 @@ describe("投递失败的用户消息（R6）", () => {
     const onRetryFailed = vi.fn();
     const onCheckDelivery = vi.fn();
     const { container } = renderItem(userMessage({ deliveryStatus: "failed", failureCode: "send_failed", failureMessage: "network timeout" }), () => ({ onRetryFailed, onCheckDelivery, lockedWhileRunning: true }));
-    expect(screen.getByTestId("message-failed-note")).toHaveTextContent("发送结果未确认");
-    expect(screen.getByTestId("message-failed-note")).toHaveTextContent(/^发送结果未确认$/);
-    expect(screen.getByTitle("network timeout")).toBeInTheDocument();
+    const status = screen.getByRole("button", { name: "发送结果未确认" });
+    expect(status).toHaveTextContent(/^$/);
+    await userEvent.click(status);
+    expect(screen.getByRole("note")).toHaveTextContent("network timeout");
     expect(container.querySelector(".kaus-msg.is-user")).toHaveAttribute("data-delivery", "unconfirmed");
     expect(screen.queryByRole("button", { name: "重发" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "查看会话状态" }));
@@ -106,8 +106,39 @@ describe("投递失败的用户消息（R6）", () => {
 
   it("未知或缺失的失败码不解释为确定未发送", () => {
     renderItem(userMessage({ deliveryStatus: "failed" }), () => ({ onRetryFailed: vi.fn() }));
-    expect(screen.getByTestId("message-failed-note")).toHaveTextContent("发送结果未确认");
+    expect(screen.getByRole("button", { name: "发送结果未确认" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重发" })).toBeNull();
+  });
+
+  it("键盘可查看及关闭诊断，禁用的重发不会触发提交", async () => {
+    const retry = vi.fn();
+    renderItem(userMessage({ deliveryStatus: "failed", failureCode: "turn_already_running", failureMessage: "driver busy" }),
+      () => ({ onRetryFailed: retry, lockedWhileRunning: true }));
+    const user = userEvent.setup();
+    await user.tab(); // Copy.
+    await user.tab(); // Delivery status.
+    const status = screen.getByRole("button", { name: "未发送 · 上一轮未结束" });
+    expect(status).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("note")).toHaveTextContent("driver busy");
+    await user.keyboard("{Escape}");
+    expect(status).toHaveFocus();
+    expect(status).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(screen.getByRole("button", { name: "重发" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "重发" }));
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it("点击状态外部关闭诊断，不改变消息或发送状态", async () => {
+    renderItem(userMessage({ deliveryStatus: "failed", failureCode: "unsupported_capability", failureMessage: "unsupported input" }));
+    const user = userEvent.setup();
+    const status = screen.getByRole("button", { name: "未发送 · 引擎不支持此操作" });
+    await user.click(status);
+    expect(screen.getByRole("note")).toBeInTheDocument();
+    await user.click(screen.getByText("帮我跑一下测试"));
+    expect(status).toHaveAttribute("aria-expanded", "false");
+    expect(status.closest(".kaus-msg")).toHaveAttribute("data-delivery", "failed");
   });
 
   it("未配对的模糊失败事件也保留结果未确认提示", () => {

@@ -17,3 +17,9 @@ Reduced motion keeps the color feedback and removes the icon motion.
 
 The project entry button keeps its return-key shape and uses its SVG fill for
 feedback. Its background must remain transparent so the shape stays intact.
+
+Message delivery uses compact footer icons alongside copy and time. Hover or
+keyboard focus shows the localized status; clicking opens the original diagnostic.
+Keep the message body readable and neutral. Confirmed rejection offers retry when
+idle; uncertain delivery offers a read-only status check. Local submissions and
+persisted history use the same control without changing their receipt semantics.

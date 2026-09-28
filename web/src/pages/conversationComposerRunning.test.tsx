@@ -214,7 +214,7 @@ describe("第 1 件：运行中按 Enter 与按发送同一条规矩", () => {
       "当前任务未结束",
     );
     // 不排队：没有任何占位气泡替用户攒着这句话。
-    expect(screen.queryByTestId("message-failed-note")).toBeNull();
+    expect(screen.queryByRole("button", { name: /未发送|发送结果未确认/ })).toBeNull();
   });
 
   it("本轮一结束提示自己消失，同一段草稿按 Enter 就发出去了", async () => {
@@ -247,7 +247,7 @@ describe("第 2 件：失败消息上的「重发」在运行中也在位", () =
     push(envelope(9, { type: "run.started", runId: "run:1" }));
     await waitFor(() => expect(screen.getByTestId("conversation-status")).toHaveTextContent("运行中"));
 
-    const retry = await screen.findByTestId("message-retry");
+    const retry = await screen.findByRole("button", { name: "重发" });
     expect(retry).toBeDisabled();
     expect(retry).toHaveAttribute("title", "任务结束后可重发");
     // Copy is read-only and remains available; editing cannot start another turn.
@@ -261,12 +261,12 @@ describe("第 2 件：失败消息上的「重发」在运行中也在位", () =
     await attached();
     failedUserMessage(6);
     push(envelope(9, { type: "run.started", runId: "run:1" }));
-    await waitFor(() => expect(screen.getByTestId("message-retry")).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "重发" })).toBeDisabled());
 
     push(envelope(10, { type: "run.completed", runId: "run:1" }));
-    await waitFor(() => expect(screen.getByTestId("message-retry")).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "重发" })).toBeEnabled());
 
-    await user.click(screen.getByTestId("message-retry"));
+    await user.click(screen.getByRole("button", { name: "重发" }));
     await waitFor(() => expect(mocked.sendConversationMessage).toHaveBeenCalledTimes(1));
     expect(mocked.sendConversationMessage.mock.calls[0][1]).toBe("第二句");
     expect(mocked.sendConversationMessage.mock.calls[0][2]).not.toBe("ref-2");

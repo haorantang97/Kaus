@@ -313,7 +313,7 @@ describe("batch30：SSE 一个字节都不到时改走轮询", () => {
 
     const bubble = await screen.findByTestId("pending-message");
     await waitFor(() => expect(bubble).toHaveAttribute("data-status", "unconfirmed"));
-    expect(bubble).toHaveTextContent("发送结果未确认");
+    expect(screen.getByRole("button", { name: "发送结果未确认" })).toHaveTextContent(/^$/);
     expect(screen.queryByRole("button", { name: "重发" })).toBeNull();
     expect(screen.getByText("引擎没接受这一句 稍后再试")).toBeInTheDocument();
     // 「正在回复…」那一行不该出现：这一轮压根没开始。

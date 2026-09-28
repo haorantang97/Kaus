@@ -2538,61 +2538,8 @@ button.kaus-conversation-title:hover {
   background: color-mix(in srgb, var(--midground-base) 5%, transparent);
 }
 
-/* 占位气泡（AD-94）：同一个气泡，只淡化——沿用界面里已有的 opacity 手法，
-   不新造颜色。发失败时只把边换成现有的 --danger。 */
+/* Only an in-flight submission is dimmed; delivery status lives in its footer. */
 .kaus-msg.is-pending {
-  opacity: 0.55;
-}
-
-.kaus-msg.is-failed .kaus-msg-body {
-  border-color: var(--danger);
-}
-
-.kaus-msg-note {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 3px;
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
-  font: 12px/1.5 var(--theme-font-sans);
-}
-
-.kaus-msg.is-failed .kaus-msg-note {
-  color: var(--danger);
-}
-
-.kaus-msg-retry {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  color: inherit;
-}
-
-.kaus-msg-retry:hover:not(:disabled),
-.kaus-msg-retry:focus-visible {
-  background: color-mix(in srgb, currentColor 10%, transparent);
-}
-
-.kaus-msg-retry:focus-visible {
-  outline: 1px solid currentColor;
-  outline-offset: 2px;
-}
-
-/* batch39 第 2 件：上一轮还在跑时这枚「重发」照旧在位，只是点不动——入口的位置
-   不跟着状态忽隐忽现，可用性由禁用态和 title 说话。 */
-.kaus-msg-retry:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-  text-decoration: none;
-}
-
-/* batch38 / R6：已经落库、但引擎没接下的那条用户消息。与本地占位失败气泡同一套
-   （危险色边 + 小字原因 + 重发），另加一层淡化——它在会话历史里，但它没生效。 */
-.kaus-msg.is-undelivered .kaus-msg-body {
   opacity: 0.55;
 }
 

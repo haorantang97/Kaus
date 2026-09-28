@@ -1,6 +1,6 @@
 import { ConversationJumpRail } from "../components/ConversationJumpRail";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Ellipsis, Square, Terminal, FileText, X, LoaderCircle, Paperclip, RefreshCw, RotateCcw } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Ellipsis, Square, Terminal, FileText, X, LoaderCircle, Paperclip } from "lucide-react";
 import { useLocale } from "../i18n";
 import { confirmAsync, cream } from "../components/ui";
 import {
@@ -17,6 +17,7 @@ import { isConfirmedMessageRejection } from "../lib/messageDelivery";
 import { uploadConversationAttachment, attachmentName, fileSizeLabel, ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, type ConversationAttachment } from "../lib/attachmentsApi";
 import "./conversationWorkspace.css";
 import { CardRenderer } from "../components/cards/CardRenderer";
+import { MessageDeliveryStatus } from "../components/cards/MessageDeliveryStatus";
 import { RowGroup } from "../components/cards/RowCard";
 import { ToolGroup } from "../components/cards/ToolCard";
 import { UsagePill } from "../components/cards/UsageBar";
@@ -1606,27 +1607,29 @@ export function ConversationPage({
               <div key={row.key} data-message-anchor={row.item.kind === "message" && row.item.role === "user" ? row.item.itemId : undefined}>{renderCard(row.item)}</div>
             ),
           )}
-          {/* 占位气泡（AD-94）：沿用 `kaus-msg is-user`，只加一个淡化态，不新造颜色。 */}
+          {/* Local submissions and persisted messages share receipt controls. */}
           {page.pending.map((item) => (
             <div
               key={item.clientRef}
               data-testid="pending-message"
               data-status={item.status}
-              className={`kaus-msg is-user ${item.status === "failed" ? "is-failed" : "is-pending"}`}
+              className={`kaus-msg kaus-content-message is-user ${item.status === "failed" ? "is-failed is-undelivered" : item.status === "sending" ? "is-pending" : "is-delivery-unconfirmed"}`}
             >
               <div className="kaus-msg-body">{item.text}</div>
               {!!item.attachments?.length && <div className="kaus-pending-attachments">{item.attachments.map(file => <span key={file.ref}><FileText size={14} />{attachmentName(file)}</span>)}</div>}
-              {item.status === "failed" && (
-                <div className="kaus-msg-note">
-                  {t("conversation.pending.failed")}
-                  <button type="button" className="kaus-msg-retry" aria-label={t("conversation.pending.retry")} title={t(running || stopping ? "conversation.message.resend.wait" : "conversation.pending.retry")} disabled={running || stopping || settingsBusy || readOnly} onClick={() => void resend(item)}>
-                    <RotateCcw size={14} aria-hidden="true" />
-                  </button>
-                </div>
-              )}
-              {item.status === "unconfirmed" && (
-                <div className="kaus-msg-note">{t("conversation.pending.unconfirmed")}<button type="button" className="kaus-msg-retry" aria-label={t("conversation.pending.check")} title={t("conversation.pending.check")} onClick={() => setReloadKey(value => value + 1)}><RefreshCw size={14} aria-hidden="true" /></button></div>
-              )}
+              {item.status !== "sending" && <div className="kaus-msg-footer">
+                <MessageDeliveryStatus state={item.status}
+                  label={t(item.status === "failed" ? "conversation.pending.failed" : "conversation.pending.unconfirmed")}
+                  recovery={item.status === "failed" ? {
+                    label: t("conversation.pending.retry"),
+                    title: t(running || stopping ? "conversation.message.resend.wait" : "conversation.pending.retry"),
+                    disabled: running || stopping || settingsBusy || readOnly,
+                    onClick: () => void resend(item),
+                  } : {
+                    label: t("conversation.pending.check"),
+                    onClick: () => setReloadKey(value => value + 1),
+                  }} />
+              </div>}
             </div>
           ))}
           {/* 第 3 件：回站后折叠的历史组，接在消息流末尾。 */}

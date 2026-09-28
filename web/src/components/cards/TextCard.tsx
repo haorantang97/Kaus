@@ -7,10 +7,11 @@ import { Component, type ReactNode, useState } from "react";
 import { useLocale } from "../../i18n";
 import { StreamCursor } from "./CardShell";
 import { messageDeliveryStatus, messageStatus, messageText, type MessageItem } from "./timelineReducer";
-import { Pencil, RefreshCw, RotateCcw } from "lucide-react";
+import { Pencil, RotateCcw } from "lucide-react";
 import { MarkdownContent } from "./MarkdownContent";
 import { FileReference } from "./ArtifactPreview";
 import { CopyButton } from "./CopyButton";
+import { MessageDeliveryStatus } from "./MessageDeliveryStatus";
 import { useContentText } from "./contentStrings";
 import { isConfirmedMessageRejection, messageRejectionReasonKey } from "../../lib/messageDelivery";
 import "./conversationContent.css";
@@ -127,6 +128,13 @@ export function TextCard({
   const visible = focused ? "true" : undefined;
   const extraAllowed = !streaming && !actions?.lockedWhileRunning;
   const onExtra = extraAllowed ? (item.role === "user" ? (actions?.onEditResend ? () => actions.onEditResend?.(text) : null) : actions?.onResendPrevious ?? null) : null;
+  const deliveryFailed = item.role === "user" && messageDeliveryStatus(item) === "failed";
+  const undelivered = deliveryFailed && isConfirmedMessageRejection(item);
+  const unconfirmed = deliveryFailed && !undelivered;
+  const reasonKey = messageRejectionReasonKey(item.failureCode);
+  const deliveryLabel = unconfirmed ? c("chat.content.deliveryUnconfirmed")
+    : reasonKey ? t("conversation.message.failed", { reason: t(reasonKey) })
+      : t("conversation.message.failed.noReason");
   const footer = (
     <div className="kaus-msg-footer">
       {(text || onExtra) && <MessageActionBar
@@ -138,19 +146,26 @@ export function TextCard({
         extraLabel={t(item.role === "user" ? "conversation.action.editResend" : "conversation.action.resendPrevious")}
         onExtra={onExtra}
       />}
+      {deliveryFailed && <MessageDeliveryStatus
+        state={undelivered ? "failed" : "unconfirmed"}
+        label={deliveryLabel}
+        diagnostic={item.failureMessage ?? undefined}
+        recovery={undelivered && (actions?.onRetryFailed || actions?.lockedWhileRunning) ? {
+          label: t("conversation.message.resend"),
+          title: t(actions.lockedWhileRunning ? "conversation.message.resend.wait" : "conversation.message.resend"),
+          disabled: !!actions.lockedWhileRunning,
+          onClick: () => actions.onRetryFailed?.(text),
+        } : unconfirmed && actions?.onCheckDelivery ? {
+          label: c("chat.content.checkDelivery"),
+          onClick: actions.onCheckDelivery,
+        } : undefined}
+      />}
       {time && <time className="kaus-msg-time" title={time}>{time}</time>}
     </div>
   );
 
   if (item.role === "user") {
-    /* batch38 / R6：引擎在接受之前就拒了这一句。正文不撤（AD-105：说过的话不回滚），
-       但气泡置灰、接一行原因、给一枚「重发」——沿用本地占位失败气泡那套 class，
-       让"刷新前"和"刷新后"看起来是同一件事，而不是两种失败。 */
-    const deliveryFailed = messageDeliveryStatus(item) === "failed";
-    const undelivered = deliveryFailed && isConfirmedMessageRejection(item);
-    const unconfirmed = deliveryFailed && !undelivered;
-    const reason = item.failureMessage || "";
-    const reasonKey = messageRejectionReasonKey(item.failureCode);
+    // Preserve the message and its receipt; show delivery details in the footer.
     return (
       <div
         className={`kaus-msg kaus-content-message is-user${undelivered ? " is-failed is-undelivered" : unconfirmed ? " is-delivery-unconfirmed" : ""}`}
@@ -162,30 +177,6 @@ export function TextCard({
           {text}
           {!!item.attachments?.length && <div className="kaus-msg-attachments">{item.attachments.map((attachment, index) => <FileReference key={`${attachment.ref}:${index}`} source={{ uri: attachment.ref, title: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.size }} conversationId={conversationId} />)}</div>}
         </div> : null}
-        {deliveryFailed && (
-          <div className="kaus-msg-note" data-testid="message-failed-note">
-            <span title={reason || undefined}>{unconfirmed
-              ? c("chat.content.deliveryUnconfirmed")
-              : reasonKey
-                ? t("conversation.message.failed", { reason: t(reasonKey) })
-                : t("conversation.message.failed.noReason")}</span>
-            {/* batch39 第 2 件：运行中也画这一枚，只是禁用 + 一句 title 说明什么时候能点。 */}
-            {undelivered && (actions?.onRetryFailed || actions?.lockedWhileRunning) && (
-              <button
-                type="button"
-                className="kaus-msg-retry"
-                data-testid="message-retry"
-                disabled={!!actions.lockedWhileRunning}
-                aria-label={t("conversation.message.resend")}
-                title={t(actions.lockedWhileRunning ? "conversation.message.resend.wait" : "conversation.message.resend")}
-                onClick={() => actions.onRetryFailed?.(text)}
-              >
-                <RotateCcw size={14} aria-hidden="true" />
-              </button>
-            )}
-            {unconfirmed && actions?.onCheckDelivery && <button type="button" className="kaus-msg-retry" aria-label={c("chat.content.checkDelivery")} title={c("chat.content.checkDelivery")} onClick={actions.onCheckDelivery}><RefreshCw size={14} aria-hidden="true" /></button>}
-          </div>
-        )}
         {footer}
       </div>
     );
