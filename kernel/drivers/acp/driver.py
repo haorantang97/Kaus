@@ -1824,13 +1824,6 @@ class AcpDriver:
                 failure=turn_already_running_hint(),
             )
         state.interrupt_requested = False
-        for attachment in content.attachments:
-            is_image = (attachment.mime_type or "").startswith("image/")
-            required = "image" if is_image else "embeddedContext"
-            if state.prompt_capabilities.get(required) is not True:
-                raise UnsupportedCapabilityError("当前引擎没有声明支持图片输入。" if is_image else "当前引擎没有声明支持文件内容输入。")
-            if attachment.content_text is None and attachment.content_base64 is None:
-                raise UnsupportedCapabilityError("附件内容尚未准备好；请重新上传后发送。")
         self._push(state, state.translator.begin_run())
         state.prompt_task = asyncio.create_task(self._prompt(state, content))
 
@@ -1843,7 +1836,7 @@ class AcpDriver:
             return
         params = {
             "sessionId": state.session_id,
-            "prompt": _prompt_blocks(content),
+            "prompt": _prompt_blocks(content, state.prompt_capabilities),
         }
         try:
             result = await state.connection.call(
@@ -2363,13 +2356,23 @@ def _mcp_servers(metadata: Mapping[str, Any]) -> list[Any]:
     return []
 
 
-def _prompt_blocks(content: MessageInput) -> list[dict[str, Any]]:
-    """Send prepared content without opening arbitrary paths inside the driver."""
+def _prompt_blocks(
+    content: MessageInput, prompt_capabilities: Mapping[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """Send prepared content without opening arbitrary paths inside the driver.
+
+    ACP 规定每个 agent 都必须收 ``text`` 与 ``resource_link``，所以附件总能送到：
+    agent 声明了 ``image`` / ``embeddedContext`` 就内嵌内容，否则给本机文件链接，
+    由 agent 自己去读。``prompt_capabilities`` 为 ``None`` 时按全都支持处理。
+    """
+    can_image = prompt_capabilities is None or prompt_capabilities.get("image") is True
+    can_embed = prompt_capabilities is None or prompt_capabilities.get("embeddedContext") is True
     blocks: list[dict[str, Any]] = ([{"type": "text", "text": content.text}] if content.text else [])
     for attachment in content.attachments:
-        if (attachment.mime_type or "").startswith("image/") and attachment.content_base64 is not None:
+        is_image = (attachment.mime_type or "").startswith("image/")
+        if is_image and can_image and attachment.content_base64 is not None:
             blocks.append({"type": "image", "data": attachment.content_base64, "mimeType": attachment.mime_type})
-        elif attachment.content_text is not None or attachment.content_base64 is not None:
+        elif can_embed and (attachment.content_text is not None or attachment.content_base64 is not None):
             resource: dict[str, Any] = {"uri": attachment.ref, "mimeType": attachment.mime_type or "application/octet-stream"}
             if attachment.content_text is not None:
                 resource["text"] = attachment.content_text

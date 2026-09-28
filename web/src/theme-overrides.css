@@ -4170,3 +4170,15 @@ body.dark .kaus-cap-row.is-head {
 .kaus-group-overview > summary { cursor: pointer; }
 .kaus-group-overview .kaus-group-pane { padding: 0; border: 0; }
 .kaus-group-message-actions { display: flex; justify-content: flex-end; gap: 2px; float: right; margin-top: -4px; }
+
+/* 侧栏「协作组」入口：右侧计数；拖入时与胶囊同一种虚线框（★J-4）。 */
+.shell-nav-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+}
+.shell-nav-item.is-drop-target {
+  outline: 2px dashed var(--gold);
+  outline-offset: -2px;
+}

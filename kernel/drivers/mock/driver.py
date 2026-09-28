@@ -91,6 +91,9 @@ from runtime.event_envelope import (
     AuthenticationOutcome,
     AuthenticationResolved,
     EventSource,
+    MessageCompleted,
+    MessageDelta,
+    MessageStarted,
     PermissionResolved,
     QuestionResolved,
     RunInterrupted,
@@ -147,6 +150,8 @@ class _RuntimeState:
     #: 批次十六第 4 件：最近一轮实际按哪个模型发的（会话快照 > Binding 默认）。
     #: Mock 不真的调模型，记下来只为让「快照有没有被用上」可断言。
     last_model_id: str | None = None
+    #: 这一轮随消息带来的附件名。Mock 不读内容，只在回复里点名收到了哪些。
+    last_attachments: tuple[str, ...] = ()
     closed: bool = False
 
 
@@ -498,7 +503,10 @@ class MockDriver:
 
     async def send_message(self, runtime: RuntimeHandle, content: MessageInput) -> None:
         state = self._state(runtime)
-        del content  # Mock 不解析用户输入，剧本决定输出
+        # Mock 不解析用户输入，剧本决定输出；附件只记名字，回复里点名确认收到。
+        # 夹具测试会直接传字符串：Mock 的约定是「什么输入都收」，只有 MessageInput 才带附件。
+        if isinstance(content, MessageInput):
+            state.last_attachments = tuple(item.name or item.ref for item in content.attachments)
         if state.task is not None and not state.task.done():
             raise RuntimeError("上一轮尚未结束；先 interrupt 或等待终态")
         # v1.0 §7.3 的优先级链：Conversation 快照 > Binding 默认。
@@ -689,12 +697,24 @@ class MockDriver:
                     run_id=step.run_id,
                     parent_run_id=step.parent_run_id,
                 )
+                if step.event.type == "run.started" and state.last_attachments:
+                    await self._acknowledge_attachments(state, step.run_id)
             elif isinstance(step, AwaitInteractionStep):
                 future: asyncio.Future[InteractionResponse] = loop.create_future()
                 state.pending[step.request_id] = future
                 await future
             elif isinstance(step, HoldStep):
                 await state.hold.wait()
+
+    async def _acknowledge_attachments(self, state: _RuntimeState, run_id: str | None) -> None:
+        """剧本开场先回一句「收到了哪些附件」，上传链路因此不必接真实引擎也能验。"""
+        names = state.last_attachments
+        state.last_attachments = ()
+        message_id = f"attachments-{uuid4().hex[:8]}"
+        text = f"收到 {len(names)} 个附件：{'、'.join(names)}"
+        await self._emit(state, MessageStarted(message_id=message_id), run_id=run_id)
+        await self._emit(state, MessageDelta(message_id=message_id, text=text), run_id=run_id)
+        await self._emit(state, MessageCompleted(message_id=message_id, text=text), run_id=run_id)
 
     def runtime_ids(self) -> tuple[str, ...]:
         return tuple(self._runtimes)

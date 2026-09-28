@@ -20,6 +20,7 @@ import { ConfirmHost, cream, ToastHost } from "./components/ui";
 import { ConversationSidebar } from "./components/ConversationSidebar";
 import { useConversationIndex } from "./lib/conversationIndex";
 import { GroupDock } from "./components/GroupDock";
+import { GroupNavItem } from "./components/GroupNavItem";
 import { ConversationPage } from "./pages/ConversationPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
 import { NewConversationPage } from "./pages/NewConversationPage";
@@ -540,6 +541,7 @@ export function App() {
 
         <nav className="shell-nav">
           {(sessionOn ? PRIMARY_MODULES : MODULES).map(renderNavItem)}
+          {sessionOn && <GroupNavItem />}
           {/* batch40（★L 第 2 条）：五个旧面板收进「更多」，默认折着，开关记
               localStorage。**折着的时候它们一个字都不在导航上**——常显的位置
               留给"我在做什么 / 谁在做 / 什么等着我"那三条路。 */}

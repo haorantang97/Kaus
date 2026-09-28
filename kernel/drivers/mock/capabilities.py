@@ -65,6 +65,8 @@ DEFAULT_CAPABILITIES = BackendCapabilities(
         authentication=True,
         usage=declare("supported", note=MOCK_USAGE_NOTE),
         interrupt=declare("immediate", verification="bench"),
+        # 附件：图片与任意文件都收（不读内容，回复里点名收到了哪些）。
+        attachments=declare("files", verification="bench"),
     ),
     external_cli=ExternalCliCapabilities(supported=True, resume=True),
     models=ModelCapabilities(

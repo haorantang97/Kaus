@@ -216,6 +216,9 @@ def translate_capabilities(payload: Mapping[str, Any] | None) -> HermesCapabilit
             interrupt=(
                 declare("immediate") if _feature(features, "run_stop") else "none"
             ),
+            # /v1/runs 只收文本：文本附件内容嵌进消息，其余给本机路径，由 Hermes
+            # 自己的文件工具去读（网关只允许在回环地址上，与 Kaus 同一台机器）。
+            attachments=declare("files", verification="bench"),
         ),
         external_cli=ExternalCliCapabilities(supported=True, resume=True),
         models=ModelCapabilities(

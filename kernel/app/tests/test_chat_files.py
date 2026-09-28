@@ -184,7 +184,13 @@ def test_empty_message_and_unsupported_engine_are_explicit(setup):
     assert client.post(f"/api/conversations/{cid}/messages", json={"text": " "}).status_code == 400
     attachment = upload(client, cid).json()
     from drivers.mock.driver import MockDriver
-    harness.driver.get_capabilities = MockDriver().get_capabilities
+    from runtime.capability_matrix import AttachmentCapability
+
+    async def undeclared():
+        caps = await MockDriver().get_capabilities()
+        return caps.model_copy(update={"card": caps.card.model_copy(update={"attachments": AttachmentCapability(value="unknown")})})
+
+    harness.driver.get_capabilities = undeclared
     response = client.post(f"/api/conversations/{cid}/messages", json={"attachments": [attachment]})
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "attachments_unsupported"
