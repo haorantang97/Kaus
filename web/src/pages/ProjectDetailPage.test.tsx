@@ -352,7 +352,7 @@ describe("项目详情页", () => {
       // 引擎面板出来了 = 数据已到位，此刻能力分区应该压根不在。
       expect(await screen.findByText("已接引擎")).toBeInTheDocument();
       await waitFor(() => expect(screen.queryByRole("table", { name: "能力" })).toBeNull());
-      expect(screen.queryByText("这个项目还没有任何能力。")).toBeNull();
+      expect(screen.queryByText("暂无能力配置")).toBeNull();
     });
 
     /* batch40 / DESIGN ★L 第 4 条：内容列是人话摘要（原始 JSON 收在「展开原始值」

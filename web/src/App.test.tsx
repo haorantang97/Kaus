@@ -308,11 +308,11 @@ describe("每个视图一个真 URL", () => {
 
 /* 第 2 件：404 与幽灵页。两张页上都不许有写按钮。 */
 describe("404 与幽灵页", () => {
-  it("/nope 渲染「没有这一页」，且没有任何写按钮", async () => {
+  it("/nope 渲染「页面不存在」，且没有任何写按钮", async () => {
     stubFetch(200);
     renderApp("/nope");
     await waitFor(() => expect(screen.getByTestId("not-found")).toBeInTheDocument());
-    expect(screen.getByText("没有这一页")).toBeInTheDocument();
+    expect(screen.getByText("页面不存在")).toBeInTheDocument();
     // 页面本体只有一条「回概览」链接：没有按钮，也就没有副作用可点。
     const page = screen.getByTestId("not-found");
     expect(page.querySelectorAll("button")).toHaveLength(0);
@@ -323,7 +323,7 @@ describe("404 与幽灵页", () => {
     stubFetch(200);
     renderApp("/projects/nope");
     await waitFor(() => expect(screen.getByTestId("not-found")).toBeInTheDocument());
-    expect(screen.getByText("没有这个项目")).toBeInTheDocument();
+    expect(screen.getByText("项目不存在")).toBeInTheDocument();
     const page = screen.getByTestId("not-found");
     expect(page.querySelectorAll("button")).toHaveLength(0);
     // 项目页的头部动作（新会话 / 到终端打开 / 设置）一个都不该出现。

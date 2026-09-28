@@ -15,6 +15,8 @@
 import type { UiCapabilities } from "../components/cards/capabilities";
 import type { BackendWire } from "../components/EnginePanel";
 import { authorizedFetch, currentSessionToken } from "./authorizedFetch";
+import { t } from "../i18n";
+import { messageRejectionReasonKey } from "./messageDelivery";
 
 export type { BackendWire };
 
@@ -33,10 +35,12 @@ export class SessionApiError extends Error {
   }
 }
 
-/** 给人看的错误文案：`message` 之后接后端给的 `detail.hint`（batch11-backend 的
- *  `driver_not_registered` 会带一句"怎么修"）。非 SessionApiError 就原样字符串化。 */
+/** Busy responses use concise localized copy. Other failures retain their
+ *  diagnostic and recovery hint, including required sign-in commands. */
 export function describeFailure(failure: unknown): string {
   if (failure instanceof SessionApiError) {
+    const reasonKey = failure.code === "turn_already_running" ? messageRejectionReasonKey(failure.code) : null;
+    if (reasonKey) return t(reasonKey);
     const detail = failure.detailFields.detail;
     const hint =
       detail && typeof detail === "object" && typeof (detail as { hint?: unknown }).hint === "string"

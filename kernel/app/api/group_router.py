@@ -1405,8 +1405,8 @@ def build_group_router(
         if await host.run_state_of(conversation) != "idle":
             return _send_failure(
                 "turn_already_running",
-                message="上一轮还在运行，这一句没有发出去",
-                hint="等这一轮结束再发，或先点停止",
+                message="上一轮未结束",
+                hint="等待完成或停止当前任务。",
             )
 
         try:
@@ -1461,7 +1461,7 @@ def build_group_router(
         elif message is None:
             # 兜底：连 Driver 都说不出所以然时才用异常原文，且**先剥掉类名**
             # （`plain_text` 的第二步）——`DriverError: …` 不是给用户看的话。
-            message = str(exc) if exc is not None else "这一句没有发出去"
+            message = str(exc) if exc is not None else "发送失败"
         error: dict[str, Any] = {"code": code, "message": plain_text(message or "")}
         if hint:
             error["hint"] = plain_text(hint)
@@ -1687,7 +1687,7 @@ def build_group_router(
         error = outcome["error"] or {}
         # 批次二十七：`detail` 是**给人看的一句话**，不再是 `code：类名: 原文`。
         # 机器要分支就看 `reason`（稳定 code），两者各司其职。
-        detail = error.get("message") or "这一句没有发出去"
+        detail = error.get("message") or "发送失败"
         if error.get("hint"):
             detail = f"{detail}（{error['hint']}）"
         return {

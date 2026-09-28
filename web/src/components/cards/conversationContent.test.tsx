@@ -45,7 +45,7 @@ describe("message reading and actions", () => {
     vi.spyOn(navigator, "clipboard", "get").mockReturnValue(undefined as never);
     render(<TextCard item={item()} />);
     fireEvent.click(screen.getByRole("button", { name: "复制" }));
-    await waitFor(() => expect(toast).toHaveBeenCalledWith("未能复制，请选中正文手动复制", "bad"));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("复制失败，可手动选择文本", "bad"));
     expect(toast).not.toHaveBeenCalledWith("已复制", "ok");
   });
 
@@ -113,7 +113,7 @@ describe("artifact viewer", () => {
     vi.mocked(fetchArtifact).mockRejectedValueOnce(new Error("temporary read error")).mockResolvedValue(new Blob(["png"], { type: "image/png" }));
     const user = userEvent.setup();
     render(<FileReference source={{ uri: "/workspace/generated.png" }} conversationId="c1" />);
-    expect(await screen.findByText("缩略图未能加载，点击打开文件")).toBeInTheDocument();
+    expect(await screen.findByText("缩略图加载失败，点击打开文件")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "generated.png" }));
     const dialog = screen.getByRole("dialog");
     expect(await within(dialog).findByRole("img", { name: "generated.png" })).toHaveAttribute("src", "blob:preview-retry");
@@ -162,7 +162,7 @@ describe("artifact viewer", () => {
     const user = userEvent.setup();
     render(<FileReference source={{ uri: "/tmp/report.docx" }} conversationId="c1" />);
     await user.click(screen.getByRole("button", { name: "report.docx" }));
-    expect(screen.getByText("此格式暂不支持预览，可以下载后打开。")).toBeInTheDocument();
+    expect(screen.getByText("此格式不支持预览")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "下载" })).toBeInTheDocument();
     expect(fetchArtifact).not.toHaveBeenCalled();
   });
@@ -172,7 +172,7 @@ describe("artifact viewer", () => {
     const user = userEvent.setup();
     render(<FileReference source={{ uri: "/tmp/report.docx" }} conversationId="c1" />);
     await user.click(screen.getByRole("button", { name: "report.docx" }));
-    expect(screen.getByText("Preview is unavailable for this format. Download it to open it.")).toBeInTheDocument();
+    expect(screen.getByText("Preview unavailable for this format")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close preview" })).toHaveFocus();
   });
 });

@@ -134,8 +134,8 @@ describe("应用到引擎：dry-run 差异弹窗", () => {
     expect(within(screen.getByTestId("materialize-unchanged")).getAllByTestId("materialize-row")).toHaveLength(1);
     // ③ 不会写入：三条分三组，凭据那组带固定说明。
     expect(screen.getAllByTestId("materialize-unsupported-group")).toHaveLength(3);
-    expect(screen.getByText("不会写入 3 项")).toBeInTheDocument();
-    expect(screen.getByText("凭据永远不由仪表盘写入。")).toBeInTheDocument();
+    expect(screen.getByText("跳过 3 项")).toBeInTheDocument();
+    expect(screen.getByText("凭据请在引擎中配置。")).toBeInTheDocument();
     // 后端的 warnings 原样列出。
     expect(screen.getByText(/一个字节都没写/)).toBeInTheDocument();
   });
@@ -145,11 +145,11 @@ describe("应用到引擎：dry-run 差异弹窗", () => {
   it("三段标题常显：空段也留着标题与计数（0 也是这次预演的结论）", async () => {
     mocked.materializeBinding.mockResolvedValue(report([entry()]));
     openModal();
-    // ① 将写入 1 处（有行）；② 无变化 0 项；③ 不会写入 0 项——三个标题一个不少。
+    // ① 将写入 1 处（有行）；② 无变化 0 项；③ 跳过 0 项——三个标题一个不少。
     expect(await screen.findByText("将写入 1 处")).toBeInTheDocument();
     expect(screen.getByTestId("materialize-unchanged-toggle")).toHaveTextContent("无变化 0 项");
-    expect(screen.getByText("不会写入 0 项")).toBeInTheDocument();
-    expect(screen.getByTestId("materialize-unsupported-empty")).toHaveTextContent("没有被挡下的键");
+    expect(screen.getByText("跳过 0 项")).toBeInTheDocument();
+    expect(screen.getByTestId("materialize-unsupported-empty")).toHaveTextContent("无跳过项");
     // 无变化那段仍旧**默认折叠**：标题在，行不在。
     expect(screen.queryByTestId("materialize-unchanged")).toBeNull();
   });
@@ -183,7 +183,7 @@ describe("应用到引擎：dry-run 差异弹窗", () => {
   it("没有要写的改动 → 主按钮禁用并说明", async () => {
     mocked.materializeBinding.mockResolvedValue(report([entry({ action: "unchanged" })]));
     openModal();
-    expect(await screen.findByTestId("materialize-nothing")).toHaveTextContent("没有需要写的改动");
+    expect(await screen.findByTestId("materialize-nothing")).toHaveTextContent("无待写入变更");
     expect(screen.getByRole("button", { name: "备份后写入" })).toBeDisabled();
   });
 
@@ -243,7 +243,7 @@ describe("确认写入", () => {
       }),
     );
     await userEvent.click(screen.getByRole("button", { name: "备份后写入" }));
-    expect(await screen.findByTestId("materialize-busy")).toHaveTextContent("有 3 条会话在运行，先停止再写");
+    expect(await screen.findByTestId("materialize-busy")).toHaveTextContent("3 条会话运行中，停止后可应用");
     expect(screen.getByTestId("materialize-busy-list")).toHaveTextContent("一二三");
     expect(screen.getByRole("button", { name: "重试" })).toBeEnabled();
   });

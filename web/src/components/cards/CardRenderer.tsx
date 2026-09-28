@@ -33,7 +33,7 @@ import { ReasoningCard } from "./ReasoningCard";
 import { TextCard, type MessageActions } from "./TextCard";
 import { ToolCard } from "./ToolCard";
 import { FileReference } from "./ArtifactPreview";
-import { isConfirmedMessageRejection } from "../../lib/messageDelivery";
+import { messageRejectionReasonKey } from "../../lib/messageDelivery";
 import { useContentText } from "./contentStrings";
 import {
   MODEL_ADOPTED_NAME,
@@ -240,16 +240,15 @@ export function CardRenderer({
       if (item.namespace === USER_MESSAGE_NAMESPACE && item.name === USER_MESSAGE_FAILED_NAME) {
         const reason = failureReason(item.data);
         const code = item.data && typeof item.data === "object" ? (item.data as { code?: string }).code : undefined;
-        const confirmed = isConfirmedMessageRejection({ failureCode: code });
+        const reasonKey = messageRejectionReasonKey(code);
         return (
           <LifecycleMarker
             text={
-              !confirmed
-                ? `${c("chat.content.deliveryUnconfirmed")} · ${c("chat.content.deliveryCheckFirst")}${reason ? ` · ${reason}` : ""}`
-                : reason
-                ? t("timeline.userMessageFailed", { reason })
-                : t("timeline.userMessageFailed.noReason")
+              reasonKey
+                ? t("timeline.userMessageFailed", { reason: t(reasonKey) })
+                : c("chat.content.deliveryUnconfirmed")
             }
+            detail={reason || undefined}
             time={time}
           />
         );

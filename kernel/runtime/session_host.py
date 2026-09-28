@@ -1544,7 +1544,7 @@ class SessionHost:
             text = failure.message
         elif isinstance(exc, TurnAlreadyRunningError):
             code = "turn_already_running"
-            text = str(exc) or "上一轮还在运行，这一句没有发出去"
+            text = str(exc) or "上一轮未结束"
         elif isinstance(exc, UnsupportedCapabilityError):
             code = "unsupported_capability"
             text = str(exc) or "这台引擎不支持这次发送"
@@ -1553,7 +1553,7 @@ class SessionHost:
             text = str(exc) or "引擎拒绝了这一句"
         else:
             code = "send_failed"
-            text = str(exc) or "这一句没有发出去"
+            text = str(exc) or "发送失败"
         data: dict[str, Any] = {"code": code, "message": text}
         # AD-94 的老规矩：没给对账编号就**不放这个键**，不放 null。
         if message.client_ref is not None:

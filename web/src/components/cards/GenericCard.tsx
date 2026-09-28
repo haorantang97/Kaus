@@ -46,11 +46,11 @@ export function GenericCard({
 }
 
 /** 生命周期标记：一行不带边框的小字（`session.created` / `run.completed` 之类）。 */
-export function LifecycleMarker({ text, time }: { text: string; time?: string }) {
+export function LifecycleMarker({ text, time, detail }: { text: string; time?: string; detail?: string }) {
   return (
     <div className="flex items-center gap-2 px-1 py-0.5 text-[0.65rem]" style={{ color: cream(40) }}>
       <span className="h-px flex-1" style={{ background: cream(11) }} />
-      <span>{text}</span>
+      <span title={detail}>{text}</span>
       {time && <span className="tabular-nums">{time}</span>}
       <span className="h-px flex-1" style={{ background: cream(11) }} />
     </div>

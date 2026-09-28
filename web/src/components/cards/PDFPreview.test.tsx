@@ -78,7 +78,7 @@ describe("PDF preview resource and failure boundaries", () => {
     render(<PDFPreview url="blob:invalid-document" />);
     await waitFor(() => expect(engine.getDocument).toHaveBeenCalledOnce());
     await act(async () => { state.load.reject(new Error("Invalid PDF")); });
-    expect(screen.getByRole("alert")).toHaveTextContent("PDF 未能预览");
+    expect(screen.getByRole("alert")).toHaveTextContent("PDF 预览失败");
     const next = documentTask();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(engine.getDocument).toHaveBeenCalledTimes(2));
@@ -92,7 +92,7 @@ describe("PDF preview resource and failure boundaries", () => {
     state.getPage.mockResolvedValue(page);
     render(<PDFPreview url="blob:corrupt-page" />);
     await act(async () => { state.load.resolve(state.pdf); });
-    expect(await screen.findByRole("alert")).toHaveTextContent("PDF 未能预览");
+    expect(await screen.findByRole("alert")).toHaveTextContent("PDF 预览失败");
     expect(screen.getByRole("button", { name: "重试" })).toBeEnabled();
     expect(page.cleanup).toHaveBeenCalledOnce();
   });
@@ -100,7 +100,7 @@ describe("PDF preview resource and failure boundaries", () => {
   it("does not fetch arbitrary external URLs through the preview component", async () => {
     setLocalePref("en");
     render(<PDFPreview url="https://outside.test/private.pdf" />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not preview the PDF");
+    expect(await screen.findByRole("alert")).toHaveTextContent("PDF preview failed");
     expect(engine.getDocument).not.toHaveBeenCalled();
   });
 });

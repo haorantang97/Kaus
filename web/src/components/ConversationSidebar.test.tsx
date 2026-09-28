@@ -161,7 +161,7 @@ describe("会话行可拖（拖进 Group）", () => {
     const head = document.querySelector(".kaus-sidebar-group-head") as HTMLElement;
     expect(head.getAttribute("draggable")).toBe("true");
     // 拖拽本身看不见：悬停那句话要把它说出来。
-    expect(head.getAttribute("title")).toMatch(/启动一名成员/);
+    expect(head.getAttribute("title")).toMatch(/添加成员/);
 
     const written: Record<string, string> = {};
     const dataTransfer = {

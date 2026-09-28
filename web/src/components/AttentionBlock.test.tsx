@@ -69,8 +69,8 @@ describe("「需要处理」块", () => {
       "等着的",
     ]);
     const kinds = screen.getAllByTestId("overview-attention-kind");
-    expect(kinds[0]).toHaveTextContent("上一次没发出去");
-    expect(kinds[1]).toHaveTextContent("等你处理");
+    expect(kinds[0]).toHaveTextContent("上次发送失败");
+    expect(kinds[1]).toHaveTextContent("待处理");
   });
 
   it("行的形状照旧：标题 · 项目 · 引擎 · 状态；点行进会话", async () => {

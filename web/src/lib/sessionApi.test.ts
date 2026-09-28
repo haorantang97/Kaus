@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setLocalePref } from "../i18n";
 import {
   bootstrapSessionAuth,
   conversationEventsUrl,
@@ -124,6 +125,19 @@ describe("Binding 状态端点（batch19）", () => {
 /* ---- batch33（AD-157）：输入区那条「先去登录」的行内报错 ------------------- */
 
 describe("auth_required 的行内报错", () => {
+  it("uses the current locale for historical busy diagnostics without duplicating the hint", () => {
+    const message = "上一轮还在运行，这一句没有发出去";
+    const failure = new SessionApiError(409, "turn_already_running", message, {
+      detail: { hint: "等这一轮结束再发，或先点停止" },
+    });
+    setLocalePref("zh");
+    expect(describeFailure(failure)).toBe("上一轮未结束");
+    setLocalePref("en");
+    expect(describeFailure(failure)).toBe("Previous turn incomplete");
+    expect(failure.message).toBe(message);
+    setLocalePref("zh");
+  });
+
   it("`message` 后面接上后端给的那条终端命令", () => {
     const failure = new SessionApiError(400, "auth_required", "Codex 还没有登录", {
       detail: { cause: "auth_required", hint: "在终端运行 `codex login`，然后重试" },

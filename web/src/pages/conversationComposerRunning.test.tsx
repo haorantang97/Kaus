@@ -211,7 +211,7 @@ describe("第 1 件：运行中按 Enter 与按发送同一条规矩", () => {
     expect(mocked.sendConversationMessage).not.toHaveBeenCalled();
     expect(box).toHaveValue("第二句");
     expect(screen.getByTestId("send-blocked-note")).toHaveTextContent(
-      "上一轮还在运行，等它结束再发（或先停止）",
+      "当前任务未结束",
     );
     // 不排队：没有任何占位气泡替用户攒着这句话。
     expect(screen.queryByTestId("message-failed-note")).toBeNull();
@@ -249,7 +249,7 @@ describe("第 2 件：失败消息上的「重发」在运行中也在位", () =
 
     const retry = await screen.findByTestId("message-retry");
     expect(retry).toBeDisabled();
-    expect(retry).toHaveAttribute("title", "等本轮结束");
+    expect(retry).toHaveAttribute("title", "任务结束后可重发");
     // Copy is read-only and remains available; editing cannot start another turn.
     expect(screen.getByRole("button", { name: "复制" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "编辑重发" })).toBeNull();

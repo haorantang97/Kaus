@@ -340,7 +340,7 @@ describe("Group 浮窗：添加成员两条路", () => {
     await user.click(await screen.findByRole("option", { name: "接口层重构 · Mock · X" }));
 
     await waitFor(() =>
-      expect(screen.getByText(/正在「另一个组」里/)).toBeInTheDocument(),
+      expect(screen.getByText(/会话已在「另一个组」中/)).toBeInTheDocument(),
     );
   });
 
@@ -396,7 +396,7 @@ describe("Group 浮窗：添加成员两条路", () => {
     await user.click(await screen.findByRole("button", { name: "启动" }));
 
     const notice = await screen.findByTestId("group-notice-notice:1");
-    expect(notice).toHaveTextContent("「新成员」建好了，但第一句话没发出去：引擎起不来");
+    expect(notice).toHaveTextContent("「新成员」已创建，首条消息发送失败：引擎起不来");
     expect(notice).toHaveTextContent("先在终端把这台引擎登好再试");
     // 成员行上一枚小标，指向同一件事。
     expect(await screen.findByTestId("member-first-failed-m9")).toBeInTheDocument();
@@ -577,7 +577,7 @@ describe("Group 浮窗：对话与辅助视图", () => {
 
     await user.click(summary);
     const detail = screen.getAllByTestId("group-delivery-detail")[0];
-    expect(within(detail).getByText("已跳过（这位成员暂停中）")).toBeInTheDocument();
+    expect(within(detail).getByText("已跳过 · 成员已暂停")).toBeInTheDocument();
   });
 
   /* batch27：后端热修给每条投递多加了一个**原因码**（`status` 之外）。码是给机器
@@ -615,7 +615,7 @@ describe("Group 浮窗：对话与辅助视图", () => {
     await openAndExpand(user, "重构评审组");
     await user.click(await screen.findByTestId("group-delivery-summary-msg3"));
     expect(screen.getByTestId("group-delivery-reason-m1")).toHaveTextContent(
-      "上一轮还在运行，等它结束再发",
+      "上一轮未结束",
     );
     // 原始的 `HTTP 409` 不该出现在界面上（后端热修之后它也不再上 wire）。
     expect(screen.queryByText("HTTP 409")).toBeNull();
@@ -702,9 +702,9 @@ describe("Group 浮窗：对话与辅助视图", () => {
 
     await waitFor(() => expect(screen.getByTestId("group-composer-closed")).toBeInTheDocument());
     expect(screen.queryByTestId("group-composer-input")).toBeNull();
-    // 打过的字没被吞掉：那一条以"没发出去"留在时间线上。
+    // 打过的字没被吞掉：那一条以"未发送"留在时间线上。
     expect(
-      within(screen.getByTestId("group-pane-timeline")).getByText(/没发出去：这个组已经关闭了/),
+      within(screen.getByTestId("group-pane-timeline")).getByText(/发送失败：这个组已经关闭了/),
     ).toBeInTheDocument();
   });
 
@@ -1021,7 +1021,7 @@ describe("batch30：Context Packet 不被过期的答案盖掉", () => {
 
     await openAndExpand(user, "重构评审组");
     // 取数在飞的时候**不说**「还没有成员」——「还不知道」和「确实没有」是两件事。
-    expect(screen.queryByText(/这个组还没有成员/)).toBeNull();
+    expect(screen.queryByText(/暂无成员/)).toBeNull();
 
     // 第二次（刷新）先回来：两个人出现了。
     await user.click(screen.getByTestId("group-packet-refresh"));
@@ -1033,7 +1033,7 @@ describe("batch30：Context Packet 不被过期的答案盖掉", () => {
       await Promise.resolve();
     });
     expect(screen.getByTestId("group-packet-row-m1")).toBeInTheDocument();
-    expect(screen.queryByText(/这个组还没有成员/)).toBeNull();
+    expect(screen.queryByText(/暂无成员/)).toBeNull();
   });
 
   it("返回体的 groupId 与当前组对不上时也整份丢掉（换组时的兜底）", async () => {
@@ -1048,7 +1048,7 @@ describe("batch30：Context Packet 不被过期的答案盖掉", () => {
     await openAndExpand(user, "重构评审组");
     // 那份答案属于别的组：既不渲染它的内容，也不拿它当"这个组是空的"的证据。
     await waitFor(() => expect(api.fetchContextPacket).toHaveBeenCalled());
-    expect(screen.queryByText(/这个组还没有成员/)).toBeNull();
+    expect(screen.queryByText(/暂无成员/)).toBeNull();
   });
 });
 
@@ -1135,7 +1135,7 @@ describe("拖拽入组（★J-4）", () => {
     await openAndExpand(user, "重构评审组");
     const pane = await screen.findByTestId("group-pane-members");
     fireEvent.drop(pane, { dataTransfer: conversationDrag("conversation:9") });
-    expect(await screen.findByText("这条会话已经是本组成员")).toBeInTheDocument();
+    expect(await screen.findByText("会话已在组内")).toBeInTheDocument();
 
     api.addGroupMember.mockRejectedValueOnce(
       new SessionApiError(409, "conversation_gone", "这条会话已经不在了"),
@@ -1190,7 +1190,7 @@ describe("拖拽入组（★J-4）", () => {
     expect(pill.className).toMatch(/is-drop-target/);
     fireEvent.drop(pill, { dataTransfer: conversationDrag("conversation:9") });
     expect(api.addGroupMember).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByText(/开着 2 个组/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/当前有 2 个组/)).toBeInTheDocument());
   });
 
   it("一个组都没有：胶囊不装得能放", async () => {
@@ -1284,7 +1284,7 @@ describe("拖项目进组 = 启动新成员（★J-4，batch43）", () => {
 
     fireEvent.drop(pill, { dataTransfer: projectDrag("project:default", "X") });
     expect(api.spawnGroupMember).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getAllByText(/开着 2 个组/).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(/当前有 2 个组/).length).toBeGreaterThan(0));
   });
 
   it("项目没有默认引擎：按 code 翻人话，不静默", async () => {
@@ -1299,7 +1299,7 @@ describe("拖项目进组 = 启动新成员（★J-4，batch43）", () => {
     const pane = await screen.findByTestId("group-pane-members");
     fireEvent.drop(pane, { dataTransfer: projectDrag("project:default", "X") });
 
-    expect(await screen.findByText(/默认引擎|binding/)).toBeInTheDocument();
+    expect(await screen.findByText(/项目未接入引擎/)).toBeInTheDocument();
   });
 
   it("两种 MIME 互不误触发：会话只走加入，项目只走 spawn", async () => {
@@ -1406,7 +1406,7 @@ describe("Group 浮窗：成员回复进时间线（batch45a）", () => {
     const failed = screen.getByTestId("group-message-t2");
     expect(failed).toHaveAttribute("data-outcome", "failed");
     expect(within(failed).getByTestId("group-turn-outcome-t2")).toHaveClass("kaus-group-bad");
-    expect(within(failed).getByText("这一轮没有留下正文。")).toBeInTheDocument();
+    expect(within(failed).getByText("无文本输出")).toBeInTheDocument();
 
     expect(screen.getByTestId("group-turn-truncated-t3")).toBeInTheDocument();
   });

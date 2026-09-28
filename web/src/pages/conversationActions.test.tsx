@@ -282,7 +282,7 @@ describe("第 1 件：点停止后的「正在停止…」", () => {
       });
 
       expect(screen.getByTestId("stop-button")).toBeEnabled();
-      expect(screen.getByTestId("stop-unconfirmed")).toHaveTextContent("引擎没有确认停止，可再试一次");
+      expect(screen.getByTestId("stop-unconfirmed")).toHaveTextContent("停止未确认，可重试");
       // 状态没有被前端改写：这一刻的真相仍然是"在跑"。
       expect(screen.getByTestId("conversation-status")).toHaveTextContent("运行中");
     } finally {
@@ -312,7 +312,7 @@ describe("第 2 件：「回到站内」先说清楚语义", () => {
     await user.click(await screen.findByRole("button", { name: "回到站内" }));
 
     const dialog = await screen.findByTestId("return-dialog");
-    expect(dialog).toHaveTextContent("不会终止终端里的任务");
+    expect(dialog).toHaveTextContent("终端任务继续运行");
     await user.click(within(dialog).getByRole("button", { name: "回到页面" }));
 
     expect(mocked.returnToCardSurface).not.toHaveBeenCalled();

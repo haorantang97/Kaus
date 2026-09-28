@@ -424,7 +424,7 @@ def build_session_router(
         failure = getattr(exc, "failure", None)
         if isinstance(failure, FailureHint):
             return failure.message
-        return plain_text(str(exc)) or "这一句没有发出去"
+        return plain_text(str(exc)) or "发送失败"
 
     def _attach_client_ref(exc: SessionApiError, client_ref: str | None) -> None:
         """把 AD-94 的对账编号塞进错误体的 ``detail``（R6）。

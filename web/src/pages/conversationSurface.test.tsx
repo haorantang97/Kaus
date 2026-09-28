@@ -264,7 +264,7 @@ describe("第 1 件：「到终端打开」入口", () => {
     renderPage();
     await user.click(await findOpenButton());
 
-    expect(await screen.findByText(/另一处正在使用这条会话/)).toBeInTheDocument();
+    expect(await screen.findByText(/强制接管可能造成并发写入/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "强制接管" }));
 
     await waitFor(() => expect(mocked.openExternalSurface).toHaveBeenCalledTimes(2));
@@ -297,7 +297,7 @@ describe("第 2 件：外部态（只读）", () => {
     expect(banner).toHaveTextContent("open");
     const box = screen.getByLabelText("消息");
     expect(box).toBeDisabled();
-    expect(box).toHaveAttribute("placeholder", "这条会话正在外部终端运行，回到站内后可继续");
+    expect(box).toHaveAttribute("placeholder", "终端运行中 · 输入暂不可用");
     // 入口本身换成了横幅上的「回到站内」，页头那枚不再出现。
     expect(screen.queryByTestId("open-external")).toBeNull();
   });

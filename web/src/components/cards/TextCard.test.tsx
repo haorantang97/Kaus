@@ -58,7 +58,7 @@ describe("单条消息的渲染边界", () => {
         </MarkdownBoundary>
       </div>,
     );
-    expect(screen.getByText("这条消息没能渲染成格式，下面是原文")).toBeInTheDocument();
+    expect(screen.getByText("格式加载失败，已显示原文")).toBeInTheDocument();
     expect(screen.getByText("**原始文本** 还在")).toBeInTheDocument();
     // 边界之外的东西一个不掉：这正是"局部失败"与全局恢复界面的区别。
     expect(screen.getByTestId("neighbour")).toBeInTheDocument();
@@ -75,6 +75,6 @@ describe("单条消息的渲染边界", () => {
   it("正文里的 __FENCE_0__ 不再把这条消息炸掉", () => {
     render(<TextCard item={message("__FENCE_0__")} />);
     expect(screen.getByTestId("assistant-prose").textContent).toContain("FENCE_0");
-    expect(screen.queryByText("这条消息没能渲染成格式，下面是原文")).toBeNull();
+    expect(screen.queryByText("格式加载失败，已显示原文")).toBeNull();
   });
 });

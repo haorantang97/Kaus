@@ -31,7 +31,7 @@ export const zh = {
   "conversation.attach.unsupported": "此引擎尚未确认支持附件，文件未上传。可以先发送文字，待连接后重试。",
   "conversation.attach.tooMany": "每条消息最多添加 8 个文件。",
   "conversation.attach.tooLarge": "单个文件不能超过 10 MB。",
-  "conversation.attach.failed": "“{name}”没有上传成功：{error}",
+  "conversation.attach.failed": "“{name}”上传失败：{error}",
   "conversation.attach.list": "本条消息的附件",
   "conversation.attach.ready": "已上传",
   "conversation.attach.uploading": "正在上传…",
@@ -43,7 +43,7 @@ export const zh = {
   "conversation.composer.keys": "Enter 发送 · Shift + Enter 换行",
   "conversation.error.dismiss": "收起提示",
   "conversation.history.retry": "重新加载",
-  "conversation.workspace.saved": "工作位置已保存，新会话使用这个目录；已有会话保留启动时的目录。",
+  "conversation.workspace.saved": "工作位置已保存，仅用于新会话。",
 
   /* ---- 语言开关（放在主题切换旁） ---- */
   "locale.title": "界面语言",
@@ -88,7 +88,7 @@ export const zh = {
   // batch52
   "conversation.title.rename": "重命名",
   "conversation.title.field": "会话名字",
-  "conversation.title.failed": "没改成：{error}",
+  "conversation.title.failed": "重命名失败：{error}",
   "conversation.runState.idle": "空闲",
   "conversation.runState.running": "运行中",
   "conversation.runState.completed": "空闲",
@@ -100,9 +100,9 @@ export const zh = {
   "conversation.message.label": "消息",
   "conversation.composer.placeholder": "继续这段对话…",
   "conversation.send": "发送",
-  "conversation.pending.failed": "没发出去",
+  "conversation.pending.failed": "未发送",
   "conversation.pending.retry": "重发",
-  "conversation.pending.unconfirmed": "未确认",
+  "conversation.pending.unconfirmed": "发送结果未确认",
 
   /* ---- 新会话草稿页 ---- */
   "draft.heading": "Let’s make something sick",
@@ -131,11 +131,11 @@ export const zh = {
   "project.action.openTerminal": "到终端打开",
   "project.action.settings": "设置",
   "project.error": "项目读取失败：{error}",
-  "project.terminal.ok": "已在终端打开这个项目",
+  "project.terminal.ok": "已在终端打开项目",
   "project.terminal.fail": "到终端打开失败：{error}",
   "project.conversations.title": "会话",
   "project.conversations.loading": "正在读取会话…",
-  "project.conversations.empty": "这个项目还没有会话。",
+  "project.conversations.empty": "暂无会话",
   "project.conversations.all": "查看全部",
   "project.conversationStatus.idle": "空闲",
   "project.conversationStatus.running": "运行中",
@@ -149,7 +149,7 @@ export const zh = {
   /* ---- 能力表（项目详情页 ③ 区） ---- */
   "capabilities.title": "能力",
   "capabilities.loading": "正在读取能力…",
-  "capabilities.empty": "这个项目还没有任何能力。",
+  "capabilities.empty": "暂无能力配置",
   "capabilities.col.type": "类型",
   "capabilities.col.content": "内容",
   "capabilities.col.source": "来源",
@@ -159,7 +159,7 @@ export const zh = {
   "capabilities.source.blocked": "在「{name}」禁止",
   "capabilities.overridden": "已覆盖",
   "capabilities.overridden.title": "链上 {chain} 都设过，最终用「{name}」的",
-  "capabilities.footnote": "禁止后，本项目及其全部下级都不再获得这项能力（下级可以自己重新设置来恢复）。",
+  "capabilities.footnote": "禁用项会应用到下级项目；下级可单独覆盖。",
 
   /* ---- 已接引擎面板 ---- */
   "engines.loading": "正在读取已接引擎…",
@@ -171,11 +171,11 @@ export const zh = {
   "engines.write.makeDefault": "设为默认",
   "engines.write.detach": "解除挂载",
   "engines.write.attach": "接入引擎",
-  "engines.detach.confirm": "解除挂载「{name}」？只删本站这条记录，引擎自己的会话与配置一个都不动。",
+  "engines.detach.confirm": "解除挂载「{name}」？引擎会话与配置将保留。",
   "engines.detach.ok": "解除",
 
   "engine.panel.title": "已接引擎",
-  "engine.panel.empty": "这个项目还没有接入引擎。",
+  "engine.panel.empty": "尚未接入引擎",
   "engine.attach.aria": "接入引擎",
   "engine.attach.button": "接入",
   "engine.attach.disabled": "接入引擎",
@@ -211,7 +211,7 @@ export const zh = {
   /* ---- 引擎配置展开区（AD-97） ---- */
   "engine.config.toggle": "引擎配置 · {count} 组",
   "engine.config.loading": "正在读取引擎配置…",
-  "engine.config.empty": "这个引擎在本项目上没有专属配置。",
+  "engine.config.empty": "暂无项目专属配置",
   "engine.config.keys": "{count} 个键",
   "engine.config.items": "{count} 项",
 
@@ -321,9 +321,9 @@ export const zh = {
      概览页那几行是**字标/印刷元素**（AD-78：其余不动），中英两列同值。 */
 
   /* ---- 404 / 幽灵页 ---- */
-  "notFound.page.title": "没有这一页",
-  "notFound.page.sub": "这个地址对不上任何一页。可能是链接过期了，也可能是拼错了。",
-  "notFound.project.title": "没有这个项目",
+  "notFound.page.title": "页面不存在",
+  "notFound.page.sub": "链接无效或已过期。",
+  "notFound.project.title": "项目不存在",
   "notFound.project.sub": "项目树里找不到它。可能已经删掉，或者改了标识。",
   "notFound.back": "回概览",
 
@@ -363,14 +363,14 @@ export const zh = {
 
   /* ---- 新建项目弹窗 ---- */
   "newAgent.title": "新建项目",
-  "newAgent.sub": "取个名字、选好上级，工作台会建一份干净的项目。",
+  "newAgent.sub": "设置项目名称与上级。",
   "newAgent.field.display": "显示名",
   "newAgent.field.id": "项目标识",
   "newAgent.field.parent": "上级",
   "newAgent.field.desc": "描述",
   "newAgent.placeholder.display": "例如：Marketing",
   "newAgent.placeholder.id": "自动生成…",
-  "newAgent.placeholder.desc": "一句话描述（可选）",
+  "newAgent.placeholder.desc": "项目描述（选填）",
   "newAgent.noParent": "暂不设上级",
   "newAgent.parentsError": "上级列表加载失败：{error}",
   "newAgent.idInvalid": "项目标识只能用小写字母、数字和连字符，长度 1–32。",
@@ -392,7 +392,7 @@ export const zh = {
   "reparent.inheritOn": "沿树继承已开",
   "reparent.inheritOff": "继承已关",
   "reparent.compacted": "已压平",
-  "reparent.footnote": "只改组织关系。会话与数据一个都不动。",
+  "reparent.footnote": "仅调整项目层级，会话与数据保留。",
   "reparent.confirm": "确认移动",
   "reparent.moved": "已把「{name}」移到 {target}",
   "reparent.moveFailed": "移动失败：{error}",
@@ -447,7 +447,7 @@ export const zh = {
 
   /* ---- 仪表盘 ---- */
   "dash.title": "仪表盘 · Dashboard",
-  "dash.sub": "系统健康 · 待你处理 · 最近改动，三块一眼看全。生成于 {at}。",
+  "dash.sub": "系统状态 · 待处理 · 最近改动 · 更新于 {at}",
   "dash.health.title": "系统健康",
   "dash.health.unit": "个项目",
   "dash.health.breakdown": "{main} 主 · {twin} 分身 · {sub} 子",
@@ -465,9 +465,9 @@ export const zh = {
   "dash.constitution.on": "已为 {count} 个启用",
   "dash.review.title": "待你处理 · {count} 项",
   "dash.review.empty": "✓ 全员合规 · 无需处理",
-  "dash.review.killed": "已停用（你主动停的，去恢复或确认）",
+  "dash.review.killed": "已停用",
   "dash.review.hardLint": "{count} 个必须修的技能问题",
-  "dash.review.draft": "草稿还没安排位置（去项目轮盘的治理模式拖到岗位）",
+  "dash.review.draft": "草稿待分配",
   "dash.changes.title": "最近变更 · {count} 条",
   "dash.changes.empty": "尚无任何变更记录",
   "dash.lint.failed": "读取技能体检明细失败：{error}",
@@ -479,13 +479,13 @@ export const zh = {
   /* ---- 设置（原 Config 浮层） ---- */
   "config.title": "设置 · Config",
   "config.badge": "v{version} · {count} 类",
-  "config.sub": "主项目（X）的全部配置，按类型归类。只读视图——改配置请编辑 {source}。敏感值（密钥 / Token）一律打码，集成栏只看是否配置、绝不读取凭据。生成于 {at}。",
+  "config.sub": "主项目配置 · 只读 · 编辑来源：{source} · 更新于 {at}",
 
   /* ---- 资料库（原 Vault 浮层） ---- */
   "vault.title": "资料库 · Vault",
   "vault.new": "新建笔记",
   "vault.missing": "资料库路径不存在：{root} —— 去 dashboard/vault_config.json 改 root。",
-  "vault.sub": "全局资料库——所有项目共享同一个库（检索 / RAG 由 llmwiki 负责，这里只做浏览和读写）。",
+  "vault.sub": "全局资料库 · 浏览与编辑",
   "vault.count": "{count} 篇",
   "vault.openObsidian": "用 Obsidian 打开",
   "vault.emptyTree": "空资料库",
@@ -506,7 +506,7 @@ export const zh = {
   /* ---- 仓库（原 Warehouse 浮层） ---- */
   "warehouse.title": "仓库 · Warehouse",
   "warehouse.badge": "{sources} 来源 · {items} 条目",
-  "warehouse.sub": "离线冷存储——存放可按需装到项目的能力件（技能 / MCP），不参与日常运行。点条目卡的 + 可多选项目一次复制多份（各自独立副本，互不影响）；该项目的继承模式后代会自动继承。默认保留仓库这份（冷存档），可勾选同时移除。",
+  "warehouse.sub": "技能与 MCP 存档。选择项目以安装独立副本。",
   "warehouse.search": "搜条目名 / 描述…",
   "warehouse.filter.all": "全部 {count}",
   "warehouse.filter.type": "{label} {count}",
@@ -519,14 +519,14 @@ export const zh = {
   "warehouse.picker.title": "把「{name}」复制到哪些项目？",
   "warehouse.picker.titleTyped": "把「{name}」（{type}）复制到哪些项目？",
   "warehouse.picker.subConfig": "勾选的每个项目会把它合并进各自 config.yaml 的 {key}；可多选。",
-  "warehouse.picker.subSkill": "勾选的每个项目会得到一份独立副本（移入各自 skills/{source}/）；可多选，互不影响。",
+  "warehouse.picker.subSkill": "将独立副本安装到所选项目的 skills/{source}/。",
   "warehouse.picker.treeFailed": "加载项目树失败：{error}",
   "warehouse.picker.treeLoading": "加载项目树…",
-  "warehouse.picker.removeAfter": "复制后同时从仓库移除这份（默认保留作冷存档）",
+  "warehouse.picker.removeAfter": "安装后移除仓库存档",
   "warehouse.picker.selected": "已选 {count} 个",
   "warehouse.picker.copy": "复制到 {count} 个项目",
   "warehouse.picker.copying": "复制中…",
-  "warehouse.removeConfirm": "复制后从仓库移除「{name}」？这会删除冷存档里的这一份。",
+  "warehouse.removeConfirm": "安装后删除「{name}」的仓库存档？",
   "warehouse.copied": "「{name}」已复制到 {copied}/{total} 个项目",
   "warehouse.copiedSkipped": "（{count} 个跳过）",
   "warehouse.copyFailedSome": "未成功：{list}",
@@ -621,13 +621,13 @@ export const zh = {
   "surface.action.returnToCard": "回到站内",
   "surface.external.banner": "正在外部终端运行",
   "surface.external.since": "启动于 {time}",
-  "surface.composer.placeholder": "这条会话正在外部终端运行，回到站内后可继续",
+  "surface.composer.placeholder": "终端运行中 · 输入暂不可用",
   "surface.sidebar.external": "在外部终端运行",
-  "surface.degraded.title": "没能自动打开终端，请自己粘这条命令",
+  "surface.degraded.title": "终端启动失败，可复制命令手动运行",
   "surface.degraded.copy": "复制",
   "surface.degraded.copied": "已复制",
   "surface.degraded.dismiss": "知道了",
-  "surface.confirm.leaseHeld": "另一处正在使用这条会话（{owner}，{acquiredAt}）。强制接管可能导致双写，确定？",
+  "surface.confirm.leaseHeld": "当前由 {owner} 使用（{acquiredAt}）。强制接管可能造成并发写入，继续？",
   "surface.confirm.takeover": "强制接管",
   "surface.confirm.externalActive": "终端好像还开着，强行收回可能丢失终端里正在进行的操作",
   "surface.confirm.reclaim": "强行收回",
@@ -651,7 +651,7 @@ export const zh = {
   /* 第 1 件：停止是**一个过程**。点下去先进「正在停止…」，事件到了才收敛；
      8 秒没等到确认就把按钮放开并补一句中性提示，绝不本地冒充成功。 */
   "conversation.stopping": "正在停止…",
-  "conversation.stopping.unconfirmed": "引擎没有确认停止，可再试一次",
+  "conversation.stopping.unconfirmed": "停止未确认，可重试",
   /* 第 7 件：「回到最新」带未读计数。 */
   "conversation.jumpLatest.count": "回到最新 · {count} 条新消息",
   /* 第 4 件：消息悬停动作。 */
@@ -663,10 +663,10 @@ export const zh = {
   /* 第 2 件：「回到站内」的语义说明。 */
   "surface.return.title": "回到站内",
   "surface.return.body":
-    "只是回到这个页面继续看，不会终止终端里的任务；终端仍持有写权，站内输入保持只读，直到终端退出或你选择强制收回。",
+    "返回页面后，终端任务继续运行。终端退出或收回控制权后可恢复输入。",
   "surface.return.stay": "回到页面",
   "surface.return.force": "强制收回写权",
-  "surface.return.stayed": "已回到页面查看；终端仍在运行，站内输入保持只读。",
+  "surface.return.stayed": "终端运行中 · 页面只读",
   /* 第 5 件：菜单过滤框。 */
   "bar.filter.placeholder": "输入以过滤",
   "bar.filter.empty": "没有匹配项",
@@ -690,7 +690,7 @@ export const zh = {
 
   /* ---- batch18 ---- */
   /* 第 1 件：后端说这条会话有条目、重放却一条都没到。中性一行，不是错误。 */
-  "conversation.historyMissing": "这条会话的历史没有随重放到达；刷新可以再试一次。",
+  "conversation.historyMissing": "历史加载不完整，可刷新重试",
   /* 第 2 件：能力表的「操作」列（AD-144）。 */
   "capabilities.col.actions": "操作",
   "capabilities.action.aria": "能力操作",
@@ -707,7 +707,7 @@ export const zh = {
   /* ---- batch19 ---- */
   /* 第 1 件：登录态里 AD-93 的 `auth_model` 三档，说成人话跟在「已登录」后面。 */
   "engine.authModel.managed-credential": "用本机配置的凭据",
-  "engine.authModel.own-auth": "引擎自己的登录",
+  "engine.authModel.own-auth": "引擎登录",
   "engine.authModel.session-scoped": "每条会话各自登录",
   /* ---- batch23 ---- */
   /* 第 2 件：右下角 Group 浮窗（DESIGN ★ J）。 */
@@ -715,11 +715,11 @@ export const zh = {
   "group.pill.count": "协作组 · {count}",
   "group.minimize": "最小化",
   "group.empty": "暂无协作组",
-  "group.noMembers": "这个组还没有成员。",
+  "group.noMembers": "暂无成员",
   "group.memberCount": "{count} 名成员",
   "group.new": "新建组",
   "group.new.title": "组名",
-  "group.new.placeholder": "给这个组起个名字",
+  "group.new.placeholder": "组名称",
   "group.new.submit": "建组",
   /* 成员行与「…」菜单四动作。 */
   "group.member.actions": "成员操作",
@@ -729,7 +729,7 @@ export const zh = {
   "group.member.remove": "移出组",
   "group.member.promote": "提升为普通会话",
   "group.member.running": "正在运行",
-  "group.member.conversationGone": "这条会话已不在",
+  "group.member.conversationGone": "会话不存在",
   "group.state.active": "进行中",
   "group.state.paused": "已暂停",
   "group.state.left": "已移出",
@@ -738,21 +738,21 @@ export const zh = {
   "group.add": "添加成员",
   "group.add.existing": "选择已有会话",
   "group.add.spawn": "启动新成员",
-  "group.add.pick": "选一条会话",
-  "group.add.noConversations": "这个项目下还没有可加入的会话",
+  "group.add.pick": "选择会话",
+  "group.add.noConversations": "暂无可加入的会话",
   "group.spawn.project": "项目",
   "group.spawn.model": "模型",
-  "group.spawn.first": "第一句话",
-  "group.spawn.firstPlaceholder": "第一句话（可不填）",
+  "group.spawn.first": "首条消息",
+  "group.spawn.firstPlaceholder": "首条消息（选填）",
   "group.spawn.submit": "启动",
   /* 关闭组的处置弹窗：两个选项各写清楚后果（AD-148 ② 的三行表）。 */
   "group.close": "关闭组",
   "group.close.title": "关闭协作组",
-  "group.close.sub": "「{title}」关掉之后就不能再加人、移人了；组还查得到，成员会话一条都不会被删除。",
+  "group.close.sub": "关闭「{title}」后不可调整成员；组与会话记录保留。",
   "group.close.keep": "保留",
-  "group.close.keep.body": "组内新建的会话提升为普通会话，留在项目里；本来就长期保留的一个字段都不动；用完即弃的那几条归档。",
+  "group.close.keep.body": "保留组内新建会话，归档临时会话。原有长期会话保持不变。",
   "group.close.archive": "归档",
-  "group.close.archive.body": "组内新建的会话与用完即弃的那几条一起归档（置为已结束，历史与原生会话都留着）；长期保留的仍然不动。",
+  "group.close.archive.body": "归档组内新建及临时会话，保留历史与原生会话。原有长期会话保持不变。",
   "group.close.counts": "本组：长期保留 {persistent} 条 · 关组时再决定 {decide} 条 · 用完即弃 {ephemeral} 条",
   "group.close.confirm": "关闭组",
   /* 第 3 件：侧栏那枚组图标；第 4 件：会话页页头那枚 chip。 */
@@ -763,41 +763,41 @@ export const zh = {
   "group.toast.closed": "已关闭「{title}」",
   "group.toast.paused": "已暂停该成员",
   "group.toast.resumed": "已恢复该成员",
-  "group.toast.removed": "已移出该成员（会话本身没有被删除）",
+  "group.toast.removed": "已移出组",
   "group.toast.promoted": "已提升为普通会话",
   "group.toast.memberAdded": "已加入本组",
   /* batch42：拖进来的那一条回执点名标题（拖源顺手带了）。 */
-  "group.drop.noGroup": "还没有协作组——先在右下角建一个，再把会话拖进去。",
-  "group.drop.pickGroup": "开着 {count} 个组，把它拖到具体那个组的成员栏上。",
+  "group.drop.noGroup": "请先创建协作组",
+  "group.drop.pickGroup": "当前有 {count} 个组，请拖到目标组成员栏。",
   "group.toast.memberAddedNamed": "已加入 {title}",
   "group.toast.memberSpawned": "已启动新成员",
   /* batch43：把项目拖到组上 = 组里现有的「启动新成员」（路径 B）。 */
-  "group.drop.projectHint": "{name} · 拖到右下角的协作组上 = 从这个项目启动一名成员",
+  "group.drop.projectHint": "{name} · 拖入协作组以添加成员",
   "group.toast.memberSpawnedFrom": "已从 {name} 启动一名成员",
   /* 409 码表的人话（`docs/ops/groups.md` §5）。按 code 分支，不按文案。 */
-  "group.error.groupClosed": "这个组已经关闭了，不能再改它的成员",
-  "group.error.memberDuplicate": "这条会话已经是本组成员",
-  "group.error.memberElsewhere": "这条会话正在「{title}」里，一条会话同时只能待在一个组",
-  "group.error.memberElsewhereUnnamed": "这条会话已经在另一个组里，一条会话同时只能待在一个组",
+  "group.error.groupClosed": "组已关闭，无法调整成员",
+  "group.error.memberDuplicate": "会话已在组内",
+  "group.error.memberElsewhere": "会话已在「{title}」中，无法同时加入其他组",
+  "group.error.memberElsewhereUnnamed": "会话已在其他组中",
   "group.error.memberLeft": "这位成员已经被移出了；用「重新加入」把他请回来",
-  "group.error.bindingRequired": "这个项目还没有默认引擎，先去项目页接一个",
-  "group.error.bindingMismatch": "选中的引擎不属于这个项目",
+  "group.error.bindingRequired": "项目未接入引擎",
+  "group.error.bindingMismatch": "引擎与项目不匹配",
 
   /* ---- batch25：应用到引擎（物化）与配置漂移 ----
      文案口径取自 `docs/ops/projection.md`：默认只预演、写之前先备份、凭据一个字
      不写、Drift 四态里 `unmanaged` 不算漂移。 */
   "materialize.action": "应用到引擎",
   "materialize.title": "应用到引擎：{name}",
-  "materialize.sub": "把这个项目算出来的有效能力写进引擎自己的配置文件。下面是预演结果——此刻磁盘上一个字节都没动。",
+  "materialize.sub": "预览项目配置变更，确认后写入引擎。",
   "materialize.loading": "正在预演…",
   "materialize.failed": "预演失败：{error}",
   "materialize.retry": "重试",
   /* 三段。 */
   "materialize.willWrite.count": "将写入 {count} 处",
-  "materialize.willWrite.empty": "没有需要写的改动",
+  "materialize.willWrite.empty": "无待写入变更",
   "materialize.unchanged": "无变化 {count} 项",
-  "materialize.unsupported": "不会写入",
-  "materialize.unsupported.count": "不会写入 {count} 项",
+  "materialize.unsupported": "跳过",
+  "materialize.unsupported.count": "跳过 {count} 项",
   /* 变更行。 */
   "materialize.act.set": "写入",
   "materialize.act.unset": "清空",
@@ -806,25 +806,25 @@ export const zh = {
   "materialize.value.collapse": "收起",
   /* `unsupported.reason` 四档（ops 文档 §7）。 */
   "materialize.reason.credential_bearing": "带凭据",
-  "materialize.reason.credential_bearing.note": "凭据永远不由仪表盘写入。",
-  "materialize.reason.not_mapped": "这台引擎的写表里没有落点",
-  "materialize.reason.not_blockable": "这条是禁止，但没有登记「关闭值」",
-  "materialize.reason.factory_protected": "当前的值不是本仪表盘写的",
+  "materialize.reason.credential_bearing.note": "凭据请在引擎中配置。",
+  "materialize.reason.not_mapped": "缺少配置字段映射",
+  "materialize.reason.not_blockable": "未定义禁用值",
+  "materialize.reason.factory_protected": "现有配置不由 Kaus 管理",
   // batch44：工作目录文件投影的四种拒绝理由（AD-166 / AD-167）。
   "materialize.reason.no_workspace_root":
-    "这个项目没有工作目录，文件投影无处可写",
+    "未设置工作目录",
   "materialize.reason.no_workspace_root.note":
-    "到项目设置里给它填一个工作目录，再回来应用。",
+    "请在项目设置中选择工作目录。",
   "materialize.reason.workspace_shared":
-    "这个工作目录已经属于另一个项目",
+    "工作目录已被其他项目使用",
   "materialize.reason.workspace_shared.note":
-    "两个项目共用一个工作目录时，后写的会把先写的抹掉——所以这次一个字都没写。请给其中一个项目换一个工作目录。",
-  "materialize.reason.no_convention": "这台引擎没有声明项目指令写哪个文件",
-  "materialize.reason.workspace_denied": "这个工作目录不能写",
-  "materialize.reason.invalid_config": "这条能力没有可写的内容",
+    "请使用独立目录，避免配置覆盖。",
+  "materialize.reason.no_convention": "未指定项目指令文件",
+  "materialize.reason.workspace_denied": "工作目录不可写",
+  "materialize.reason.invalid_config": "配置内容为空",
   "materialize.reason.other": "其它",
   "materialize.adopt": "接管这些键，本次一并写入",
-  "materialize.adopt.note": "接管照样先备份；接管之后这些键才会出现在漂移检查里。",
+  "materialize.adopt.note": "接管前自动备份，接管后纳入变更检查。",
   "materialize.warnings": "提醒",
   /* 写入。 */
   "materialize.confirm": "备份后写入",
@@ -836,11 +836,11 @@ export const zh = {
      它照样说 `config.yaml`，照抄那条命令会盖错文件。目标改成从备份文件名推出来的
      真实那一个（`X.kaus-backup-<时间戳>` → `X`）。推不出来就不编一个（下一条）。 */
   // batch54
-  "materialize.done.rollback": "要回滚就把它拷回去：cp {path} {target}",
+  "materialize.done.rollback": "恢复命令：cp {path} {target}",
   "materialize.done.rollback.unknown":
-    "要回滚就把这份备份拷回它原来的位置（备份文件名里读不出原文件名）。",
-  "materialize.done.noBackup": "后端这次没有报告备份路径。",
-  "materialize.busy": "有 {count} 条会话在运行，先停止再写",
+    "将备份复制回原路径以恢复配置。",
+  "materialize.done.noBackup": "备份路径未提供",
+  "materialize.busy": "{count} 条会话运行中，停止后可应用",
   "materialize.writeFailed": "写入失败：{error}",
   /* 漂移。 */
   "drift.field": "配置漂移",
@@ -848,12 +848,12 @@ export const zh = {
   "drift.inSync": "与项目一致 · 检查于 {time}",
   "drift.view": "查看",
   "drift.title": "配置漂移：{name}",
-  "drift.sub": "引擎侧现在的值与本仪表盘上次写下的登记对不上的那些键。没写过的键不算漂移，不列在这里。",
+  "drift.sub": "引擎配置与 Kaus 上次写入值的差异。",
   "drift.expected": "期望",
   "drift.actual": "实际",
   "drift.state.drifted": "被改过",
   "drift.state.missing": "已不在",
-  "drift.empty": "没有对不上的键",
+  "drift.empty": "配置一致",
   "drift.checkedAt": "检查于 {time}",
   /* ---- batch26：Group 展开态三栏 + 广播 / 定向 · 接入引擎面板 ---- */
   /* 第 1 件：三栏（窄屏折成 tab）。栏名同时是 tab 名，一份文案两处用。 */
@@ -894,15 +894,15 @@ export const zh = {
      的第一眼是名字，不是「这是一条 member_turn」；键留着是给 tDynamic 兜底的。 */
   "group.kind.member_turn": "成员发言",
   "group.turn.tools": "跑了 {count} 个工具",
-  "group.turn.failed": "这一轮失败了",
-  "group.turn.interrupted": "这一轮被打断",
-  "group.turn.noText": "这一轮没有留下正文。",
+  "group.turn.failed": "运行失败",
+  "group.turn.interrupted": "已中断",
+  "group.turn.noText": "无文本输出",
   "group.turn.truncated": "正文过长，这里只留了前 4000 字",
   "group.timeline.loading": "正在取组时间线…",
-  "group.timeline.empty": "这个组还没有消息。",
+  "group.timeline.empty": "暂无消息",
   "group.timeline.failed": "组时间线取不到：{error}",
   "group.timeline.pending": "发送中…",
-  "group.timeline.sendFailed": "没发出去：{error}",
+  "group.timeline.sendFailed": "发送失败：{error}",
   /* batch45c：时间线改正序之后的两枚（★J-6）。「加载更早」在顶，「回到最新」在底。 */
   "group.timeline.loadEarlier": "加载更早",
   "group.timeline.loadingEarlier": "正在取更早的…",
@@ -914,15 +914,15 @@ export const zh = {
   "group.delivery.failed": "{count} 失败",
   "group.delivery.none": "没有投递记录",
   "group.delivery.status.sent": "已发",
-  "group.delivery.status.skipped_paused": "已跳过（这位成员暂停中）",
-  "group.delivery.status.skipped_left": "已跳过（这位成员已被移出）",
+  "group.delivery.status.skipped_paused": "已跳过 · 成员已暂停",
+  "group.delivery.status.skipped_left": "已跳过 · 成员已移出",
   "group.delivery.status.failed": "失败",
   /* 第 2 件：广播输入框。 */
-  "group.compose.aria": "对这个组说的话",
+  "group.compose.aria": "组消息",
   "group.compose.placeholder": "发送消息…",
   "group.compose.send": "发送",
   "group.compose.sending": "发送中…",
-  "group.compose.closed": "这个组已经关闭，不能再发消息。",
+  "group.compose.closed": "组已关闭",
   "group.compose.targetDirected": "定向发给「{title}」",
   "group.compose.clearTarget": "取消定向",
   /* batch52 第 2 件：这里的 `{name}` 是**后端算的显示名**（含重名后缀 `#2`），
@@ -932,14 +932,14 @@ export const zh = {
   /* batch28：勾选口径。勾了就照勾的发（含暂停成员），一个没勾中就拦住。 */
   "group.compose.targetsNone": "暂无可参与的成员",
   "group.compose.clearTargets": "清除勾选（发给全部）",
-  "group.toast.sendFailed": "没发出去：{error}",
+  "group.toast.sendFailed": "发送失败：{error}",
   /* 第 1 件右栏：Context Packet（只读 + 复制 + 刷新）。 */
   "group.packet.loading": "正在生成 Context Packet…",
   "group.packet.failed": "Context Packet 取不到：{error}",
-  "group.packet.empty": "这个组还没有成员，Context Packet 是空的。",
+  "group.packet.empty": "暂无共享上下文",
   "group.packet.copy": "复制 Markdown",
   "group.packet.copied": "已复制 Context Packet",
-  "group.packet.copyFailed": "复制失败：这个浏览器没给剪贴板权限",
+  "group.packet.copyFailed": "复制失败：无剪贴板权限",
   "group.packet.refresh": "刷新",
   "group.packet.generatedAt": "生成于 {time}",
   "group.packet.col.member": "成员",
@@ -965,7 +965,7 @@ export const zh = {
   "engines.connect.attached": "已添加",
   "engines.connect.addToProject": "添加到项目",
   "engines.connect.connect": "接入",
-  "engines.connect.copyFailed": "复制失败：这个浏览器没给剪贴板权限",
+  "engines.connect.copyFailed": "复制失败：无剪贴板权限",
   "engines.connect.auth": "登录",
   "engines.connect.pick": "选一个引擎",
   /* 八个预设各一句「登录怎么做」（backends.md §4 的表）。 */
@@ -987,21 +987,21 @@ export const zh = {
   "engine.field.preset": "预设",
   /* ---- batch27：真机热修（A1 三段常显 · A4 还原 · C5 组小标 · D4 模型下拉 · 首句失败） ---- */
   /* 第 3 件：三段标题始终可见，空段也留一句话（DESIGN ★K）。 */
-  "materialize.unsupported.empty": "没有被挡下的键",
+  "materialize.unsupported.empty": "无跳过项",
   /* 第 6 件：漂移只读弹窗上的主按钮 → 切到 materialize 流程。 */
   "drift.materialize": "用项目配置覆盖引擎侧",
   /* 首句没发出去：常驻通知（不是 toast），点名是谁 + 后端的原因 + hint。 */
-  "group.notice.firstMessageFailed": "「{title}」建好了，但第一句话没发出去：{error}",
-  "group.notice.noReason": "引擎没有说明原因",
-  "group.notice.dismiss": "知道了",
+  "group.notice.firstMessageFailed": "「{title}」已创建，首条消息发送失败：{error}",
+  "group.notice.noReason": "原因未提供",
+  "group.notice.dismiss": "关闭",
   /* 成员行上的小标：详情在时间线顶上那条通知里。 */
-  "group.member.firstMessageFailed": "首句没发出去",
+  "group.member.firstMessageFailed": "首条消息发送失败",
   /* 后端热修新增的投递原因码 → 人话（表里没有的码退回后端 detail 原文）。 */
-  "group.delivery.reason.member_paused": "这位成员暂停中，这一条没有投出去",
-  "group.delivery.reason.member_left": "这位成员已经不在组里",
-  "group.delivery.reason.turn_already_running": "上一轮还在运行，等它结束再发",
-  "group.delivery.reason.runtime_start_failed": "引擎没起来",
-  "group.delivery.reason.conversation_missing": "这条会话已经不在了",
+  "group.delivery.reason.member_paused": "成员已暂停",
+  "group.delivery.reason.member_left": "成员已移出组",
+  "group.delivery.reason.turn_already_running": "上一轮未结束",
+  "group.delivery.reason.runtime_start_failed": "引擎启动失败",
+  "group.delivery.reason.conversation_missing": "会话不存在",
   /* ---- batch30：隧道兜底 · 勾选语义二改 · Context Packet 竞态 · provider 折叠 ---- */
   /* 第 1 件：SSE 到不了时改走轮询。中性一句，不是错误提示。 */
   "transport.polling": "连接方式：轮询",
@@ -1013,9 +1013,9 @@ export const zh = {
 
   /* ---- batch31：模型快照过期改为采纳（AD-155） ---- */
   /* 时间线上的中性一行：不是错误，也不是警告，只是说明这一刻发生了什么。 */
-  "timeline.modelAdopted": "引擎当前模型是 {to}，这条会话从这里起按 {to} 继续（原快照 {from}）",
+  "timeline.modelAdopted": "模型已更新：{from} → {to}",
   /* 同上，但原快照缺席（旧事件 / 会话本来就没有快照）时不编一个出来。 */
-  "timeline.modelAdopted.noFrom": "引擎当前模型是 {to}，这条会话从这里起按 {to} 继续",
+  "timeline.modelAdopted.noFrom": "模型已更新：{to}",
 
   /* ---- batch33：ACP 登录态与目录探测（AD-157） ---- */
   /* own-auth 的引擎（凭据归它自己管）：我们查不到登录态，只能转述它自己的说法。
@@ -1027,30 +1027,35 @@ export const zh = {
   /* ---- batch35：进程拉起失败要有人话（AD-159） ---- */
   /* 与 runtime_start_failed 分开的一行：那一条是「网关没跑」，这一条是「这台机器
      上这条命令执行不了」，修法完全不同（后端 detail.hint 会接在后面）。 */
-  "group.delivery.reason.agent_spawn_failed": "引擎进程没能拉起来",
+  "group.delivery.reason.agent_spawn_failed": "引擎进程启动失败",
 
   /* ---- batch37：外部评审 R1/R8/R9 的前端修复 ---- */
   /* 第 2 件：单条消息的 Markdown 渲染塌了，只塌这一条——中性一句，不上红，
      下面照旧把原文摆出来（用户要的是内容，不是错误页）。 */
-  "card.text.renderFailed": "这条消息没能渲染成格式，下面是原文",
+  "card.text.renderFailed": "格式加载失败，已显示原文",
 
   /* ---- batch38：旧写接口鉴权 + `kaus/user.message.failed` 的渲染（R5 / R6） ---- */
   /* 用户气泡置灰后那一行原因：前半句是我们说的「没被处理」，后半句是后端原话。 */
-  "conversation.message.failed": "这句话没有被处理：{reason}",
+  "conversation.message.reason.running": "上一轮未结束",
+  "conversation.message.reason.unsupported": "引擎不支持此操作",
+  "conversation.message.reason.attachments": "引擎不支持此附件",
+  "conversation.message.reason.inactive": "引擎未运行",
+  "conversation.message.reason.startFailed": "引擎启动失败",
+  "conversation.message.failed": "未发送 · {reason}",
   /* 后端没给人话时的兜底：只说事实，不编原因。 */
-  "conversation.message.failed.noReason": "这句话没有被处理",
+  "conversation.message.failed.noReason": "未发送",
   /* 置灰气泡上的重发入口。重发 = 用同一段正文重新发一次（新的对账编号）。 */
   "conversation.message.resend": "重发",
   /* 配不上 `clientRef` 时的中性系统一行：不指认是哪一句，只说有一次发送没送到。 */
-  "timeline.userMessageFailed": "有一句话没有被处理：{reason}",
-  "timeline.userMessageFailed.noReason": "有一句话没有被处理",
+  "timeline.userMessageFailed": "消息未发送 · {reason}",
+  "timeline.userMessageFailed.noReason": "消息未发送",
 
   /* ---- batch39：输入框与「重发」在运行中的两处口径统一 ---- */
   /* 第 1 件：运行中按 Enter 之后输入框底下那一句。中性——它是"现在还轮不到"，
      不是错误；草稿留在框里，本轮结束这句话自己消失。 */
-  "conversation.composer.blockedWhileRunning": "上一轮还在运行，等它结束再发（或先停止）",
+  "conversation.composer.blockedWhileRunning": "当前任务未结束",
   /* 第 2 件：运行中那枚禁用的「重发」的 title。只说什么时候能点，不解释为什么。 */
-  "conversation.message.resend.wait": "等本轮结束",
+  "conversation.message.resend.wait": "任务结束后可重发",
   /* ---- batch40：信息密度收敛（DESIGN ★L） ---- */
   /* 第 2 条：导航里收着的那一组。名字要短——它自己也占一行。 */
   "nav.more": "更多",
@@ -1060,8 +1065,8 @@ export const zh = {
      `overview.state.*` 随之出典；剩下的「需要处理」搬到了草稿页上。 */
   "overview.attention.title": "需要处理",
   /* 两档说人话：一档是"它停在那儿等你"，一档是"上一次没发出去"。 */
-  "overview.attention.awaiting": "等你处理",
-  "overview.attention.failed": "上一次没发出去",
+  "overview.attention.awaiting": "待处理",
+  "overview.attention.failed": "上次发送失败",
 
   /* 第 3 条：引擎卡默认只给两行摘要，其余收进「详情」。 */
   "engine.details.toggle": "详情",
@@ -1084,20 +1089,20 @@ export const zh = {
   "group.thread.round": "第 {round}/{cap} 轮",
   "group.thread.turnOf": "轮到 {name}",
   "group.thread.stop": "停",
-  "group.thread.stopFailed": "没停下来：{error}",
+  "group.thread.stopFailed": "停止失败：{error}",
   /* 收口那一条是用户等的那个答案，所以它是这一片里唯一一张高亮卡。 */
   "group.turn.final": "最终答复",
   "group.turn.round": "第 {round} 轮",
   /* 「没有新内容」是发生过的事，但不该占三行——折成一行，点开看是哪几位。 */
   "group.turn.passed": "本轮 {count} 人略过",
   /* 广播框：用户做的事是「对这个房间说一句」，不是「广播给 N 个人」。 */
-  "group.compose.sendToRoom": "发到房间",
+  "group.compose.sendToRoom": "发送到组",
 
   /* ---- batch46：收口轮（PRD §B4 第二次修订）。 ----
      组头在收口时说的是「谁在收」，**不写轮数**——收口那一轮不计入 round，写
      「第 2/12 轮」会让用户以为房间还在讨论，而它已经决定停了。那一枚「停」照旧在。 */
-  "group.thread.closingBy": "正在收口 · {name}",
-  "group.thread.closing": "正在收口",
+  "group.thread.closingBy": "正在总结 · {name}",
+  "group.thread.closing": "正在总结",
 
   /* ---- batch48：三合一在组长（PRD §A6 / §B6，第四次修订）。 ----
      「已收口 N 人」随整套表态机制一起删了：收敛不再靠每个人自己点头，靠组长读完
@@ -1108,7 +1113,7 @@ export const zh = {
      任命仪式。 */
   "group.member.leader": "组长",
   "group.member.makeLeader": "设为组长",
-  "group.member.leaderFailed": "没能换组长：{error}",
+  "group.member.leaderFailed": "组长切换失败：{error}",
   "group.member.leaderDone": "{name} 是组长了",
   /* 输入框里打半角 @ 弹出的那枚浮层（Grok Bot 的做法，2026-09-17 截图）。
      第一项永远是「所有人」——它是一条「别按名字算」的指令，不是某几个人。 */

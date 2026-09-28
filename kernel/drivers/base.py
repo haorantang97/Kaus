@@ -203,8 +203,8 @@ def turn_already_running_hint() -> FailureHint:
     """
     return FailureHint(
         code=TURN_ALREADY_RUNNING,
-        message="上一轮还在运行，这一句没有发出去",
-        hint="等这一轮结束再发，或先点停止",
+        message="上一轮未结束",
+        hint="等待完成或停止当前任务。",
     )
 
 

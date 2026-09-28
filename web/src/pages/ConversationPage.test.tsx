@@ -194,7 +194,7 @@ describe("占位气泡", () => {
         vi.advanceTimersByTime(UNCONFIRMED_AFTER_MS + 1_000);
       });
       expect(screen.getByTestId("pending-message")).toHaveAttribute("data-status", "unconfirmed");
-      expect(screen.getByText("未确认")).toBeInTheDocument();
+      expect(screen.getByText("发送结果未确认")).toBeInTheDocument();
       // 「未确认」是小字提示，不是错误：没有 danger 态。
       expect(screen.getByTestId("pending-message")).not.toHaveClass("is-failed");
     } finally {
@@ -402,7 +402,7 @@ describe("工具行的分组与骨架（G-3 / G-10）", () => {
    的前端接法。两条都**按 code 走通用路径**，全文没有一处按引擎分支——R7 之后 ACP
    与 Hermes 在这个状态上回的是同一个形状与同一句话。 */
 describe("引擎没接下的那一句（R6 / R7）", () => {
-  it("409 turn_already_running：占位置灰，后端那句人话原样摆出来（与引擎无关）", async () => {
+  it("409 turn_already_running：按错误码显示短状态，不拼接旧诊断文案", async () => {
     let sentRef = "";
     mocked.sendConversationMessage.mockImplementation(async (_id: string, _text: string, ref: string) => {
       sentRef = ref;
@@ -421,7 +421,8 @@ describe("引擎没接下的那一句（R6 / R7）", () => {
       expect(screen.getByTestId("pending-message")).toHaveAttribute("data-status", "failed"),
     );
     expect(sentRef).toBeTruthy();
-    expect(screen.getByText(/上一轮还在运行/)).toBeInTheDocument();
+    expect(screen.getByText("上一轮未结束")).toBeInTheDocument();
+    expect(screen.queryByText(/上一轮还在运行/)).toBeNull();
   });
 
   it("刷新之后仍然看得见：事件把那条用户消息置灰并接上原因行", async () => {
@@ -429,10 +430,10 @@ describe("引擎没接下的那一句（R6 / R7）", () => {
     await attached();
 
     push(userMessageEvent(1, "会被拒的一句", "ref-9"));
-    push(userMessageFailedEvent(2, "turn_already_running", "上一轮还在运行，等它结束再发", "ref-9"));
+    push(userMessageFailedEvent(2, "turn_already_running", "上一轮未结束", "ref-9"));
 
     const note = await screen.findByTestId("message-failed-note");
-    expect(note).toHaveTextContent("上一轮还在运行，等它结束再发");
+    expect(note).toHaveTextContent("未发送 · 上一轮未结束");
     // 正文一个字不少（AD-105：说过的话不回滚），只是这条卡被标成了没投递成功。
     expect(screen.getByText("会被拒的一句")).toBeInTheDocument();
     expect(note.closest(".kaus-msg")).toHaveClass("is-undelivered");
@@ -467,7 +468,7 @@ describe("引擎没接下的那一句（R6 / R7）", () => {
     push(userMessageEvent(1, "先说的一句", "ref-9"));
     push(userMessageFailedEvent(2, "runtime_not_active", "引擎没在跑", "ref-对不上"));
 
-    expect(await screen.findByText(/有一句话没有被处理：引擎没在跑/)).toBeInTheDocument();
+    expect(await screen.findByText(/消息未发送 · 引擎未运行/)).toBeInTheDocument();
     expect(screen.queryByTestId("message-failed-note")).toBeNull();
   });
 });

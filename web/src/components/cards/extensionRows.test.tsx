@@ -102,7 +102,7 @@ describe("batch31：模型采纳是一行中性说明", () => {
     );
     expect(
       screen.getByText(
-        "引擎当前模型是 gpt-5.6-terra，这条会话从这里起按 gpt-5.6-terra 继续（原快照 gpt-5.6-sol）",
+        "模型已更新：gpt-5.6-sol → gpt-5.6-terra",
       ),
     ).toBeInTheDocument();
     // 中性一行，不是错误卡：不带「扩展事件」这种类型标题，也不可展开。
@@ -113,7 +113,7 @@ describe("batch31：模型采纳是一行中性说明", () => {
   it("没有原快照时不编一个出来", () => {
     render(<CardRenderer item={adoptedItem({ to: "gpt-5.6-terra" })} />);
     expect(
-      screen.getByText("引擎当前模型是 gpt-5.6-terra，这条会话从这里起按 gpt-5.6-terra 继续"),
+      screen.getByText("模型已更新：gpt-5.6-terra"),
     ).toBeInTheDocument();
   });
 

@@ -180,7 +180,7 @@ beforeEach(() => {
 describe("组头：正在收口", () => {
   it("说「正在收口 · 收口人」，不写轮数", () => {
     const headline = threadHeadline(group({ thread: thread() }), TWINS, t);
-    expect(headline).toBe("正在收口 · media");
+    expect(headline).toBe("正在总结 · media");
     expect(headline).not.toContain("轮");
   });
 
@@ -190,7 +190,7 @@ describe("组头：正在收口", () => {
       TWINS,
       t,
     );
-    expect(headline).toBe("正在收口 · media#2");
+    expect(headline).toBe("正在总结 · media#2");
   });
 
   it("那一枚「停」在收口时照旧按得动", async () => {

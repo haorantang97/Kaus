@@ -1,6 +1,6 @@
 import { ConversationJumpRail } from "../components/ConversationJumpRail";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Ellipsis, Square, Terminal, FileText, X, LoaderCircle, Paperclip } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Ellipsis, Square, Terminal, FileText, X, LoaderCircle, Paperclip, RefreshCw, RotateCcw } from "lucide-react";
 import { useLocale } from "../i18n";
 import { confirmAsync, cream } from "../components/ui";
 import {
@@ -991,12 +991,6 @@ export function ConversationPage({
         if (failure instanceof SessionApiError && failure.code === "surface_external_active") {
           applySurface("external-cli");
         }
-        /* batch38 第 2 件（批次三十七 R7）：`409 turn_already_running`（上一轮还在跑）
-           走的就是这一条**通用**路径——按 code 分档、把后端那句人话原样摆出来，全文
-           没有一处按引擎分支。R7 之前 ACP 那边这个状态回的是 `500 internal_error`，
-           现在两台引擎的形状与文案完全一致（`drivers/base.py` 的共享 FailureHint），
-           所以这里一行都不用加：同一个状态在两台引擎上说两句不同的话，用户会以为
-           自己碰到的是两件事。 */
         setError(describeFailure(failure));
       }
     },
@@ -1629,13 +1623,13 @@ export function ConversationPage({
               {item.status === "failed" && (
                 <div className="kaus-msg-note">
                   {t("conversation.pending.failed")}
-                  <button type="button" className="kaus-msg-retry" disabled={running || stopping || settingsBusy || readOnly} onClick={() => void resend(item)}>
-                    {t("conversation.pending.retry")}
+                  <button type="button" className="kaus-msg-retry" aria-label={t("conversation.pending.retry")} title={t(running || stopping ? "conversation.message.resend.wait" : "conversation.pending.retry")} disabled={running || stopping || settingsBusy || readOnly} onClick={() => void resend(item)}>
+                    <RotateCcw size={14} aria-hidden="true" />
                   </button>
                 </div>
               )}
               {item.status === "unconfirmed" && (
-                <div className="kaus-msg-note">{t("conversation.pending.unconfirmed")}<button type="button" className="kaus-inline-action" onClick={() => setReloadKey(value => value + 1)}>{t("conversation.pending.check")}</button></div>
+                <div className="kaus-msg-note">{t("conversation.pending.unconfirmed")}<button type="button" className="kaus-msg-retry" aria-label={t("conversation.pending.check")} title={t("conversation.pending.check")} onClick={() => setReloadKey(value => value + 1)}><RefreshCw size={14} aria-hidden="true" /></button></div>
               )}
             </div>
           ))}

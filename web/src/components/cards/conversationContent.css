@@ -12,7 +12,6 @@
 .kaus-content-message .kaus-msg-time { opacity: 1; display: inline; margin: 0; color: color-mix(in srgb, var(--midground-base) 43%, transparent); font: 11px/1.4 var(--theme-font-sans); }
 .kaus-content-message .kaus-msg-attachments { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
 .kaus-content-message.is-failed .kaus-msg-body { outline: 1px solid var(--danger); }
-.kaus-delivery-explanation { display: block; margin-top: 3px; }
 .kaus-content-message.is-delivery-unconfirmed .kaus-msg-note { color: color-mix(in srgb, var(--midground-base) 65%, transparent); font: 11px/1.5 var(--theme-font-sans); }
 .kaus-markdown-content { min-width: 0; overflow-wrap: anywhere; }
 .kaus-markdown-content > :first-child { margin-top: 0; }

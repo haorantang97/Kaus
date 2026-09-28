@@ -55,7 +55,7 @@ describe("投递失败的用户消息（R6）", () => {
     expect(screen.queryByTestId("message-failed-note")).toBeNull();
   });
 
-  it("failed：气泡置灰 + 一行后端原话 + 「重发」（正文照旧看得见，AD-105 不回滚）", async () => {
+  it("历史拒绝事件按错误码显示短状态，保留原始诊断和图标重发", async () => {
     const onRetryFailed = vi.fn();
     const { container } = renderItem(
       userMessage({
@@ -73,17 +73,20 @@ describe("投递失败的用户消息（R6）", () => {
     // 正文一个字不少：那句话确实被说出来过。
     expect(screen.getByText("帮我跑一下测试")).toBeInTheDocument();
     expect(screen.getByTestId("message-failed-note")).toHaveTextContent(
-      "上一轮还在运行，等它结束再发，或先点停止",
+      "未发送 · 上一轮未结束",
     );
+    expect(screen.getByTestId("message-failed-note")).not.toHaveTextContent("上一轮还在运行");
+    expect(screen.getByTitle("上一轮还在运行，等它结束再发，或先点停止")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重发" })).toHaveTextContent(/^$/);
 
     await userEvent.click(screen.getByRole("button", { name: "重发" }));
     // 重发拿到的是同一段正文；新编号由页面那一层生成（走的还是首发那条路）。
     expect(onRetryFailed).toHaveBeenCalledWith("帮我跑一下测试");
   });
 
-  it("确认拒绝但后端没给人话时不编原因；调用方不给回调就不出「重发」", () => {
+  it("缺少诊断文本时根据已知错误码显示原因；无回调时不提供重发", () => {
     renderItem(userMessage({ deliveryStatus: "failed", failureCode: "unsupported_capability" }), () => ({}));
-    expect(screen.getByTestId("message-failed-note")).toHaveTextContent("这句话没有被处理");
+    expect(screen.getByTestId("message-failed-note")).toHaveTextContent("未发送 · 引擎不支持此操作");
     expect(screen.queryByRole("button", { name: "重发" })).toBeNull();
   });
 
@@ -92,8 +95,8 @@ describe("投递失败的用户消息（R6）", () => {
     const onCheckDelivery = vi.fn();
     const { container } = renderItem(userMessage({ deliveryStatus: "failed", failureCode: "send_failed", failureMessage: "network timeout" }), () => ({ onRetryFailed, onCheckDelivery, lockedWhileRunning: true }));
     expect(screen.getByTestId("message-failed-note")).toHaveTextContent("发送结果未确认");
-    expect(screen.getByTestId("message-failed-note")).toHaveTextContent("请先查看后续消息和任务状态");
-    expect(screen.getByTestId("message-failed-note")).not.toHaveTextContent("这句话没有被处理");
+    expect(screen.getByTestId("message-failed-note")).toHaveTextContent(/^发送结果未确认$/);
+    expect(screen.getByTitle("network timeout")).toBeInTheDocument();
     expect(container.querySelector(".kaus-msg.is-user")).toHaveAttribute("data-delivery", "unconfirmed");
     expect(screen.queryByRole("button", { name: "重发" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "查看会话状态" }));
@@ -122,6 +125,7 @@ describe("投递失败的用户消息（R6）", () => {
       name: USER_MESSAGE_FAILED_NAME,
       data: { code: "runtime_not_active", message: "引擎没在跑" },
     });
-    expect(screen.getByText(/有一句话没有被处理：引擎没在跑/)).toBeInTheDocument();
+    expect(screen.getByText("消息未发送 · 引擎未运行")).toBeInTheDocument();
+    expect(screen.getByTitle("引擎没在跑")).toBeInTheDocument();
   });
 });

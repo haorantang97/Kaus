@@ -2546,9 +2546,12 @@ button.kaus-conversation-title:hover {
 }
 
 .kaus-msg-note {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin-top: 3px;
   color: color-mix(in srgb, var(--midground-base) 42%, transparent);
-  font: 10px/1.4 var(--theme-font-mono);
+  font: 12px/1.5 var(--theme-font-sans);
 }
 
 .kaus-msg.is-failed .kaus-msg-note {
@@ -2556,9 +2559,24 @@ button.kaus-conversation-title:hover {
 }
 
 .kaus-msg-retry {
-  margin-left: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   color: inherit;
-  text-decoration: underline;
+}
+
+.kaus-msg-retry:hover:not(:disabled),
+.kaus-msg-retry:focus-visible {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.kaus-msg-retry:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
 }
 
 /* batch39 第 2 件：上一轮还在跑时这枚「重发」照旧在位，只是点不动——入口的位置

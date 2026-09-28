@@ -217,7 +217,7 @@ describe("组头", () => {
       MEMBERS,
       t,
     );
-    expect(headline).toBe("正在收口 · 写手");
+    expect(headline).toBe("正在总结 · 写手");
   });
 });
 
