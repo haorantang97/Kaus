@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from typing import Any, Awaitable, Callable
+from typing import Awaitable, Callable
 
 MAX_FRAME = 8 * 1024 * 1024
 

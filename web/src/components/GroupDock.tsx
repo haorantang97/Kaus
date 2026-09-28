@@ -53,7 +53,7 @@ import {
   type GroupWire,
   isGroupOpen,
 } from "../lib/groupsApi";
-import { useGroupDrop, type GroupDropPayload } from "../lib/groupDrop";
+import { groupDropTarget, useGroupDrop, type GroupDropPayload } from "../lib/groupDrop";
 import { matchProjectId } from "../lib/projectRef";
 import {
   closeGroupDock,
@@ -809,7 +809,7 @@ export function GroupDock() {
   const pillDrop = useGroupDrop(
     useCallback(
       (dropped: GroupDropPayload) => {
-        const target = expanded ?? (openGroups.length === 1 ? openGroups[0].id : null);
+        const target = groupDropTarget(openGroups, expanded);
         if (target) {
           joinByDrop(target, dropped);
           return;
@@ -987,7 +987,7 @@ export function GroupDock() {
                     aria-hidden="true"
                   />
                   <span className="kaus-group-member-title">{group.title}</span>
-                  <span className="kaus-group-dim">{t("group.memberCount", { count })}</span>
+                  <span className="kaus-group-dim">{t(count === 1 ? "group.memberCount.one" : "group.memberCount", { count })}</span>
                 </button>
 
                 {open && (

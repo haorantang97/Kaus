@@ -412,7 +412,7 @@ class SurfaceCoordinator:
         for envelope in reversed(await self._host.event_store.replay(conversation.id)):
             event = envelope.event
             if (
-                getattr(event, "type", None) == "extension.event"
+                event.type == "extension.event"
                 and event.namespace == KAUS_NAMESPACE
                 and event.name == HISTORY_RECONCILED_NAME
             ):

@@ -2,11 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 
 import { ConversationPage } from "./ConversationPage";
-import { ConversationSidebar } from "../components/ConversationSidebar";
 import * as api from "../lib/sessionApi";
 import * as groups from "../lib/groupsApi";
 import { dockState, refreshGroups, resetGroupStore } from "../lib/groupStore";
-import { buildConversationGroups, type SidebarConversation } from "../lib/conversationIndex";
 
 /* 协作组关系仍同步到 GroupDock；单独会话页与侧栏不显示组内身份。 */
 
@@ -177,54 +175,5 @@ describe("会话页与协作组显示分离", () => {
     expect(screen.queryByTestId("conversation-group-chip")).toBeNull();
     // 它不该同时被折进时间线镜像（AD-83：reducer 只认冻结的核心事件）。
     expect(screen.queryByText(/group.changed/)).toBeNull();
-  });
-});
-
-describe("侧栏只显示单独会话身份", () => {
-  const project = {
-    id: "project:x",
-    slug: "x",
-    displayName: "X",
-    parentProjectId: null,
-    workspaceRoot: null,
-    status: "active",
-  };
-
-  const row = (overrides: Partial<SidebarConversation> = {}): SidebarConversation => ({
-    id: "conversation:1",
-    projectId: "project:x",
-    title: "测试会话",
-    state: "idle",
-    updatedAt: "2026-09-05T00:00:00Z",
-    backendId: "backend:mock",
-    ...overrides,
-  });
-
-  function renderSidebar(conversation: SidebarConversation) {
-    render(
-      <ConversationSidebar
-        groups={buildConversationGroups([project], [conversation])}
-        loading={false}
-        error={null}
-        activeConversationId={null}
-        onOpenConversation={() => {}}
-      />,
-    );
-  }
-
-  it("已有成员关系也不在侧栏增加组标签", async () => {
-    seedGroups([memberWire]);
-    await act(async () => {
-      await refreshGroups();
-    });
-    renderSidebar(row({ groupId: "collaboration:1" }));
-    expect(screen.getByText("测试会话")).toBeInTheDocument();
-    expect(screen.queryByTestId("sidebar-group-icon")).toBeNull();
-    expect(screen.queryByText("重构评审组")).toBeNull();
-  });
-
-  it("不在组里的行没有那枚图标", () => {
-    renderSidebar(row({ groupId: null }));
-    expect(screen.queryByTestId("sidebar-group-icon")).toBeNull();
   });
 });

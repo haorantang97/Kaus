@@ -49,6 +49,10 @@ const member = (id: string, title: string): GroupMemberWire => ({
   worktreeOrRuntimeRef: null,
   joinedAt: "2026-09-14T10:00:00Z",
   leftAt: null,
+  sourceConversationId: null,
+  lastDeliveredSequence: null,
+  isLeader: false,
+  displayName: title,
   conversation: {
     conversationId: `conversation:${id}`,
     title,
@@ -76,6 +80,11 @@ const GROUP: GroupWire = {
   createdAt: "2026-09-14T10:00:00Z",
   updatedAt: "2026-09-14T10:00:00Z",
   closedAt: null,
+  coordinatorEnabled: false,
+  contextPolicy: {},
+  settings: {},
+  thread: null,
+  leaderMemberId: null,
   memberCount: 2,
 };
 

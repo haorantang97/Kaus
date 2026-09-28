@@ -43,7 +43,6 @@ vi.mock("../lib/sessionApi", async () => {
     fetchBackendUiCapabilities: vi.fn(),
     fetchEffectiveSettings: vi.fn(),
     fetchModelCatalog: vi.fn(),
-    fetchBackendProbe: vi.fn(),
     fetchBindingStatus: vi.fn(),
     fetchSurface: vi.fn(),
     fetchLaunches: vi.fn(),
@@ -202,7 +201,7 @@ beforeEach(() => {
   mocked.fetchBinding.mockResolvedValue(binding);
   mocked.fetchBackendUiCapabilities.mockResolvedValue(caps);
   mocked.fetchEffectiveSettings.mockResolvedValue(api.emptyEffectiveSettings("binding:1"));
-  mocked.fetchBackendProbe.mockResolvedValue({ probeState: "available", message: null });
+  mocked.fetchBindingStatus.mockResolvedValue({ bindingId: "binding:1", probeState: "available", probeMessage: null });
   mocked.fetchModelCatalog.mockResolvedValue({
     bindingId: "binding:1",
     mode: "fixed",

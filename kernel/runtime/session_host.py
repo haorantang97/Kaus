@@ -707,21 +707,14 @@ class SessionHost:
         真），而在保留期这件事上，两种错误的代价并不对等——多留一段能删的事件，
         比删掉一段没有第二份的历史轻得多。
 
-        问不出来（Driver 没有这个方法、探测抛错）返回 ``None``：不知道就不改
-        既有口径（N §13.1）。
+        探测抛错返回 ``None``：不知道就不改既有口径（N §13.1）。
         """
-        getter = getattr(driver, "get_capabilities", None)
-        if getter is None:
-            return None
         try:
-            capabilities = await getter()
+            capabilities = await driver.get_capabilities()
         except Exception:  # noqa: BLE001 - 探不出来不该拦住会话起来
+            LOGGER.warning("读取引擎能力失败，按未知处理历史保留期", exc_info=True)
             return None
-        sessions = getattr(capabilities, "sessions", None)
-        history = getattr(sessions, "history", None)
-        if history is None:
-            return None
-        return bool(history)
+        return bool(capabilities.sessions.history)
 
     async def _abandon_half_started(
         self, driver: BackendDriver, handle: RuntimeHandle, conversation_id: str
@@ -848,8 +841,8 @@ class SessionHost:
         lease = await self._leases.describe(conversation_id)
         if (
             lease is not None
-            and not getattr(lease, "is_stale", False)
-            and getattr(lease, "owner_type", None) == "external-cli"
+            and not lease.is_stale
+            and lease.owner_type == "external-cli"
         ):
             return False
         state = await self.timeline_from_store(conversation_id)
@@ -904,6 +897,7 @@ class SessionHost:
         try:
             still_active = await probe(runtime.handle)
         except Exception:  # noqa: BLE001 - 自愈坏掉不该让「打开会话」失败
+            LOGGER.warning("会话 %s 的运行态探测失败，跳过自愈", conversation.id, exc_info=True)
             return False
         if still_active is not False:
             return False
@@ -967,6 +961,7 @@ class SessionHost:
         except UnsupportedCapabilityError:
             return 0
         except Exception:  # noqa: BLE001 - 读不到历史不该让「打开会话」失败
+            LOGGER.warning("会话 %s 的原生历史读取失败，不重建时间线", conversation_id, exc_info=True)
             return 0
         events = _events_from_native_history(history, run_id=_restored_run_id(conversation_id))
         if not events:
@@ -999,7 +994,7 @@ class SessionHost:
                 if await self.reconcile_conversation(conversation):
                     healed.append(conversation.id)
             except Exception:  # noqa: BLE001 - 单条失配不该拖垮整轮
-                continue
+                LOGGER.warning("启动自愈：会话 %s 对账失败", conversation.id, exc_info=True)
         return tuple(healed)
 
     async def run_state_of(self, conversation: Conversation) -> str:
@@ -1222,7 +1217,7 @@ class SessionHost:
         try:
             await runtime.driver.stop_runtime(runtime.handle)
         except Exception:  # noqa: BLE001 - 停止路径不得因 Driver 抛错而卡住回收
-            pass
+            LOGGER.warning("会话 %s 停止 runtime 时 Driver 出错（已继续回收）", conversation_id, exc_info=True)
         # AD-11：runtime 停止即释放自己的 lease；不碰别人的（如 external-cli）。
         await self._leases.release(conversation_id, expected_owner_id=self.owner_id)
         await self._save_conversation_state(runtime, state)
@@ -1393,14 +1388,11 @@ class SessionHost:
         幂等：快照已经是这个值就什么都不做（重复投递、重放都会走到这里）。
         """
         event = envelope.event
-        if getattr(event, "type", None) != "extension.event":
+        if event.type != "extension.event":
             return
-        if (
-            getattr(event, "namespace", None) != MODEL_ADOPTED_NAMESPACE
-            or getattr(event, "name", None) != MODEL_ADOPTED_NAME
-        ):
+        if event.namespace != MODEL_ADOPTED_NAMESPACE or event.name != MODEL_ADOPTED_NAME:
             return
-        data = getattr(event, "data", None)
+        data = event.data
         target = data.get("to") if isinstance(data, Mapping) else None
         if not isinstance(target, str) or not target:
             return
@@ -1655,7 +1647,7 @@ class SessionHost:
         try:
             await runtime.driver.stop_runtime(runtime.handle)
         except Exception:  # noqa: BLE001 - 已经在失败路径上了
-            pass
+            LOGGER.warning("会话 %s 失败后停止 runtime 时再次出错", runtime.conversation.id, exc_info=True)
         await self._leases.release(
             runtime.conversation.id, expected_owner_id=self.owner_id
         )

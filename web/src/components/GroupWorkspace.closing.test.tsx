@@ -56,6 +56,10 @@ const member = (
   worktreeOrRuntimeRef: null,
   joinedAt: "2026-09-14T10:00:00Z",
   leftAt: null,
+  sourceConversationId: null,
+  lastDeliveredSequence: null,
+  isLeader: false,
+  displayName: changes.roleLabel || title,
   conversation: {
     conversationId: `conversation:${id}`,
     title,
@@ -104,6 +108,11 @@ const group = (changes: Partial<GroupWire> = {}): GroupWire => ({
   createdAt: "2026-09-14T10:00:00Z",
   updatedAt: "2026-09-14T10:00:00Z",
   closedAt: null,
+  coordinatorEnabled: false,
+  contextPolicy: {},
+  settings: {},
+  thread: null,
+  leaderMemberId: null,
   memberCount: 2,
   ...changes,
 });

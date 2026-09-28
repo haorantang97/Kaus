@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Literal, Mapping
+from urllib.parse import unquote, urlsplit
 
 from app.capabilities.models import EffectiveCapabilities
 from app.conversations.models import Conversation
@@ -66,7 +67,6 @@ from drivers.hermes import reconnect
 from drivers.hermes import session_mapper
 from drivers.hermes import failure_hints
 from drivers.hermes.credentials import (
-    CredentialError,
     credential_ref_present,
     describe_credential_ref,
 )
@@ -960,7 +960,7 @@ class HermesDriver:
             catalog = await self.get_model_catalog(binding)
         except Exception:  # noqa: BLE001 - 同上
             return None
-        return getattr(catalog, "default_model_id", None) or None
+        return catalog.default_model_id or None
 
     async def _model_adoption(self, state: _RuntimeState) -> str | None:
         """这一句要不要**采纳**引擎当前的模型？要就返回那个模型 id（AD-155）。
@@ -1077,7 +1077,7 @@ class HermesDriver:
             )
             headers[header_name] = session_id
 
-        body: dict[str, Any] = {"input": content.text}
+        body: dict[str, Any] = {"input": input_with_attachments(content)}
         if session_id:
             body["session_id"] = session_id
         if self._capabilities and self._capabilities.models.conversation_scoped.is_supported:
@@ -1866,6 +1866,34 @@ def _version_tuple(version: str) -> tuple[int, ...]:
         digits = "".join(c for c in chunk if c.isdigit())
         parts.append(int(digits) if digits else 0)
     return tuple(parts) or (0,)
+
+
+
+def input_with_attachments(content: MessageInput) -> str:
+    """把附件并进 ``/v1/runs`` 的文本输入。
+
+    文本附件直接附上内容；其余文件（图片、PDF、表格……）只给本机路径，让 Hermes
+    用自己的文件工具读取——字节不经过这条请求。
+    """
+    if not content.attachments:
+        return content.text
+    parts = [content.text] if content.text else []
+    parts.append("附件：")
+    for attachment in content.attachments:
+        name = attachment.name or attachment.ref
+        path = _local_path(attachment.ref)
+        if attachment.content_text is not None:
+            parts.append(f"--- {name} ---\n{attachment.content_text}\n--- {name} 结束 ---")
+        else:
+            kind = attachment.mime_type or "文件"
+            parts.append(f"- {name}（{kind}）：{path}")
+    return "\n\n".join(parts)
+
+
+def _local_path(ref: str) -> str:
+    """``file://`` URI → 本机路径；别的形状原样给出。"""
+    parsed = urlsplit(ref)
+    return unquote(parsed.path) if parsed.scheme == "file" else ref
 
 
 __all__ = [

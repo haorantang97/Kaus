@@ -95,7 +95,7 @@ def macos_open(app: str, script_path: Path, *, cwd: str | None = None,
         else:
             subprocess.run(["open", "-a", str(app_path), str(script_path)],
                            check=True, capture_output=True, text=True, timeout=10)
-    except subprocess.CalledProcessError as exc:
+    except subprocess.CalledProcessError:
         return False, f"无法打开 {app}，请检查终端是否可用"
     except subprocess.TimeoutExpired:
         return False, f"打开 {app} 超时，请自己复制命令到终端里跑"

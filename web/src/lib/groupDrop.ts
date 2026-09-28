@@ -82,6 +82,12 @@ export interface DroppedProject {
 
 export type GroupDropPayload = DroppedConversation | DroppedProject;
 
+/** 两个快捷入口共用目标选择；缓存的展开位置不能指向已关闭或已删除的组。 */
+export function groupDropTarget(openGroups: readonly { id: string }[], expandedGroupId: string | null): string | null {
+  if (expandedGroupId && openGroups.some((group) => group.id === expandedGroupId)) return expandedGroupId;
+  return openGroups.length === 1 ? openGroups[0].id : null;
+}
+
 /** 从一次 `drop` 的 `dataTransfer` 上读出我们认得的那件东西；认不出来给 null。 */
 export function readGroupDrag(transfer: DataTransfer | null | undefined): GroupDropPayload | null {
   if (!transfer) return null;

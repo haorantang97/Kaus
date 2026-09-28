@@ -1,6 +1,6 @@
 # Kaus
 
-Let‘s make something sick
+Let’s make something sick
 
 一个在本机运行的多 Agent 工作台。把不同引擎的对话、项目配置和协作组放在同一个界面中。
 

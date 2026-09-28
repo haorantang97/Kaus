@@ -51,6 +51,10 @@ const member = (id: string, title: string): GroupMemberWire => ({
   worktreeOrRuntimeRef: null,
   joinedAt: "2026-09-14T10:00:00Z",
   leftAt: null,
+  sourceConversationId: null,
+  lastDeliveredSequence: null,
+  isLeader: false,
+  displayName: title,
   conversation: {
     conversationId: `conversation:${id}`,
     title,
@@ -81,6 +85,8 @@ const thread = (changes: Partial<RoomThreadWire> = {}): RoomThreadWire => ({
   startedByMessageId: "groupmsg:1",
   spokeInRound: 1,
   passedInRound: 0,
+  phase: "discussion",
+  endedReason: null,
   ...changes,
 });
 
@@ -92,6 +98,11 @@ const group = (changes: Partial<GroupWire> = {}): GroupWire => ({
   createdAt: "2026-09-14T10:00:00Z",
   updatedAt: "2026-09-14T10:00:00Z",
   closedAt: null,
+  coordinatorEnabled: false,
+  contextPolicy: {},
+  settings: {},
+  thread: null,
+  leaderMemberId: null,
   memberCount: 2,
   ...changes,
 });

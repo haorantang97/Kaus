@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Boxes, ChevronDown, ChevronRight, Home, KanbanSquare, Languages, LayoutDashboard, MessageCircle, Moon, Pin, PinOff, Plus, SlidersHorizontal, Sun, Warehouse } from "lucide-react";
+import { Boxes, ChevronDown, ChevronRight, Home, KanbanSquare, Languages, LayoutDashboard, FolderTree, Moon, Pin, PinOff, Plus, SlidersHorizontal, Sun, Warehouse } from "lucide-react";
 import { Backdrop } from "./Backdrop";
 import { Sidebar } from "./components/Sidebar";
 import { Conversation } from "./components/Conversation";
@@ -20,6 +20,7 @@ import { ConfirmHost, cream, ToastHost } from "./components/ui";
 import { ConversationSidebar } from "./components/ConversationSidebar";
 import { useConversationIndex } from "./lib/conversationIndex";
 import { GroupDock } from "./components/GroupDock";
+import { GroupNavItem } from "./components/GroupNavItem";
 import { ConversationPage } from "./pages/ConversationPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
 import { NewConversationPage } from "./pages/NewConversationPage";
@@ -53,7 +54,7 @@ type ModuleItem = { id: ModuleId; icon: typeof Plus; labelKey: DictKey; en?: str
 /* flag 关闭时的导航：一字不改（含「New」= 新建 Agent 弹窗）。 */
 const MODULES: ModuleItem[] = [
   { id: "home", icon: Home, labelKey: "nav.home" },
-  { id: "agents", icon: MessageCircle, labelKey: "nav.agents" },
+  { id: "agents", icon: FolderTree, labelKey: "nav.agents" },
   { id: "new", icon: Plus, labelKey: "nav.new" },
   { id: "dash", icon: LayoutDashboard, labelKey: "nav.dash" },
   { id: "kanban", icon: KanbanSquare, labelKey: "nav.kanban" },
@@ -386,8 +387,11 @@ export function App() {
     /* batch42：`/` 与 `/new` 现在是同一页（草稿页），所以两处都亮「新会话」。 */
     (route.name === "new" || route.name === "overview") && sessionOn
       ? "new-conversation"
-      : sessionOn && (route.name === "project" || route.name === "conversation")
+      : sessionOn && route.name === "project"
         ? "agents"
+        : /* 会话页的「当前」由侧栏那一行表达；导航再亮一枚「项目」就成了两处选中。 */
+          sessionOn && route.name === "conversation"
+          ? null
         : currentView
           ? VIEW_MODULES[currentView]
           : null;
@@ -537,6 +541,7 @@ export function App() {
 
         <nav className="shell-nav">
           {(sessionOn ? PRIMARY_MODULES : MODULES).map(renderNavItem)}
+          {sessionOn && <GroupNavItem />}
           {/* batch40（★L 第 2 条）：五个旧面板收进「更多」，默认折着，开关记
               localStorage。**折着的时候它们一个字都不在导航上**——常显的位置
               留给"我在做什么 / 谁在做 / 什么等着我"那三条路。 */}

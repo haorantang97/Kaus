@@ -91,17 +91,18 @@ export function writeDraftText(text: string): void {
 }
 
 /** 相对时间：侧栏一行只放得下四五个字。 */
-export function relativeTime(iso: string | null | undefined, now: number = Date.now()): string {
-  if (!iso) return "";
+export function relativeTime(iso: string, locale: "zh" | "en", now: number = Date.now()): string {
   const at = Date.parse(iso);
   if (Number.isNaN(at)) return "";
+  const tag = locale === "zh" ? "zh-CN" : "en";
+  const format = new Intl.RelativeTimeFormat(tag, { numeric: "auto", style: "narrow" });
   const seconds = Math.max(0, Math.round((now - at) / 1000));
-  if (seconds < 60) return "刚刚";
+  if (seconds < 60) return format.format(0, "second");
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 60) return format.format(-minutes, "minute");
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return format.format(-hours, "hour");
   const days = Math.round(hours / 24);
-  if (days < 30) return `${days} 天前`;
-  return new Date(at).toLocaleDateString();
+  if (days < 30) return format.format(-days, "day");
+  return new Date(at).toLocaleDateString(tag);
 }

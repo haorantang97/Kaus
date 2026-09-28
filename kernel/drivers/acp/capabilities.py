@@ -305,10 +305,9 @@ def capabilities_from_initialize(
     # AD-158：这一行里哪几位有真机依据。没有预设 = 一位都没有（全 declared）。
     verified = preset.verified_bits if preset is not None else frozenset()
     external = preset.supports_external_cli if preset is not None else False
-    prompt = agent_capabilities.get("promptCapabilities")
-    attachments = "unknown"
-    if isinstance(prompt, Mapping):
-        attachments = "files" if prompt.get("embeddedContext") is True else "images" if prompt.get("image") is True else "none"
+    # ACP 基线：每个 agent 都必须收 text 与 resource_link，所以附件总能送到——
+    # 声明了 image / embeddedContext 就内嵌，否则给本机文件链接（见 driver._prompt_blocks）。
+    attachments = "files"
     return BackendCapabilities(
         structured_events=True,
         sessions=_session_capabilities(agent_capabilities, quirks, verified),

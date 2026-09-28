@@ -10,7 +10,7 @@ from drivers.acp.driver import _prompt_blocks
 from drivers.acp.tests.test_driver import _driver_with_set_model, make_driver
 from drivers.acp.testing.harness import FakeAcpHarness
 from drivers.acp.tests.test_translator import make_translator, update
-from drivers.base import AttachmentRef, MessageInput, ModelRejectedError, UnsupportedCapabilityError
+from drivers.base import AttachmentRef, MessageInput, ModelRejectedError
 from runtime.event_reducer import MessageItem, TimelineState, reduce_events
 
 
@@ -89,10 +89,49 @@ def test_prepared_attachments_are_real_prompt_content_not_only_paths():
     assert "document body" not in message.model_dump_json()
 
 
-@pytest.mark.parametrize("prompt, expected", [(None, "unknown"), ({}, "none"), ({"image": True}, "images"), ({"embeddedContext": True}, "files")])
-def test_attachment_support_comes_from_protocol_declaration(prompt, expected):
+@pytest.mark.parametrize("prompt", [None, {}, {"image": True}, {"embeddedContext": True}])
+def test_every_acp_agent_accepts_file_attachments(prompt):
+    """ACP 规定每个 agent 都收 resource_link，所以附件入口对所有 ACP 引擎都开着。"""
     capabilities = {} if prompt is None else {"promptCapabilities": prompt}
-    assert capabilities_from_initialize({"agentCapabilities": capabilities}).card.attachments.value == expected
+    assert capabilities_from_initialize({"agentCapabilities": capabilities}).card.attachments.value == "files"
+
+
+def test_attachments_fall_back_to_links_when_embedding_is_not_declared():
+    message = MessageInput(text="看看", attachments=(
+        AttachmentRef(kind="file", ref="file:///workspace/photo.png", name="photo.png", mime_type="image/png", content_base64="aW1hZ2U="),
+        AttachmentRef(kind="file", ref="file:///workspace/note.md", name="note.md", mime_type="text/plain", content_text="document body"),
+    ))
+    blocks = _prompt_blocks(message, {"image": False, "embeddedContext": False})
+    assert blocks == [
+        {"type": "text", "text": "看看"},
+        {"type": "resource_link", "uri": "file:///workspace/photo.png", "name": "photo.png", "mimeType": "image/png"},
+        {"type": "resource_link", "uri": "file:///workspace/note.md", "name": "note.md", "mimeType": "text/plain"},
+        {"type": "text", "text": "--- note.md ---\ndocument body\n--- note.md 结束 ---"},
+    ]
+    # 能内嵌图片、不能内嵌文件时各走各的。
+    mixed = _prompt_blocks(message, {"image": True})
+    assert mixed[1]["type"] == "image" and mixed[2]["type"] == "resource_link"
+
+
+def test_uploaded_text_reaches_baseline_agent_without_workspace_access(tmp_path):
+    from app.api.conversation_files import ConversationFiles
+
+    files = ConversationFiles(tmp_path / "uploads")
+    uploaded = files.upload(
+        "conversation:attachment", name="note.md",
+        data=base64.b64encode("独立上传目录中的正文".encode()).decode(),
+    )
+    prepared = files.prepare(
+        "conversation:attachment", str(tmp_path / "workspace"),
+        [uploaded.model_dump(mode="json", by_alias=True)],
+    )
+    blocks = _prompt_blocks(MessageInput(text="read", attachments=prepared), {})
+    assert any(block["type"] == "text" and "独立上传目录中的正文" in block["text"] for block in blocks)
+    # The transport does not grant access to another conversation's upload directory.
+    from app.api.api_errors import ApiError
+
+    with pytest.raises(ApiError):
+        files.prepare("conversation:other", str(tmp_path / "workspace"), [uploaded.model_dump(mode="json", by_alias=True)])
 
 
 async def test_cold_model_selection_reaches_engine_and_rejection_does_not_fallback(monkeypatch):
@@ -202,7 +241,7 @@ async def test_cancel_before_prompt_dispatch_never_starts_engine_work(monkeypatc
         await driver.stop_runtime(runtime)
 
 
-async def test_driver_rejects_unsupported_file_content_before_starting_run():
+async def test_driver_sends_links_when_agent_cannot_embed_files():
     harness = FakeAcpHarness()
     driver = make_driver()
     project = harness.make_project()
@@ -210,8 +249,7 @@ async def test_driver_rejects_unsupported_file_content_before_starting_run():
     runtime = await driver.start_runtime(harness.make_conversation(project, binding), "card")
     try:
         driver._state(runtime).prompt_capabilities = {"image": False, "embeddedContext": False}
-        with pytest.raises(UnsupportedCapabilityError):
-            await driver.send_message(runtime, MessageInput(text="", attachments=(AttachmentRef(kind="file", ref="file:///image.png", mime_type="image/png", content_base64="aW1hZ2U="),)))
-        assert driver._state(runtime).prompt_task is None
+        await driver.send_message(runtime, MessageInput(text="", attachments=(AttachmentRef(kind="file", ref="file:///image.png", mime_type="image/png", content_base64="aW1hZ2U="),)))
+        assert driver._state(runtime).prompt_task is not None
     finally:
         await driver.stop_runtime(runtime)

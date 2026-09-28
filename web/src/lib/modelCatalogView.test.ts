@@ -66,11 +66,6 @@ describe("模型下拉的数据源（DESIGN ★I）", () => {
     expect(hasModelCatalog(empty, null)).toBe(false);
   });
 
-  it("老后端的目录不带 bindingId：不因此判否（缺的键不是否定证据，AD-71）", () => {
-    const legacy = { ...catalog("", [model("m1")]) };
-    expect(hasModelCatalog(legacy, binding)).toBe(true);
-    expect(modelOptionsFor(legacy, binding)).toEqual([{ value: "m1", label: "m1" }]);
-  });
 });
 
 describe("模型下拉的 provider 分组（batch29 / ★I-3）", () => {

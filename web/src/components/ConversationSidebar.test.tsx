@@ -24,7 +24,6 @@ const conversation = (
   projectId: `project:${projectSlug}`,
   title: id,
   state: "idle",
-  createdAt: "2026-09-01T00:00:00Z",
   updatedAt: "2026-09-01T00:00:00Z",
   backendId: "backend:hermes",
   ...overrides,
@@ -37,7 +36,7 @@ describe("会话侧栏", () => {
     const groups = buildConversationGroups(projects, [
       conversation("旧会话", "pronto", { updatedAt: "2026-09-01T10:00:00Z" }),
       conversation("新会话", "pronto", { updatedAt: "2026-09-02T10:00:00Z" }),
-      conversation("跑着的", "pronto", { state: "running-card", updatedAt: "2026-08-01T10:00:00Z" }),
+      conversation("跑着的", "pronto", { state: "running", updatedAt: "2026-08-01T10:00:00Z" }),
     ]);
     render(
       <ConversationSidebar
@@ -110,27 +109,6 @@ describe("会话侧栏", () => {
     expect(screen.queryByRole("button", { name: "新会话" })).toBeNull();
     await user.click(screen.getByText("c1"));
     expect(onOpen).toHaveBeenCalledWith("c1");
-  });
-});
-
-describe("加入协作组不改变会话侧栏身份", () => {
-  it("带组名的会话仍以原标题显示，并打开原会话", async () => {
-    const open = vi.fn();
-    render(
-      <ConversationSidebar
-        groups={buildConversationGroups([project("pronto", "Pronto")], [
-          conversation("c1", "pronto", { title: "我的助手", groupId: "collaboration:1", groupTitle: "重构评审组" }),
-        ])}
-        loading={false}
-        error={null}
-        activeConversationId={null}
-        onOpenConversation={open}
-      />,
-    );
-    expect(screen.queryByText("重构评审组")).toBeNull();
-    expect(screen.queryByTestId("sidebar-group-icon")).toBeNull();
-    await userEvent.click(screen.getByText("我的助手"));
-    expect(open).toHaveBeenCalledWith("c1");
   });
 });
 

@@ -99,7 +99,7 @@ export const en: Record<keyof typeof zh, string> = {
   "conversation.pending.retry": "Resend",
   "conversation.pending.unconfirmed": "Unconfirmed",
 
-  "draft.heading": "Let‘s make something sick",
+  "draft.heading": "Let’s make something sick",
   "draft.sub":
     "Choose a project and engine, then write your first message. Text drafts are saved; attachments are uploaded when you send.",
   "draft.field.project": "Project",
@@ -783,7 +783,6 @@ export const en: Record<keyof typeof zh, string> = {
     "To roll back, copy this backup over the file it came from (its original name is not readable from the backup name).",
   "materialize.done.noBackup": "The backend did not report a backup path this time.",
   "materialize.busy": "{count} conversations are running — stop them before writing",
-  "materialize.busy.unknown": "A conversation on this binding is running — stop it before writing",
   "materialize.writeFailed": "The write failed: {error}",
   "drift.field": "Config drift",
   "drift.count": "{count} changed on the engine side",
@@ -1011,4 +1010,15 @@ export const en: Record<keyof typeof zh, string> = {
   "group.member.renameSave": "Save",
   "group.member.renameDone": "Renamed in this group: {name}",
   "group.member.renameFailed": "Could not rename: {error}",
+
+  /* ---- 草稿页与协作组补齐的词条 ---- */
+  "draft.attachments.imagesOnly": "This engine accepts images only. Choose PNG, JPEG, WebP, GIF, or AVIF.",
+  "draft.model.notApplied": "The engine did not accept the selected model. Choose a model before sending again.",
+  "draft.send.unconfirmed": "Delivery is not yet confirmed. Open the conversation to check its status.",
+  "draft.send.openExisting": "Open conversation",
+  "group.coordinator": "Lead",
+  "group.processing": "Working",
+  "group.runLog": "Run log",
+  "group.run.reconnecting": "Connection lost, retrying",
+  "group.memberCount.one": "1 member",
 };

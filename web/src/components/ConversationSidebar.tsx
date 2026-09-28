@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { ChevronDown, ChevronRight, Terminal } from "lucide-react";
 import { useLocale } from "../i18n";
 import { cream } from "./ui";
 import { useExternalSurfaceIds } from "../lib/externalSurface";
-import { isRunning, useConversationIndex, type SidebarGroup } from "../lib/conversationIndex";
+import { isRunning, type SidebarGroup } from "../lib/conversationIndex";
 import { CONVERSATION_DRAG_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
 import { backendDisplay } from "../lib/backend-display";
 import { readCollapsedGroups, relativeTime, writeCollapsedGroups } from "../lib/shellPrefs";
@@ -35,7 +35,7 @@ export function ConversationSidebar({
   activeConversationId,
   onOpenConversation,
 }: ConversationSidebarProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [collapsed, setCollapsed] = useState<string[]>(() => readCollapsedGroups());
   /* Phase 4 第 2 件：在外部终端跑的那几条各带一枚小终端图标。会话索引那一行
      （`GET /api/conversations`）把 running-card / running-external 合并成一个
@@ -157,7 +157,7 @@ export function ConversationSidebar({
                         />
                       )}
                       {/* 一行只显示会话标题与相对时间，引擎在悬停提示里。 */}
-                      <span className="kaus-conversation-time">{relativeTime(conversation.updatedAt)}</span>
+                      <span className="kaus-conversation-time">{relativeTime(conversation.updatedAt, locale)}</span>
                     </div>
                   );
                 })}
@@ -166,32 +166,5 @@ export function ConversationSidebar({
         })}
       </nav>
     </div>
-  );
-}
-
-/** 容器版：自己取数（1 + N 并发 + 30s 轮询），给外壳用。 */
-export function ConversationSidebarContainer({
-  activeConversationId,
-  onOpenConversation,
-  refreshToken,
-  onIndexRefresh,
-}: {
-  activeConversationId: string | null;
-  onOpenConversation: (conversationId: string) => void;
-  refreshToken: number;
-  onIndexRefresh?: (refresh: () => void) => void;
-}) {
-  const index = useConversationIndex(refreshToken);
-  useEffect(() => {
-    onIndexRefresh?.(index.refresh);
-  }, [index.refresh, onIndexRefresh]);
-  return (
-    <ConversationSidebar
-      groups={index.groups}
-      loading={index.loading}
-      error={index.error}
-      activeConversationId={activeConversationId}
-      onOpenConversation={onOpenConversation}
-    />
   );
 }

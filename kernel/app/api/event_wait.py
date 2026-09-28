@@ -64,9 +64,8 @@ async def first_run_id(subscription: Any, *, timeout: float) -> str | None:
         envelope = await next_or_none(subscription, timeout=remaining)
         if envelope is STREAM_END or envelope is STREAM_IDLE:
             return None
-        run_id = getattr(envelope, "run_id", None)
-        if run_id:
-            return run_id
+        if envelope.run_id:
+            return envelope.run_id
 
 
 __all__ = [

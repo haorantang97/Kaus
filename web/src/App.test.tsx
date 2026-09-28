@@ -92,10 +92,13 @@ function stubFetch(bootstrapStatus: number) {
       return { ok: true, status: 200, json: async () => ({ root: "", exists: true, tree: [], file_count: 0 }) } as Response;
     }
     if (url.startsWith("/api/conversations")) {
-      return { ok: true, status: 200, json: async () => ({ conversations: [], count: 0, nextUpdatedAfter: null }) } as Response;
+      return { ok: true, status: 200, json: async () => ({ conversations: [], launches: [], count: 0, nextUpdatedAfter: null }) } as Response;
     }
     if (url.startsWith("/api/projects")) {
       return { ok: true, status: 200, json: async () => ({ projects: [], roots: [], count: 0, conversations: [], bindings: [] }) } as Response;
+    }
+    if (url.startsWith("/api/groups")) {
+      return { ok: true, status: 200, json: async () => ({ groups: [], count: 0 }) } as Response;
     }
     return { ok: true, status: 200, json: async () => ({}) } as Response;
   });
@@ -138,7 +141,7 @@ describe("外壳的 flag 开关", () => {
     /* batch40（★L 第 2 条）：常显只剩每天都用的入口 + 一枚「更多」；五个旧面板折在里面。
        batch42（用户裁决：概览页取消）：「概览」整项从导航里拿掉，**也不进「更多」**。 */
     const labels = [...document.querySelectorAll(".app-sidebar .shell-nav-item .shell-nav-label")].map((el) => el.textContent);
-    expect(labels).toEqual(["新会话", "项目", "更多"]);
+    expect(labels).toEqual(["新会话", "项目", "协作组", "更多"]);
     expect(labels).not.toContain("概览");
     /* 「新会话」入口只剩导航顶部那一枚：`/` 本身就是草稿页，铭牌上那枚按钮也去掉了。 */
     expect(screen.getAllByRole("button", { name: "新会话" })).toHaveLength(1);
@@ -164,12 +167,12 @@ describe("导航的「更多」分组（★L 第 2 条）", () => {
 
     const labels = () =>
       [...document.querySelectorAll(".app-sidebar .shell-nav-item .shell-nav-label")].map((el) => el.textContent);
-    expect(labels()).toEqual(["新会话", "项目", "更多"]);
+    expect(labels()).toEqual(["新会话", "项目", "协作组", "更多"]);
     expect(screen.getByTestId("nav-more-toggle")).toHaveAttribute("aria-expanded", "false");
 
     await user.click(screen.getByTestId("nav-more-toggle"));
     expect(labels()).toEqual([
-      "新会话", "项目", "更多", "仪表盘", "任务板", "资料库", "仓库", "设置",
+      "新会话", "项目", "协作组", "更多", "仪表盘", "任务板", "资料库", "仓库", "设置",
     ]);
     // batch42：展开「更多」也不会把「概览」翻出来——它整项没了。
     expect(labels()).not.toContain("概览");
@@ -247,11 +250,11 @@ describe("从草稿页点导航", () => {
     const user = userEvent.setup();
     stubFetch(200);
     renderApp("/new");
-    await waitFor(() => expect(screen.getByText("Let‘s make something sick")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Let’s make something sick")).toBeInTheDocument());
 
     await openMore(user);
     await user.click(screen.getAllByRole("button", { name: "仪表盘" })[0]);
-    await waitFor(() => expect(screen.queryByText("Let‘s make something sick")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Let’s make something sick")).toBeNull());
     expect(screen.getByText("仪表盘 · Dashboard")).toBeInTheDocument();
   });
 
@@ -261,7 +264,7 @@ describe("从草稿页点导航", () => {
     renderApp("/");
     await waitFor(() => expect(screen.getByTestId("conversation-sidebar")).toBeInTheDocument());
     await user.click(screen.getAllByRole("button", { name: "新会话" })[0]);
-    await waitFor(() => expect(screen.getByText("Let‘s make something sick")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Let’s make something sick")).toBeInTheDocument());
   });
 });
 

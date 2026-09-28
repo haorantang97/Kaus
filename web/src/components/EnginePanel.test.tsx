@@ -43,6 +43,7 @@ const backend = {
         authentication: "supported",
         usage: "supported",
         interrupt: "tool_boundary",
+        attachments: "unknown",
       },
       externalCli: { supported: "unsupported", resume: "unsupported" },
       models: { mode: "catalog", reasoning: "unsupported", providers: "unknown" },
@@ -480,9 +481,9 @@ describe("引擎卡的模型 / 推理强度 / 未就绪（第 4、5 件）", () 
     expect(screen.getByText("已登录 · example-user")).toBeInTheDocument();
   });
 
-  it("「未就绪」chip 悬停说原因（probe 的 message）", () => {
+  it("「未就绪」chip 悬停说原因（probeMessage）", () => {
     renderPanel([
-      { binding, backend: { ...backend, probeState: "unavailable", message: "连不上网关（127.0.0.1:8765）" }, capabilities },
+      { binding, backend: { ...backend, probeState: "unavailable", probeMessage: "连不上网关（127.0.0.1:8765）" }, capabilities },
     ]);
     expect(screen.getByText("未就绪")).toHaveAttribute("title", "引擎离线：连不上网关（127.0.0.1:8765）");
   });

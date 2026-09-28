@@ -387,23 +387,20 @@ def public_entries(rows: Sequence[Any], *, since_sequence: int | None) -> tuple[
     「B 说：（略过）」是一句没有内容的话（AD-71 的同一条）。
     """
     entries: list[RoomEntry] = []
-    for row in sorted(rows, key=lambda item: getattr(item, "sequence", 0)):
-        sequence = getattr(row, "sequence", None)
-        if since_sequence is not None and sequence is not None and sequence <= since_sequence:
+    for row in sorted(rows, key=lambda item: item.sequence):
+        if since_sequence is not None and row.sequence <= since_sequence:
             continue
-        kind = getattr(row, "kind", None)
-        if kind not in PUBLIC_DELTA_KINDS:
+        if row.kind not in PUBLIC_DELTA_KINDS:
             continue
-        metadata = getattr(row, "metadata", None) or {}
-        if metadata.get("passed"):
+        if row.metadata.get("passed"):
             continue
-        text = (getattr(row, "content", "") or "").strip()
+        text = row.content.strip()
         if not text:
             continue
-        member_id = getattr(row, "author_member_id", None)
+        kind = row.kind
         entries.append(
             RoomEntry(
-                author_member_id=member_id,
+                author_member_id=row.author_member_id,
                 text=text,
                 label=SYSTEM_LABEL if kind == "system" else USER_LABEL,
             )
