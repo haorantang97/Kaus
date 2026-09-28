@@ -101,8 +101,9 @@ async def test_missing_open_degrades_to_command_summary(tmp_path: Path) -> None:
     assert result.reason and "open" in result.reason
     assert result.launch.status == "failed"
     assert result.launch.external_process_ref is None
-    # 脚本仍然落了盘：用户可以自己去跑它。
+    # 保留启动记录，但延迟启动不能绕过已经释放的 lease。
     assert result.script_path.exists()
+    assert (result.script_path.parent / "revoked").exists()
 
 
 async def test_launch_records_pid_and_correlation_id(tmp_path: Path) -> None:
@@ -195,6 +196,25 @@ async def test_monitor_reports_pid_gone_without_exit_file(tmp_path: Path) -> Non
     assert stored is not None and stored.status == "failed"
 
 
+async def test_monitor_retries_failed_handoff_and_preserves_ownership(tmp_path):
+    monitor, launch, _, repositories = await _monitored(tmp_path, pid="424242", is_alive=lambda _: False)
+    attempts = []
+    async def handoff(signal):
+        attempts.append(signal)
+        if len(attempts) == 1:
+            raise RuntimeError("tool still running")
+        await monitor._leases.release(signal.conversation_id, expected_owner_id=signal.launch.id)
+    monitor._on_exit = handoff
+    await monitor.poll_once()
+    owner = await monitor._leases.describe(CONVERSATION)
+    assert owner and not owner.is_stale and owner.owner_id == launch.id
+    assert (await repositories.terminal_launches.get(launch.id)).status == "failed"
+    await monitor.poll_once()
+    assert len(attempts) == 2
+    assert await monitor._leases.describe(CONVERSATION) is None
+    assert await monitor.poll_once() == ()
+
+
 async def test_monitor_waits_for_pid_before_declaring_exit(tmp_path: Path) -> None:
     """pid 还没写出来 = 刚拉起，什么都不做（不能把「还没跑起来」当成「退了」）。"""
     monitor, _launch, seen, _repositories = await _monitored(
@@ -256,6 +276,27 @@ def test_cmux_uses_native_workspace_command_with_quoted_script(tmp_path, monkeyp
     assert create[create.index("--cwd") + 1] == "/my project"
     assert shlex.split(create[create.index("--command") + 1]) == ["/bin/zsh", str(script)]
     assert calls[0] == ["open", "-a", str(app)]
+
+
+def test_cmux_retries_readiness_timeout_without_duplicate_workspace(tmp_path, monkeypatch):
+    from drivers.terminals import launcher as adapter
+    app = tmp_path / "cmux.app"
+    cli = app / "Contents/Resources/bin/cmux"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("")
+    cli.chmod(0o700)
+    monkeypatch.setattr(adapter, "terminal_app_path", lambda _: app)
+    monkeypatch.setattr(adapter.shutil, "which", lambda _: "/usr/bin/open")
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[-1] == "ping" and sum(call[-1] == "ping" for call in calls) == 1:
+            raise subprocess.TimeoutExpired(argv, 2)
+        return subprocess.CompletedProcess(argv, 0, stdout="PONG", stderr="")
+    monkeypatch.setattr(adapter.subprocess, "run", run)
+    assert adapter.macos_open("cmux", tmp_path / "run.command")[0]
+    assert sum("new-workspace" in call for call in calls) == 1
+    assert sum(call[-1] == "ping" for call in calls) == 2
 
 
 def test_unknown_terminal_never_executes_arbitrary_command(tmp_path, monkeypatch):

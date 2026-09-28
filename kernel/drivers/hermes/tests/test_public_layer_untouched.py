@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 from tests.test_public_type_purity import (
@@ -49,6 +50,7 @@ def test_driver_package_is_outside_the_scanned_surface() -> None:
 #: 标签、启动 argv 与怪癖位，没有任何这个引擎的私有概念（profile / 家目录 /
 #: 网关地址一个都没有），Driver 也仍然只按怪癖表分支。
 ACP_PRESET_CATALOG = KERNEL_ROOT / "drivers" / "acp" / "presets.py"
+TERMINAL_ADAPTER = KERNEL_ROOT / "drivers" / "terminals" / "integrations.py"
 
 
 def test_hermes_token_appears_only_inside_this_driver_directory() -> None:
@@ -63,7 +65,19 @@ def test_hermes_token_appears_only_inside_this_driver_directory() -> None:
             continue
         if "tests" in parts or "mock" in parts or "contract_tests" in parts:
             continue
-        text = path.read_text(encoding="utf-8").lower()
+        text = path.read_text(encoding="utf-8")
+        if path.resolve() == TERMINAL_ADAPTER.resolve():
+            # Native wrapper names belong to the terminal driver's catalog.
+            # Exempt only the literal table, leaving all executable logic in
+            # the scan so it cannot gain engine-specific behavior unnoticed.
+            tables = [node for node in ast.parse(text).body if isinstance(node, ast.Assign)
+                      and any(isinstance(target, ast.Name) and target.id == "CMUX_WRAPPERS" for target in node.targets)]
+            assert len(tables) == 1
+            catalog = ast.literal_eval(tables[0].value)
+            assert all(isinstance(key, str) and isinstance(value, tuple) and len(value) == 2
+                       and all(isinstance(item, str) for item in value) for key, value in catalog.items())
+            text = text.replace(ast.get_source_segment(text, tables[0]), "", 1)
+        text = text.lower()
         if "hermes" in text:
             offenders.append(relative.as_posix())
     assert not offenders, "以下文件出现了 hermes 字样：\n" + "\n".join(offenders)

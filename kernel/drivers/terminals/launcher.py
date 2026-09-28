@@ -71,7 +71,12 @@ def macos_open(app: str, script_path: Path, *, cwd: str | None = None,
             # response must not create a second writer of the same native session.
             for attempt in range(20):
                 environment = cmux_environment()
-                ready = subprocess.run([str(cli), "ping"], capture_output=True, text=True, timeout=2, env=environment)
+                try:
+                    ready = subprocess.run([str(cli), "ping"], capture_output=True, text=True, timeout=2, env=environment)
+                except subprocess.TimeoutExpired:
+                    if attempt == 19:
+                        return False, "连接 cmux 超时"
+                    continue
                 if ready.returncode == 0:
                     break
                 if "access denied" in (ready.stderr + ready.stdout).lower():
@@ -98,7 +103,7 @@ def macos_open(app: str, script_path: Path, *, cwd: str | None = None,
     except subprocess.CalledProcessError:
         return False, f"无法打开 {app}，请检查终端是否可用"
     except subprocess.TimeoutExpired:
-        return False, f"打开 {app} 超时，请自己复制命令到终端里跑"
+        return False, f"打开 {app} 超时"
     except OSError as exc:  # pragma: no cover - 极少见（fork 失败之类）
         return False, f"打开 {app} 失败：{type(exc).__name__}: {exc}"
     return True, None

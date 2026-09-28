@@ -56,6 +56,8 @@ from app.ids import terminal_launch_id
 from app.runtimes.models import TerminalLaunch
 from app.runtimes.repository import TerminalLaunchRepository
 from drivers.base import CliLaunchSpec
+from drivers.terminals.integrations import prepare_command
+from drivers.terminals.managed_process import stop as stop_managed_process
 from runtime.lease_manager import LeaseManager
 
 #: 缺省终端应用（`dashboard-config.json` 的 ``terminal.app`` 可覆盖）。
@@ -109,6 +111,7 @@ def build_launch_script(
     pid_path: Path,
     exit_path: Path,
     path_prefix: str = DEFAULT_PATH_PREFIX,
+    guarded: bool = False,
 ) -> str:
     """造 ``run.command`` 的内容。纯函数，可单测（见模块文档的四件事）。"""
     lines = [
@@ -121,14 +124,22 @@ def build_launch_script(
     prefix = os.pathsep.join((*spec.path_prefix, path_prefix))
     lines.append(f"export PATH={shlex.quote(prefix)}:$PATH")
     lines.append(f"export {LAUNCH_ID_ENV_VAR}={shlex.quote(launch_id)}")
-    if spec.cwd:
-        lines.append(f"cd {shlex.quote(str(spec.cwd))} || exit 1")
+    if guarded:
+        directory = pid_path.parent
+        lines.extend((
+            f"if [ -e {shlex.quote(str(directory / 'revoked'))} ] || ! mkdir {shlex.quote(str(directory / 'shell-started'))} 2>/dev/null; then",
+            "  echo '会话已结束或已交接，请从 Kaus 重新打开。' >&2",
+            "  exit 125",
+            "fi",
+        ))
     # 两个路径先落成变量再用：trap 的动作本身是**单引号串**，把一个 shlex 引用过
     # 的路径直接塞进去，遇到路径里带单引号就会把这行拆坏。
     lines.append(f"{PID_FILE_VAR}={shlex.quote(str(pid_path))}")
     lines.append(f"{EXIT_FILE_VAR}={shlex.quote(str(exit_path))}")
     lines.append(f'echo $$ > "${PID_FILE_VAR}"')
     lines.append(f"trap 'echo $? > \"${EXIT_FILE_VAR}\"' EXIT")
+    if spec.cwd:
+        lines.append(f"cd {shlex.quote(str(spec.cwd))} || exit 1")
     lines.append(quote_command(spec.command))
     return "\n".join(lines) + "\n"
 
@@ -241,11 +252,12 @@ class TerminalLauncher:
         script_path = directory / SCRIPT_FILENAME
         script_path.write_text(
             build_launch_script(
-                spec,
+                spec.model_copy(update={"command": prepare_command(spec, directory, app)}),
                 launch_id=launch.id,
                 pid_path=pid_path,
                 exit_path=exit_path,
                 path_prefix=self.path_prefix,
+                guarded=True,
             ),
             encoding="utf-8",
         )
@@ -258,6 +270,9 @@ class TerminalLauncher:
         if not opened and read_pid(pid_path) is not None:
             opened, reason = True, None
         if not opened:
+            # An unconfirmed delayed workspace must not start after its lease
+            # has been returned to the conversation page.
+            await asyncio.to_thread(stop_managed_process, directory, read_pid(pid_path))
             return LaunchResult(
                 launch=launch.evolve(
                     status="failed",
@@ -277,6 +292,11 @@ class TerminalLauncher:
             command_summary=summary,
             script_path=script_path,
         )
+
+    async def stop(self, launch: TerminalLaunch) -> tuple[bool, str | None]:
+        directory = launch_dir(self.root, launch.id)
+        pid = launch.external_process_ref or read_pid(directory / PID_FILENAME)
+        return await asyncio.to_thread(stop_managed_process, directory, pid)
 
     async def _await_pid(self, pid_path: Path) -> str | None:
         deadline = asyncio.get_running_loop().time() + self.pid_timeout
@@ -383,20 +403,26 @@ class ExternalCliMonitor:
         self._log = log
         self.rounds = 0
         self.last_error: str | None = None
+        self._delivered: set[str] = set()
 
     async def poll_once(self) -> tuple[ExitSignal, ...]:
         """扫一轮，返回本轮发现的退出。测试直接断言它，不必等 5s。"""
         signals: list[ExitSignal] = []
-        for description in await self._leases.describe_all():
+        descriptions = await self._leases.describe_all()
+        self._delivered.intersection_update(row.owner_id for row in descriptions)
+        for description in descriptions:
             if description.owner_type != "external-cli":
                 continue
             launch_id = str(description.metadata.get("launchId") or "")
             if not launch_id:
                 continue
             launch = await self._launches.get(launch_id)
-            if launch is None or launch.status in ("exited", "failed"):
+            if launch is None or launch.id in self._delivered:
                 continue
-            signal = self._inspect(description.conversation_id, launch)
+            # A saved exit with an outstanding lease still needs reconciliation,
+            # including after a backend restart or a failed shutdown callback.
+            signal = (ExitSignal(description.conversation_id, launch, launch.exit_code, "recorded-exit")
+                      if launch.status in ("exited", "failed") else self._inspect(description.conversation_id, launch))
             if signal is None:
                 pid = launch.external_process_ref or read_pid(launch_dir(self.root, launch.id) / PID_FILENAME)
                 if pid is not None and self._is_alive(pid):
@@ -415,8 +441,11 @@ class ExternalCliMonitor:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - 回调坏了不该拖死监视器
+                await self._leases.heartbeat(signal.conversation_id, at=self._clock())
                 self.last_error = f"{type(exc).__name__}: {exc}"
                 self._log(f"[external-cli] 退出回调失败：{self.last_error}")
+            else:
+                self._delivered.add(signal.launch.id)
         self.rounds += 1
         return tuple(signals)
 

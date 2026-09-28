@@ -344,15 +344,14 @@ def conversation_surface(conversation: Conversation, *, lease: LeaseDescription 
     """这条会话此刻在**哪个界面**上写：``card | external-cli``（批次十五第 2 件）。
 
     两个来源，前者赢：
-    ``lease``                    还没过期的写权归谁，谁就是当前 Surface。这是
-                                 事实（AD-122：lease 是单写者）。
+    ``lease``                    外部终端需完成交接才释放；Card 使用有效心跳。
     ``preferred_surface``        库里落盘的偏好。没有 lease（谁都没在写）时用它
                                  ——「上次在终端，现在没人写」仍然应该显示成
                                  外部终端，否则用户会以为交接已经回来了。
 
-    过期的 lease 不算数：它的持有者早就不在了，再拿它当事实就是说谎。
+    外部终端不随宿主心跳过期而停止，仍需保留其占用状态。
     """
-    if lease is not None and not lease.is_stale:
+    if lease is not None and (not lease.is_stale or (lease.owner_type == "external-cli" and lease.metadata.get("launchId"))):
         return lease.owner_type
     return conversation.preferred_surface
 

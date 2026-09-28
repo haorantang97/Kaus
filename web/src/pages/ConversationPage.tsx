@@ -430,8 +430,7 @@ export function ConversationPage({
      "谁在写"不是时间线内容（见 lib/externalSurface.ts 顶部）。 ---- */
   const [surface, setSurface] = useState<SurfaceKind>("card");
   const [launch, setLaunch] = useState<TerminalLaunchWire | null>(null);
-  /* 第 2 件：外部端还活着没有（`lease` 在且未 stale）决定「回到站内」弹不弹说明。
-     以接口/事件返回为准，本地不推测。 */
+  /* A terminal lease remains authoritative until verified handoff completes. */
   const [lease, setLease] = useState<SurfaceLeaseWire | null>(null);
   const [returnOpen, setReturnOpen] = useState(false);
   const [launches, setLaunches] = useState<TerminalLaunchWire[]>([]);
@@ -796,11 +795,8 @@ export function ConversationPage({
     }
   }, [applySurface, conversationId, onActivity, reloadLaunches, t]);
 
-  /* 第 2 件（走查 F3）：「回到站内」先说清楚语义。外部端还活着（`lease` 在且未
-     stale）时弹一张说明：「回到页面」只切视图、**不调** `surface/card`（终端继续
-     持有写权，站内输入保持只读）；「强制收回写权」才带 `force=1`。外部端已经退出
-     时一句话都不多问，直接收回——那时没有任何东西会被打断。 */
-  const externalActive = Boolean(lease && !lease.stale);
+  /* Confirm before stopping an active terminal; ordinary page viewing needs no handoff. */
+  const externalActive = lease?.owner === "external-cli";
   const requestReturn = useCallback(() => {
     if (externalActive) {
       setReturnOpen(true);
@@ -1837,11 +1833,6 @@ export function ConversationPage({
       {returnOpen && (
         <ReturnToAppDialog
           busy={handoffBusy}
-          onStay={() => {
-            setReturnOpen(false);
-            // 只回到页面看：不调 `surface/card`，写权仍在终端，输入框保持只读。
-            setNotice(t("surface.return.stayed"));
-          }}
           onForce={() => void toCard({ force: true })}
           onCancel={() => setReturnOpen(false)}
         />

@@ -2138,6 +2138,12 @@ class AcpDriver:
             raise UnsupportedCapabilityError("原生终端命令尚未安装，当前会话可继续在界面中使用")
         return CliLaunchSpec(
             command=(executable, *command[1:]),
+            terminal_integration=preset.id,
+            config_directory=(
+                (preset.config_root_env, str(Path(self.agent_spec.build_env().get(
+                    preset.config_root_env) or preset.config_root_default).expanduser().resolve()))
+                if preset.config_root_env and preset.config_root_default else None
+            ),
             path_prefix=tuple(part for part in search_path.split(os.pathsep) if part and os.path.isabs(part)),
             cwd=self._workspace_root_for(conversation.agent_binding_id)
             or self._default_cwd,

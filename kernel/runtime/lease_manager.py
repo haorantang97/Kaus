@@ -20,8 +20,8 @@ AD-122 为什么要升格：Card 与外部终端写的是**同一条 Native Sess
 ---------------------
 lease 的有效期 = ``heartbeat_at + ttl``（ttl 即 :attr:`LeaseManager.lease_ttl`，
 默认 90s，接入层可由 ``runtime.lease_ttl_seconds`` 配置）。过期的 lease 视为
-**stale**，可被直接接管，不需要 ``force``——持有者已经不在了，让用户去点一次
-「强制接管」只是让他替一个死进程做决定。接管时 :class:`LeaseOutcome` 会带上
+**stale**，可被直接接管。带 ``launchId`` 的外部终端除外：心跳中断不能证明原生
+进程已退出，必须先完成 SurfaceCoordinator 的停止校验。接管时 :class:`LeaseOutcome` 会带上
 ``stale_recovered=True`` 与一句 ``reason``，调用方据此打一条 diagnostic。
 
 AD-11 的写入者分工
@@ -272,6 +272,10 @@ class LeaseManager:
             existing.owner_type != owner_type or existing.owner_id != owner_id
         ):
             described = self._describe(existing, now=now)
+            if existing.owner_type == "external-cli" and existing.metadata.get("launchId") and not force:
+                # A backend heartbeat expiring does not stop a native CLI.
+                # Managed launches release through verified surface handoff.
+                return LeaseOutcome(granted=False, conflict=described, reason="终端会话尚未结束")
             if self._is_expired(existing, now):
                 # stale recovery：持有者已经不在了，不必让用户替死进程做决定。
                 stale_recovered = True

@@ -75,6 +75,21 @@ async def test_expired_lease_is_recovered_without_force() -> None:
     assert outcome.reason and "过期" in outcome.reason
 
 
+async def test_managed_terminal_lease_cannot_expire_into_a_second_writer() -> None:
+    manager = _manager(ttl_seconds=90)
+    await manager.try_acquire_external_cli(
+        CONVERSATION, owner_id="launch:managed", metadata={"launchId": "launch:managed"}, at=T0,
+    )
+    outcome = await manager.try_acquire_card(
+        CONVERSATION, owner_id="session-host", at=T0 + timedelta(hours=1),
+    )
+    assert not outcome.granted
+    assert outcome.conflict.owner_id == "launch:managed"
+    cleared = await manager.reconcile(alive_process_ids=(), now=T0 + timedelta(hours=2))
+    assert not cleared
+    assert (await manager.describe(CONVERSATION)).owner_id == "launch:managed"
+
+
 async def test_same_owner_reacquire_refreshes_instead_of_conflicting() -> None:
     """同一 owner 再拿一次 = 续期，不是抢占（Card 补 backend_process_id 走这条）。"""
     manager = _manager()

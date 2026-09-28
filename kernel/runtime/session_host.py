@@ -841,8 +841,8 @@ class SessionHost:
         lease = await self._leases.describe(conversation_id)
         if (
             lease is not None
-            and not lease.is_stale
             and lease.owner_type == "external-cli"
+            and (not lease.is_stale or lease.metadata.get("launchId"))
         ):
             return False
         state = await self.timeline_from_store(conversation_id)

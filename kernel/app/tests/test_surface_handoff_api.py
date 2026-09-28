@@ -121,6 +121,12 @@ class Harness:
             # 不真跑脚本时 pid 永远不会出现，别让每个用例等 3 秒。
             pid_timeout=5.0,
         )
+        actual_stop = self.launcher.stop
+        async def stop_test_launch(launch):
+            if self.run_script:
+                return await actual_stop(launch)
+            return True, None
+        self.launcher.stop = stop_test_launch
         self.coordinator = SurfaceCoordinator(
             session_host=self.host,
             repositories=self.repositories,
@@ -679,5 +685,52 @@ async def test_exit_from_old_terminal_cannot_reclaim_new_lease(tmp_path):
         owner = await harness.host.leases.describe(conversation_id)
         assert owner is not None and owner.owner_id == second.launch.id
         assert (await harness.coordinator.describe(second.conversation))["surface"] == "external-cli"
+    finally:
+        await harness.aclose()
+
+
+async def test_failed_terminal_stop_never_unlocks_card_or_starts_another_writer(tmp_path):
+    from runtime.surface_handoff import SurfaceConflictError
+    harness = Harness(tmp_path)
+    await harness.seed()
+    try:
+        with _client(harness) as client:
+            conversation_id = harness.new_conversation(client)
+        conversation = await harness.repositories.conversations.get(conversation_id)
+        first = await harness.coordinator.to_external(conversation)
+        async def cannot_stop(_):
+            return False, "终端尚未结束，请稍后重试"
+        harness.launcher.stop = cannot_stop
+        for operation in (harness.coordinator.to_card, harness.coordinator.to_external):
+            with pytest.raises(SurfaceConflictError) as error:
+                await operation(first.conversation, force=True)
+            assert error.value.code == "external_stop_failed"
+            assert (await harness.host.leases.describe(conversation_id)).owner_id == first.launch.id
+            assert (await harness.repositories.conversations.get(conversation_id)).preferred_surface == "external-cli"
+        assert len(harness.opened) == 1
+    finally:
+        await harness.aclose()
+
+
+async def test_terminal_is_stopped_before_replacement_writer_starts(tmp_path):
+    harness = Harness(tmp_path)
+    await harness.seed()
+    sequence = []
+    try:
+        with _client(harness) as client:
+            conversation_id = harness.new_conversation(client)
+        conversation = await harness.repositories.conversations.get(conversation_id)
+        first = await harness.coordinator.to_external(conversation)
+        actual_launch = harness.launcher.launch
+        async def stop_old(launch):
+            sequence.append(("stopped", launch.id))
+            return True, None
+        async def launch_new(*args, **kwargs):
+            sequence.append(("launch", None))
+            return await actual_launch(*args, **kwargs)
+        harness.launcher.stop = stop_old
+        harness.launcher.launch = launch_new
+        await harness.coordinator.to_external(first.conversation, force=True)
+        assert sequence == [("stopped", first.launch.id), ("launch", None)]
     finally:
         await harness.aclose()

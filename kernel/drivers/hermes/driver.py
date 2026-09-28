@@ -1726,6 +1726,7 @@ class HermesDriver:
             resume = True
         return CliLaunchSpec(
             command=tuple(command),
+            terminal_integration="hermes",
             cwd=None,
             # AD-10：只能列变量名，不能给值。HERMES_HOME 由 ``-p`` / wrapper 决定，
             # 绝不写成 ("env", "HERMES_HOME=…", …)（规格 §2.9 的「不允许的形态」）。

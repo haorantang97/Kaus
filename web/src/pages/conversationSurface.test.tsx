@@ -264,8 +264,8 @@ describe("第 1 件：「到终端打开」入口", () => {
     renderPage();
     await user.click(await findOpenButton());
 
-    expect(await screen.findByText(/强制接管可能造成并发写入/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "强制接管" }));
+    expect(await screen.findByText(/将结束原终端中的 Agent/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "结束并重新打开" }));
 
     await waitFor(() => expect(mocked.openExternalSurface).toHaveBeenCalledTimes(2));
     expect(mocked.openExternalSurface.mock.calls[0][1]).toEqual({});
@@ -287,7 +287,7 @@ describe("第 1 件：「到终端打开」入口", () => {
 });
 
 describe("第 2 件：外部态（只读）", () => {
-  it("横幅 + 输入框禁用 + 占位文字换成「回到站内后可继续」", async () => {
+  it("横幅 + 输入框禁用 + 占位文字换成「切回 Kaus后可继续」", async () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(await findOpenButton());
@@ -298,7 +298,7 @@ describe("第 2 件：外部态（只读）", () => {
     const box = screen.getByLabelText("消息");
     expect(box).toBeDisabled();
     expect(box).toHaveAttribute("placeholder", "终端运行中 · 输入暂不可用");
-    // 入口本身换成了横幅上的「回到站内」，页头那枚不再出现。
+    // 入口本身换成了横幅上的「切回 Kaus」，页头那枚不再出现。
     expect(screen.queryByTestId("open-external")).toBeNull();
   });
 
@@ -342,7 +342,7 @@ describe("第 2 件：外部态（只读）", () => {
   });
 });
 
-describe("第 3 件：回到站内与校准", () => {
+describe("第 3 件：切回 Kaus与校准", () => {
   it("409 external_active → 确认后 force=1；随后的 history.reconciled 折成一组折叠历史", async () => {
     mocked.returnToCardSurface.mockRejectedValueOnce(
       new SessionApiError(409, "external_active", "外部终端还活着", { detail: { owner: "external-cli" } }),
@@ -350,10 +350,10 @@ describe("第 3 件：回到站内与校准", () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(await findOpenButton());
-    await user.click(await screen.findByRole("button", { name: "回到站内" }));
+    await user.click(await screen.findByRole("button", { name: "切回 Kaus" }));
 
-    expect(await screen.findByText(/终端好像还开着/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "强行收回" }));
+    expect(await screen.findByText(/将结束终端中的 Agent/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "结束终端并切回" }));
     await waitFor(() => expect(mocked.returnToCardSurface).toHaveBeenCalledTimes(2));
     expect(mocked.returnToCardSurface.mock.calls[1][1]).toEqual({ force: true });
 

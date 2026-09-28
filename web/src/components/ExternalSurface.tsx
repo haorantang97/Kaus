@@ -78,19 +78,13 @@ export function ExternalBanner({
  * 「回到站内」的说明弹窗（批次十六第 2 件 / 走查 F3）
  * ------------------------------------------------------------------ */
 
-/** 外部端还活着时，点「回到站内」先弹这张：说清楚两条路各是什么意思。
- *
- * 这不是加摩擦，是**给语义**——走查里用户点完不知道终端里的任务是不是被杀了。
- *  - 「回到页面」：只切视图，不调 `surface/card`，终端继续持有写权；
- *  - 「强制收回写权」：带 `force=1`，二次确认已经含在这张弹窗里，不再多问一次。 */
+/** Keep the terminal active, or stop its agent before returning control to Kaus. */
 export function ReturnToAppDialog({
   busy = false,
-  onStay,
   onForce,
   onCancel,
 }: {
   busy?: boolean;
-  onStay: () => void;
   onForce: () => void;
   onCancel: () => void;
 }) {
@@ -100,8 +94,7 @@ export function ReturnToAppDialog({
       <div className="kaus-return-dialog" data-testid="return-dialog">
         <p>{t("surface.return.body")}</p>
         <div className="kaus-return-actions">
-          <Button onClick={onCancel}>{t("ui.cancel")}</Button>
-          <Button onClick={onStay} disabled={busy}>
+          <Button onClick={onCancel} disabled={busy}>
             {t("surface.return.stay")}
           </Button>
           {/* 破坏性的那条走 danger 描边（现有 token，不新造颜色）。 */}

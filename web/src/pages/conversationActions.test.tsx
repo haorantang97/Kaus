@@ -292,10 +292,10 @@ describe("第 1 件：点停止后的「正在停止…」", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * 第 2 件：回到站内的语义（F3）
+ * 第 2 件：切回 Kaus的语义（F3）
  * ------------------------------------------------------------------ */
 
-describe("第 2 件：「回到站内」先说清楚语义", () => {
+describe("第 2 件：「切回 Kaus」先说清楚语义", () => {
   const externalWithLease = () => {
     mocked.fetchSurface.mockResolvedValue({
       conversationId: "conversation:1",
@@ -305,34 +305,35 @@ describe("第 2 件：「回到站内」先说清楚语义", () => {
     });
   };
 
-  it("外部仍活跃时弹说明；「回到页面」不调 surface/card，输入框仍只读", async () => {
+  it("外部仍活跃时弹说明；「继续在终端」不调 surface/card，输入框仍只读", async () => {
     externalWithLease();
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole("button", { name: "回到站内" }));
+    await user.click(await screen.findByRole("button", { name: "切回 Kaus" }));
 
     const dialog = await screen.findByTestId("return-dialog");
-    expect(dialog).toHaveTextContent("终端任务继续运行");
-    await user.click(within(dialog).getByRole("button", { name: "回到页面" }));
+    expect(dialog).toHaveTextContent("将结束终端中的 Agent");
+    expect(within(dialog).getAllByRole("button")).toHaveLength(2);
+    await user.click(within(dialog).getByRole("button", { name: "继续在终端" }));
 
     expect(mocked.returnToCardSurface).not.toHaveBeenCalled();
     expect(screen.getByLabelText("消息")).toBeDisabled();
     expect(screen.queryByTestId("return-dialog")).toBeNull();
   });
 
-  it("「强制收回写权」直接带 force=1（二次确认已含在这张弹窗里）", async () => {
+  it("「结束终端并切回」直接带 force=1（二次确认已含在这张弹窗里）", async () => {
     externalWithLease();
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole("button", { name: "回到站内" }));
-    await user.click(await screen.findByRole("button", { name: "强制收回写权" }));
+    await user.click(await screen.findByRole("button", { name: "切回 Kaus" }));
+    await user.click(await screen.findByRole("button", { name: "结束终端并切回" }));
 
     await waitFor(() => expect(mocked.returnToCardSurface).toHaveBeenCalledTimes(1));
     expect(mocked.returnToCardSurface.mock.calls[0][1]).toEqual({ force: true });
     await waitFor(() => expect(screen.queryByTestId("external-banner")).toBeNull());
   });
 
-  it("外部已退出（租约 stale / 没有租约）时一句都不多问，直接收回", async () => {
+  it("心跳过期不能代替停止终端的确认", async () => {
     mocked.fetchSurface.mockResolvedValue({
       conversationId: "conversation:1",
       surface: "external-cli",
@@ -341,11 +342,10 @@ describe("第 2 件：「回到站内」先说清楚语义", () => {
     });
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole("button", { name: "回到站内" }));
+    await user.click(await screen.findByRole("button", { name: "切回 Kaus" }));
 
-    await waitFor(() => expect(mocked.returnToCardSurface).toHaveBeenCalledTimes(1));
-    expect(mocked.returnToCardSurface.mock.calls[0][1]).toEqual({});
-    expect(screen.queryByTestId("return-dialog")).toBeNull();
+    expect(await screen.findByTestId("return-dialog")).toBeInTheDocument();
+    expect(mocked.returnToCardSurface).not.toHaveBeenCalled();
   });
 });
 

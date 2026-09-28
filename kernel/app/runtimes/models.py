@@ -237,6 +237,11 @@ def reconcile_leases(
     alive: list[RuntimeLease] = []
     stale: list[RuntimeLease] = []
     for lease in leases:
+        # Managed terminals survive backend restarts. The external monitor and
+        # surface coordinator verify their process lifecycle before releasing.
+        if lease.owner_type == "external-cli" and lease.metadata.get("launchId"):
+            alive.append(lease)
+            continue
         if lease.is_expired(at) or lease.is_stale(at, heartbeat_timeout):
             stale.append(lease)
             continue

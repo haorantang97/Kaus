@@ -36,6 +36,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import (
     Any,
     AsyncIterator,
@@ -841,20 +842,34 @@ class CliLaunchSpec(_DriverModel):
     """外部 CLI 启动规格（v1.0 §8.5）。
 
     安全约束（v1.0 §16.6 / §11.1 ``terminal_launches``：不得保存 Secret）：
-    本类型**不接受环境变量的值**，只接受要从当前进程透传的变量**名**
-    （``env_passthrough``）。任何需要密钥的场景都由 Driver 在实际拉起时注入，
-    不进入可持久化的启动规格。
+    认证环境变量只接受变量名（``env_passthrough``），密钥不进入可持久化的
+    启动规格。``config_directory`` 仅接受已知的非敏感配置目录。
     """
 
     command: tuple[str, ...]
     #: Non-secret runtime search directories; keeps native CLI dependencies on the same version.
     path_prefix: tuple[str, ...] = ()
+    #: Terminal adapter identity; the host does not branch on engine names.
+    terminal_integration: str | None = None
+    #: Explicit non-secret configuration directory, distinct from credentials.
+    config_directory: tuple[str, str] | None = None
     cwd: str | None = None
     env_passthrough: tuple[str, ...] = ()
     title: str | None = None
     #: v1.0 §8.7：用于把外部进程与本次启动确定性地关联起来。
     correlation_id: str | None = None
     resume: bool = False
+
+    @field_validator("config_directory")
+    @classmethod
+    def validate_config_directory(cls, value: tuple[str, str] | None) -> tuple[str, str] | None:
+        if value is not None:
+            key, path = value
+            if not re.fullmatch(r"[A-Z][A-Z0-9_]*_(?:HOME|DIR|ROOT)", key):
+                raise ValueError("Configuration directory variable must end in HOME, DIR or ROOT")
+            if not Path(path).is_absolute() or "\0" in path:
+                raise ValueError("Configuration directory must be an absolute path")
+        return value
 
 
 # --------------------------------------------------------------------------- #

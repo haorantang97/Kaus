@@ -296,18 +296,29 @@ class SurfaceCoordinator:
     async def _precheck_external_lease(
         self, conversation: Conversation, *, force: bool
     ) -> None:
-        if force:
-            return
         description = await self._host.leases.describe(conversation.id)
-        if description is None or description.is_stale:
+        if description is None:
             return
         if description.owner_type != "external-cli":
+            return
+        if force:
+            await self._stop_external_writer(description)
             return
         raise SurfaceConflictError(
             "lease_held",
             "这条会话的写权已被别人持有；确认要强制接管请带 ?force=1",
             detail=_lease_detail(description),
         )
+
+    async def _stop_external_writer(self, description: LeaseDescription) -> None:
+        launch = await self._repositories.terminal_launches.get(description.owner_id)
+        if launch is None:
+            raise SurfaceConflictError("external_stop_failed", "无法确认终端进程，请先退出终端中的 Agent")
+        stopped, reason = await self._launcher.stop(launch)
+        if not stopped:
+            raise SurfaceConflictError("external_stop_failed", reason or "终端尚未结束，请稍后重试")
+        if launch.status not in ("exited", "failed"):
+            await self._repositories.terminal_launches.save(launch.mark_exited(exit_code=-1, at=self._clock()))
 
     # --- 回站 ----------------------------------------------------------- #
 
@@ -325,13 +336,14 @@ class SurfaceCoordinator:
             not force
             and description is not None
             and description.owner_type == "external-cli"
-            and not description.is_stale
         ):
             raise SurfaceConflictError(
                 "external_active",
                 "外部终端还活着；确认要收回写权请带 ?force=1",
                 detail=_lease_detail(description),
             )
+        if description is not None and description.owner_type == "external-cli":
+            await self._stop_external_writer(description)
         history = await self._load_history(conversation)
         entries, complete, gaps = _diff_history(
             history, seen=await self._last_reconciled_entry_id(conversation)
@@ -430,7 +442,6 @@ class SurfaceCoordinator:
         if (
             description is not None
             and description.owner_type == "external-cli"
-            and not description.is_stale
         ):
             surface = "external-cli"
         else:
