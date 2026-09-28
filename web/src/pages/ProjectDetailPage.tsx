@@ -48,7 +48,6 @@ import {
   fetchEffectiveCapabilities,
   fetchProjects,
   fetchRecentConversations,
-  probeCapabilityWrite,
   putProjectCapability,
   type ConversationIndexEntryWire,
   type EffectiveCapabilitiesWire,
@@ -549,25 +548,7 @@ export function CapabilitiesSection({
 }) {
   const { t, tDynamic } = useLocale();
   const label = projectLabel;
-  /* 写端点在不在（AD-71）：null = 还在探，探出 false 就整列不渲染。
-     没有 projectId / 没有 onChanged（预览、旧调用方）时同样不渲染。 */
-  const [writable, setWritable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!projectId || !onChanged) {
-      setWritable(false);
-      return;
-    }
-    let cancelled = false;
-    setWritable(null);
-    probeCapabilityWrite(projectId).then((ok) => {
-      if (!cancelled) setWritable(ok);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, onChanged]);
 
   const run = useCallback(
     async (row: { capabilityType: string; capabilityId: string }, action: CapabilityAction) => {
@@ -592,7 +573,7 @@ export function CapabilitiesSection({
     [onChanged, projectId, t],
   );
 
-  const showActions = writable === true;
+  const showActions = Boolean(projectId && onChanged);
   /** 取值本地化：词典里没有的（自由文本、路径…）原样显示。 */
   const localize = useCallback((value: string) => tDynamic(`capValue.${value}`, value), [tDynamic]);
 
@@ -625,7 +606,7 @@ export function CapabilitiesSection({
             <span role="columnheader">{t("capabilities.col.type")}</span>
             <span role="columnheader">{t("capabilities.col.content")}</span>
             <span role="columnheader">{t("capabilities.col.source")}</span>
-            {/* AD-71：写端点不在时整列（含表头）都不渲染，不留占位。 */}
+            {/* 只读场景（没有写回调）整列（含表头）都不渲染，不留占位。 */}
             {showActions && <span role="columnheader">{t("capabilities.col.actions")}</span>}
           </div>
           {shownEntries.map((entry) => (

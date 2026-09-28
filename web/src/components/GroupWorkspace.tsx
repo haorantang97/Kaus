@@ -47,32 +47,14 @@ export function someRunFinished(
   );
 }
 
-/** 一名成员在界面上叫什么（batch45a，batch46 改成**优先用后端给的那个**）。
+/** 一名成员在界面上叫什么：后端那张共用表算好的 `displayName`（含重名后缀 `#2`）。
  *
- *  batch46（PRD §B10-2）：后端那张共用表已经把最终显示名算好了（含重名后缀 `#2`）
- *  并上了 wire，所以这里**先用 `displayName`**，取不到才退回本地推断。
- *
- *  为什么必须以后端为准：那张表算的名字是真的发给引擎的话——成员在房间说明里被
- *  告知自己叫 `media#2`，真机截图里它也这么自称（「@media#2 负责执行与质检」），
- *  而时间线上两个成员都写着 `media`，用户分不出那是谁。前端自己推断算得出名字、
- *  算不出后缀（它只看得见一个成员，看不见组里有没有第二个同名的），所以这不是
- *  「两处写法不一致」，是**前端这一处根本算不出正确答案**。
- *
- *  退回那一支留着是为了老后端（合并期间两种后端都可能在跑）：口径与后端一致，
- *  `roleLabel` > 会话标题 > 成员 id 尾段，只是没有后缀。 */
-export function memberDisplayName(
-  members: GroupMemberWire[],
-  memberId: string,
-): string {
+ *  必须以后端为准：那是真的发给引擎的名字——成员在房间说明里被告知自己叫
+ *  `media#2`，界面上也得这么叫它，否则同名的两位用户分不出谁是谁。
+ *  成员已不在列表里时退回成员 id 的尾段。 */
+export function memberDisplayName(members: GroupMemberWire[], memberId: string): string {
   const row = members.find((entry) => entry.id === memberId);
-  if (!row) return memberId.split(":").pop()?.slice(0, 8) ?? memberId;
-  return (
-    row.displayName?.trim() ||
-    row.roleLabel?.trim() ||
-    row.conversation?.title?.trim() ||
-    memberId.split(":").pop()?.slice(0, 8) ||
-    memberId
-  );
+  return row ? row.displayName : memberId.split(":").pop()?.slice(0, 8) || memberId;
 }
 
 /** 这名成员跑在哪台引擎上：`backend:mock` → `mock`。取不到就是 `null`，
@@ -346,7 +328,7 @@ export function applyMention(
   };
 }
 
-/** 安全阀轮数的默认值。后端不给 `settings` 时（老后端）用它。
+/** 安全阀轮数的默认值。组设置里没写 `roundCap` 时用它。
  *
  *  batch46：6 → **12**。轮数在这一批降格成安全阀（只防成本失控），预期的停止点换成
  *  了每轮必填的表态——既然它不再是停止点，默认值就该调到「正常讨论碰不到」的高度。 */
@@ -919,8 +901,8 @@ export function GroupWorkspace({
         .then((payload) => {
           // ① 号不是最新的：这是一份过期的答案，当它没来过。
           if (token !== packetSeq.current) return;
-          // ② 组对不上（换组时的兜底；旧后端不带这个键就不拿它当否定证据，AD-71）。
-          if (payload.groupId && payload.groupId !== groupId) return;
+          // ② 组对不上（换组时的兜底）。
+          if (payload.groupId !== groupId) return;
           setPacket(payload);
           setPacketError(null);
           setPacketLoading(false);

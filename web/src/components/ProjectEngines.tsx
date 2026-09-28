@@ -36,8 +36,6 @@ import {
   patchBinding,
   type BackendWire,
   type BindingDriftWire,
-  type EffectiveCapabilitiesWire,
-  type EffectiveSettingsWire,
 } from "../lib/sessionApi";
 
 export function ProjectEngines({
@@ -62,7 +60,7 @@ export function ProjectEngines({
   const [error, setError] = useState<string | null>(null);
   const [localToken, setLocalToken] = useState(0);
   /* batch25：每条 Binding 一次 drift。`undefined` = 还没读到，`null` = 读不着
-     （端点不在 / `projection_unsupported` / 请求失败）——两者在卡片上都是"什么都不显示"，
+     （`projection_unsupported` / 请求失败）——两者在卡片上都是"什么都不显示"，
      所以这里**失败静默**，不进 `error`（AD-71）。 */
   const [drifts, setDrifts] = useState<Record<string, BindingDriftWire | null>>({});
   /* batch26：入口门控换成 `projection/_meta`。`true` 才有「应用到引擎」与漂移行，
@@ -79,14 +77,14 @@ export function ProjectEngines({
       .catch(() => setDrifts((current) => ({ ...current, [bindingId]: null })));
   }, []);
 
-  /** 先问 `_meta`，`supported=true` 才接着拉 drift。问不到（端点不在 / 出错）
-      = 什么都不渲染，失败静默（AD-71）。 */
+  /** 先问 `_meta`，`supported=true` 才接着拉 drift。问不到 = 什么都不渲染，
+      失败静默（AD-71）。 */
   const loadProjection = useCallback(
     (bindingId: string) => {
       fetchProjectionMeta(bindingId)
         .then((meta) => {
-          setProjection((current) => ({ ...current, [bindingId]: meta.supported === true }));
-          if (meta.supported === true) loadDrift(bindingId);
+          setProjection((current) => ({ ...current, [bindingId]: meta.supported }));
+          if (meta.supported) loadDrift(bindingId);
         })
         .catch(() => setProjection((current) => ({ ...current, [bindingId]: false })));
     },
@@ -103,60 +101,40 @@ export function ProjectEngines({
     setError(null);
     (async () => {
       const { bindings } = await fetchProjectBindings(projectId);
-      const backends = new Map<string, BackendWire>();
       // 同一个引擎被挂多次时只取一次声明。
-      for (const backendId of new Set(bindings.map((binding) => binding.backendId))) {
-        backends.set(backendId, await fetchBackendWithCapabilityDetail(backendId));
-      }
-      const catalogs = new Map<string, Awaited<ReturnType<typeof fetchModelCatalog>> | null>();
-      /* 批次十三第 4 件：模型 / 推理强度 / 审批模式的取值与来源都从这里来。
-         端点不在（404）时 `fetchEffectiveSettings` 自己回退成"四项都没有"，
-         面板于是退回旧的 runtimeConfig 猜键，不报错。 */
-      const settings = new Map<string, EffectiveSettingsWire | null>();
-      for (const binding of bindings) {
-        /* 拿不到目录（501 / 请求失败）= 没有目录这回事：那一行只读。
-           **空目录不等于没有目录**（批次十五第 5 件）：菜单照旧点得开，
-           里面写「引擎未报告可用模型」，用户才知道是引擎没报而不是界面坏了。 */
-        catalogs.set(binding.id, await fetchModelCatalog(binding.backendId, binding.id).catch(() => null));
-        settings.set(binding.id, await fetchEffectiveSettings(binding.id).catch(() => null));
-      }
-      /* AD-97：引擎配置区的数据。`?backend=<裸 key>` 把结果收窄成「通用 + 该引擎的
-         scoped 能力」；面板再只留 scoped 的那半（通用能力在项目页的「能力」表里）。
-         读不到（端点不在 / 出错）就传 null：那一区显示「没有专属配置」，不报错。 */
-      const scoped = new Map<string, EffectiveCapabilitiesWire | null>();
-      for (const [backendId, backend] of backends) {
-        scoped.set(
-          backendId,
-          await fetchEffectiveCapabilities(projectId, { backend: backend.key }).catch(() => null),
-        );
-      }
-      const all = await fetchBackends().catch(() => ({ backends: [] as BackendWire[], count: 0 }));
+      const backendIds = [...new Set(bindings.map((binding) => binding.backendId))];
+      /* 每条请求彼此独立，一起发：ACP 引擎取目录要起子进程，串行时一张卡慢整页都等着。
+         拿不到目录（501 / 请求失败）= 没有目录这回事：那一行只读。**空目录不等于
+         没有目录**（批次十五第 5 件）：菜单照旧点得开，里面写「引擎未报告可用模型」。
+         AD-97：`?backend=<裸 key>` 把能力收窄成「通用 + 该引擎的 scoped 能力」；
+         读不到就传 null，那一区显示「没有专属配置」。 */
+      const [backendList, catalogList, settingsList, all] = await Promise.all([
+        Promise.all(backendIds.map((backendId) => fetchBackendWithCapabilityDetail(backendId))),
+        Promise.all(bindings.map((binding) => fetchModelCatalog(binding.backendId, binding.id).catch(() => null))),
+        Promise.all(bindings.map((binding) => fetchEffectiveSettings(binding.id).catch(() => null))),
+        fetchBackends().catch(() => ({ backends: [] as BackendWire[], count: 0 })),
+      ]);
+      const backends = new Map(backendIds.map((backendId, index) => [backendId, backendList[index]]));
+      const scopedList = await Promise.all(
+        backendList.map((backend) => fetchEffectiveCapabilities(projectId, { backend: backend.key }).catch(() => null)),
+      );
+      const scoped = new Map(backendIds.map((backendId, index) => [backendId, scopedList[index]]));
       if (cancelled) return;
       // 进项目页时每张卡先问一次 `_meta`（并发，失败静默），支持的才接着拉 drift。
       // 不 await：漂移那一行晚一点出现无所谓，引擎卡本身不该为它等着。
       for (const binding of bindings) loadProjection(binding.id);
       setAttachable(all.backends.map((backend) => ({ id: backend.id, displayName: backend.displayName })));
       setRows(
-        bindings.flatMap((binding) => {
-          const backend = backends.get(binding.backendId);
-          const catalog = catalogs.get(binding.id) ?? null;
-          return backend
-            ? [
-                {
-                  binding,
-                  backend,
-                  catalog,
-                  effectiveSettings: settings.get(binding.id) ?? null,
-                  capabilities: scoped.get(binding.backendId) ?? null,
-                  /* batch19 第 1、2 件（AD-82/93）：登录态与原生会话数**跟着
-                     bindings 行一起来**，所以这里一条额外请求都不加；老后端没有
-                     这两个键时它们就是 undefined，面板那两行不渲染（AD-71）。 */
-                  auth: binding.auth,
-                  nativeSessionCount: binding.nativeSessionCount ?? null,
-                },
-              ]
-            : [];
-        }),
+        bindings.map((binding, index) => ({
+          binding,
+          backend: backends.get(binding.backendId)!,
+          catalog: catalogList[index],
+          effectiveSettings: settingsList[index],
+          capabilities: scoped.get(binding.backendId) ?? null,
+          // 登录态与原生会话数跟着 bindings 行一起来（宿主没登记取数面时缺席）。
+          auth: binding.auth,
+          nativeSessionCount: binding.nativeSessionCount ?? null,
+        })),
       );
     })().catch((failure) => {
       if (cancelled) return;

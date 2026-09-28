@@ -45,16 +45,13 @@ export interface ModelOption {
 
 /**
  * 这份目录是不是**这条 Binding** 的。不是就当没有目录（返回 null）。
- *
- * `bindingId` 缺席（老后端不带这个键）时不因此判否——那只是说不出归属，
- * 而调用方本来就是按当前 Binding 去取的（AD-71：缺了的键不当成否定证据）。
  */
 export function catalogForBinding(
   catalog: ModelCatalogWire | null | undefined,
   binding: BindingRef | null | undefined,
 ): ModelCatalogWire | null {
   if (!catalog || !binding) return null;
-  if (catalog.bindingId && catalog.bindingId !== binding.id) return null;
+  if (catalog.bindingId !== binding.id) return null;
   return catalog;
 }
 

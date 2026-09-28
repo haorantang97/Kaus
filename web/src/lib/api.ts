@@ -192,12 +192,6 @@ export function apiGet<T>(url: string): Promise<T> {
 export function apiPost<T>(url: string, body: unknown): Promise<T> {
   return postJSON<T>(url, body);
 }
-export function apiPut<T>(url: string, body: unknown): Promise<T> {
-  return writeJSON<T>(url, "PUT", body);
-}
-export function apiPatch<T>(url: string, body: unknown): Promise<T> {
-  return writeJSON<T>(url, "PATCH", body);
-}
 /** `body` 可选：`DELETE /api/link` 那条旧接口是带 body 的（ProfileDrawer 的解绑）。 */
 export function apiDelete<T>(url: string, body?: unknown): Promise<T> {
   return writeJSON<T>(url, "DELETE", body);

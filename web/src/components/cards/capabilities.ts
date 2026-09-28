@@ -41,9 +41,8 @@ export interface UiCardCapabilities {
   usage: CapabilityValue;
   /** none | tool_boundary | immediate | unknown */
   interrupt: CapabilityValue;
-  /** 附件上传（批次十三）。后端现在一律给 `unknown` ⇒ 输入区的 📎 不渲染（AD-71）。
-   *  可选：老后端根本没有这个键，读到 undefined 时同样按"没有"处理。 */
-  attachments?: CapabilityValue;
+  /** 附件上传：`images` | `files` 时输入区才出 📎；其余不渲染（AD-71）。 */
+  attachments: CapabilityValue;
 }
 
 export interface UiExternalCliCapabilities {
@@ -105,6 +104,7 @@ export const ALL_SUPPORTED_UI_CAPABILITIES: UiCapabilities = {
     authentication: "supported",
     usage: "supported",
     interrupt: "immediate",
+    attachments: "unknown",
   },
   externalCli: { supported: "supported", resume: "supported" },
   models: { mode: "open", reasoning: "supported", providers: "supported", conversationScoped: "supported" },

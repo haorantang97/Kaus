@@ -17,6 +17,7 @@ import { uploadConversationAttachment, attachmentName, fileSizeLabel, ATTACHMENT
 import "./conversationWorkspace.css";
 import { CardRenderer } from "../components/cards/CardRenderer";
 import { RowGroup } from "../components/cards/RowCard";
+import { ToolGroup } from "../components/cards/ToolCard";
 import { UsagePill } from "../components/cards/UsageBar";
 import { hasCapability, type UiCapabilities } from "../components/cards/capabilities";
 import type { EngineLabel } from "../components/cards/CardShell";
@@ -25,7 +26,6 @@ import {
   conversationEventsUrl,
   archiveConversation,
   emptyEffectiveSettings,
-  fetchBackendProbe,
   fetchBackendUiCapabilities,
   fetchBinding,
   fetchBindingStatus,
@@ -44,7 +44,7 @@ import {
   returnToCardSurface,
   sendConversationMessage,
   SessionApiError,
-  type BackendProbeWire,
+  type BackendWire,
   type BindingWire,
   type ConversationDetailWire,
   type EffectiveSettingsWire,
@@ -374,13 +374,12 @@ export function ConversationPage({
   const [binding, setBinding] = useState<BindingWire | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalogWire | null>(null);
   /* 工具栏四项的取值真源（DESIGN ★ I）：后端一次解析好 Binding → 引擎配置 → 目录默认。
-     端点不在（后端半边未合并）时 `fetchEffectiveSettings` 自己回退成"四项都没有"，
-     于是工具栏四枚都不渲染，而不是显示一句错误。 */
+     读取失败时按"四项都没有"渲染，工具栏四枚都不出，而不是显示一句错误。 */
   const [settings, setSettings] = useState<EffectiveSettingsWire | null>(null);
   const [caps, setCaps] = useState<UiCapabilities | null>(null);
   /* 第 6 件：引擎的探测态。页头状态多一档「引擎离线」（中性），发送按钮照旧可用——
      真发出去会拿到后端的人话错误，比在这里先把人拦住有用。 */
-  const [probe, setProbe] = useState<BackendProbeWire | null>(null);
+  const [probe, setProbe] = useState<{ probeState: BackendWire["probeState"]; message: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
   const { draft, update: updateDraft, storageFailed } = useConversationDraft(conversationId);
@@ -492,8 +491,7 @@ export function ConversationPage({
         setDetail(next);
         setDetailLoaded(true);
         setError(null);
-        /* 第 1 件：快照连同"它算到哪一条事件为止"一起存下来。字段缺席 → null，
-           页面退回老行为（时间线推断），不假装知道。 */
+        /* 第 1 件：快照连同"它算到哪一条事件为止"一起存下来。 */
         const backendState = parseBackendRunState(next.runState);
         setSnapshot(
           backendState === null
@@ -505,22 +503,15 @@ export function ConversationPage({
           // 单会话不等待项目内其他引擎的登录和状态探测。
           const found = await fetchBinding(next.conversation.agentBindingId);
           if (cancelled) return;
-          setBinding(found ?? null);
-          if (!found) return;
+          setBinding(found);
           // 能力只取 ui 层：入口渲不渲染由它说了算（AD-71；到达的事件不受它管，AD-126）。
           const ui = await fetchBackendUiCapabilities(found.backendId);
           if (!cancelled) setCaps(ui);
-          /* batch19 第 2 件：页头的「引擎离线」改读 `GET /api/bindings/{id}/status`
-             ——它同时带探测态与登录态，于是这一处不必再单拉一次 `/api/backends/{id}`。
-             端点不在（老后端）时 `fetchBindingStatus` 回 null，退回原来那条路。 */
+          // 页头的「引擎离线」读 `GET /api/bindings/{id}/status`（同时带探测态与登录态）。
           const status = await fetchBindingStatus(found.id);
-          const state = status
-            ? {
-                probeState: (status.probeState ?? "unknown") as BackendProbeWire["probeState"],
-                message: status.probeMessage ?? null,
-              }
-            : await fetchBackendProbe(found.backendId);
-          if (!cancelled) setProbe(state);
+          if (!cancelled) {
+            setProbe({ probeState: status.probeState ?? "unknown", message: status.probeMessage ?? null });
+          }
         } catch {
           if (!cancelled) setBinding(null);
         }
@@ -603,8 +594,7 @@ export function ConversationPage({
 
   const reloadLaunches = useCallback(() => {
     fetchLaunches(conversationId)
-      // batch23：老后端 / 桩件可能不带 `launches` 这个键——缺席按「一次都没开过」算。
-      .then(({ launches: list }) => setLaunches(list ?? []))
+      .then(({ launches: list }) => setLaunches(list))
       // 没装 Launcher（404/501）时就是"没有启动记录"，那枚「历史 ▾」不渲染（AD-71）。
       .catch(() => setLaunches([]));
   }, [conversationId]);
@@ -1302,7 +1292,7 @@ export function ConversationPage({
      入口换成横幅上的「回到站内」，这里也不出现。 */
   const canOpenExternal = hasCapability(effectiveCaps.externalCli.supported) && !readOnly;
   const canInterrupt = hasCapability(effectiveCaps.card.interrupt);
-  const canAttach = hasCapability(effectiveCaps.card.attachments ?? "unknown");
+  const canAttach = hasCapability(effectiveCaps.card.attachments);
   useEffect(() => {
     if (!binding || !running) return;
     let cancelled = false;
@@ -1586,11 +1576,11 @@ export function ConversationPage({
           )}
           {rows.map((row) =>
             row.kind === "tools" ? (
-              <RowGroup key={row.key} name={t("card.tool.group", { count: row.items.length })} testId="tool-group">
+              <ToolGroup key={row.key} count={row.items.length}>
                 {row.items.map((item) => (
                   <div key={item.itemId}>{renderCard(item)}</div>
                 ))}
-              </RowGroup>
+              </ToolGroup>
             ) : row.kind === "files" ? (
               /* 批次十三：连续多条文件变更合并成 `▸ 修改了 3 个文件`。 */
               <RowGroup key={row.key} name={t("card.file.group", { count: row.items.length })} testId="file-group">
@@ -1774,7 +1764,7 @@ export function ConversationPage({
             executionMode={detail?.conversation?.executionMode ?? conversationControls?.executionDefault}
             executionOptions={conversationControls?.executionModes?.map(option => ({ value: option.id, label: option.name }))}
             onChangeExecutionMode={!readOnly && !running && !settingsBusy ? (mode) => void changeSessionSetting({ executionMode: mode }) : undefined}
-            attachments={readOnly ? null : effectiveCaps.card.attachments ?? null}
+            attachments={readOnly ? null : effectiveCaps.card.attachments}
             onAttach={canAttach && !readOnly ? () => fileInputRef.current?.click() : undefined}
             actions={
               /* G-6：运行中主按钮变「停止」；`interrupt` 能力缺失时不显示停止，
@@ -1853,6 +1843,7 @@ const FALLBACK_CAPS: UiCapabilities = {
     authentication: "supported",
     usage: "supported",
     interrupt: "unknown",
+    attachments: "unknown",
   },
   externalCli: { supported: "unknown", resume: "unknown" },
   models: { mode: "fixed", reasoning: "unknown", providers: "unknown" },

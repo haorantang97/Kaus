@@ -92,10 +92,13 @@ function stubFetch(bootstrapStatus: number) {
       return { ok: true, status: 200, json: async () => ({ root: "", exists: true, tree: [], file_count: 0 }) } as Response;
     }
     if (url.startsWith("/api/conversations")) {
-      return { ok: true, status: 200, json: async () => ({ conversations: [], count: 0, nextUpdatedAfter: null }) } as Response;
+      return { ok: true, status: 200, json: async () => ({ conversations: [], launches: [], count: 0, nextUpdatedAfter: null }) } as Response;
     }
     if (url.startsWith("/api/projects")) {
       return { ok: true, status: 200, json: async () => ({ projects: [], roots: [], count: 0, conversations: [], bindings: [] }) } as Response;
+    }
+    if (url.startsWith("/api/groups")) {
+      return { ok: true, status: 200, json: async () => ({ groups: [], count: 0 }) } as Response;
     }
     return { ok: true, status: 200, json: async () => ({}) } as Response;
   });

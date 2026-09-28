@@ -70,8 +70,7 @@ export interface BackendWire {
   version?: string | null;
   driverVersion?: string | null;
   probeState: "unknown" | "available" | "unavailable" | "degraded";
-  /** 探测失败的人话（batch15-backend 新增）。老后端没有这个键 ⇒ chip 上没有解释。 */
-  message?: string | null;
+  /** 探测失败的人话；没有就不解释。 */
   probeMessage?: string | null;
   lastProbeAt?: string | null;
   capabilities: { ui: UiCapabilities; detail: DetailCapabilityTree; unknownCount: number };
@@ -157,7 +156,7 @@ export interface EngineRow {
    *  拿不到就是 null / 缺席 → 那一行不渲染。 */
   nativeSessionCount?: number | null;
   /** 该 Binding 的**有效设置**（批次十三 `GET /bindings/{id}/effective-settings`）：
-   *  模型 / 推理强度 / 审批模式的取值与来源。`null` = 端点不在或读失败。 */
+   *  模型 / 推理强度 / 审批模式的取值与来源。`null` = 读失败。 */
   effectiveSettings?: EffectiveSettingsWire | null;
   auth?: EngineAuthState;
   /** 该 Binding 所属引擎在本项目上的**有效**能力（AD-97 的引擎配置区）。
@@ -165,7 +164,7 @@ export interface EngineRow {
   capabilities?: EffectiveCapabilitiesView | null;
   /** batch25：`GET /api/bindings/{id}/drift` 的结果。**它同时是入口门控**
    *  （AD-126：能力入口只看入口）——读到了 = 这台引擎有投射面，「应用到引擎」
-   *  与「配置漂移」那一行才渲染；`undefined`（还在读）/ `null`（端点不在、
+   *  与「配置漂移」那一行才渲染；`undefined`（还在读）/ `null`（
    *  `projection_unsupported`、或这次没读着）一律两处都不显示（AD-71）。 */
   drift?: BindingDriftWire | null;
   /** batch26：`GET /api/bindings/{id}/projection/_meta` 的 `supported`。**它才是
@@ -693,14 +692,11 @@ export function EngineCard({
   const { binding, backend } = row;
   const ui = backend.capabilities.ui;
   const runtimeConfig = binding.runtimeConfig ?? {};
-  /* 批次十三第 4 件：模型 / 推理强度 / 审批模式改读**有效设置**（Binding → 引擎
-     配置 → 目录默认，后端一次解析好）。端点不在时退回原来那套 runtimeConfig 猜键，
-     于是这张卡在后端半边合并之前照旧能用。 */
+  /* 模型 / 推理强度 / 审批模式读**有效设置**（Binding → 引擎配置 → 目录默认，
+     后端一次解析好）。这次没读着时只剩 Binding 自己记着的模型。 */
   const settings = row.effectiveSettings ?? null;
-  const model =
-    settings?.model.value ?? binding.defaultModelId ?? pick(runtimeConfig, ["model", "modelid", "defaultmodel"]);
-  const reasoning =
-    settings?.reasoningEffort.value ?? pick(runtimeConfig, ["reasoning", "reasoningeffort", "reasoningmode"]);
+  const model = settings?.model.value ?? binding.defaultModelId;
+  const reasoning = settings?.reasoningEffort.value ?? null;
   /* 「来自引擎配置」/「目录默认」：值不是本 Binding 自己设的就在字段旁写一句小字，
      这样"空着"与"引擎那边已经设了"就分得开了（不再一律显示「未设置」）。 */
   const modelHint = settings ? sourceHint(settings.model.source, t) : undefined;
@@ -825,12 +821,12 @@ export function EngineCard({
         {binding.isDefault && <Pill tone="gold">{t("engine.badge.default")}</Pill>}
         {!binding.enabled && <Pill tone="muted">{t("engine.badge.disabled")}</Pill>}
         {/* 第 4 件：「未就绪」不再是一句谜语——探测的人话挂在 chip 的 title 上
-            （`GET /api/backends/{id}` 的 `message`）。后端没给就没有 title。 */}
+            （`GET /api/backends/{id}` 的 `probeMessage`）。后端没给就没有 title。 */}
         <Pill
           tone={PROBE_TONE[backend.probeState]}
           title={
-            backend.probeState !== "available" && (backend.probeMessage ?? backend.message)
-              ? t("engine.probe.offline", { message: (backend.probeMessage ?? backend.message) as string })
+            backend.probeState !== "available" && backend.probeMessage
+              ? t("engine.probe.offline", { message: backend.probeMessage })
               : undefined
           }
         >
@@ -886,9 +882,9 @@ export function EngineCard({
           </span>
         )}
         {/* 探测失败的人话：`unavailable` 时不只挂在 chip 的 title 上，摆到摘要里。 */}
-        {backend.probeState === "unavailable" && (backend.probeMessage ?? backend.message) && (
+        {backend.probeState === "unavailable" && backend.probeMessage && (
           <span className="text-xs" style={{ color: "var(--danger)" }} data-testid="engine-probe-message">
-            {(backend.probeMessage ?? backend.message) as string}
+            {backend.probeMessage}
           </span>
         )}
         {/* 漂移只在**真有对不上的键**时常显；`in_sync` 那一行收进「详情」。 */}

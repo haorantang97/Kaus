@@ -8,13 +8,13 @@
  *   ① 最新的 SSE `run.*` 事件（终态尤其重要）——它带 sequence，能和后端快照比新旧；
  *   ② `GET /api/conversations/{id}` 的 `runState` 快照——它是后端此刻的事实，
  *      带 `timeline.lastSequence` 作为"这份快照对应到哪一条事件为止"；
- *   ③ 时间线推断——后端还没有这个字段（半边未合并 / 旧版本）时的兜底，也就是老行为。
+ *   ③ 时间线推断——详情还没取到或取失败时的兜底。
  *
  * 比较用 sequence 而不是"谁先到"：SSE 会重放历史，先到的不一定是新的；快照
  * 里的 `lastSequence` 恰好给了一把公共的尺子。sequence 相等时算**后端更新**——
  * 快照是就着那一条事件之后的状态算出来的。
  *
- * 这里不做任何本地推测：没有快照就退回老行为，绝不自己把 running 改成 idle。
+ * 这里不做任何本地推测：没有快照就只看时间线，绝不自己把 running 改成 idle。
  */
 
 import type { RunState } from "./timeline/reducer";

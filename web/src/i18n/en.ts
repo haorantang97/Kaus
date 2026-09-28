@@ -769,7 +769,6 @@ export const en: Record<keyof typeof zh, string> = {
     "To roll back, copy this backup over the file it came from (its original name is not readable from the backup name).",
   "materialize.done.noBackup": "The backend did not report a backup path this time.",
   "materialize.busy": "{count} conversations are running — stop them before writing",
-  "materialize.busy.unknown": "A conversation on this binding is running — stop it before writing",
   "materialize.writeFailed": "The write failed: {error}",
   "drift.field": "Config drift",
   "drift.count": "{count} changed on the engine side",

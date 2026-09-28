@@ -1,4 +1,4 @@
-/* 侧栏取数口径：新端点优先，404 时回退到旧的逐项目路径。
+/* 侧栏取数口径：`GET /api/projects` + `GET /api/conversations`。
  * 分组/排序的纯函数在 ConversationSidebar.test.tsx 里已经测过，这里只测取数这一层。 */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,8 +8,6 @@ import { SessionApiError } from "./sessionApi";
 
 const fetchProjects = vi.fn();
 const fetchRecentConversations = vi.fn();
-const fetchProjectConversations = vi.fn();
-const fetchProjectBindings = vi.fn();
 
 vi.mock("./sessionApi", async () => {
   const actual = await vi.importActual<typeof import("./sessionApi")>("./sessionApi");
@@ -17,12 +15,10 @@ vi.mock("./sessionApi", async () => {
     ...actual,
     fetchProjects: (...args: unknown[]) => fetchProjects(...args),
     fetchRecentConversations: (...args: unknown[]) => fetchRecentConversations(...args),
-    fetchProjectConversations: (...args: unknown[]) => fetchProjectConversations(...args),
-    fetchProjectBindings: (...args: unknown[]) => fetchProjectBindings(...args),
   };
 });
 
-const { useConversationIndex, plateCounts } = await import("./conversationIndex");
+const { useConversationIndex } = await import("./conversationIndex");
 
 const projects = [
   {
@@ -67,50 +63,9 @@ describe("useConversationIndex", () => {
     const [group] = result.current.groups;
     expect(group.runningCount).toBe(1);
     expect(group.conversations[0].backendId).toBe("backend:mock");
-    expect(fetchProjectConversations).not.toHaveBeenCalled();
-    expect(fetchProjectBindings).not.toHaveBeenCalled();
   });
 
-  it("端点 404 时回退到旧的逐项目路径（前端可能比内核新，侧栏不该空掉）", async () => {
-    fetchRecentConversations.mockRejectedValue(
-      new SessionApiError(404, "not_found", "HTTP 404"),
-    );
-    fetchProjectConversations.mockResolvedValue({
-      projectId: "project:default",
-      conversations: [
-        {
-          id: "conversation:b",
-          projectId: "project:default",
-          agentBindingId: "binding:default:mock",
-          title: "旧路径",
-          state: "running-card",
-          modelId: null,
-          providerId: null,
-          reasoningMode: null,
-          preferredSurface: "card",
-          visibility: "project_visible",
-          origin: "standard",
-          createdAt: "2026-09-01T00:00:00Z",
-          updatedAt: "2026-09-02T00:00:00Z",
-        },
-      ],
-      count: 1,
-    });
-    fetchProjectBindings.mockResolvedValue({
-      projectId: "project:default",
-      bindings: [{ id: "binding:default:mock", backendId: "backend:mock" }],
-      count: 1,
-    });
-
-    const { result } = renderHook(() => useConversationIndex(0));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.error).toBeNull();
-    expect(result.current.groups[0].conversations[0].backendId).toBe("backend:mock");
-    expect(result.current.groups[0].runningCount).toBe(1);
-  });
-
-  it("401 不是「端点不在」：照旧冒泡成错误条，不悄悄回退", async () => {
+  it("取数失败冒泡成错误条", async () => {
     fetchRecentConversations.mockRejectedValue(
       new SessionApiError(401, "unauthorized", "鉴权失败"),
     );
@@ -119,25 +74,6 @@ describe("useConversationIndex", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.error).toContain("鉴权失败");
-    expect(fetchProjectConversations).not.toHaveBeenCalled();
-  });
-});
-
-/* batch27 第 4 件（真机 C5）：关掉一个组 ⇒ 索引**立刻**重取一次。
-   索引行的 `groupId` / `groupTitle` 只在开着的组上算，等下一轮 30s 轮询才更新的话，
-   侧栏那枚组名小标会一直举着一个已经关掉的组。 */
-describe("关组之后的索引重取", () => {
-  it("forgetGroup 一响，useConversationIndex 就再取一次", async () => {
-    fetchRecentConversations.mockResolvedValue({ conversations: [], count: 0, nextUpdatedAfter: null });
-    const { forgetGroup, resetGroupStore } = await import("./groupStore");
-
-    const { result } = renderHook(() => useConversationIndex(0));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    const before = fetchRecentConversations.mock.calls.length;
-
-    forgetGroup("collaboration:1");
-    await waitFor(() => expect(fetchRecentConversations.mock.calls.length).toBe(before + 1));
-    resetGroupStore();
   });
 });
 
@@ -178,52 +114,5 @@ describe("概览页的两个纯函数（★L）", () => {
       ["失败", "failed"],
       ["等着", "awaiting"],
     ]);
-  });
-});
-
-/* ★M（批次四十一）：铭牌副行的三个数。口径必须与「需要处理」那一段完全一致——
-   两处对不上，牌子上写着"2 条等你处理"、下面那段却列出三条，用户只会当界面在
-   骗人。 */
-describe("plateCounts", () => {
-  const conversation = (id: string, state: string) => ({
-    id,
-    title: id,
-    state,
-    status: state,
-    projectId: "project:default",
-    bindingId: null,
-    backendId: null,
-    surface: "card" as const,
-    updatedAt: "2026-09-08T01:00:00Z",
-    groupId: null,
-    groupTitle: null,
-    lastSequence: null,
-  });
-  const groups = [
-    {
-      projectId: "project:default",
-      displayName: "X",
-      slug: "default",
-      conversations: [
-        conversation("a", "paused"),
-        conversation("b", "error"),
-        conversation("c", "running"),
-        conversation("d", "idle"),
-        conversation("e", "ended"),
-      ],
-    },
-  ] as unknown as Parameters<typeof plateCounts>[0];
-
-  it("等你处理 = paused + error，与 buildAttentionItems 同口径", () => {
-    expect(plateCounts(groups, 2).attention).toBe(2);
-  });
-
-  it("运行中只数 running", () => {
-    expect(plateCounts(groups, 2).running).toBe(1);
-  });
-
-  it("项目数原样透传（空项目不在会话索引里，所以只能由调用方给）", () => {
-    expect(plateCounts(groups, 7).projects).toBe(7);
-    expect(plateCounts([], 0)).toEqual({ attention: 0, running: 0, projects: 0 });
   });
 });

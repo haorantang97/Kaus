@@ -235,10 +235,16 @@ describe("确认写入", () => {
     mocked.materializeBinding.mockRejectedValueOnce(
       new api.SessionApiError(409, "binding_busy", "有会话在跑", {
         activeConversationIds: ["conv:1", "conv:2", "conv:3"],
+        activeConversations: [
+          { conversationId: "conv:1", title: "一" },
+          { conversationId: "conv:2", title: "二" },
+          { conversationId: "conv:3", title: "三" },
+        ],
       }),
     );
     await userEvent.click(screen.getByRole("button", { name: "备份后写入" }));
     expect(await screen.findByTestId("materialize-busy")).toHaveTextContent("有 3 条会话在运行，先停止再写");
+    expect(screen.getByTestId("materialize-busy-list")).toHaveTextContent("一二三");
     expect(screen.getByRole("button", { name: "重试" })).toBeEnabled();
   });
 

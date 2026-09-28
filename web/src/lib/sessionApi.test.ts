@@ -4,7 +4,6 @@ import {
   conversationEventsUrl,
   fetchBindingStatus,
   fetchProjects,
-  probeCapabilityWrite,
   resetSessionAuth,
   SessionApiError,
   SessionUnavailableError,
@@ -84,10 +83,8 @@ describe("会话鉴权接入", () => {
   });
 });
 
-/* batch19 第 2 件：`GET /api/bindings/{id}/status`。后端并行开发中，端点不在时
-   这条**必须安静**——回 null，调用方退回原来的路子，不弹「读取失败」（AD-71）。 */
 describe("Binding 状态端点（batch19）", () => {
-  it("拿到就原样给，404 / 出错回 null", async () => {
+  it("拿到就原样给", async () => {
     const body = {
       bindingId: "binding:1",
       auth: { state: "signed_in", model: "managed-credential", account: null, checkedAt: "2026-09-04T00:00:00Z" },
@@ -102,55 +99,9 @@ describe("Binding 状态端点（batch19）", () => {
       ),
     );
     await expect(fetchBindingStatus("binding:1")).resolves.toEqual(body);
-
-    resetSessionAuth();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) =>
-        url === "/api/session-auth/bootstrap"
-          ? jsonResponse({ token: "t" })
-          : jsonResponse({ error: { code: "not_found", message: "没有这个端点" } }, 404),
-      ),
-    );
-    await expect(fetchBindingStatus("binding:1")).resolves.toBeNull();
   });
 });
 
-/* batch20 第 2 件：能力写端点的探测。真机上 `OPTIONS` 回 204 是 CORS 中间件答的，
-   写路由没挂也一样 204 —— 于是「操作」列照渲染、按下去 405。改问 `_meta`。 */
-describe("能力写端点探测（batch20）", () => {
-  async function probeWith(reply: () => Response): Promise<{ ok: boolean; urls: string[] }> {
-    resetSessionAuth();
-    const urls: string[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) => {
-        urls.push(url);
-        return url === "/api/session-auth/bootstrap" ? jsonResponse({ token: "t" }) : reply();
-      }),
-    );
-    const ok = await probeCapabilityWrite("project:pronto");
-    return { ok, urls };
-  }
-
-  it("`_meta` 回 {writable:true} → 有写端点", async () => {
-    const { ok, urls } = await probeWith(() => jsonResponse({ writable: true }));
-    expect(ok).toBe(true);
-    expect(urls).toContain("/api/projects/project%3Apronto/capabilities/_meta");
-  });
-
-  it("`_meta` 404（老后端 / 路由没挂）→ 没有写端点", async () => {
-    const { ok } = await probeWith(() =>
-      jsonResponse({ error: { code: "not_found", message: "没有这个端点" } }, 404),
-    );
-    expect(ok).toBe(false);
-  });
-
-  it("405 与 {writable:false} 同样算没有（不拿 HTTP 方法的边角语义当证据）", async () => {
-    expect((await probeWith(() => jsonResponse({ detail: "Method Not Allowed" }, 405))).ok).toBe(false);
-    expect((await probeWith(() => jsonResponse({ writable: false }))).ok).toBe(false);
-  });
-});
 
 /* ---- batch33（AD-157）：输入区那条「先去登录」的行内报错 ------------------- */
 

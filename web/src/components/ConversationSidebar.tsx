@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { ChevronDown, ChevronRight, Terminal } from "lucide-react";
 import { useLocale } from "../i18n";
 import { cream } from "./ui";
 import { useExternalSurfaceIds } from "../lib/externalSurface";
-import { isRunning, useConversationIndex, type SidebarGroup } from "../lib/conversationIndex";
+import { isRunning, type SidebarGroup } from "../lib/conversationIndex";
 import { CONVERSATION_DRAG_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
 import { backendDisplay } from "../lib/backend-display";
 import { readCollapsedGroups, relativeTime, writeCollapsedGroups } from "../lib/shellPrefs";
@@ -166,32 +166,5 @@ export function ConversationSidebar({
         })}
       </nav>
     </div>
-  );
-}
-
-/** 容器版：自己取数（1 + N 并发 + 30s 轮询），给外壳用。 */
-export function ConversationSidebarContainer({
-  activeConversationId,
-  onOpenConversation,
-  refreshToken,
-  onIndexRefresh,
-}: {
-  activeConversationId: string | null;
-  onOpenConversation: (conversationId: string) => void;
-  refreshToken: number;
-  onIndexRefresh?: (refresh: () => void) => void;
-}) {
-  const index = useConversationIndex(refreshToken);
-  useEffect(() => {
-    onIndexRefresh?.(index.refresh);
-  }, [index.refresh, onIndexRefresh]);
-  return (
-    <ConversationSidebar
-      groups={index.groups}
-      loading={index.loading}
-      error={index.error}
-      activeConversationId={activeConversationId}
-      onOpenConversation={onOpenConversation}
-    />
   );
 }

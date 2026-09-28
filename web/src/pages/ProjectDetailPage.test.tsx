@@ -33,7 +33,6 @@ vi.mock("../lib/sessionApi", async () => {
     fetchModelCatalog: vi.fn(),
     fetchBackends: vi.fn(),
     fetchEffectiveCapabilities: vi.fn(),
-    probeCapabilityWrite: vi.fn(),
     putProjectCapability: vi.fn(),
     deleteProjectCapability: vi.fn(),
     fetchRecentConversations: vi.fn(),
@@ -171,7 +170,6 @@ beforeEach(() => {
   });
   /* batch18 第 2 件：缺省按"写端点还不在"跑（AD-71：整列不渲染），
      测操作列的那一组自己把它打开。 */
-  mocked.probeCapabilityWrite.mockResolvedValue(false);
   mocked.putProjectCapability.mockResolvedValue({});
   mocked.deleteProjectCapability.mockResolvedValue({});
   mocked.fetchRecentConversations.mockResolvedValue({
@@ -392,16 +390,6 @@ describe("项目详情页", () => {
       expect(toggle).toHaveTextContent("只看前 8 项");
     });
 
-    it("写端点缺失（探测 404）→「操作」整列不渲染，也不出现「需后端补」的占位", async () => {
-      mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([entry("writing")]));
-      renderPage();
-      const table = await screen.findByRole("table", { name: "能力" });
-      await waitFor(() => expect(mocked.probeCapabilityWrite).toHaveBeenCalled());
-      expect(within(table).queryByText("操作")).toBeNull();
-      expect(within(table).queryByText("需后端补")).toBeNull();
-      expect(within(table).queryByLabelText("能力操作")).toBeNull();
-    });
-
     /* batch18 第 2 件（AD-144）：写端点在的时候才有「操作」列，菜单里有哪几条
        只看这一行是什么——本项目行 / 继承行 / 已禁止行各一套。 */
     describe("操作列（写端点已就位）", () => {
@@ -417,10 +405,6 @@ describe("项目详情页", () => {
         blockedByProjectId: "project:pronto",
         blocked: true,
       };
-
-      beforeEach(() => {
-        mocked.probeCapabilityWrite.mockResolvedValue(true);
-      });
 
       async function openMenu(index: number) {
         const buttons = await screen.findAllByLabelText("能力操作");

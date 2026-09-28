@@ -74,31 +74,30 @@ export interface RoomThreadWire {
   startedByMessageId: string | null;
   spokeInRound: number;
   passedInRound: number;
-  /** batch46。老后端没有这几个键 ⇒ 缺席（不是 null）。 */
-  phase?: ThreadPhase;
-  endedReason?: ThreadEndedReason | null;
+  phase: ThreadPhase;
+  endedReason: ThreadEndedReason | null;
 }
 
 export interface GroupWire {
-  coordinatorEnabled?: boolean;
+  coordinatorEnabled: boolean;
   id: string;
   title: string;
   homeProjectId: string | null;
   status: GroupStatus;
-  contextPolicy?: Record<string, unknown>;
+  contextPolicy: Record<string, unknown>;
   /** batch45b：组级设置。眼下只有 `roundCap`（安全阀轮数，默认 12，1–50）。 */
-  settings?: { roundCap?: number } & Record<string, unknown>;
-  /** batch45b：当前那条房间线程。**从没转过就是 null**（老后端没有这个键 ⇒ 缺席）。 */
-  thread?: RoomThreadWire | null;
+  settings: { roundCap?: number } & Record<string, unknown>;
+  /** batch45b：当前那条房间线程。**从没转过就是 null**。 */
+  thread: RoomThreadWire | null;
   /** batch48（PRD §B6）：**组长**——每轮最后发言、决定下一轮谁说、写最终答复的那
    *  一位。一个 active 成员都没有时是 null（那时房间没有可收口的人）。 */
-  leaderMemberId?: string | null;
+  leaderMemberId: string | null;
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;
   /** 「没数」与「一个成员都没有」是两句话：后端数过才有这个键。 */
   memberCount?: number;
-  /** batch26：这个组现在圈着哪几条会话。老后端没有这个键 ⇒ 缺席（不是空数组）。 */
+  /** batch26：这个组现在圈着哪几条会话。只有列表端点（`GET /api/groups`）带。 */
   memberConversationIds?: string[];
 }
 
@@ -128,7 +127,7 @@ export interface MemberConversationWire {
 export type ParticipationState = "active" | "paused" | "left" | "failed";
 
 export interface GroupMemberWire {
-  sourceConversationId?: string | null;
+  sourceConversationId: string | null;
   id: string;
   groupId: string;
   conversationId: string;
@@ -140,15 +139,13 @@ export interface GroupMemberWire {
   joinedAt: string;
   leftAt: string | null;
   /** batch45b：这个成员的房间增量看到时间线的哪一条了。还没投过就是 null。 */
-  lastDeliveredSequence?: number | null;
+  lastDeliveredSequence: number | null;
   /** batch46（PRD §B10-2）：**后端那张共用表**算出来的最终显示名，含重名后缀 `#2`。
    *
-   *  它是这个成员在房间说明里被告知的名字，所以它也必须是界面上叫他的名字。老后端
-   *  没有这个键 ⇒ 缺席，那时前端退回本地推断（见 `memberDisplayName`）。 */
-  displayName?: string | null;
-  /** batch48：这一位是不是组长。**前端算不出这件事**（它是组上的一个字段），所以
-   *  它恒在——缺席只可能是老后端，那时当它是 false。 */
-  isLeader?: boolean;
+   *  它是这个成员在房间说明里被告知的名字，所以它也必须是界面上叫他的名字。 */
+  displayName: string;
+  /** batch48：这一位是不是组长（它是组上的一个字段，前端算不出来）。 */
+  isLeader: boolean;
   /** 会话被单独删过就是 null（不给空壳）。 */
   conversation: MemberConversationWire | null;
 }

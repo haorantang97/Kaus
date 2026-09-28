@@ -827,7 +827,6 @@ export const zh = {
     "要回滚就把这份备份拷回它原来的位置（备份文件名里读不出原文件名）。",
   "materialize.done.noBackup": "后端这次没有报告备份路径。",
   "materialize.busy": "有 {count} 条会话在运行，先停止再写",
-  "materialize.busy.unknown": "这条挂载下有会话在运行，先停止再写",
   "materialize.writeFailed": "写入失败：{error}",
   /* 漂移。 */
   "drift.field": "配置漂移",

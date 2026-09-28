@@ -33,12 +33,6 @@ export class SessionApiError extends Error {
   }
 }
 
-/** 「这次失败留下了一条空会话」——后端在首条消息失败时置位（batch11-backend）。
- *  拿不到这个标记时草稿页按"可能留下了"处理：删一次不存在的会话是幂等的。 */
-export function isEmptyConversationFailure(failure: unknown): boolean {
-  return failure instanceof SessionApiError && failure.detailFields.emptyConversation === true;
-}
-
 /** 给人看的错误文案：`message` 之后接后端给的 `detail.hint`（batch11-backend 的
  *  `driver_not_registered` 会带一句"怎么修"）。非 SessionApiError 就原样字符串化。 */
 export function describeFailure(failure: unknown): string {
@@ -172,8 +166,8 @@ export interface BindingWire {
   compatibilityState: string;
   discriminator: string | null;
   /* batch19：`GET /api/projects/{id}/bindings` 的每行也带这两项，于是引擎卡
-     不必为每条 Binding 再各拉一次 `/status`。老后端没这两个键 ⇒ 缺席 ⇒
-     那两行不渲染（AD-71）。 */
+     不必为每条 Binding 再各拉一次 `/status`。宿主没登记状态取数面时这两个键
+     缺席 ⇒ 那两行不渲染（AD-71）。 */
   auth?: EngineAuthStateWire;
   nativeSessionCount?: number | null;
 }
@@ -184,19 +178,13 @@ export interface BindingStatusWire {
   bindingId: string;
   auth?: EngineAuthStateWire;
   nativeSessionCount?: number | null;
-  probeState?: string;
+  /** 领域库里没有这台 Backend 的行时缺席。 */
+  probeState?: BackendWire["probeState"];
   probeMessage?: string | null;
 }
 
-/** 端点不在（404）/ 读失败 ⇒ `null`：调用方退回原来的路子，不弹错（AD-71）。
- *  后端在并行开发中，这条必须能在缺端点时安静地什么都不改变。 */
-export function fetchBindingStatus(
-  bindingId: string,
-  signal?: AbortSignal,
-): Promise<BindingStatusWire | null> {
-  return request<BindingStatusWire>(`/api/bindings/${encodeURIComponent(bindingId)}/status`, {
-    signal,
-  }).catch(() => null);
+export function fetchBindingStatus(bindingId: string, signal?: AbortSignal): Promise<BindingStatusWire> {
+  return request(`/api/bindings/${encodeURIComponent(bindingId)}/status`, { signal });
 }
 
 export type ConversationState =
@@ -279,8 +267,8 @@ export interface EffectiveSettingsWire {
   workspaceRoot: EffectiveSettingWire;
 }
 
-/** 「一项都没有」。端点不存在（后端半边还没合并 → 404）时就是这一份：
- *  四项全是 `none`，工具栏于是四枚都不渲染，而不是弹一句"读取失败"。 */
+/** 「一项都没有」：还没读到、或读取失败时工具栏按这一份渲染——四枚都不出，
+ *  而不是弹一句"读取失败"。 */
 export function emptyEffectiveSettings(bindingId: string): EffectiveSettingsWire {
   return {
     bindingId,
@@ -291,18 +279,9 @@ export function emptyEffectiveSettings(bindingId: string): EffectiveSettingsWire
   };
 }
 
-/** Binding 的有效设置：Binding → 引擎配置 → 目录默认，后端一次解析好。
- *  **404 不算错**：会话页在后端半边合并之前照样要能用（按"一项都没有"渲染）。 */
+/** Binding 的有效设置：Binding → 引擎配置 → 目录默认，后端一次解析好。 */
 export function fetchEffectiveSettings(bindingId: string, signal?: AbortSignal): Promise<EffectiveSettingsWire> {
-  return request<EffectiveSettingsWire>(
-    `/api/bindings/${encodeURIComponent(bindingId)}/effective-settings`,
-    { signal },
-  ).catch((failure) => {
-    if (failure instanceof SessionApiError && failure.status === 404) {
-      return emptyEffectiveSettings(bindingId);
-    }
-    throw failure;
-  });
+  return request(`/api/bindings/${encodeURIComponent(bindingId)}/effective-settings`, { signal });
 }
 
 /** 改工作目录（DESIGN ★ I）。body 只有这一个键，后端 400 码：
@@ -337,11 +316,10 @@ export interface ConversationDetailWire {
   runtime: RuntimeViewWire;
   timeline: TimelineSummaryWire | null;
   advisory: { message?: string } | null;
-  /** batch17-backend：这条会话此刻的运行态，**以后端有没有 runtime 为准**
-   *  （`idle | running | stopping-unconfirmed`）。字段缺席 = 后端半边还没合并，
-   *  页面退回时间线推断（见 `lib/runState.ts`）。**不要**读 `timeline.runState` 顶这个位置：
-   *  那一份和前端镜像同源，正是走查里显示假运行态的那个来源。 */
-  runState?: string | null;
+  /** 这条会话此刻的运行态，**以后端有没有 runtime 为准**
+   *  （`idle | running | stopping-unconfirmed`，见 `lib/runState.ts`）。**不要**读
+   *  `timeline.runState` 顶这个位置：那一份和前端镜像同源，会卡在假运行态上。 */
+  runState: string;
 }
 
 /* ------------------------------------------------------------------ *
@@ -358,10 +336,6 @@ export function fetchProjectBindings(projectId: string, signal?: AbortSignal): P
 
 export function fetchBinding(bindingId: string, signal?: AbortSignal): Promise<BindingWire> {
   return request(`/api/bindings/${encodeURIComponent(bindingId)}`, { signal });
-}
-
-export function fetchProjectConversations(projectId: string, signal?: AbortSignal): Promise<{ projectId: string; conversations: ConversationWire[]; count: number }> {
-  return request(`/api/projects/${encodeURIComponent(projectId)}/conversations`, { signal });
 }
 
 /** `GET /api/conversations` 一行：跨项目会话索引，刻意是扁平的一小把字段。
@@ -563,39 +537,13 @@ export function fetchBindingDrift(bindingId: string, signal?: AbortSignal): Prom
   return request(`/api/bindings/${encodeURIComponent(bindingId)}/drift`, { signal });
 }
 
-/** 409 `binding_busy` 指出的那几条会话。不是这个码就返回 null。
- *  `activeConversationIds` 可能直接在信封上，也可能在 `detail` 里——两处都认。 */
-export function busyConversationIds(failure: unknown): string[] | null {
-  if (!(failure instanceof SessionApiError) || failure.code !== "binding_busy") return null;
-  const fromEnvelope = failure.detailFields.activeConversationIds;
-  const detail = failure.detailFields.detail as { activeConversationIds?: unknown } | undefined;
-  const raw = Array.isArray(fromEnvelope) ? fromEnvelope : detail?.activeConversationIds;
-  if (Array.isArray(raw)) return raw.map((id) => String(id));
-  // batch26：新后端改带 `activeConversations:[{conversationId,title}]`，id 表可能不再有。
-  return (busyConversations(failure) ?? []).map((row) => row.conversationId);
-}
-
-/** batch26：`binding_busy` 的 `detail.activeConversations` —— 有标题，能点名
- *  「哪几条会话在跑」，比一串 id 有用。老后端没有这个键 ⇒ 空数组（只报条数）。 */
+/** 409 `binding_busy` 点名的那几条正在跑的会话（信封上的 `activeConversations`）。
+ *  不是这个码就返回 null。 */
 export function busyConversations(
   failure: unknown,
 ): { conversationId: string; title: string }[] | null {
   if (!(failure instanceof SessionApiError) || failure.code !== "binding_busy") return null;
-  const detail = failure.detailFields.detail as { activeConversations?: unknown } | undefined;
-  const raw = Array.isArray(failure.detailFields.activeConversations)
-    ? failure.detailFields.activeConversations
-    : detail?.activeConversations;
-  if (!Array.isArray(raw)) return [];
-  return raw.flatMap((row) => {
-    if (!row || typeof row !== "object") return [];
-    const item = row as { conversationId?: unknown; title?: unknown };
-    return [
-      {
-        conversationId: String(item.conversationId ?? ""),
-        title: typeof item.title === "string" ? item.title : String(item.conversationId ?? ""),
-      },
-    ];
-  });
+  return failure.detailFields.activeConversations as { conversationId: string; title: string }[];
 }
 
 /** batch26：`GET /api/bindings/{id}/projection/_meta` —— **投射面的入口门控**
@@ -664,45 +612,17 @@ export function fetchEffectiveCapabilities(
   return request(`/api/projects/${encodeURIComponent(projectId)}/effective-capabilities${query}`, { signal });
 }
 
-/* ---- 能力的写端点（AD-144，batch18 第 2 件） ----------------------- *
+/* ---- 能力的写端点（AD-144） ----------------------------------------- *
  *
  * `PUT /api/projects/{id}/capabilities/{type}/{capId}`  body `{value?, blocked?}`
  * `DELETE` 同路径
  * 两条都返回**更新后的那一条有效能力条目**（被禁止时是 `blocked:true` 的形状）。
- *
- * 端点还没落地的后端上这两条是 404。AD-71 的规矩是"缺的能力静默不显示"，
- * 所以页面在渲染操作列之前先探一次。
- *
- * batch20 第 2 件：**探测不能用 `OPTIONS`**。真机上 `OPTIONS` 回 204 是 CORS
- * 中间件答的，写路由压根没挂也一样 204，于是"操作"列照渲染、真按下去 405。
- * 改成问后端一句明话：`GET /api/projects/{id}/capabilities/_meta` → `{writable:true}`。
- * 只有拿到 `writable === true` 才算有；404/405（老后端 / 路由没挂）以及任何
- * 拿不准的失败一律当"没有"——按 AD-71 静默不显示，好过给一个按下去必然报错的按钮。
  */
 
 function capabilityPath(projectId: string, capabilityType: string, capabilityId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/capabilities/${encodeURIComponent(
     capabilityType,
   )}/${encodeURIComponent(capabilityId)}`;
-}
-
-/** 能力写端点的自述：后端挂上了写路由才有这条。 */
-export interface CapabilityWriteMetaWire {
-  writable: boolean;
-}
-
-/** 写端点在不在。只读一条元信息，不碰任何真数据，也不靠 HTTP 方法的边角语义。 */
-export async function probeCapabilityWrite(projectId: string, signal?: AbortSignal): Promise<boolean> {
-  try {
-    const meta = await request<CapabilityWriteMetaWire>(
-      `/api/projects/${encodeURIComponent(projectId)}/capabilities/_meta`,
-      { signal },
-    );
-    return meta?.writable === true;
-  } catch {
-    // 404 / 405 = 端点不在；其余失败也说不出"在"，同样按不在处理。
-    return false;
-  }
 }
 
 /** 写端点回来的那一条：正常条目，或"这一层把它禁了"的形状。 */
@@ -746,28 +666,6 @@ export function createConversation(projectId: string, body: { bindingId: string;
  *  调用方一律吞掉异常：留一条空会话比把用户的文字弄丢轻得多。 */
 export function deleteConversation(conversationId: string): Promise<{ conversationId: string; deleted: boolean }> {
   return request(`/api/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
-}
-
-/** 引擎的探测态（batch15-backend 给 `GET /api/backends/{id}` 加了 `message`）。
- *  会话页只要这两个字段：状态一档 + 一句人话，能力矩阵一律不碰（边界③）。 */
-export interface BackendProbeWire {
-  probeState: BackendWire["probeState"];
-  message: string | null;
-}
-
-/** 端点不在、或后端还没有 `message` 键时都当作"说不出"：`unknown` + null，
- *  页头于是什么都不显示，而不是弹一句"读取失败"（AD-71 的同一条精神）。 */
-export function fetchBackendProbe(backendId: string, signal?: AbortSignal): Promise<BackendProbeWire> {
-  return request<{ probeState?: string; probeMessage?: string | null; message?: string | null }>(
-    `/api/backends/${encodeURIComponent(backendId)}`,
-    { signal },
-  )
-    .then((wire) => ({
-      probeState: (wire.probeState ?? "unknown") as BackendProbeWire["probeState"],
-      // batch15-backend 定名 `probeMessage`；`message` 是过渡期的旧名。
-      message: wire.probeMessage ?? wire.message ?? null,
-    }))
-    .catch(() => ({ probeState: "unknown" as const, message: null }));
 }
 
 /** 会话页只准拿能力的 **ui 层**（边界③）：返回类型里根本没有 detail，写错是编译错误。 */

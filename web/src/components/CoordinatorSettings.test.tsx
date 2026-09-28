@@ -12,7 +12,7 @@ beforeEach(() => {
   api.sessionRequest.mockImplementation((path: string) => Promise.resolve(path.endsWith("/options") ? { bindings: [{ id: "b1", projectId: "p1", projectName: "项目", displayName: "引擎", backendId: "mock", enabled: true }] } : { config: { bindingId: "b1", modelId: "same", providerId: "vendor-a", revision: 2 } }));
   api.fetchProjects.mockResolvedValue({ projects: [{ id: "p1", displayName: "项目" }] });
   api.fetchProjectBindings.mockResolvedValue({ bindings: [{ id: "b1", projectId: "p1", displayName: "引擎", backendId: "mock", enabled: true }] });
-  api.fetchModelCatalog.mockResolvedValue({ models: ["vendor-a", "vendor-b"].map(providerId => ({ modelId: "same", providerId, providerLabel: providerId, displayName: providerId + " 模型", reasoningLevels: ["low", "high"] })) });
+  api.fetchModelCatalog.mockResolvedValue({ bindingId: "b1", models: ["vendor-a", "vendor-b"].map(providerId => ({ modelId: "same", providerId, providerLabel: providerId, displayName: providerId + " 模型", reasoningLevels: ["low", "high"] })) });
   api.fetchEffectiveSettings.mockResolvedValue({ reasoningEffort: { levels: ["low", "high"] }, workspaceRoot: { value: "/tmp" }, conversationControls: { reasoning: true, approvalModes: ["ask"] } });
   api.fetchEventsSnapshot.mockResolvedValue({ events: [], lastSequence: 0, truncated: false });
 });

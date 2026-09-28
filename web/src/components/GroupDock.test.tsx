@@ -70,6 +70,11 @@ const group = (id: string, title: string, memberCount = 0): GroupWire => ({
   createdAt: "2026-09-05T00:00:00Z",
   updatedAt: "2026-09-05T00:00:00Z",
   closedAt: null,
+  coordinatorEnabled: false,
+  contextPolicy: {},
+  settings: {},
+  thread: null,
+  leaderMemberId: null,
   memberCount,
 });
 
@@ -84,6 +89,10 @@ const member = (id: string, overrides: Partial<GroupMemberWire> = {}): GroupMemb
   worktreeOrRuntimeRef: null,
   joinedAt: "2026-09-05T00:00:00Z",
   leftAt: null,
+  sourceConversationId: null,
+  lastDeliveredSequence: null,
+  isLeader: false,
+  displayName: overrides.roleLabel || `会话 ${id}`,
   conversation: {
     conversationId: `conversation:${id}`,
     title: `会话 ${id}`,

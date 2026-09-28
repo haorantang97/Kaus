@@ -23,7 +23,6 @@ import { useLocale, type DictKey } from "../i18n";
 import { formatCheckedAt, groupNameKeys } from "./EnginePanel";
 import { Button, Modal, ModalSub, ModalTitle, Pill, cream } from "./ui";
 import {
-  busyConversationIds,
   busyConversations,
   describeFailure,
   materializeBinding,
@@ -217,7 +216,7 @@ type Phase =
   | { kind: "error"; message: string }
   | { kind: "ready"; result: MaterializeResultWire }
   | { kind: "writing"; result: MaterializeResultWire }
-  | { kind: "busy"; result: MaterializeResultWire; busy: { conversationId: string; title: string }[]; conversationCount: number }
+  | { kind: "busy"; result: MaterializeResultWire; busy: { conversationId: string; title: string }[] }
   | { kind: "writeFailed"; result: MaterializeResultWire; message: string }
   | { kind: "done"; result: MaterializeResultWire };
 
@@ -275,11 +274,9 @@ export function MaterializeModal({
       setPhase({ kind: "done", result: written });
       onWritten?.();
     } catch (failure) {
-      const busy = busyConversationIds(failure);
+      const busy = busyConversations(failure);
       if (busy) {
-        /* batch26：后端现在还带 `activeConversations:[{conversationId,title}]`——
-           能点名"是哪几条在跑"就点名，只有条数时退回原来那句。 */
-        setPhase({ kind: "busy", result, busy: busyConversations(failure) ?? [], conversationCount: busy.length });
+        setPhase({ kind: "busy", result, busy });
         return;
       }
       setPhase({ kind: "writeFailed", result, message: describeFailure(failure) });
@@ -445,16 +442,12 @@ export function MaterializeModal({
                 }}
                 data-testid="materialize-busy"
               >
-                {phase.conversationCount > 0
-                  ? t("materialize.busy", { count: phase.conversationCount })
-                  : t("materialize.busy.unknown")}
-                {phase.busy.length > 0 && (
-                  <ul className="mt-1" data-testid="materialize-busy-list">
-                    {phase.busy.map((row) => (
-                      <li key={row.conversationId}>{row.title}</li>
-                    ))}
-                  </ul>
-                )}
+                {t("materialize.busy", { count: phase.busy.length })}
+                <ul className="mt-1" data-testid="materialize-busy-list">
+                  {phase.busy.map((row) => (
+                    <li key={row.conversationId}>{row.title}</li>
+                  ))}
+                </ul>
               </div>
             )}
             {phase.kind === "writeFailed" && (

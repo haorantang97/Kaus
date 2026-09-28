@@ -31,7 +31,6 @@ vi.mock("../lib/sessionApi", async () => {
     fetchBinding: vi.fn(),
     fetchProjectBindings: vi.fn(),
     fetchBackendUiCapabilities: vi.fn(),
-    fetchBackendProbe: vi.fn(),
     fetchBindingStatus: vi.fn(),
     fetchModelCatalog: vi.fn(),
     fetchEffectiveSettings: vi.fn(),
@@ -152,11 +151,8 @@ beforeEach(() => {
   mocked.fetchConversation.mockResolvedValue(detail);
   mocked.fetchBinding.mockResolvedValue(binding);
   mocked.fetchBackendUiCapabilities.mockResolvedValue(caps);
-  // 探测态：缺省"说不出"（端点不在时 `fetchBackendProbe` 自己就是这么兜的）。
-  mocked.fetchBackendProbe.mockResolvedValue({ probeState: "unknown", message: null });
-  /* batch19 第 2 件：`/status` 缺省当"端点不在"（回 null），页面退回 fetchBackendProbe，
-     于是上面那批断言原样成立。有它的那一条单独在下面测。 */
-  mocked.fetchBindingStatus.mockResolvedValue(null);
+  // 探测态缺省"说不出"。
+  mocked.fetchBindingStatus.mockResolvedValue({ bindingId: "binding:1" });
   mocked.fetchModelCatalog.mockResolvedValue(catalog);
   mocked.fetchEffectiveSettings.mockResolvedValue(noSettings);
   mocked.patchBinding.mockResolvedValue(binding);
@@ -453,9 +449,10 @@ describe("模型下拉可解释（第 5 件）", () => {
 
 describe("页头的「引擎离线」（第 6 件）", () => {
   it("probeState=unavailable → 页头多一档中性状态，原因在 title 上，发送按钮仍可用", async () => {
-    mocked.fetchBackendProbe.mockResolvedValue({
+    mocked.fetchBindingStatus.mockResolvedValue({
+      bindingId: "binding:1",
       probeState: "unavailable",
-      message: "连不上网关（127.0.0.1:8765）",
+      probeMessage: "连不上网关（127.0.0.1:8765）",
     });
     render(<ConversationPage conversationId="conversation:1" />);
 
@@ -469,15 +466,13 @@ describe("页头的「引擎离线」（第 6 件）", () => {
   });
 
   it("probeState=available → 页头还是原来的「空闲」", async () => {
-    mocked.fetchBackendProbe.mockResolvedValue({ probeState: "available", message: null });
+    mocked.fetchBindingStatus.mockResolvedValue({ bindingId: "binding:1", probeState: "available", probeMessage: null });
     render(<ConversationPage conversationId="conversation:1" />);
     const status = await screen.findByTestId("conversation-status");
     expect(status).toHaveTextContent("空闲");
   });
 
-  /* batch19 第 2 件：探测态改从 `GET /api/bindings/{id}/status` 读——它一条请求里
-     同时给登录态与探测态，于是这一处不再单拉一次 `/api/backends/{id}`。 */
-  it("有 status 端点时只读它一次，不再另拉一次 backend", async () => {
+  it("status 带登录态时同样只读它一次", async () => {
     mocked.fetchBindingStatus.mockResolvedValue({
       bindingId: "binding:1",
       auth: { state: "signed_in", model: "managed-credential", account: null },
@@ -491,7 +486,6 @@ describe("页头的「引擎离线」（第 6 件）", () => {
     await waitFor(() => expect(status).toHaveTextContent("引擎离线"));
     expect(status).toHaveAttribute("title", "连不上网关（127.0.0.1:8642）");
     expect(mocked.fetchBindingStatus).toHaveBeenCalledTimes(1);
-    expect(mocked.fetchBackendProbe).not.toHaveBeenCalled();
   });
 });
 
