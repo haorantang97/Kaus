@@ -214,7 +214,7 @@
   --background-alpha: 1;
 
   /* Consumed by <Backdrop />; also theme-switchable. */
-  --warm-glow: rgba(255, 189, 56, 0.35);
+  --warm-glow: color-mix(in srgb, var(--danger) 35%, transparent);
   --noise-opacity-mul: 1;
 
   /* Typography tokens — rewritten by ThemeProvider. Defaults match the
@@ -369,14 +369,14 @@ code, kbd, pre, samp, .font-mono {
 }
 
 .terminal-lab-state.is-error {
-  color: #d98a55;
+  color: var(--danger-on-dark);
 }
 
 .terminal-lab-message {
   padding: 0.55rem 1rem;
-  border-bottom: 1px solid color-mix(in srgb, #d98a55 35%, transparent);
-  color: #d98a55;
-  background: color-mix(in srgb, #d98a55 12%, #11140c);
+  border-bottom: 1px solid color-mix(in srgb, var(--danger-on-dark) 35%, transparent);
+  color: var(--danger-on-dark);
+  background: color-mix(in srgb, var(--danger-on-dark) 12%, #11140c);
   font: 0.82rem/1.45 var(--theme-font-mono);
 }
 
@@ -426,10 +426,10 @@ code { font-size: 0.875rem; }
   --color-muted-foreground: color-mix(in srgb, var(--midground-base) 55%, transparent);
   --color-accent: color-mix(in srgb, var(--midground-base) 10%, var(--background-base));
   --color-accent-foreground: var(--midground);
-  --color-destructive: #fb2c36;
+  --color-destructive: var(--danger);
   --color-destructive-foreground: #ffffff;
   --color-success: #4ade80;
-  --color-warning: #ffbd38;
+  --color-warning: var(--warning);
   --color-border: color-mix(in srgb, var(--midground-base) 15%, transparent);
   --color-input: color-mix(in srgb, var(--midground-base) 15%, transparent);
   --color-ring: var(--midground);

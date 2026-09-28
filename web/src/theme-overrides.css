@@ -40,8 +40,10 @@
      Swatches, chip backgrounds, edges and borders keep --gold / --gold-deep. */
   --accent-text: #5e7a12;
 
-  /* Status colors tuned for a light background. */
-  --danger: #c2603a;
+  /* Muted rose status colors, with readable variants for each surface. */
+  --danger: #914d61;
+  --danger-on-dark: #cc929f;
+  --warning: var(--danger);
 
   /* 轮盘图谱里**未选中**的那些连线（AgentGraph.redraw）。浅色保持历史取值不动
      （AD-78「不改视觉」）；深色在 body.dark 里换成跟着 --gold 走的取值——那条
@@ -67,7 +69,8 @@ body.dark {
   /* Dark text already clears AA against the dark canvas — no separate value. */
   --accent-text: var(--gold-deep);
   --graph-link-idle: color-mix(in srgb, var(--gold) 26%, transparent);
-  --danger: #d98a55;
+  --danger: var(--danger-on-dark);
+  --warning: var(--danger);
   --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.42);
   --shadow-drawer: -14px 0 44px rgba(0, 0, 0, 0.36);
 }
@@ -359,7 +362,7 @@ body,
   padding: 5px 8px;
   cursor: pointer;
   background: transparent;
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  color: color-mix(in srgb, var(--midground-base) 72%, transparent);
   font: 600 9px/1 var(--theme-font-mono);
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -4194,25 +4197,18 @@ body.dark .kaus-cap-row.is-head {
 .kaus-engine-icon--tile { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; background: var(--surface-raised); color: var(--midground-base); }
 .kaus-engine-icon-mask { width: 100%; height: 100%; background-color: currentColor; mask-size: contain; mask-repeat: no-repeat; mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; }
 
-/* Project actions: visible hierarchy, a raised surface and a short press response. */
-:root { --kaus-action-top: #3b4725; --kaus-action-bottom: #283418; --kaus-action-ink: #fffbe8; --kaus-action-border: #273116; }
-body.dark { --kaus-action-top: #acd8c6; --kaus-action-bottom: #8ec5b2; --kaus-action-ink: #142219; --kaus-action-border: #a5d9c6; }
+/* Project actions share the same flat, neutral hierarchy as the composer. */
 .kaus-button {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   min-height: 34px; padding: 7px 13px; border: 1px solid color-mix(in srgb, var(--midground-base) 18%, transparent);
   border-radius: 9px; background: var(--surface-raised); color: var(--midground-base);
   font: 500 12px/1.4 var(--theme-font-sans); white-space: nowrap; cursor: pointer;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 5%), inset 0 1px 0 rgb(255 255 255 / 12%);
-  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 .kaus-button--primary {
-  background: linear-gradient(180deg, var(--kaus-action-top), var(--kaus-action-bottom));
-  color: var(--kaus-action-ink); border-color: var(--kaus-action-border); font-weight: 600;
-  box-shadow: 0 2px 4px rgb(0 0 0 / 12%), inset 0 1px 0 rgb(255 255 255 / 17%);
+  background: var(--midground-base);
+  color: var(--background-base); border-color: var(--midground-base); font-weight: 600;
 }
 .kaus-button--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
-.kaus-button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 3px 8px rgb(0 0 0 / 13%), inset 0 1px 0 rgb(255 255 255 / 16%); }
-.kaus-button:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 3px rgb(0 0 0 / 14%); }
 .kaus-button:focus-visible, .kaus-project-conversation:focus-visible, .ag-node-enter:focus-visible, .ag-node:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; }
 .kaus-button:disabled { cursor: default; opacity: .42; box-shadow: none; }
 .kaus-project-primary, .kaus-project-secondary { min-height: 42px; padding: 10px 16px; font-size: 13px; }

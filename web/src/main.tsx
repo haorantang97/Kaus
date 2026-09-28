@@ -6,6 +6,7 @@ import "./theme-overrides.css";
 import { App } from "./App";
 import { TerminalLab } from "./components/TerminalLab";
 import { CardsPreview } from "./components/cards/preview";
+import "./styles/controls.css";
 
 class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };

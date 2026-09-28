@@ -29,7 +29,7 @@ export function DriftAlert() {
             <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full" style={{ background: "var(--gold)" }} /><span className="text-[0.66rem]" style={{ color: "var(--accent-text)" }}>{g.n_changed} 个进化 / {g.n_copies} 份</span></span>
             <span className="flex flex-wrap gap-1">
               {g.copies.map((c) => (
-                <span key={c.agent} className="rounded-[2px] px-1.5 py-0.5 text-[0.62rem]" style={{ background: !c.present ? "rgba(179,87,63,.1)" : c.changed ? "var(--gold-soft)" : cream(6), color: !c.present ? "var(--danger)" : c.changed ? "var(--accent-text)" : cream(50) }}>
+                <span key={c.agent} className="rounded-[2px] px-1.5 py-0.5 text-[0.62rem]" style={{ background: !c.present ? "color-mix(in srgb, var(--danger) 10%, transparent)" : c.changed ? "var(--gold-soft)" : cream(6), color: !c.present ? "var(--danger)" : c.changed ? "var(--accent-text)" : cream(50) }}>
                   {(c.label || c.agent)}{!c.present ? " 缺失" : c.changed ? " 已改" : ""}
                 </span>
               ))}

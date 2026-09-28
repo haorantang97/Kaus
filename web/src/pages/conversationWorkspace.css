@@ -30,8 +30,8 @@
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-bar { border-top: 0; margin-top: 4px; padding-top: 0; gap: 4px; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-pill {
   border: 0; border-radius: 7px; padding: 6px 8px; max-width: 190px;
-  font: 12px/1.4 var(--theme-font-sans); letter-spacing: 0; text-transform: none;
-  color: color-mix(in srgb, var(--midground-base) 72%, transparent);
+  font: 500 12px/1.4 var(--theme-font-sans); letter-spacing: 0; text-transform: none;
+  color: color-mix(in srgb, var(--midground-base) 84%, transparent);
 }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-pill.is-button:hover { background: color-mix(in srgb, var(--midground-base) 7%, transparent); color: var(--midground-base); }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-pop { border-radius: 12px; box-shadow: 0 8px 32px rgb(0 0 0 / 12%); min-width: 240px; }

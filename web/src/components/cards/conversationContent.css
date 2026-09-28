@@ -6,7 +6,7 @@
 .kaus-content-message .kaus-msg-footer { display: flex; min-height: 27px; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 9px; }
 .kaus-content-message.is-user .kaus-msg-footer { justify-content: flex-end; }
 .kaus-content-message .kaus-msg-actions { position: static; opacity: 1; display: flex; gap: 3px; z-index: auto; }
-.kaus-content-message .kaus-msg-action { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; padding: 5px; border-radius: 6px; background: transparent; color: color-mix(in srgb, var(--midground-base) 55%, transparent); }
+.kaus-content-message .kaus-msg-action { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; padding: 5px; border-radius: 6px; background: transparent; color: color-mix(in srgb, var(--midground-base) 72%, transparent); }
 .kaus-content-message .kaus-msg-action:hover { color: var(--midground-base); background: color-mix(in srgb, var(--midground-base) 6%, transparent); }
 .kaus-content-message .kaus-msg-action:disabled { cursor: default; opacity: .4; }
 .kaus-content-message .kaus-msg-time { opacity: 1; display: inline; margin: 0; color: color-mix(in srgb, var(--midground-base) 43%, transparent); font: 11px/1.4 var(--theme-font-sans); }

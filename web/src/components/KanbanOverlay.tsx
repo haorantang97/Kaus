@@ -35,7 +35,7 @@ const LEGAL: Record<string, string[]> = {
 const STATUS2VERB: Record<string, string> = { ready: "promote", blocked: "block", scheduled: "schedule", done: "complete" };
 const f = (o: unknown, ...ks: string[]): string | undefined => { const r = o as Record<string, unknown> | null; for (const k of ks) if (r && r[k] != null) return String(r[k]); return undefined; };
 const ageDays = (t: Task) => (t.created_at ? (Date.now() / 1000 - t.created_at) / 86400 : 0);
-const staleColor = (t: Task) => { const a = ageDays(t); return a > 7 ? "var(--danger)" : a > 3 ? "#9a7d3f" : "transparent"; };
+const staleColor = (t: Task) => { const a = ageDays(t); return a > 7 ? "var(--danger)" : a > 3 ? "var(--warning)" : "transparent"; };
 
 export function KanbanOverlay({ onClose, onGoProfile, refreshKey = 0 }: { onClose: () => void; onGoProfile: (n: string) => void; refreshKey?: number }) {
   const [data, setData] = useState<KanbanResp | null>(null);
@@ -376,7 +376,7 @@ export function KanbanOverlay({ onClose, onGoProfile, refreshKey = 0 }: { onClos
               )}
             </div>
             {metaErr && (
-              <div className="rounded-[4px] px-3 py-2 text-[0.68rem]" style={{ border: "1px solid #9a7d3f66", background: "#9a7d3f17", color: "#7a5f24" }}>
+              <div className="rounded-[4px] px-3 py-2 text-[0.68rem]" style={{ border: "1px solid color-mix(in srgb, var(--warning) 40%, transparent)", background: "color-mix(in srgb, var(--warning) 9%, transparent)", color: "var(--warning)" }}>
                 {metaErr}
               </div>
             )}
@@ -411,8 +411,8 @@ export function KanbanOverlay({ onClose, onGoProfile, refreshKey = 0 }: { onClos
 
             {/* 诊断「注意」栏 */}
             {diags.length > 0 && (
-              <div className="rounded-[4px] p-2.5" style={{ border: "1px solid #9a7d3f66", background: "#9a7d3f17" }}>
-                <div className="mb-1 text-[0.72rem] font-semibold" style={{ color: "#7a5f24" }}>{diags.length} 个任务需要关注</div>
+              <div className="rounded-[4px] p-2.5" style={{ border: "1px solid color-mix(in srgb, var(--warning) 40%, transparent)", background: "color-mix(in srgb, var(--warning) 9%, transparent)" }}>
+                <div className="mb-1 text-[0.72rem] font-semibold" style={{ color: "var(--warning)" }}>{diags.length} 个任务需要关注</div>
                 {diags.slice(0, 8).map((d, i) => (
                   <div key={i} className="text-[0.66rem]" style={{ color: cream(58) }}>
                     [{f(d, "severity") || "warn"}] {f(d, "task_id", "task", "id") || ""} {f(d, "message", "detail", "title", "summary") || JSON.stringify(d).slice(0, 80)}
@@ -563,7 +563,7 @@ export function KanbanOverlay({ onClose, onGoProfile, refreshKey = 0 }: { onClos
                 <div>
                   <div className="mb-1.5 text-[0.6rem] uppercase tracking-wider" style={{ color: cream(42) }}>运行历史</div>
                   {detailAuxErr && (
-                    <div className="mb-1 rounded-[4px] px-2 py-1 text-[0.64rem]" style={{ border: "1px solid #9a7d3f66", background: "#9a7d3f17", color: "#7a5f24" }}>
+                    <div className="mb-1 rounded-[4px] px-2 py-1 text-[0.64rem]" style={{ border: "1px solid color-mix(in srgb, var(--warning) 40%, transparent)", background: "color-mix(in srgb, var(--warning) 9%, transparent)", color: "var(--warning)" }}>
                       {detailAuxErr}
                     </div>
                   )}

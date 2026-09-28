@@ -1,0 +1,99 @@
+/* Shared feedback for native controls, menu items and disclosure buttons. */
+:root, body.dark {
+  --control-hover: color-mix(in srgb, var(--midground-base) 7%, transparent);
+  --control-pressed: color-mix(in srgb, var(--midground-base) 12%, transparent);
+  --control-focus: color-mix(in srgb, var(--midground-base) 58%, transparent);
+  --control-duration: 160ms;
+}
+
+body :is(button, [role="button"], summary) {
+  font-family: var(--theme-font-sans);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+body :is(.kaus-button--primary, .kaus-conversation-title, .shell-nav-item) {
+  font-weight: 600;
+}
+
+/* Explicit font shorthands in configuration sheets also use the control weight. */
+.kaus-group-panel :is(button, [role="button"]),
+.kaus-bar-menu .kaus-bar-pill,
+.kaus-coordinator-settings .kaus-bar-pill {
+  font-family: var(--theme-font-sans);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+:is(.kaus-button--primary, .kaus-send, .kaus-workspace-select,
+    .shell-nav-item.is-active, .sidebar-agent-row.is-current, .theme-toggle.is-active) {
+  --control-hover: color-mix(in srgb, var(--background-base) 12%, transparent);
+  --control-pressed: color-mix(in srgb, var(--background-base) 20%, transparent);
+}
+
+body :is(button, [role="button"], summary, .kaus-preview-actions > a)
+  :is(svg.lucide, .shell-nav-icon > svg) {
+  transition: translate var(--control-duration) ease,
+    scale var(--control-duration) ease, rotate var(--control-duration) ease;
+  transform-origin: center;
+}
+
+body :is(button, [role="button"], summary, .kaus-preview-actions > a) {
+  transition: color var(--control-duration) ease,
+    background-color var(--control-duration) ease,
+    border-color var(--control-duration) ease,
+    box-shadow var(--control-duration) ease;
+}
+
+/* An inset tint preserves each control's fill and leaves text and layout still. */
+@media (hover: hover) {
+  body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
+    :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter
+  ):hover {
+    box-shadow: inset 0 0 0 100vmax var(--control-hover);
+  }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
+    :disabled, [aria-disabled="true"], [aria-busy="true"]
+  ):hover :is(svg.lucide, .shell-nav-icon > svg):not(
+    .animate-spin, .kaus-ui-spin, .kaus-bar-caret, [class*="lucide-chevron"]
+  ) {
+    translate: 0 -1px;
+    scale: 1.06;
+  }
+
+  body :is(button, [role="button"]):not(:disabled, [aria-disabled="true"], [aria-busy="true"]):hover
+    :is(.lucide-plus, .lucide-settings, .lucide-refresh-cw, .lucide-rotate-cw):not(.animate-spin, .kaus-ui-spin) {
+    rotate: 16deg;
+  }
+
+  body :is(button, [role="button"]):not(:disabled, [aria-disabled="true"], [aria-busy="true"]):hover .lucide-arrow-right {
+    translate: 2px 0;
+  }
+
+  body .kaus-send:not(:disabled):hover .lucide-arrow-up {
+    translate: 0 -2px;
+  }
+}
+
+body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
+  :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter
+):focus-visible {
+  outline: 2px solid var(--control-focus);
+  outline-offset: 3px;
+  box-shadow: inset 0 0 0 100vmax var(--control-hover);
+}
+
+body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
+  :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter
+):active {
+  box-shadow: inset 0 0 0 100vmax var(--control-pressed);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root, body.dark { --control-duration: 0ms; }
+}

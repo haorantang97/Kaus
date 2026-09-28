@@ -44,7 +44,7 @@ const PILL_TONE: Record<Tone, CSSProperties> = {
   default: { background: cream(7), color: cream(70), border: `1px solid ${cream(14)}` },
   gold: { background: "var(--gold-soft)", color: "var(--accent-text)", border: `1px solid color-mix(in srgb, var(--gold) 35%, transparent)` },
   success: { background: "rgba(122,176,122,.14)", color: "#5c7d52", border: "1px solid rgba(122,176,122,.34)" },
-  danger: { background: "rgba(179,87,63,.12)", color: "var(--danger)", border: "1px solid rgba(179,87,63,.32)" },
+  danger: { background: "color-mix(in srgb, var(--danger) 12%, transparent)", color: "var(--danger)", border: "1px solid color-mix(in srgb, var(--danger) 32%, transparent)" },
   muted: { background: "transparent", color: cream(45), border: `1px solid ${cream(13)}` },
 };
 

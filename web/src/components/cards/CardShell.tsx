@@ -16,10 +16,10 @@ import { cream } from "../ui";
 
 export type CardStatus = "none" | "error" | "warn" | "info";
 
-/** 状态色：沿用现有变量，不新增调色板。`--warning` 全仓一直吃回退值，这里照旧。 */
+/** Status colors follow the shared light and dark palette. */
 const STATUS_COLOR: Record<Exclude<CardStatus, "none">, string> = {
   error: "var(--danger)",
-  warn: "var(--warning, #d98a55)",
+  warn: "var(--warning)",
   info: "var(--accent-text)",
 };
 

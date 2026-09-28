@@ -437,8 +437,8 @@ export function MaterializeModal({
                 className="mt-3 rounded-md px-3 py-2 text-xs"
                 style={{
                   color: "var(--danger)",
-                  background: "rgba(179,87,63,.08)",
-                  border: "1px solid rgba(179,87,63,.32)",
+                  background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--danger) 32%, transparent)",
                 }}
                 data-testid="materialize-busy"
               >
