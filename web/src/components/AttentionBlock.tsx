@@ -20,7 +20,7 @@ import { buildAttentionItems, isRunning, type AttentionItem, type SidebarGroup }
 import { relativeTime } from "../lib/shellPrefs";
 
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (id: string) => void }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const engine = item.backendId ? backendDisplay(item.backendId) : null;
   const running = isRunning(item.state);
   return (
@@ -48,7 +48,7 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (id: stri
       >
         {t(`overview.attention.${item.kind}`)}
       </span>
-      <span className="kaus-overview-time">{relativeTime(item.updatedAt)}</span>
+      <span className="kaus-overview-time">{relativeTime(item.updatedAt, locale)}</span>
     </button>
   );
 }

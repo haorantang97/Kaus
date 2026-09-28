@@ -983,7 +983,7 @@ export function GroupDock() {
                     aria-hidden="true"
                   />
                   <span className="kaus-group-member-title">{group.title}</span>
-                  <span className="kaus-group-dim">{t("group.memberCount", { count })}</span>
+                  <span className="kaus-group-dim">{t(count === 1 ? "group.memberCount.one" : "group.memberCount", { count })}</span>
                 </button>
 
                 {open && (

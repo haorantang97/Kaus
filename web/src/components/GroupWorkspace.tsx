@@ -235,7 +235,7 @@ export function threadHeadline(
   if (thread.coordination) {
     if (thread.status !== "running" && thread.status !== "closing") return null;
     const id = thread.coordination.activeSpeaker;
-    return id ? `${id === "coordinator" ? "组长" : memberDisplayName(members, id)} · 处理中` : "处理中";
+    return id ? `${id === "coordinator" ? t("group.coordinator") : memberDisplayName(members, id)} · ${t("group.processing")}` : t("group.processing");
   }
   if (thread.status === "closing") {
     const closer = thread.awaitingMemberId ?? group.leaderMemberId;
@@ -297,12 +297,12 @@ export function mentionOptions(
   members: GroupMemberWire[],
   prefix: string,
   everyoneLabel: string,
-  includeCoordinator = false,
+  coordinatorLabel: string | null = null,
 ): { id: string; label: string }[] {
   const needle = prefix.trim().toLowerCase();
   const rows = [
     { id: "@everyone", label: everyoneLabel },
-    ...(includeCoordinator ? [{ id: "coordinator", label: "组长" }] : []),
+    ...(coordinatorLabel ? [{ id: "coordinator", label: coordinatorLabel }] : []),
     ...members
       .filter((row) => row.participationState === "active")
       .map((row) => ({ id: row.id, label: memberDisplayName(members, row.id) })),
@@ -470,7 +470,7 @@ function MemberTurnRow({
           </span>
         )}
         <span className="kaus-group-member-title" data-testid={`group-turn-author-${message.id}`}>
-          {message.coordinator ? "组长" : memberName(memberId)}
+          {message.coordinator ? t("group.coordinator") : memberName(memberId)}
         </span>
         {engine && <span className="kaus-group-dim">{engine}</span>}
         <span className="kaus-group-dim">{shortTime(message.createdAt)}</span>
@@ -502,7 +502,7 @@ function MemberTurnRow({
         <p className="kaus-group-message-text kaus-group-dim">{t("group.turn.noText")}</p>
       )}
       {message.conversationId && (message.runId || message.outcome) && <details className="kaus-group-run-details" onToggle={event => setHistoryOpen(event.currentTarget.open)}>
-        <summary>执行记录</summary>
+        <summary>{t("group.runLog")}</summary>
         {historyOpen && <GroupRunContent conversationId={message.conversationId} runId={message.runId} after={message.eventAfter ?? 0} />}
       </details>}
       {message.truncated && (
@@ -1182,8 +1182,8 @@ export function GroupWorkspace({
    *  那时浮层整个不渲染（AD-71：一枚空菜单比没有菜单更糟）。 */
   const everyoneLabel = t("group.mention.everyone");
   const mentionRows = useMemo(
-    () => (mention === null ? [] : mentionOptions(members, mention.prefix, everyoneLabel, group.coordinatorEnabled)),
-    [everyoneLabel, members, mention, group.coordinatorEnabled],
+    () => (mention === null ? [] : mentionOptions(members, mention.prefix, everyoneLabel, group.coordinatorEnabled ? t("group.coordinator") : null)),
+    [everyoneLabel, members, mention, group.coordinatorEnabled, t],
   );
 
   /** 选中一项：把 `@前缀` 换成 `@显示名 `，关掉浮层，光标停在那个空格后面。 */
@@ -1296,7 +1296,7 @@ export function GroupWorkspace({
             ),
           )}
           {group.thread?.coordination?.activeConversationId && <div className="kaus-group-live">
-            <div className="kaus-group-message-head"><span className="kaus-group-member-title">{group.thread.coordination.activeSpeaker === "coordinator" ? "组长" : memberName(group.thread.coordination.activeSpeaker ?? "")}</span></div>
+            <div className="kaus-group-message-head"><span className="kaus-group-member-title">{group.thread.coordination.activeSpeaker === "coordinator" ? t("group.coordinator") : memberName(group.thread.coordination.activeSpeaker ?? "")}</span></div>
             <GroupRunContent key={`${group.thread.epoch}:${group.thread.coordination.activeConversationId}:${group.thread.coordination.activeAfter ?? 0}`}
               conversationId={group.thread.coordination.activeConversationId} after={group.thread.coordination.activeAfter ?? 0} live />
           </div>}

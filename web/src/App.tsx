@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Boxes, ChevronDown, ChevronRight, Home, KanbanSquare, Languages, LayoutDashboard, MessageCircle, Moon, Pin, PinOff, Plus, SlidersHorizontal, Sun, Warehouse } from "lucide-react";
+import { Boxes, ChevronDown, ChevronRight, Home, KanbanSquare, Languages, LayoutDashboard, FolderTree, Moon, Pin, PinOff, Plus, SlidersHorizontal, Sun, Warehouse } from "lucide-react";
 import { Backdrop } from "./Backdrop";
 import { Sidebar } from "./components/Sidebar";
 import { Conversation } from "./components/Conversation";
@@ -53,7 +53,7 @@ type ModuleItem = { id: ModuleId; icon: typeof Plus; labelKey: DictKey; en?: str
 /* flag 关闭时的导航：一字不改（含「New」= 新建 Agent 弹窗）。 */
 const MODULES: ModuleItem[] = [
   { id: "home", icon: Home, labelKey: "nav.home" },
-  { id: "agents", icon: MessageCircle, labelKey: "nav.agents" },
+  { id: "agents", icon: FolderTree, labelKey: "nav.agents" },
   { id: "new", icon: Plus, labelKey: "nav.new" },
   { id: "dash", icon: LayoutDashboard, labelKey: "nav.dash" },
   { id: "kanban", icon: KanbanSquare, labelKey: "nav.kanban" },
@@ -386,8 +386,11 @@ export function App() {
     /* batch42：`/` 与 `/new` 现在是同一页（草稿页），所以两处都亮「新会话」。 */
     (route.name === "new" || route.name === "overview") && sessionOn
       ? "new-conversation"
-      : sessionOn && (route.name === "project" || route.name === "conversation")
+      : sessionOn && route.name === "project"
         ? "agents"
+        : /* 会话页的「当前」由侧栏那一行表达；导航再亮一枚「项目」就成了两处选中。 */
+          sessionOn && route.name === "conversation"
+          ? null
         : currentView
           ? VIEW_MODULES[currentView]
           : null;

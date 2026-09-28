@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { EventTransport } from "../lib/eventTransport";
 import { conversationEventsUrl, fetchEventsSnapshot, resolveInteraction } from "../lib/sessionApi";
 import { initialTimelineState, reduceEvent, messageText, messageReasoningText, type AgentEventEnvelope, type InteractionItem, type TimelineItem } from "../lib/timeline/reducer";
+import { useLocale } from "../i18n";
 import { CardRenderer } from "./cards/CardRenderer";
 import { ReasoningCard } from "./cards/ReasoningCard";
 
@@ -17,7 +18,10 @@ export function GroupRunContent({ conversationId, after = 0, runId, live = false
   conversationId: string; after?: number; runId?: string | null; live?: boolean;
 }) {
   const [timeline, setTimeline] = useState(() => initialTimelineState(conversationId));
+  const { t } = useLocale();
   const [error, setError] = useState("");
+  /* 轮询失败是一种状态，文案在渲染时按当前语言取。 */
+  const [reconnecting, setReconnecting] = useState(false);
   useEffect(() => {
     setTimeline(initialTimelineState(conversationId)); setError("");
     let disposed = false;
@@ -56,7 +60,7 @@ export function GroupRunContent({ conversationId, after = 0, runId, live = false
       },
       sequenceOf: event => event.sequence, onEvent: consume,
       isRunActive: () => live,
-      onPollSettled: ok => { setError(ok ? "" : "连接中断，正在重试"); },
+      onPollSettled: ok => { setReconnecting(!ok); },
     }, { after });
     transport.start();
     return () => { disposed = true; transport.stop(); };
@@ -84,6 +88,6 @@ export function GroupRunContent({ conversationId, after = 0, runId, live = false
           onQuestionRespond: (interaction, answer) => void respond(interaction, answer),
         } : {}} />;
     })}
-    {error && <div className="kaus-group-error" role="alert">{error}</div>}
+    {(error || reconnecting) && <div className="kaus-group-error" role="alert">{error || t("group.run.reconnecting")}</div>}
   </div>;
 }

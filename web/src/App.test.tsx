@@ -228,11 +228,11 @@ describe("从草稿页点导航", () => {
     const user = userEvent.setup();
     stubFetch(200);
     renderApp("/new");
-    await waitFor(() => expect(screen.getByText("Let‘s make something sick")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Let’s make something sick")).toBeInTheDocument());
 
     await openMore(user);
     await user.click(screen.getAllByRole("button", { name: "仪表盘" })[0]);
-    await waitFor(() => expect(screen.queryByText("Let‘s make something sick")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Let’s make something sick")).toBeNull());
     expect(screen.getByText("仪表盘 · Dashboard")).toBeInTheDocument();
   });
 
@@ -242,7 +242,7 @@ describe("从草稿页点导航", () => {
     renderApp("/");
     await waitFor(() => expect(screen.getByTestId("conversation-sidebar")).toBeInTheDocument());
     await user.click(screen.getAllByRole("button", { name: "新会话" })[0]);
-    await waitFor(() => expect(screen.getByText("Let‘s make something sick")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Let’s make something sick")).toBeInTheDocument());
   });
 });
 

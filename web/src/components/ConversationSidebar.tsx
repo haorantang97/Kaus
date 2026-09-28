@@ -35,7 +35,7 @@ export function ConversationSidebar({
   activeConversationId,
   onOpenConversation,
 }: ConversationSidebarProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [collapsed, setCollapsed] = useState<string[]>(() => readCollapsedGroups());
   /* Phase 4 第 2 件：在外部终端跑的那几条各带一枚小终端图标。会话索引那一行
      （`GET /api/conversations`）把 running-card / running-external 合并成一个
@@ -157,7 +157,7 @@ export function ConversationSidebar({
                         />
                       )}
                       {/* 一行只显示会话标题与相对时间，引擎在悬停提示里。 */}
-                      <span className="kaus-conversation-time">{relativeTime(conversation.updatedAt)}</span>
+                      <span className="kaus-conversation-time">{relativeTime(conversation.updatedAt, locale)}</span>
                     </div>
                   );
                 })}

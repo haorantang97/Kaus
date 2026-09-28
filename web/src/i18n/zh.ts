@@ -93,7 +93,7 @@ export const zh = {
   "conversation.pending.unconfirmed": "未确认",
 
   /* ---- 新会话草稿页 ---- */
-  "draft.heading": "Let‘s make something sick",
+  "draft.heading": "Let’s make something sick",
   "draft.sub": "选择项目与引擎，写下第一条消息。文字草稿会保留，附件将在发送时上传。",
   "draft.field.project": "项目",
   "draft.field.engine": "引擎",
@@ -1111,4 +1111,15 @@ export const zh = {
   "group.member.renameSave": "保存",
   "group.member.renameDone": "组内改名：{name}",
   "group.member.renameFailed": "没改成：{error}",
+
+  /* ---- 草稿页与协作组补齐的词条 ---- */
+  "draft.attachments.imagesOnly": "此引擎只支持图片，请选择 PNG、JPEG、WebP、GIF 或 AVIF。",
+  "draft.model.notApplied": "引擎没有采纳所选模型，请重新选择后发送。",
+  "draft.send.unconfirmed": "发送结果尚未确认，请进入已经建立的会话查看状态。",
+  "draft.send.openExisting": "打开会话确认",
+  "group.coordinator": "组长",
+  "group.processing": "处理中",
+  "group.runLog": "执行记录",
+  "group.run.reconnecting": "连接中断，正在重试",
+  "group.memberCount.one": "1 名成员",
 } as const;

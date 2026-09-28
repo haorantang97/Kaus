@@ -401,16 +401,21 @@ export function ProjectDetailPage({
           onToggle={(event) => setSettingsOpen((event.currentTarget as HTMLDetailsElement).open)}
         >
           <summary>{t("project.more")}</summary>
-          <PersonaSection name={legacyName} onSaved={onChanged} refreshKey={refreshKey} />
-          <Section title={t("project.instructions.title")}>
-            <ConstitutionEditor name={legacyName} onSaved={onChanged} />
-          </Section>
-          <MemorySection name={legacyName} refreshKey={refreshKey} />
-          <LeversSection name={legacyName} onSaved={onChanged} refreshKey={refreshKey} />
-          <SkillsSection name={legacyName} onChanged={onChanged} refreshKey={refreshKey} />
-          <ImpactSection name={legacyName} refreshKey={refreshKey} />
-          <BackupsSection name={legacyName} refreshKey={refreshKey} />
-          <SubtasksSection name={legacyName} refreshKey={refreshKey} />
+          {/* 折着的时候不挂载：八个面板各拉一次旧接口，而且名字要等项目列表回来才对。 */}
+          {settingsOpen && project && (
+            <>
+              <PersonaSection name={project.slug} onSaved={onChanged} refreshKey={refreshKey} />
+              <Section title={t("project.instructions.title")}>
+                <ConstitutionEditor name={project.slug} onSaved={onChanged} />
+              </Section>
+              <MemorySection name={project.slug} refreshKey={refreshKey} />
+              <LeversSection name={project.slug} onSaved={onChanged} refreshKey={refreshKey} />
+              <SkillsSection name={project.slug} onChanged={onChanged} refreshKey={refreshKey} />
+              <ImpactSection name={project.slug} refreshKey={refreshKey} />
+              <BackupsSection name={project.slug} refreshKey={refreshKey} />
+              <SubtasksSection name={project.slug} refreshKey={refreshKey} />
+            </>
+          )}
         </details>
       </div>
     </div>

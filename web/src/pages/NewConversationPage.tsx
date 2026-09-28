@@ -97,7 +97,7 @@ export function NewConversationPage({
   indexGroups,
   onOpenConversation,
 }: NewConversationPageProps) {
-  const { t, tDynamic, locale } = useLocale();
+  const { t } = useLocale();
   const [projects, setProjects] = useState<ProjectWire[]>([]);
   const [projectId, setProjectId] = useState<string>(() => lockedProjectId || readDefaultDestination());
   const [locked, setLocked] = useState<boolean>(Boolean(lockedProjectId));
@@ -124,7 +124,6 @@ export function NewConversationPage({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const draftLabel = (key: string, zh: string, en: string) => tDynamic(`draft.${key}`, locale === "en" ? en : zh);
   const canAttach = caps?.card.attachments === "images" || caps?.card.attachments === "files";
   const canChooseModel = hasCapability(caps?.models.conversationScoped);
 
@@ -259,7 +258,7 @@ export function NewConversationPage({
     if (filesRef.current.length + incoming.length > ATTACHMENT_MAX_COUNT) { setError(t("conversation.attach.tooMany")); return; }
     if (incoming.some((file) => file.size > ATTACHMENT_MAX_BYTES)) { setError(t("conversation.attach.tooLarge")); return; }
     if (caps?.card.attachments === "images" && incoming.some((file) => !/^image\/(?:png|jpeg|webp|gif|avif)$/.test(file.type))) {
-      setError(draftLabel("attachments.imagesOnly", "此引擎只支持图片，请选择 PNG、JPEG、WebP、GIF 或 AVIF。", "This engine accepts images only. Choose PNG, JPEG, WebP, GIF, or AVIF."));
+      setError(t("draft.attachments.imagesOnly"));
       return;
     }
     setError(null);
@@ -285,7 +284,7 @@ export function NewConversationPage({
     if ((!body && !stagedFiles.length) || !projectId || !bindingId || sendLockRef.current || unconfirmedRef.current) return;
     if (stagedFiles.length && !canAttach) { setError(t("conversation.attach.unsupported")); return; }
     if (caps?.card.attachments === "images" && stagedFiles.some((file) => !/^image\/(?:png|jpeg|webp|gif|avif)$/.test(file.type))) {
-      setError(draftLabel("attachments.imagesOnly", "此引擎只支持图片，请选择 PNG、JPEG、WebP、GIF 或 AVIF。", "This engine accepts images only. Choose PNG, JPEG, WebP, GIF, or AVIF."));
+      setError(t("draft.attachments.imagesOnly"));
       return;
     }
     sendLockRef.current = true;
@@ -309,7 +308,7 @@ export function NewConversationPage({
       if (requestedModel && canChooseModel && requestedModel !== draft.modelId) {
         const updated = await patchConversation(draft.id, { modelId: requestedModel });
         const adopted = updated.conversation.modelId;
-        if (adopted && adopted !== requestedModel) throw new Error(draftLabel("model.notApplied", "引擎没有采纳所选模型，请重新选择后发送。", "The engine did not accept the selected model. Choose a model before sending again."));
+        if (adopted && adopted !== requestedModel) throw new Error(t("draft.model.notApplied"));
         draft.modelId = adopted || requestedModel;
       }
       if (selectedReasoning) await patchConversation(draft.id, { reasoningMode: selectedReasoning });
@@ -343,7 +342,7 @@ export function NewConversationPage({
       if (!completed) { sendLockRef.current = false; setSending(false); }
       setUploadingName(null);
     }
-  }, [bindingId, bar.model.value, canAttach, canChooseModel, caps?.card.attachments, onCreated, projectId, selectedModelId, selectedReasoning, selectedApproval, text, t, tDynamic, locale]);
+  }, [bindingId, bar.model.value, canAttach, canChooseModel, caps?.card.attachments, onCreated, projectId, selectedModelId, selectedReasoning, selectedApproval, text, t]);
 
   /* 第 4 件①：`Enter` 发送、`Shift+Enter` 换行，⌘/Ctrl+Enter 继续可用。
      中文输入法组字期间的 Enter 是"选词"，绝不能当发送（`isComposing`）。 */
@@ -376,8 +375,8 @@ export function NewConversationPage({
 
         {error && <div className="kaus-draft-error" role="alert">{error}</div>}
         {unconfirmed && <div className="kaus-draft-error" role="status">
-          {draftLabel("send.unconfirmed", "发送结果尚未确认，请进入已经建立的会话查看状态。", "Delivery is not yet confirmed. Open the conversation to check its status.")}
-          <button type="button" className="kaus-inline-action" onClick={() => onCreated(unconfirmed.conversationId, { clientRef: unconfirmed.clientRef, text: unconfirmed.text, ...(unconfirmed.attachments.length ? { attachments: unconfirmed.attachments } : {}) })}>{draftLabel("send.openExisting", "打开会话确认", "Open conversation")}</button>
+          {t("draft.send.unconfirmed")}
+          <button type="button" className="kaus-inline-action" onClick={() => onCreated(unconfirmed.conversationId, { clientRef: unconfirmed.clientRef, text: unconfirmed.text, ...(unconfirmed.attachments.length ? { attachments: unconfirmed.attachments } : {}) })}>{t("draft.send.openExisting")}</button>
         </div>}
 
         {/* 批次十三：草稿页接会话页那条工具栏（DESIGN ★ I），项目下拉保留在最左。 */}
