@@ -16,6 +16,10 @@ export const zh = {
   "conversation.navigation": "对话定位",
   "conversation.navigation.jump": "跳到第 {index} 条消息",
   "conversation.navigation.attachment": "附件消息",
+  "conversation.navigation.preview": "对话预览",
+  "conversation.navigation.save": "收藏",
+  "conversation.navigation.unsave": "取消收藏",
+  "conversation.navigation.saveFailed": "收藏更新失败",
 
   "bar.model.unverified": "待确认",
   "bar.model.unverifiedHint": "引擎尚未确认当前账号可使用此模型",

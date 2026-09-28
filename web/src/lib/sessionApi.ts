@@ -334,6 +334,7 @@ export interface RuntimeViewWire {
 
 export interface ConversationDetailWire {
   conversation: ConversationWire;
+  bookmarkedMessageIds?: string[];
   runtime: RuntimeViewWire;
   timeline: TimelineSummaryWire | null;
   advisory: { message?: string } | null;
@@ -415,6 +416,10 @@ export function patchConversation(
   body: { title?: string; modelId?: string | null; providerId?: string | null; reasoningMode?: string; approvalMode?: string; executionMode?: string; configOptions?: Record<string, string | boolean> },
 ): Promise<{ conversation: ConversationWire; appliedToRuntime: boolean }> {
   return request(`/api/conversations/${encodeURIComponent(conversationId)}`, { method: "PATCH", body });
+}
+
+export function setConversationBookmark(conversationId: string, messageId: string, saved: boolean): Promise<{ messageId: string; saved: boolean }> {
+  return request(`/api/conversations/${encodeURIComponent(conversationId)}/bookmarks`, { method: "PUT", body: { messageId, saved } });
 }
 
 /** 400 `model_rejected` 的 `detail`：引擎自己给的一句拒绝理由 + 被拒的模型 id。

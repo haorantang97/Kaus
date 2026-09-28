@@ -50,7 +50,7 @@ body :is(button, [role="button"], summary, .kaus-preview-actions > a) {
 /* An inset tint preserves each control's fill and leaves text and layout still. */
 @media (hover: hover) {
   body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
-    :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter
+    :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter, .kaus-jump-marker, .kaus-jump-preview-link
   ):hover {
     box-shadow: inset 0 0 0 100vmax var(--control-hover);
   }
@@ -81,7 +81,7 @@ body :is(button, [role="button"], summary, .kaus-preview-actions > a) {
 }
 
 body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
-  :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter
+  :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter, .kaus-jump-marker, .kaus-jump-preview-link
 ):focus-visible {
   outline: 2px solid var(--control-focus);
   outline-offset: 3px;
@@ -89,7 +89,7 @@ body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
 }
 
 body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
-  :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter
+  :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter, .kaus-jump-marker, .kaus-jump-preview-link
 ):active {
   box-shadow: inset 0 0 0 100vmax var(--control-pressed);
 }

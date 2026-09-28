@@ -119,24 +119,10 @@
 /* A slim message index sits outside the scrolling transcript. */
 .kaus-timeline-shell { position: relative; display: flex; min-height: 0; flex: 1; }
 .kaus-timeline-shell > .kaus-timeline { min-width: 0; width: 100%; }
-.kaus-jump-rail { position: absolute; z-index: 8; left: 7px; top: 50%; transform: translateY(-50%); }
-.kaus-jump-track { display: flex; flex-direction: column; max-height: min(60vh, 480px); overflow-y: auto; scrollbar-width: none; padding: 5px 0; }
-.kaus-jump-track::-webkit-scrollbar { display: none; }
-.kaus-jump-track button { display: grid; place-items: center; flex: 0 0 19px; width: 30px; height: 19px; border: 0; border-radius: 5px; background: transparent; cursor: pointer; padding: 0; }
-.kaus-jump-track button span { display: block; height: 3px; width: 10px; border-radius: 3px; background: color-mix(in srgb, var(--midground-base) 24%, transparent); transition: width 130ms, background 130ms; }
-.kaus-jump-track button[aria-current] span { width: 20px; background: color-mix(in srgb, var(--midground-base) 75%, transparent); }
-.kaus-jump-track button:hover span, .kaus-jump-track button:focus-visible span { width: 20px; background: var(--midground-base); }
-.kaus-jump-track button:focus-visible { outline: 2px solid var(--chat-border); outline-offset: 1px; }
-.kaus-jump-preview { position: absolute; left: 38px; width: min(280px, 65vw); pointer-events: none; transform: translateY(-50%); padding: 12px 14px; border: 1px solid var(--chat-border); border-radius: 12px; background: var(--panel); box-shadow: 0 5px 22px rgb(0 0 0 / 10%); font: 12px/1.6 var(--theme-font-sans); }
-.kaus-jump-preview > span { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--chat-muted); }
-.kaus-jump-preview p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; overflow-wrap: anywhere; margin: 4px 0 0; white-space: pre-wrap; }
 @media (max-width: 700px) {
-  .kaus-jump-rail { left: 0; }
-  .kaus-jump-track button { width: 24px; }
   .kaus-conversation-page .kaus-timeline-shell .kaus-thread { padding-left: 32px; }
   :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-context .kaus-bar-pill { max-width: 150px; }
 }
-@media (prefers-reduced-motion: reduce) { .kaus-jump-track button span { transition: none; } }
 
 .kaus-engine-config-pop {
   padding: 10px 14px;

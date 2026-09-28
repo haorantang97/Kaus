@@ -137,12 +137,12 @@ class SqliteEventStoreRepository:
         top = row["top"] if row is not None else None
         return None if top is None else int(top)
 
-    async def purge_expired(self, *, now: datetime | None = None) -> int:
+    async def purge_expired(self, *, now: datetime | None = None, exclude_conversations: Sequence[str] = ()) -> int:
         """v1.0 §8.5 保留期清理。返回删除条数。"""
         at = now or datetime.now(tz=timezone.utc)
-        return self._db.run(
-            "DELETE FROM event_store WHERE expires_at <= ?", (require_iso(at),)
-        )
+        retained = tuple(exclude_conversations)
+        clause = " AND conversation_id NOT IN (" + ",".join("?" for _ in retained) + ")" if retained else ""
+        return self._db.run("DELETE FROM event_store WHERE expires_at <= ?" + clause, (require_iso(at), *retained))
 
     async def delete_for_conversation(self, conversation_id: str) -> int:
         return self._db.run(

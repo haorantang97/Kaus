@@ -461,6 +461,10 @@ MIGRATIONS: Final[tuple[Migration, ...]] = (
     Migration(version=14, name="conversation_engine_config", statements=(
         "ALTER TABLE conversations ADD COLUMN config_options_json TEXT NOT NULL DEFAULT '{}'",
     )),
+    Migration(version=15, name="conversation_bookmarks", statements=(
+        "CREATE TABLE conversation_bookmarks (conversation_id TEXT NOT NULL, message_id TEXT NOT NULL,"
+        " PRIMARY KEY (conversation_id, message_id))",
+    )),
 )
 """按版本升序排列的全部迁移。新的往后追加，旧的一律不动。"""
 
@@ -482,6 +486,7 @@ EXPECTED_TABLES: Final[frozenset[str]] = frozenset(
         # Phase 5（AD-149）：v1.0 §11.1 推荐表之外新增的一张。
         "projection_results",
         "app_settings",
+        "conversation_bookmarks",
     }
 )
 

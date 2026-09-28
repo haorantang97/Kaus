@@ -269,6 +269,11 @@ class PutCapabilityBody(_Body):
     blocked: bool | None = None
 
 
+class BookmarkBody(_Body):
+    message_id: str = Field(min_length=1, max_length=256)
+    saved: bool
+
+
 class SendMessageBody(_Body):
     """``POST /conversations/{id}/messages`` 的 body = 公共 ``MessageInput``。
 
@@ -800,6 +805,7 @@ def build_session_router(
         runtime["workspaceRoot"] = await _conversation_workspace(conversation)
         return {
             "conversation": conversation_to_wire(conversation, run_state=run_state),
+            "bookmarkedMessageIds": list(await repositories.conversations.bookmarks(conversation_id)),
             "runtime": runtime,
             # 页头以它为准，而不是自己从时间线推断（批次十七第 5 件）。
             "runState": run_state,
@@ -814,6 +820,20 @@ def build_session_router(
                 host.session_projection(conversation_id)
             ),
         }
+
+    @_endpoint
+    async def set_bookmark(conversation_id: str, body: BookmarkBody = Body(...)) -> Any:
+        await _load_conversation(conversation_id)
+        if body.saved:
+            timeline = await _timeline_of(conversation_id)
+            if timeline is None or not any(
+                item.item_id == body.message_id and item.kind == "message" and item.role == "user"
+                for item in timeline.items
+            ):
+                raise SessionApiError(404, "message_not_found", "消息不存在。")
+        # Personal navigation metadata never takes a runtime lease or calls the engine.
+        await repositories.conversations.set_bookmark(conversation_id, body.message_id, body.saved)
+        return {"messageId": body.message_id, "saved": body.saved}
 
     @_endpoint
     async def archive_conversation(conversation_id: str, body: ArchiveConversationBody = Body(...)) -> Any:
@@ -2031,6 +2051,10 @@ def build_session_router(
             ["PATCH"],
             "session_archive_conversation",
             [_auth],
+        ),
+        (
+            "/conversations/{conversation_id}/bookmarks", set_bookmark,
+            ["PUT"], "session_set_bookmark", [_auth],
         ),
         (
             "/conversations/{conversation_id}",

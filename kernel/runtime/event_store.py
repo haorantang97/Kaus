@@ -281,9 +281,9 @@ class EventStore:
     # 清理
     # ------------------------------------------------------------------ #
 
-    async def purge_expired(self, *, now: datetime | None = None) -> int:
+    async def purge_expired(self, *, now: datetime | None = None, exclude_conversations: Sequence[str] = ()) -> int:
         """v1.0 §8.5 保留期清理，返回删除条数。"""
-        return await self._repository.purge_expired(now=now or self._clock())
+        return await self._repository.purge_expired(now=now or self._clock(), exclude_conversations=exclude_conversations)
 
     async def purge_conversation(self, conversation_id: str) -> int:
         """丢弃一条 Conversation 的全部缓冲，返回删除条数。

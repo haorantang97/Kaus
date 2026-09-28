@@ -2,7 +2,7 @@ import { ConversationJumpRail } from "../components/ConversationJumpRail";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Ellipsis, Square, Terminal, FileText, X, LoaderCircle, Paperclip } from "lucide-react";
 import { useLocale } from "../i18n";
-import { confirmAsync, cream } from "../components/ui";
+import { confirmAsync, cream, toast } from "../components/ui";
 import {
   DegradedLaunchPanel,
   ExternalBanner,
@@ -13,6 +13,7 @@ import {
 } from "../components/ExternalSurface";
 import { ComposerBar, type BarMenuOption } from "../components/ComposerBar";
 import { useConversationDraft } from "../lib/conversationDrafts";
+import { conversationJumpEntries } from "../lib/conversationJumpEntries";
 import { isConfirmedMessageRejection } from "../lib/messageDelivery";
 import { uploadConversationAttachment, attachmentName, fileSizeLabel, ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, type ConversationAttachment } from "../lib/attachmentsApi";
 import "./conversationWorkspace.css";
@@ -41,6 +42,7 @@ import {
   openExternalSurface,
   // batch52
   patchConversation,
+  setConversationBookmark,
   patchProject,
   resolveInteraction,
   returnToCardSurface,
@@ -467,6 +469,7 @@ export function ConversationPage({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const jumpIntent = useRef(false);
   const userScrollIntent = useRef(false);
+  const beginBookmarkJump = useCallback(() => { jumpIntent.current = true; setFollow(false); }, []);
   const engineName = binding ? backendDisplay(binding.backendId).displayName : null;
 
   useEffect(() => {
@@ -950,9 +953,9 @@ export function ConversationPage({
     const el = scrollRef.current;
     if (!el) return;
     const bottom = atBottom(el);
-    // Smooth navigation starts at the bottom. Its first scroll event must not
-    // re-enable following before the animation has left that region.
-    if (jumpIntent.current && bottom) return;
+    // Explicit navigation keeps following off until a real scroll gesture or
+    // “latest”. Layout/resize callbacks during the animation can revisit bottom.
+    if (jumpIntent.current && !userScrollIntent.current) return;
     // Content growth and history replay also emit scroll events. Only a user's
     // navigation may turn following off; automatic reflow must keep it on.
     if (bottom) setFollow(true);
@@ -1361,8 +1364,20 @@ export function ConversationPage({
   /* 批次二十八第 4 件：没有卡的扩展事件在这里就被滤掉，连那一层 <div> 都不生成
      ——只让 CardRenderer 返回 null 的话，DOM 里会留下一串空壳。 */
   const rows = useMemo(() => groupRows(items.filter((item) => !isHiddenTimelineItem(item))), [items]);
-  const jumpEntries = useMemo(() => items.filter(item => item.kind === "message" && item.role === "user")
-    .map(item => ({ id: item.itemId, preview: item.kind === "message" ? (messageText(item).replace(/\s+/g, " ").trim() || t("conversation.navigation.attachment")).slice(0, 220) : "" })), [items, t]);
+  const jumpEntries = useMemo(() => conversationJumpEntries(items, t("conversation.navigation.attachment")), [items, t]);
+  const toggleBookmark = useCallback(async (id: string, saved: boolean) => {
+    try {
+      await setConversationBookmark(conversationId, id, saved);
+      setDetail(current => current?.conversation.id === conversationId ? {
+        ...current, bookmarkedMessageIds: saved
+          ? Array.from(new Set([...(current.bookmarkedMessageIds ?? []), id]))
+          : (current.bookmarkedMessageIds ?? []).filter(value => value !== id),
+      } : current);
+    } catch (failure) {
+      toast(t("conversation.navigation.saveFailed"), "bad");
+      throw failure;
+    }
+  }, [conversationId, t]);
   /* G-10 + batch18 第 1 件：首屏三档由 `lib/historyReplay.ts` 判（骨架 / 空 / 历史没到）。
      以前这里只看 `detail === null`：快照一回来骨架就收，重放还没到，页面于是先说
      "这条会话还没有消息"——真机上"重开为空"看到的正是这句话。 */
@@ -1674,7 +1689,8 @@ export function ConversationPage({
         </div>
       </div>
 
-      <ConversationJumpRail key={conversationId} entries={jumpEntries} scrollRef={scrollRef} onJump={() => { jumpIntent.current = true; setFollow(false); }} />
+      <ConversationJumpRail key={conversationId} entries={jumpEntries} scrollRef={scrollRef} onJump={beginBookmarkJump}
+        bookmarkedIds={detail?.bookmarkedMessageIds} onToggleBookmark={toggleBookmark} />
       </div>
 
       <div className="kaus-thread kaus-composer-wrap">

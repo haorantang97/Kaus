@@ -61,7 +61,7 @@ class EventStoreRepository(Protocol):
         """该 Conversation 已缓冲到的最大 sequence；空缓冲返回 ``None``。"""
         ...
 
-    async def purge_expired(self, *, now: datetime | None = None) -> int:
+    async def purge_expired(self, *, now: datetime | None = None, exclude_conversations: Sequence[str] = ()) -> int:
         """v1.0 §8.5 保留期：删除已过期的行，返回删除条数。"""
         ...
 
@@ -144,11 +144,12 @@ class InMemoryEventStoreRepository:
         ]
         return max(sequences) if sequences else None
 
-    async def purge_expired(self, *, now: datetime | None = None) -> int:
+    async def purge_expired(self, *, now: datetime | None = None, exclude_conversations: Sequence[str] = ()) -> int:
+        retained = frozenset(exclude_conversations)
         doomed = [
             event.event_id
             for event in self._by_id.values()
-            if event.is_expired(now)
+            if event.is_expired(now) and event.conversation_id not in retained
         ]
         for event_id in doomed:
             del self._by_id[event_id]

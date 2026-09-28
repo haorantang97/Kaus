@@ -23,3 +23,34 @@ keyboard focus shows the localized status; clicking opens the original diagnosti
 Keep the message body readable and neutral. Confirmed rejection offers retry when
 idle; uncertain delivery offers a read-only status check. Local submissions and
 persisted history use the same control without changing their receipt semantics.
+
+The left message rail uses thin neutral ticks, a compact scrollable track and
+conditional edge fades. Hover extends the selected tick and its neighbors; the
+preview moves and fades without rebuilding the rail. Escape closes the preview.
+Keyboard navigation uses one rail tab stop, then arrows, Home/End and Enter.
+The preview shows the question and an answer excerpt, with an icon to bookmark
+the turn. Tab reaches the preview and bookmark button; Escape returns focus.
+Saving never scrolls, sends a message or acquires a runtime lease. The icon updates
+immediately and rolls back if saving fails.
+
+Transcript jumps ease out over at most 460ms. Wheel, touch, outside pointer and
+keyboard input cancel the motion; a new jump replaces the previous one. Reduced
+motion uses immediate navigation. Message offsets are cached on layout changes
+and searched while scrolling; streamed assistant text does not rebuild markers.
+
+Bookmarks are conversation-scoped references in `conversation_bookmarks`, shared
+by desktop and browser clients and removed with the conversation. Each write
+changes one reference, so concurrent saves and runtime metadata updates cannot
+overwrite another bookmark. They do not store reasoning or duplicate transcript
+text. Bookmarked conversations retain their existing event cache during scheduled
+expiry, so replay IDs and bookmark targets survive long-term use. Removing the
+last bookmark restores normal expiry; deleting the conversation removes its
+bookmarks and cache. This keeps additional local history while a bookmark exists,
+but does not change the model context or native agent history. Direct manual
+cache deletion is outside that retention path and can invalidate message IDs;
+never reattach such bookmarks by matching repeated question text.
+
+The user-supplied Codex screenshot of 2026-09-29 is the static visual reference:
+thin ticks, a single-line question, muted answer excerpt, rounded preview and a
+bookmark control at its upper right. Motion durations remain Kaus choices; exact
+frame matching requires a reference recording.

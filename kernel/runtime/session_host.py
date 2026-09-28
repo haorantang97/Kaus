@@ -1241,7 +1241,11 @@ class SessionHost:
 
     async def purge_expired_events(self, *, now: datetime | None = None) -> int:
         """v1.0 §8.5 保留期清理的调度入口。"""
-        return await self._event_store.purge_expired(now=now)
+        # Keep the original replay IDs while a user has bookmarked a turn.
+        # Native-history reconstruction can create new event IDs. Retaining the
+        # existing cache avoids silently attaching a bookmark to a similar text.
+        retained = await self._conversations.bookmarked_conversations() if self._conversations else ()
+        return await self._event_store.purge_expired(now=now, exclude_conversations=retained)
 
     async def purge_conversation(self, conversation: Conversation) -> int:
         """会话被删除：清空它的事件缓冲，并让在线的订阅者干净地收流。

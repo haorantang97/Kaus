@@ -224,7 +224,30 @@ class SqliteConversationRepository:
 
     async def delete(self, conversation_id: str) -> None:
         """v1.0 §16.6：删除 Conversation 不删除原生 Session，也不级联删别的表。"""
-        self._db.run("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+        with self._db.transaction() as connection:
+            connection.execute("DELETE FROM conversation_bookmarks WHERE conversation_id = ?", (conversation_id,))
+            connection.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+
+    async def bookmarks(self, conversation_id: str) -> Sequence[str]:
+        return tuple(row["message_id"] for row in self._db.query_all(
+            "SELECT message_id FROM conversation_bookmarks WHERE conversation_id = ? ORDER BY message_id",
+            (conversation_id,),
+        ))
+
+    async def bookmarked_conversations(self) -> Sequence[str]:
+        return tuple(row["conversation_id"] for row in self._db.query_all(
+            "SELECT DISTINCT conversation_id FROM conversation_bookmarks",
+        ))
+
+    async def set_bookmark(self, conversation_id: str, message_id: str, saved: bool) -> None:
+        if saved:
+            self._db.run(
+                "INSERT OR IGNORE INTO conversation_bookmarks (conversation_id, message_id)"
+                " SELECT id, ? FROM conversations WHERE id = ?", (message_id, conversation_id),
+            )
+        else:
+            self._db.run("DELETE FROM conversation_bookmarks WHERE conversation_id = ? AND message_id = ?",
+                         (conversation_id, message_id))
 
 
 __all__ = ["SqliteConversationRepository"]

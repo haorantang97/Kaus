@@ -195,6 +195,11 @@ describe("会话工作区配色收敛（★ H）", () => {
     expect(screen.getByTestId("jump-latest")).toBeInTheDocument();
     push(envelope(3, { type: "message.delta", messageId: "m-new", text: "继续输出" }));
     expect(screen.getByTestId("jump-latest")).toBeInTheDocument();
+    scroller.scrollTop = 100;
+    fireEvent.scroll(scroller);
+    scroller.scrollTop = 600;
+    fireEvent.scroll(scroller);
+    expect(screen.getByTestId("jump-latest")).toBeInTheDocument();
     await user.click(screen.getByTestId("jump-latest"));
     expect(screen.queryByTestId("jump-latest")).not.toBeInTheDocument();
   });

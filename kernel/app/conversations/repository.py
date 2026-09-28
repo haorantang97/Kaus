@@ -81,6 +81,12 @@ class ConversationRepository(Protocol):
 
     async def save(self, conversation: Conversation) -> Conversation: ...
 
+    async def bookmarks(self, conversation_id: str) -> Sequence[str]: ...
+
+    async def bookmarked_conversations(self) -> Sequence[str]: ...
+
+    async def set_bookmark(self, conversation_id: str, message_id: str, saved: bool) -> None: ...
+
     async def delete(self, conversation_id: str) -> None:
         """v1.0 §16.6：删除 Conversation 不删除原生 Session。"""
         ...
@@ -91,6 +97,7 @@ class InMemoryConversationRepository:
 
     def __init__(self, conversations: Sequence[Conversation] = ()) -> None:
         self._by_id: dict[str, Conversation] = {c.id: c for c in conversations}
+        self._bookmarks: dict[str, set[str]] = {}
 
     async def get(self, conversation_id: str) -> Conversation | None:
         return self._by_id.get(conversation_id)
@@ -167,6 +174,22 @@ class InMemoryConversationRepository:
 
     async def delete(self, conversation_id: str) -> None:
         self._by_id.pop(conversation_id, None)
+        self._bookmarks.pop(conversation_id, None)
+
+    async def bookmarks(self, conversation_id: str) -> Sequence[str]:
+        return tuple(sorted(self._bookmarks.get(conversation_id, ())))
+
+    async def bookmarked_conversations(self) -> Sequence[str]:
+        return tuple(cid for cid, values in self._bookmarks.items() if values)
+
+    async def set_bookmark(self, conversation_id: str, message_id: str, saved: bool) -> None:
+        if conversation_id not in self._by_id:
+            return
+        values = self._bookmarks.setdefault(conversation_id, set())
+        if saved:
+            values.add(message_id)
+        else:
+            values.discard(message_id)
 
 
 __all__ = [

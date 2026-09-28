@@ -19,6 +19,10 @@ export const en: Record<keyof typeof zh, string> = {
   "conversation.navigation": "Conversation navigation",
   "conversation.navigation.jump": "Jump to message {index}",
   "conversation.navigation.attachment": "Attachment message",
+  "conversation.navigation.preview": "Conversation preview",
+  "conversation.navigation.save": "Bookmark",
+  "conversation.navigation.unsave": "Remove bookmark",
+  "conversation.navigation.saveFailed": "Could not update bookmark",
 
   "bar.model.unverified": "Unverified",
   "bar.model.unverifiedHint": "The engine has not confirmed this account can use this model",
