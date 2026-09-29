@@ -26,9 +26,14 @@ persisted history use the same control without changing their receipt semantics.
 
 The left message rail uses thin neutral ticks, a compact scrollable track and
 conditional edge fades. Hover extends the selected tick and its neighbors; the
-preview moves and fades without rebuilding the rail. Escape closes the preview.
+preview moves and fades without rebuilding the rail. Pointer leave closes the
+preview even after clicking a marker or bookmark. Moving into the preview keeps
+it open; keyboard focus is handled separately. Escape closes the preview.
 Keyboard navigation uses one rail tab stop, then arrows, Home/End and Enter.
-The preview shows the question and an answer excerpt, with an icon to bookmark
+The track uses a 10px tick pitch and the available transcript height. The preview
+uses an opaque surface, a 14px regular answer and a semibold question; it preserves
+answer paragraphs and does not inherit the global button weight. It shows the
+question and an answer excerpt, with an icon to bookmark
 the turn. Tab reaches the preview and bookmark button; Escape returns focus.
 Saving never scrolls, sends a message or acquires a runtime lease. The icon updates
 immediately and rolls back if saving fails.
@@ -50,7 +55,7 @@ but does not change the model context or native agent history. Direct manual
 cache deletion is outside that retention path and can invalidate message IDs;
 never reattach such bookmarks by matching repeated question text.
 
-The user-supplied Codex screenshot of 2026-09-29 is the static visual reference:
+The user-supplied Codex screenshots of 2026-09-29 are the static visual references:
 thin ticks, a single-line question, muted answer excerpt, rounded preview and a
 bookmark control at its upper right. Motion durations remain Kaus choices; exact
 frame matching requires a reference recording.

@@ -23,8 +23,9 @@ function ConversationJumpRailView({ entries, scrollRef, onJump, bookmarkedIds, o
   const [preview, setPreview] = useState<{ id: string; top: number } | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [clipped, setClipped] = useState(false);
-  const [geometry, setGeometry] = useState({ height: 256, pitch: 12 });
+  const [geometry, setGeometry] = useState({ height: 256, pitch: 10 });
   const [edges, setEdges] = useState({ top: false, bottom: false });
+  const [inputMode, setInputMode] = useState<"pointer" | "keyboard">("keyboard");
   const [bookmarkChanges, setBookmarkChanges] = useState<Record<string, boolean>>({});
   const railRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -50,7 +51,7 @@ function ConversationJumpRailView({ entries, scrollRef, onJump, bookmarkedIds, o
     cancelLeave();
     pointerY.current = null;
     setHoverIndex(null);
-    if (!immediate && railRef.current?.contains(document.activeElement)) return;
+    if (!immediate && inputMode === "keyboard" && railRef.current?.contains(document.activeElement)) return;
     if (immediate) setPreviewOpen(false);
     else leaveTimer.current = setTimeout(() => { leaveTimer.current = null; setPreviewOpen(false); }, 100);
   }
@@ -124,8 +125,8 @@ function ConversationJumpRailView({ entries, scrollRef, onJump, bookmarkedIds, o
         const origin = scroller.getBoundingClientRect().top - scroller.scrollTop;
         offsets.current = Array.from(scroller.querySelectorAll<HTMLElement>("[data-message-anchor]"))
           .map(anchor => ({ id: anchor.dataset.messageAnchor!, top: anchor.getBoundingClientRect().top - origin }));
-        const available = Math.min(288, Math.max(48, scroller.clientHeight * .55));
-        const pitch = clamp(Math.floor((available - 16) / Math.max(1, offsets.current.length)), 8, 16);
+        const available = Math.max(48, scroller.clientHeight - 24);
+        const pitch = 10;
         const height = Math.min(available, offsets.current.length * pitch + 16);
         setGeometry(previous => previous.height === height && previous.pitch === pitch ? previous : { height, pitch });
       }
@@ -198,10 +199,13 @@ function ConversationJumpRailView({ entries, scrollRef, onJump, bookmarkedIds, o
 
   if (!entries.length) return null;
   const litIndex = hoverIndex ?? (previewOpen ? previewIndex : null);
-  return <nav ref={railRef} className="kaus-jump-rail" aria-label={t("conversation.navigation")}
+  return <nav ref={railRef} className="kaus-jump-rail" aria-label={t("conversation.navigation")} data-input={inputMode}
     style={{ "--rail-height": `${geometry.height}px`, "--rail-pitch": `${geometry.pitch}px` } as CSSProperties}
-    onMouseEnter={cancelLeave} onMouseLeave={() => hidePreview()}
+    onMouseEnter={() => { setInputMode("pointer"); cancelLeave(); }} onMouseLeave={() => hidePreview()}
+    onMouseMove={() => setInputMode("pointer")}
+    onPointerDown={() => setInputMode("pointer")}
     onKeyDown={event => {
+      setInputMode("keyboard");
       if (event.key !== "Escape") return;
       event.stopPropagation();
       if (preview?.id && previewRef.current?.contains(document.activeElement)) buttons.current.get(preview.id)?.focus({ preventScroll: true });
@@ -236,7 +240,7 @@ function ConversationJumpRailView({ entries, scrollRef, onJump, bookmarkedIds, o
       {entries.map((entry, index) => <button key={entry.id} type="button" className="kaus-jump-marker"
         ref={node => { if (node) buttons.current.set(entry.id, node); else buttons.current.delete(entry.id); }}
         tabIndex={focusIndex === index ? 0 : -1} data-jump-anchor={entry.id} data-bookmarked={isBookmarked(entry.id) || undefined}
-        data-distance={litIndex === null ? undefined : Math.min(3, Math.abs(index - litIndex))}
+        data-distance={litIndex === null ? undefined : Math.min(4, Math.abs(index - litIndex))}
         aria-label={`${t("conversation.navigation.jump", { index: index + 1 })}：${entry.preview}`}
         aria-current={active === entry.id ? "step" : undefined}
         aria-controls={previewOpen && preview?.id === entry.id ? tooltipId : undefined}
@@ -250,7 +254,7 @@ function ConversationJumpRailView({ entries, scrollRef, onJump, bookmarkedIds, o
         <button type="button" className="kaus-jump-preview-link" tabIndex={previewOpen ? 0 : -1}
           onClick={() => jump(entries[previewIndex].id)}>
           <strong>{entries[previewIndex].preview}</strong>
-          {entries[previewIndex].answer && <p ref={textRef} data-clipped={clipped || undefined}>{entries[previewIndex].answer}</p>}
+          {entries[previewIndex].answer && <p ref={textRef} data-clipped={clipped || undefined}>{entries[previewIndex].answer.split(/\n{2,}/).map((paragraph, index) => <span key={index}>{paragraph}</span>)}</p>}
         </button>
       </div>
       {onToggleBookmark && <button type="button" className="kaus-jump-bookmark" tabIndex={previewOpen ? 0 : -1}

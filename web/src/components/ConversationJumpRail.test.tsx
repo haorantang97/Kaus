@@ -50,9 +50,8 @@ describe("conversation message rail", () => {
     await waitFor(() => expect(scroll.scrollTop).toBe(476));
     expect(button).toHaveAttribute("aria-current", "step");
     await user.unhover(button);
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    await user.click(screen.getByTestId("scroll"));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(button).toHaveFocus();
   });
 
   it("tracks the visible question and supports keyboard navigation", async () => {
@@ -73,6 +72,12 @@ describe("conversation message rail", () => {
     expect(screen.getByRole("button", { name: /跳到第 2 条消息/ })).toHaveFocus();
     await user.keyboard("{Home}");
     expect(first).toHaveFocus();
+    fireEvent.mouseLeave(screen.getByRole("navigation"));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)); });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.mouseMove(screen.getByRole("navigation"));
+    fireEvent.mouseLeave(screen.getByRole("navigation"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("keeps a jump selected during motion and yields immediately to wheel input", async () => {
@@ -130,6 +135,10 @@ it("keeps the card open to bookmark without jumping, supports undo and restores 
   await user.click(screen.getByRole("button", { name: "取消收藏" }));
   expect(persist).toHaveBeenCalledWith("user:1", false);
   expect(marker).not.toHaveAttribute("data-bookmarked");
+  await user.unhover(screen.getByRole("button", { name: "收藏" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  await user.hover(marker);
+  await user.click(screen.getByRole("button", { name: "收藏" }));
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(marker).toHaveFocus();

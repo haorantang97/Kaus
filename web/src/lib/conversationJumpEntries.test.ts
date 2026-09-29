@@ -32,4 +32,11 @@ describe("turn preview excerpts", () => {
       { id: "q2", preview: "Rejected question" },
     ]);
   });
+
+  it("preserves answer paragraphs while keeping the question on one line", () => {
+    expect(conversationJumpEntries([
+      message("q", "user", "Update\n the app"),
+      message("a", "assistant", "Updated and restarted.\n\nSettings and conversations\nare preserved.", { phase: "final_answer" }),
+    ], "Attachment")).toEqual([{ id: "q", preview: "Update the app", answer: "Updated and restarted.\n\nSettings and conversations are preserved." }]);
+  });
 });
