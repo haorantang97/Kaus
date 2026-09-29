@@ -246,7 +246,7 @@ function ConversationJumpRailView({ entries, scrollRef, onJump, bookmarkedIds, o
         aria-controls={previewOpen && preview?.id === entry.id ? tooltipId : undefined}
         onMouseEnter={event => { pointerY.current = event.clientY; setHoverIndex(index); showPreview(index); }}
         onFocus={() => { setFocusIndex(index); showPreview(index); }}
-        onClick={event => { event.currentTarget.focus({ preventScroll: true }); showPreview(index); jump(entry.id); }}><span aria-hidden="true" /><Bookmark className="kaus-jump-saved" aria-hidden="true" size={9} /></button>)}
+        onClick={event => { event.currentTarget.focus({ preventScroll: true }); showPreview(index); jump(entry.id); }}><span aria-hidden="true" /></button>)}
     </div>
     {previewIndex >= 0 && <div ref={previewRef} id={tooltipId} className="kaus-jump-preview" role="dialog" aria-label={t("conversation.navigation.preview")} aria-hidden={!previewOpen}
       data-open={previewOpen || undefined} style={{ top: preview?.top }} onMouseEnter={() => { pointerY.current = null; cancelLeave(); }}>

@@ -30,6 +30,9 @@ preview moves and fades without rebuilding the rail. Pointer leave closes the
 preview even after clicking a marker or bookmark. Moving into the preview keeps
 it open; keyboard focus is handled separately. Escape closes the preview.
 Keyboard navigation uses one rail tab stop, then arrows, Home/End and Enter.
+Focused ticks use the same solid line as hover, without an enclosing outline.
+Saved turns show a small round dot after the tick; the bookmark icon appears only
+inside the preview, where it remains the save/unsave control.
 The track uses a 10px tick pitch and the available transcript height. The preview
 uses an opaque surface, a 14px regular answer and a semibold question; it preserves
 answer paragraphs and does not inherit the global button weight. It shows the
