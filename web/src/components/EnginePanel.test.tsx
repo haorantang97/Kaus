@@ -188,7 +188,6 @@ describe("引擎配置展开区（AD-97）", () => {
   it("值摘要：对象只列键名，标量原样（凭据占位串不被展开）", async () => {
     renderPanel();
     const section = await openConfig();
-    expect(within(section).getByText("2 个键")).toBeInTheDocument();
     expect(within(section).getByText("openai · anthropic")).toBeInTheDocument();
     // 键名之外的东西一律不展开：库里那串 credential-ref 占位不该出现在页面上。
     expect(section.textContent).not.toContain("credential-ref://");

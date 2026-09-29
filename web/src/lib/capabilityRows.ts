@@ -50,7 +50,7 @@ export function isVisibleCapabilityEntry(entry: EffectiveCapabilityEntryWire): b
  *   ③ 对象：值全是空壳（`{}` / `[]` / null）时只列键名（`filesystem, git`），
  *      否则列成 `键: 值`（`pre_tool: audit.sh`），多个用 `·` 分开。
  * 嵌套的非空对象不再往下摊（`键: …`）——一行摘要不是结构预览。
- * 原始值仍然拿得到（`capabilityRawValue`），页面把它放在「展开原始值」后面。
+ * 完整值通过详情图标打开，不改变列表布局。
  */
 
 /** 一行摘要最多列几项，超出的折成 `…`。 */
@@ -98,15 +98,12 @@ export function capabilitySummary(
   return entries.length > SUMMARY_MAX_ENTRIES ? `${joined}${namesOnly ? ", …" : " · …"}` : joined;
 }
 
-/** 原始值（一行 JSON）。摘要旁的「展开原始值」用它——**取证仍然拿得到**。 */
+/** Complete value for the configuration detail view. */
 export function capabilityRawValue(config: Record<string, unknown> | null | undefined): string {
   const raw = capabilityValue(config);
   if (raw === undefined) return "";
   return typeof raw === "string" ? raw : JSON.stringify(raw);
 }
-
-/** 能力表默认只摊开这么多行，其余折在「显示全部 N 项」后面（★L 第 4 条）。 */
-export const CAPABILITY_PREVIEW_ROWS = 8;
 
 /* ------------------------------------------------------------------ *
  * 操作列（AD-144，batch18 第 2 件）

@@ -393,12 +393,8 @@ export function describeConfig(config: Record<string, unknown>): ConfigShape {
   return { kind: "scalar", text: String(raw) };
 }
 
-/** 键名列表默认只露这么多，其余折在「展开」后面。 */
-const KEYS_PREVIEW = 6;
-
 function ConfigValue({ shape }: { shape: ConfigShape }) {
   const { t } = useLocale();
-  const [open, setOpen] = useState(false);
   if (shape.kind === "empty") return <span style={{ color: cream(38) }}>{t("common.dash")}</span>;
   if (shape.kind === "scalar") {
     return (
@@ -410,23 +406,9 @@ function ConfigValue({ shape }: { shape: ConfigShape }) {
   if (shape.kind === "list") {
     return <span style={{ color: cream(62) }}>{t("engine.config.items", { count: shape.count })}</span>;
   }
-  const shown = open ? shape.keys : shape.keys.slice(0, KEYS_PREVIEW);
   return (
-    <span className="inline-flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-      <span style={{ color: cream(45) }}>{t("engine.config.keys", { count: shape.keys.length })}</span>
-      <span style={{ font: "0.7rem var(--theme-font-mono, monospace)", color: cream(62) }}>
-        {shown.join(" · ")}
-      </span>
-      {shape.keys.length > KEYS_PREVIEW && (
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className="text-[0.6rem] underline-offset-2 hover:underline"
-          style={{ color: cream(45) }}
-        >
-          {open ? t("common.collapse") : t("common.expand")}
-        </button>
-      )}
+    <span className="kaus-config-value-scroll" style={{ font: "0.7rem var(--theme-font-mono, monospace)", color: cream(62) }}>
+      {shape.keys.join(" · ")}
     </span>
   );
 }

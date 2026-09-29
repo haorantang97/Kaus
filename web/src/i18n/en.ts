@@ -134,7 +134,6 @@ export const en: Record<keyof typeof zh, string> = {
   "project.conversations.title": "Conversations",
   "project.conversations.loading": "Loading conversations…",
   "project.conversations.empty": "No conversations",
-  "project.conversations.all": "Show all",
   "project.conversationStatus.idle": "Idle",
   "project.conversationStatus.running": "Running",
   "project.conversationStatus.paused": "Paused",
@@ -145,10 +144,11 @@ export const en: Record<keyof typeof zh, string> = {
   "project.instructions.meta": "Inherited down the project tree · injected at the top of SOUL",
 
   "capabilities.title": "Project configuration",
-  "capabilities.native": "Engine-specific configuration ({count})",
+  "capabilities.scope.common": "General",
+  "capabilities.scope.native": "Engine",
   "capabilities.loading": "Loading capabilities…",
   "capabilities.empty": "No capabilities configured",
-  "capabilities.col.type": "Type",
+  "capabilities.col.type": "Setting",
   "capabilities.col.content": "Content",
   "capabilities.col.source": "Source",
   "capabilities.col.action": "Actions",
@@ -753,8 +753,6 @@ export const en: Record<keyof typeof zh, string> = {
   "materialize.act.set": "set",
   "materialize.act.unset": "clear",
   "materialize.value.none": "(empty)",
-  "materialize.value.expand": "Show the full value",
-  "materialize.value.collapse": "Collapse",
   "materialize.reason.credential_bearing": "Carries credentials",
   "materialize.reason.credential_bearing.note": "Configure credentials in the engine.",
   "materialize.reason.not_mapped": "Configuration field mapping unavailable",
@@ -978,10 +976,7 @@ export const en: Record<keyof typeof zh, string> = {
   "engine.details.toggle": "Details",
   "engine.summary.signedOut": "Signed out",
 
-  "capabilities.value.expand": "Show raw value",
-  "capabilities.value.collapse": "Collapse",
-  "capabilities.showAll": "Show all {count}",
-  "capabilities.showLess": "Show first {count}",
+  "capabilities.value.view": "View full content",
 
   /* ---- batch41: the plate summary line (DESIGN ★M); since batch42 it lives on the draft page. ---- */
   "overview.plate.attention": "{count} waiting on you",

@@ -154,17 +154,14 @@ describe("应用到引擎：dry-run 差异弹窗", () => {
     expect(screen.queryByTestId("materialize-unchanged")).toBeNull();
   });
 
-  it("长值折成一行并截断，「展开」后完整显示", async () => {
+  it("配置对比直接保留完整长值，无需逐项展开", async () => {
     const long = { servers: "x".repeat(200) };
     mocked.materializeBinding.mockResolvedValue(report([entry({ after: long })]));
     openModal();
     const values = await screen.findAllByTestId("materialize-value");
     const value = values[values.length - 1];
-    expect(value.textContent?.endsWith("…")).toBe(true);
-    expect(value.textContent!.length).toBeLessThan(90);
-    await userEvent.click(screen.getByText("展开完整值"));
-    const expanded = screen.getAllByTestId("materialize-value");
-    expect(expanded[expanded.length - 1].textContent).toContain("x".repeat(200));
+    expect(value.textContent).toContain("x".repeat(200));
+    expect(screen.queryByText("展开完整值")).toBeNull();
   });
 
   it("勾「接管」→ 重新预演，这次带 adopt=1", async () => {

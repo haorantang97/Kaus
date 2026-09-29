@@ -3107,6 +3107,70 @@ button.kaus-conversation-title:hover {
   background: color-mix(in srgb, var(--midground-base) 5%, transparent);
 }
 
+.kaus-project-conversations {
+  display: grid;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 3px;
+  scrollbar-width: thin;
+}
+
+.kaus-cap-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 18px;
+  padding: 4px;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+}
+
+.kaus-cap-tabs [role="tab"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  font: 550 13px/1.4 var(--theme-font-sans);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.kaus-cap-tabs [role="tab"]:hover {
+  color: var(--midground-base);
+  background: color-mix(in srgb, var(--midground-base) 5%, transparent);
+}
+
+.kaus-cap-tabs [aria-selected="true"] {
+  background: var(--panel);
+  color: var(--midground-base);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
+}
+
+.kaus-cap-tabs [role="tab"] > span { font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.kaus-cap-tabs [role="tab"]:focus-visible,
+.kaus-cap-icon-button:focus-visible,
+.kaus-project-more > summary:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+.kaus-cap-value { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.kaus-cap-summary { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.kaus-cap-summary.is-complete { display: block; overflow: visible; }
+.kaus-cap-icon-button { display: inline-grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; border-radius: 7px; color: color-mix(in srgb, var(--midground-base) 60%, transparent); cursor: pointer; transition: background 150ms ease, color 150ms ease; }
+.kaus-cap-icon-button:hover { color: var(--midground-base); background: color-mix(in srgb, var(--midground-base) 8%, transparent); }
+.kaus-cap-icon-button svg { transition: transform 150ms ease; }
+.kaus-cap-icon-button:hover svg { transform: scale(1.08); }
+.kaus-cap-value-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.kaus-cap-value-head h3 { font: 600 15px/1.5 var(--theme-font-sans); overflow-wrap: anywhere; }
+.kaus-cap-raw { max-height: 60vh; overflow: auto; padding: 14px; border-radius: 8px; background: var(--surface-raised); font: 12px/1.7 var(--theme-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.kaus-cap-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.kaus-cap-name strong { font-weight: 550; }
+.kaus-cap-name small { font-size: 11px; color: color-mix(in srgb, var(--midground-base) 50%, transparent); }
+.kaus-config-value-scroll { display: block; max-height: 144px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; scrollbar-width: thin; }
+
 .kaus-cap-table {
   display: flex;
   flex-direction: column;
@@ -3118,8 +3182,8 @@ button.kaus-conversation-title:hover {
   /* 三列：类型 / 内容 / 来源。第四列「操作」随批次十一第 1 件去掉——写端点还没接上
      就是没有操作列，不是显示一列「需后端补」的占位。 */
   grid-template-columns: minmax(120px, 1.2fr) minmax(120px, 1.6fr) minmax(110px, 1fr);
-  align-items: baseline;
-  padding: 6px 2px;
+  align-items: start;
+  padding: 12px 2px;
   border-top: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
   font-size: 12px;
 }
@@ -3127,9 +3191,7 @@ button.kaus-conversation-title:hover {
 .kaus-cap-row.is-head {
   border-top: 0;
   color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 9px/1 var(--theme-font-mono);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font: 500 11px/1.4 var(--theme-font-sans);
 }
 
 .kaus-cap-row.is-blocked {
@@ -3182,12 +3244,26 @@ button.kaus-conversation-title:hover {
 }
 
 .kaus-project-more > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   cursor: pointer;
-  padding: 8px 0;
-  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
-  font: 700 10px/1 var(--theme-font-mono);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  padding: 12px;
+  border-radius: 9px;
+  color: color-mix(in srgb, var(--midground-base) 75%, transparent);
+  font: 550 13px/1.4 var(--theme-font-sans);
+  list-style: none;
+  transition: background 150ms ease;
+}
+.kaus-project-more > summary::-webkit-details-marker { display: none; }
+.kaus-project-more > summary:hover { background: color-mix(in srgb, var(--midground-base) 5%, transparent); }
+.kaus-project-more > summary svg { transition: transform 150ms ease; }
+.kaus-project-more[open] > summary svg { transform: rotate(90deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .kaus-cap-tabs [role="tab"], .kaus-cap-icon-button, .kaus-cap-icon-button svg,
+  .kaus-project-more > summary, .kaus-project-more > summary svg { transition: none; }
+  .kaus-cap-icon-button:hover svg { transform: none; }
 }
 
 @media (max-width: 1100px) {

@@ -275,9 +275,7 @@ describe("项目详情页", () => {
       expect(screen.queryByText("暂无能力配置")).toBeNull();
     });
 
-    /* batch40 / DESIGN ★L 第 4 条：内容列是人话摘要（原始 JSON 收在「展开原始值」
-       后面），整张表默认只摊开前 8 行。 */
-    it("内容列是人话摘要，`value={…}` 一个字都不在；「展开原始值」才给原文", async () => {
+    it("详情图标打开完整内容，关闭后恢复原来的列表位置与焦点", async () => {
       mocked.fetchEffectiveCapabilities.mockResolvedValue(
         caps([
           entry("hooks", { capabilityType: "hooks", config: { value: { pre_tool: "audit.sh" } } }),
@@ -291,24 +289,53 @@ describe("项目详情页", () => {
       expect(table.textContent).not.toContain("value=");
       expect(table.textContent).not.toContain('{"pre_tool"');
 
-      await userEvent.click(within(table).getAllByRole("button", { name: "展开原始值" })[0]);
-      expect(within(table).getByTestId("capability-raw")).toHaveTextContent('{"pre_tool":"audit.sh"}');
+      const trigger = within(table).getAllByRole("button", { name: "查看完整内容" })[0];
+      await userEvent.click(trigger);
+      const dialog = screen.getByRole("dialog", { name: "hooks" });
+      expect(JSON.parse(within(dialog).getByTestId("capability-raw").textContent!)).toEqual({ pre_tool: "audit.sh" });
+      expect(within(table).queryByTestId("capability-raw")).toBeNull();
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(trigger).toHaveFocus();
     });
 
-    it("默认只摊开前 8 行，「显示全部 N 项」点开才是整张表", async () => {
+    it("列表包含全部配置，不再隐藏第 8 项之后的内容", async () => {
       mocked.fetchEffectiveCapabilities.mockResolvedValue(
         caps(Array.from({ length: 11 }, (_, index) => entry(`cap-${index}`))),
       );
       renderPage();
       const table = await screen.findByRole("table", { name: "项目配置" });
       const rows = () => within(table).getAllByRole("row").filter((row) => !row.classList.contains("is-head"));
-      expect(rows()).toHaveLength(8);
-
-      const toggle = screen.getByTestId("capabilities-show-all");
-      expect(toggle).toHaveTextContent("显示全部 11 项");
-      await userEvent.click(toggle);
       expect(rows()).toHaveLength(11);
-      expect(toggle).toHaveTextContent("只看前 8 项");
+      expect(within(table).getByText("cap-10")).toBeInTheDocument();
+      expect(screen.queryByTestId("capabilities-show-all")).toBeNull();
+    });
+
+    it("通用和引擎配置直接切换，末项与已禁用项都能访问", async () => {
+      mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([
+        entry("writing"),
+        ...Array.from({ length: 12 }, (_, index) => entry(`native-${index}`, { capabilityType: "custom:runtime" })),
+      ], [{ capabilityType: "custom:runtime", capabilityId: "disabled-native", blockedByProjectId: "project:pronto", blocked: true }]));
+      renderPage();
+      const general = await screen.findByRole("tab", { name: "通用" });
+      const engine = screen.getByRole("tab", { name: "引擎配置" });
+      expect(general).toHaveAttribute("aria-selected", "true");
+      expect(screen.queryByText("native-11")).toBeNull();
+      await userEvent.click(engine);
+      expect(screen.getByText("native-11")).toBeVisible();
+      expect(screen.getByText("disabled-native")).toBeVisible();
+      expect(screen.queryByText("writing")).toBeNull();
+      await userEvent.keyboard("{ArrowLeft}");
+      expect(general).toHaveFocus();
+      expect(general).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByText("writing")).toBeVisible();
+    });
+
+    it("只有引擎配置时直接显示内容", async () => {
+      mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([entry("native-only", { capabilityType: "custom:runtime" })]));
+      renderPage();
+      expect(await screen.findByText("native-only")).toBeVisible();
+      expect(screen.queryByRole("tablist")).toBeNull();
     });
 
     /* batch18 第 2 件（AD-144）：写端点在的时候才有「操作」列，菜单里有哪几条

@@ -9,7 +9,7 @@ The active workflow connects an Agent globally, selects a project/persona separa
 | Area | Previous behavior | Current behavior |
 | --- | --- | --- |
 | Project engine cards | Listed project bindings as separate connections, including native personas; edited engine model defaults | Removed from the project page; global Settings → Agent lists one entry per product |
-| Project configuration | Native defaults mixed with common project capabilities | Model/permission defaults are removed from this view; engine-specific capabilities are collapsed; configuration preview/apply remains available |
+| Project configuration | Native defaults mixed with common project capabilities | Model/permission defaults are removed from this view; General and Engine tabs show complete lists without a second expand step; configuration preview/apply remains available |
 | Group members | New member creation selected the project's default binding | Uses the shared global Agent picker and creates an association only on selection |
 | Coordinator | Candidates depended on existing project bindings | Projects and eligible global connections are supplied independently; transport eligibility is checked before product grouping |
 | Disabled old associations | Hid a globally connected Agent with no remaining enable action | Explicit Agent selection restores the old association; loading a menu does not change it |

@@ -140,7 +140,6 @@ export const zh = {
   "project.conversations.title": "会话",
   "project.conversations.loading": "正在读取会话…",
   "project.conversations.empty": "暂无会话",
-  "project.conversations.all": "查看全部",
   "project.conversationStatus.idle": "空闲",
   "project.conversationStatus.running": "运行中",
   "project.conversationStatus.paused": "已暂停",
@@ -152,10 +151,11 @@ export const zh = {
 
   /* ---- 能力表（项目详情页 ③ 区） ---- */
   "capabilities.title": "项目配置",
-  "capabilities.native": "引擎专属配置（{count}）",
+  "capabilities.scope.common": "通用",
+  "capabilities.scope.native": "引擎配置",
   "capabilities.loading": "正在读取能力…",
   "capabilities.empty": "暂无能力配置",
-  "capabilities.col.type": "类型",
+  "capabilities.col.type": "配置",
   "capabilities.col.content": "内容",
   "capabilities.col.source": "来源",
   "capabilities.col.action": "操作",
@@ -806,8 +806,6 @@ export const zh = {
   "materialize.act.set": "写入",
   "materialize.act.unset": "清空",
   "materialize.value.none": "（空）",
-  "materialize.value.expand": "展开完整值",
-  "materialize.value.collapse": "收起",
   /* `unsupported.reason` 四档（ops 文档 §7）。 */
   "materialize.reason.credential_bearing": "带凭据",
   "materialize.reason.credential_bearing.note": "凭据请在引擎中配置。",
@@ -1080,10 +1078,7 @@ export const zh = {
   "engine.summary.signedOut": "未登录",
 
   /* 第 4 条：能力表的内容列改成人话摘要，原始 JSON 收进「展开」。 */
-  "capabilities.value.expand": "展开原始值",
-  "capabilities.value.collapse": "收起",
-  "capabilities.showAll": "显示全部 {count} 项",
-  "capabilities.showLess": "只看前 {count} 项",
+  "capabilities.value.view": "查看完整内容",
   /* ---- batch41：铭牌副行（DESIGN ★M）。三个数，为零的不写。batch42 起它在草稿页上。 ---- */
   "overview.plate.attention": "{count} 条等你处理",
   "overview.plate.running": "{count} 条运行中",

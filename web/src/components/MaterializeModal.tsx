@@ -37,9 +37,6 @@ import {
  * 值的显示
  * ------------------------------------------------------------------ */
 
-/** 一行装得下多少个字符；超了就截断，「展开」后完整显示（DESIGN ★K）。 */
-export const VALUE_PREVIEW = 72;
-
 /** 对象 / 数组折成**一行** JSON；字符串原样；空值交给调用方显示「（空）」。 */
 export function formatProjectionValue(value: unknown): string {
   if (value === undefined || value === null) return "";
@@ -77,30 +74,16 @@ const MONO: React.CSSProperties = {
   wordBreak: "break-all",
 };
 
-/** 等宽的一个值。长值默认截断成一行，「展开」后整段显示（仍是等宽）。 */
+/** Complete values remain directly readable and scroll within the comparison. */
 export function MonoValue({ value }: { value: unknown }) {
   const { t } = useLocale();
-  const [open, setOpen] = useState(false);
   const text = formatProjectionValue(value);
   if (text === "") {
     return <span style={{ color: cream(38) }}>{t("materialize.value.none")}</span>;
   }
-  const long = text.length > VALUE_PREVIEW;
   return (
-    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-1">
-      <span style={MONO} data-testid="materialize-value">
-        {long && !open ? `${text.slice(0, VALUE_PREVIEW)}…` : text}
-      </span>
-      {long && (
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className="text-[0.6rem] underline-offset-2 hover:underline"
-          style={{ color: cream(45) }}
-        >
-          {open ? t("materialize.value.collapse") : t("materialize.value.expand")}
-        </button>
-      )}
+    <span className="kaus-config-value-scroll" style={MONO} data-testid="materialize-value" tabIndex={text.length > 240 ? 0 : undefined}>
+      {text}
     </span>
   );
 }

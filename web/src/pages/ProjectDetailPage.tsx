@@ -14,8 +14,8 @@
  * 项目保留工作目录与配置；会话记录保留原有引擎身份。
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, ChevronRight, MessageSquare, MoreHorizontal, Plus, Settings, Sparkles, Terminal } from "lucide-react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ArrowUpRight, ChevronRight, Maximize2, MessageSquare, MoreHorizontal, Plus, Settings, Sparkles, Terminal, X } from "lucide-react";
 
 import { useLocale } from "../i18n";
 import { ConstitutionEditor } from "../components/ConstitutionEditor";
@@ -28,11 +28,10 @@ import {
   SubtasksSection,
 } from "../components/ProfileDrawer";
 import { Sidebar } from "../components/Sidebar";
-import { Button, Card, Pill, Section, cream, dname, toast } from "../components/ui";
+import { Button, Card, Modal, Pill, Section, cream, dname, toast } from "../components/ui";
 import { type NetworkResp } from "../lib/api";
 import { openProjectTerminal } from "../lib/terminalApi";
 import {
-  CAPABILITY_PREVIEW_ROWS,
   capabilityActions,
   capabilityRawValue,
   capabilitySummary,
@@ -57,9 +56,6 @@ const STATUS_TONE: Record<string, "success" | "muted" | "danger"> = {
   archived: "muted",
   disabled: "danger",
 };
-
-/** 首屏只列这么多会话，其余藏在「查看全部」后面。 */
-const CONVERSATION_PREVIEW = 5;
 
 /* ------------------------------------------------------------------ *
  * 次级导航的滚动位置（批次十五第 2 件）
@@ -120,7 +116,6 @@ export function ProjectDetailPage({
   const [projects, setProjects] = useState<ProjectWire[]>([]);
   const [capabilities, setCapabilities] = useState<EffectiveCapabilitiesWire | null>(null);
   const [conversations, setConversations] = useState<ConversationIndexEntryWire[] | null>(null);
-  const [showAllConversations, setShowAllConversations] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openingTerminal, setOpeningTerminal] = useState(false);
@@ -148,7 +143,6 @@ export function ProjectDetailPage({
     let cancelled = false;
     setCapabilities(null);
     setConversations(null);
-    setShowAllConversations(false);
     // 能力与会话各取各的：一个失败不该把另一个也弄没。
     fetchEffectiveCapabilities(projectId)
       .then((next) => {
@@ -245,10 +239,6 @@ export function ProjectDetailPage({
     finally { setOpeningTerminal(false); }
   }, [projectId, openingTerminal, t]);
 
-  const visibleConversations = showAllConversations
-    ? conversations ?? []
-    : (conversations ?? []).slice(0, CONVERSATION_PREVIEW);
-
   return (
     <div className="kaus-project-page" data-testid="project-detail-page">
       {/* 次级导航（★定稿 B）：紧凑树在这里，不在全局侧栏。 */}
@@ -344,8 +334,8 @@ export function ProjectDetailPage({
               {t("project.conversations.empty")}
             </p>
           ) : (
-            <div className="grid gap-1">
-              {visibleConversations.map((conversation) => (
+            <div className="kaus-project-conversations">
+              {conversations.map((conversation) => (
                 <button
                   key={conversation.id}
                   type="button"
@@ -360,13 +350,6 @@ export function ProjectDetailPage({
                   <ArrowUpRight size={17} className="kaus-project-conversation-arrow" aria-hidden="true" />
                 </button>
               ))}
-              {!showAllConversations && conversations.length > CONVERSATION_PREVIEW && (
-                <div className="pt-1">
-                  <Button onClick={() => setShowAllConversations(true)}>
-                    {t("project.conversations.all")}
-                  </Button>
-                </div>
-              )}
             </div>
           )}
         </Card>
@@ -385,7 +368,7 @@ export function ProjectDetailPage({
           open={settingsOpen}
           onToggle={(event) => setSettingsOpen((event.currentTarget as HTMLDetailsElement).open)}
         >
-          <summary>{t("project.more")}</summary>
+          <summary>{t("project.more")}<ChevronRight size={16} aria-hidden="true" /></summary>
           {/* 折着的时候不挂载：八个面板各拉一次旧接口，而且名字要等项目列表回来才对。 */}
           {settingsOpen && project && (
             <>
@@ -409,41 +392,67 @@ export function ProjectDetailPage({
  * ③ 能力
  * ------------------------------------------------------------------ */
 
-/** batch40（★L 第 4 条）：内容列 = 一行人话摘要，原始值收在「展开原始值」后面。
- *  摘要规则在 `lib/capabilityRows.ts`（受单测），这里只负责摆。 */
+/** Keep the list compact; inspect the complete value without changing its layout. */
 function CapabilityContent({
   config,
   localize,
+  name,
 }: {
   config: Record<string, unknown>;
   localize: (value: string) => string;
+  name: string;
 }) {
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const close = useRef<HTMLButtonElement>(null);
+  const value = useRef<HTMLPreElement>(null);
+  const titleId = useId();
   const summary = capabilitySummary(config, localize, t("common.dash"));
   const raw = capabilityRawValue(config);
+  const inspectable = raw !== "" && (raw !== summary || raw.length > 80);
+  let content = raw;
+  if (raw.startsWith("{") || raw.startsWith("[")) {
+    try { content = JSON.stringify(JSON.parse(raw), null, 2); } catch { /* Display plain text unchanged. */ }
+  }
+  useEffect(() => {
+    if (!open) return;
+    const opener = trigger.current;
+    close.current?.focus();
+    return () => opener?.focus();
+  }, [open]);
   return (
-    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1.5">
-      <span data-testid="capability-summary">{summary}</span>
-      {raw !== "" && (
+    <span className="kaus-cap-value">
+      <span className={`kaus-cap-summary${inspectable ? "" : " is-complete"}`} data-testid="capability-summary">{summary}</span>
+      {inspectable && (
         <button
+          ref={trigger}
           type="button"
-          onClick={() => setOpen((value) => !value)}
-          aria-expanded={open}
-          className="text-[0.6rem] underline-offset-2 hover:underline"
-          style={{ color: cream(45) }}
+          onClick={() => setOpen(true)}
+          aria-label={t("capabilities.value.view")}
+          title={t("capabilities.value.view")}
+          aria-haspopup="dialog"
+          className="kaus-cap-icon-button"
         >
-          {open ? t("capabilities.value.collapse") : t("capabilities.value.expand")}
+          <Maximize2 size={14} aria-hidden="true" />
         </button>
       )}
       {open && (
-        <span
-          className="w-full break-all"
-          style={{ font: "0.68rem var(--theme-font-mono, monospace)", color: cream(62) }}
-          data-testid="capability-raw"
-        >
-          {raw}
-        </span>
+        <Modal onClose={() => setOpen(false)} width={640}>
+          <div role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={(event) => {
+            if (event.key !== "Tab") return;
+            event.preventDefault();
+            (document.activeElement === close.current ? value.current : close.current)?.focus();
+          }}>
+            <div className="kaus-cap-value-head">
+              <h3 id={titleId}>{name}</h3>
+              <button ref={close} type="button" className="kaus-cap-icon-button" aria-label={t("common.close")} title={t("common.close")} onClick={() => setOpen(false)}>
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+            <pre ref={value} tabIndex={0} className="kaus-cap-raw" data-testid="capability-raw">{content}</pre>
+          </div>
+        </Modal>
       )}
     </span>
   );
@@ -568,18 +577,15 @@ export function CapabilitiesSection({
   /* 第 1 件（AD-71）：`unknown` / 值为 `none` 的行不渲染，计数只数渲染出来的。
      规则在 `lib/capabilityRows.ts`（要单测，且页面层不许出现 detail 层字段名）。 */
   const available = visibleCapabilityRows(capabilities);
-  const [showNative, setShowNative] = useState(false);
+  const [selectedScope, setSelectedScope] = useState<"common" | "native">("common");
+  const scopeId = useId();
   const native = (row: { capabilityType: string }) => row.capabilityType.includes(":");
   const nativeCount = available.entries.filter(native).length + available.blocked.filter(native).length;
-  const entries = available.entries.filter(row => showNative || !native(row)).sort((a, b) => Number(native(a)) - Number(native(b)));
-  const blocked = available.blocked.filter(row => showNative || !native(row));
-  const total = entries.length + blocked.length;
-  /* batch40（★L 第 4 条）：默认只摊开前 8 行。这张表是**取证**用的，
-     一屏 15 行把下面的东西全推走；想看的人点一下「显示全部 N 项」。 */
-  const [showAllCaps, setShowAllCaps] = useState(false);
-  const budget = showAllCaps ? total : CAPABILITY_PREVIEW_ROWS;
-  const shownEntries = entries.slice(0, budget);
-  const shownBlocked = blocked.slice(0, Math.max(0, budget - entries.length));
+  const commonCount = available.total - nativeCount;
+  const scope = nativeCount === 0 ? "common" : commonCount === 0 ? "native" : selectedScope;
+  const entries = available.entries.filter(row => native(row) === (scope === "native"));
+  const blocked = available.blocked.filter(row => native(row) === (scope === "native"));
+  const scopes = (["common", "native"] as const).filter(key => (key === "common" ? commonCount : nativeCount) > 0);
 
   // 一行都没有 → 整个分区不渲染（不是空态文案）。仍在读的时候要留住加载态。
   if (capabilities !== null && available.total === 0) return null;
@@ -590,7 +596,27 @@ export function CapabilitiesSection({
         <div className="py-2 text-xs" style={{ color: cream(45) }}>
           {t("capabilities.loading")}
         </div>
-      ) : (
+      ) : (<>
+        {scopes.length > 1 && (
+          <div className="kaus-cap-tabs" role="tablist" aria-label={t("capabilities.title")}>
+            {scopes.map(key => (
+              <button key={key} id={`${scopeId}-${key}`} type="button" role="tab"
+                aria-label={t(`capabilities.scope.${key}`)}
+                aria-selected={scope === key} aria-controls={`${scopeId}-panel`} tabIndex={scope === key ? 0 : -1}
+                onClick={() => setSelectedScope(key)}
+                onKeyDown={(event) => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const next = event.key === "Home" ? scopes[0] : event.key === "End" ? scopes[scopes.length - 1] : scopes[(scopes.indexOf(key) + 1) % scopes.length];
+                  setSelectedScope(next);
+                  document.getElementById(`${scopeId}-${next}`)?.focus();
+                }}>
+                {t(`capabilities.scope.${key}`)}<span>{key === "common" ? commonCount : nativeCount}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div id={`${scopeId}-panel`} role={scopes.length > 1 ? "tabpanel" : undefined} aria-labelledby={scopes.length > 1 ? `${scopeId}-${scope}` : undefined}>
         <div
           className={`kaus-cap-table ${showActions ? "has-actions" : ""}`}
           role="table"
@@ -603,16 +629,14 @@ export function CapabilitiesSection({
             {/* 只读场景（没有写回调）整列（含表头）都不渲染，不留占位。 */}
             {showActions && <span role="columnheader">{t("capabilities.col.actions")}</span>}
           </div>
-          {shownEntries.map((entry) => (
+          {entries.map((entry) => (
             <div className="kaus-cap-row" role="row" key={`${entry.capabilityType}/${entry.capabilityId}`}>
-              <span role="cell">
-                <span className="font-semibold">{entry.capabilityType}</span>
-                <span className="ml-1" style={{ color: cream(45) }}>
-                  {entry.capabilityId}
-                </span>
+              <span role="cell" className="kaus-cap-name">
+                <strong>{entry.capabilityId}</strong>
+                {entry.capabilityType !== entry.capabilityId && <small>{entry.capabilityType}</small>}
               </span>
               <span role="cell" style={{ color: cream(62) }}>
-                <CapabilityContent config={entry.config} localize={localize} />
+                <CapabilityContent config={entry.config} localize={localize} name={entry.capabilityId} />
               </span>
               <span role="cell">
                 {entry.inherited ? (
@@ -646,17 +670,15 @@ export function CapabilitiesSection({
               )}
             </div>
           ))}
-          {shownBlocked.map((blocked) => (
+          {blocked.map((blocked) => (
             <div
               className="kaus-cap-row is-blocked"
               role="row"
               key={`blocked:${blocked.capabilityType}/${blocked.capabilityId}`}
             >
-              <span role="cell">
-                <span className="font-semibold">{blocked.capabilityType}</span>
-                <span className="ml-1" style={{ color: cream(45) }}>
-                  {blocked.capabilityId}
-                </span>
+              <span role="cell" className="kaus-cap-name">
+                <strong>{blocked.capabilityId}</strong>
+                {blocked.capabilityType !== blocked.capabilityId && <small>{blocked.capabilityType}</small>}
               </span>
               <span role="cell" style={{ color: cream(45) }}>
                 {t("common.dash")}
@@ -676,24 +698,8 @@ export function CapabilitiesSection({
             </div>
           ))}
         </div>
-      )}
-      {/* ★L 第 4 条：折叠 / 展开的那一枚。行数不超过阈值时不渲染。 */}
-      {total > CAPABILITY_PREVIEW_ROWS && (
-        <button
-          type="button"
-          onClick={() => setShowAllCaps((value) => !value)}
-          aria-expanded={showAllCaps}
-          data-testid="capabilities-show-all"
-          className="mt-2 text-[0.6rem] uppercase tracking-[0.14em]"
-          style={{ color: cream(45) }}
-        >
-          {showAllCaps
-            ? t("capabilities.showLess", { count: CAPABILITY_PREVIEW_ROWS })
-            : t("capabilities.showAll", { count: total })}
-        </button>
-      )}
-      {nativeCount > 0 && <button type="button" className="mt-2 block text-xs" style={{ color: cream(50) }}
-        aria-expanded={showNative} onClick={() => { setShowNative(v => !v); setShowAllCaps(true); }}>{t("capabilities.native", { count: nativeCount })}</button>}
+        </div>
+      </>)}
     </Card>
   );
 }
