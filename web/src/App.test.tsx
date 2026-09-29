@@ -274,7 +274,7 @@ describe("从草稿页点导航", () => {
 describe("每个视图一个真 URL", () => {
   const cases: [string, string][] = [
     ["/dashboard", "仪表盘 · Dashboard"],
-    ["/kanban", "任务板 · Kanban"],
+    ["/kanban", "Hermes 任务板"],
     ["/vault", "资料库 · Vault"],
     ["/warehouse", "仓库 · Warehouse"],
     ["/config", "设置 · Config"],

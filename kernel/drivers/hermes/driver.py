@@ -62,6 +62,7 @@ from drivers.hermes import engine_settings as engine_settings_mod
 from drivers.hermes import history as history_mod
 from drivers.hermes import model_catalog as catalog_mod
 from drivers.hermes import projection_map
+from drivers.hermes import project_scope
 from drivers.hermes import projector as projector_mod
 from drivers.hermes import reconnect
 from drivers.hermes import session_mapper
@@ -208,6 +209,7 @@ class HermesDriver:
         self._watchers: dict[str, HermesOutOfBandWatcher] = {}
         self._runtimes: dict[str, _RuntimeState] = {}
         self._isolated_runtimes: dict[str, Any] = {}
+        self._project_drivers: dict[str, Any] = {}
         self._capabilities: BackendCapabilities | None = None
         self._report: capabilities_mod.HermesCapabilityReport | None = None
         self._backend_version: str | None = None
@@ -284,6 +286,8 @@ class HermesDriver:
         return watcher
 
     def canonical_map_for(self, binding: AgentBinding) -> session_mapper.CanonicalMap:
+        if project_scope.enabled(binding):
+            return session_mapper.CanonicalMap.empty(binding.id)
         profile = binding.native_scope_ref or session_mapper.DEFAULT_SCOPE
         if self.canonical_archive_path is None:
             return session_mapper.CanonicalMap.empty(profile)
@@ -379,6 +383,8 @@ class HermesDriver:
         return self._apply_live_evidence(self._capabilities or BackendCapabilities())
 
     def conversation_controls(self, binding: AgentBinding) -> dict[str, Any]:
+        if project_scope.enabled(binding):
+            return self._project_driver(binding).conversation_controls(binding)
         delegated = bool(self._capabilities and self._capabilities.card.permissions.value == "protocol")
         choices = host_approval_options() if delegated else []
         return {
@@ -388,6 +394,12 @@ class HermesDriver:
             "approvalDefault": "host:ask" if choices else None,
         }
 
+    def runtime_conversation_controls(self, runtime: RuntimeHandle, binding: AgentBinding) -> dict[str, Any]:
+        if runtime.runtime_id in self._isolated_runtimes:
+            driver, handle = self._isolated_runtimes[runtime.runtime_id]
+            return driver.runtime_conversation_controls(handle, binding)
+        return self.conversation_controls(binding)
+
     def group_context_isolation(self) -> bool:
         from drivers.hermes.isolated_runtime import available
         return available(self.hermes_bin)
@@ -396,6 +408,9 @@ class HermesDriver:
         self, runtime: RuntimeHandle, conversation: Conversation
     ) -> None:
         if runtime.runtime_id in self._isolated_runtimes:
+            if project_scope.enabled(self._binding_for(conversation)) and not self._binding_for(conversation).runtime_config.get("group_execution"):
+                driver, handle = self._isolated_runtimes[runtime.runtime_id]
+                return await driver.set_conversation_selection(handle, conversation)
             raise UnsupportedCapabilityError("执行中的组长使用已保存的配置，请在下一项任务切换。")
         state = self._state(runtime)
         if state.run is not None and not state.run.finalized:
@@ -450,6 +465,8 @@ class HermesDriver:
         响应体形状不认识），此前它们一律表现为「静态全集 + 没有任何提示」，
         真机上根本分不清。
         """
+        if project_scope.enabled(binding):
+            return await self._project_driver(binding).get_model_catalog(binding)
         self._assert_binding(binding)
         supervisor = self.supervisor_for(binding)
         static = (
@@ -522,6 +539,8 @@ class HermesDriver:
         root，所以这里直接用它，不必再倒推一次。
         """
         self._assert_binding(binding)
+        if project_scope.enabled(binding):
+            return await self._project_driver(binding).read_engine_settings(binding)
         return engine_settings_mod.read_engine_settings(
             binding_id=binding.id,
             hermes_home=self.gateway_config_for(binding).hermes_home,
@@ -553,6 +572,8 @@ class HermesDriver:
         多一行假信息。
         """
         self._assert_binding(binding)
+        if project_scope.enabled(binding):
+            return await self._project_driver(binding).read_auth_state(binding)
         config = self.gateway_config_for(binding)
         checked_at = _utcnow()
         # 只判引用指不指得到，**不解析、不取值**。
@@ -619,9 +640,12 @@ class HermesDriver:
         它的通用运行配置（审批档 / 推理强度）、以及它的默认模型。
         """
         self._assert_binding(binding)
+        home = self.projection_scope(binding)
+        if project_scope.enabled(binding) and not dry_run:
+            project_scope.prepare(self.hermes_root, self.gateway_config_for(binding).hermes_home, binding, refresh=True)
         return projector_mod.project_capabilities(
             binding_id=binding.id,
-            hermes_home=self.gateway_config_for(binding).hermes_home,
+            hermes_home=home,
             effective=effective_capabilities,
             capabilities=await self.get_capabilities(),
             # 批次十三第 3 件：通用 `approval_mode` 有确定的引擎落点，一并列进
@@ -631,7 +655,7 @@ class HermesDriver:
             default_provider_id=binding.default_provider_id,
             project_id=project.id,
             dry_run=dry_run,
-            adopt=adopt,
+            adopt=adopt or project_scope.enabled(binding),
         )
 
     def workspace_conventions(self, binding: AgentBinding | None = None) -> dict[str, Any]:
@@ -662,7 +686,7 @@ class HermesDriver:
             return projector_mod.stale_drift(binding.id)
         return projector_mod.inspect_config_drift(
             binding_id=binding.id,
-            hermes_home=self.gateway_config_for(binding).hermes_home,
+            hermes_home=self.projection_scope(binding),
             effective=effective_capabilities,
             capabilities=await self.get_capabilities(),
             runtime_config=binding.runtime_config,
@@ -678,6 +702,8 @@ class HermesDriver:
         self, binding: AgentBinding
     ) -> tuple[NativeSession, ...]:
         self._assert_binding(binding)
+        if project_scope.enabled(binding):
+            return await self._project_driver(binding).list_native_sessions(binding)
         supervisor = self.supervisor_for(binding)
         await supervisor.ensure_ready()
         endpoints = self._endpoints()
@@ -723,6 +749,8 @@ class HermesDriver:
         self, binding: AgentBinding, options: CreateSessionOptions
     ) -> NativeSession:
         self._assert_binding(binding)
+        if project_scope.enabled(binding):
+            return await self._project_driver(binding).create_native_session(binding, options)
         supervisor = self.supervisor_for(binding)
         await supervisor.ensure_ready()
         endpoints = self._endpoints()
@@ -759,6 +787,11 @@ class HermesDriver:
     ) -> NativeHistory:
         """规格 §4.2 的三级优先级。**HTTP 是主路径，直读只是回退。**"""
         self._assert_binding(binding)
+        if project_scope.enabled(binding):
+            path = self.projection_scope(binding) / "state.db"
+            if path.is_file():
+                return history_mod.read_history_from_db(path, native_session_id)
+            return await self._project_driver(binding).load_native_history(binding, native_session_id)
         canonical = self.canonical_map_for(binding)
         # 规格 §4.4 规则 5：只加载 head 的 messages，归档分段默认不回放。
         head_id = canonical.head_for(native_session_id)
@@ -855,6 +888,15 @@ class HermesDriver:
         self, conversation: Conversation, effective: EffectiveCapabilities
     ) -> SessionProjection | None:
         binding = self._binding_for(conversation)
+        if project_scope.enabled(binding) and not binding.runtime_config.get("group_execution"):
+            # The private home is read by both ACP and the native CLI. No
+            # project configuration is written back into the connected engine.
+            result = await self.materialize_project_capabilities(
+                Project.create(slug=binding.project_id.removeprefix("project:")),
+                binding, effective, dry_run=False,
+            )
+            return SessionProjection(summary={"projectSettings": sorted({item.capability_id for item in result.applied})},
+                                     warnings=tuple(sorted({item.reason or "unsupported" for item in result.unsupported})))
         if not binding.runtime_config.get("group_execution"):
             return None
         from drivers.hermes.isolated_runtime import create_driver
@@ -869,9 +911,9 @@ class HermesDriver:
                 "Driver 只负责 Card Surface；站外 CLI 走 build_external_cli_launch"
             )
         binding = self._binding_for(conversation)
-        if binding.runtime_config.get("group_execution"):
+        if binding.runtime_config.get("group_execution") or project_scope.enabled(binding):
             from drivers.hermes.isolated_runtime import create_driver, start
-            driver = create_driver(self, binding)
+            driver = create_driver(self, binding) if binding.runtime_config.get("group_execution") else self._project_driver(binding)
             handle = await start(driver, binding, conversation, surface, session_options=session_options)
             # A new driver starts its counter at one; use a unique owner handle.
             native_handle = handle
@@ -930,6 +972,8 @@ class HermesDriver:
     ) -> None:
         """Session Host 换了 Conversation（改了模型快照等）→ 换我们手上这份。"""
         if runtime.runtime_id in self._isolated_runtimes:
+            driver, handle = self._isolated_runtimes[runtime.runtime_id]
+            driver.adopt_conversation(handle, conversation)
             return
         state = self._runtimes.get(runtime.runtime_id)
         if state is not None and state.conversation.id == conversation.id:
@@ -1719,6 +1763,10 @@ class HermesDriver:
         profile = binding.native_scope_ref or session_mapper.DEFAULT_SCOPE
         canonical = self.canonical_map_for(binding)
         command: list[str] = [self.hermes_bin, "-p", profile, "chat"]
+        scoped = project_scope.enabled(binding)
+        if scoped:
+            project_scope.prepare(self.hermes_root, self.gateway_config_for(binding).hermes_home, binding)
+            command = [self.hermes_bin, "chat"]
         resume = False
         if conversation.native_session_id:
             # 规格 §4.4 规则 4：一律用 canonical head，不用分段 id。
@@ -1727,7 +1775,8 @@ class HermesDriver:
         return CliLaunchSpec(
             command=tuple(command),
             terminal_integration="hermes",
-            cwd=None,
+            cwd=binding.runtime_config.get("workspace_root"),
+            config_directory=("HERMES_HOME", str(self.projection_scope(binding))) if scoped else None,
             # AD-10：只能列变量名，不能给值。HERMES_HOME 由 ``-p`` / wrapper 决定，
             # 绝不写成 ("env", "HERMES_HOME=…", …)（规格 §2.9 的「不允许的形态」）。
             env_passthrough=("PATH", "HOME"),
@@ -1777,6 +1826,30 @@ class HermesDriver:
         """
         self._assert_binding(binding)
         self._bindings[binding.id] = binding
+        if binding.id in self._project_drivers:
+            self._project_drivers[binding.id].register_binding(binding)
+
+    def prepare_project_binding(self, binding: AgentBinding) -> AgentBinding:
+        from drivers.hermes.isolated_runtime import available
+        if available(self.hermes_bin):
+            return binding.evolve(runtime_config={**binding.runtime_config, project_scope.SCOPE_KEY: "isolated"})
+        return binding
+
+    def projection_scope(self, binding: AgentBinding) -> Path:
+        if project_scope.enabled(binding):
+            return project_scope.home_for(self.hermes_root, binding)
+        return self.gateway_config_for(binding).hermes_home
+
+    def requires_project_projection(self, binding: AgentBinding) -> bool:
+        return project_scope.enabled(binding)
+
+    def _project_driver(self, binding: AgentBinding):
+        from drivers.hermes.isolated_runtime import create_driver
+        driver = self._project_drivers.get(binding.id)
+        if driver is None:
+            driver = self._project_drivers[binding.id] = create_driver(self, binding)
+        driver.register_binding(binding)
+        return driver
 
 
 #: 批次十八第 2 件：``POST /v1/runs/{id}/stop`` 响应体里算「这一轮已经结束」的

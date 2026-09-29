@@ -30,7 +30,7 @@ interface ImpactResp {
   summary: { descendants_count: number; config_affected: number; external_dirs_count: number; symlink_consumer_count: number };
 }
 interface BackupItem { kind: string; file: string; summary: string; when: string; ago: string; restore_target: string; }
-interface SubtasksResp { name: string; tasks: { id: string; title: string; status: string; priority?: number }[]; total: number; }
+interface SubtasksResp { name: string; tasks: { id: string; title: string; status: string; priority?: number }[]; total: number; supported?: boolean; }
 
 const ROLE_LABEL: Record<string, string> = { none: "独立", source: "技能源", shared: "共享成员" };
 const kb = (n: number) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`);
@@ -495,8 +495,9 @@ export function SubtasksSection({ name, refreshKey = 0 }: { name: string; refres
   const [creating, setCreating] = useState(false);
   const load = () => apiGet<SubtasksResp>(`/api/profile/${encodeURIComponent(name)}/subtasks`).then((r) => { setErr(null); setD(r); }).catch((e) => setErr(String(e?.message ?? e)));
   useEffect(() => { setD(null); setErr(null); load(); }, [name, refreshKey]);
+  if (d?.supported === false) return null;
   return (
-    <Section title="子任务 · Subtasks" meta={d ? `${d.total}` : undefined}>
+    <Section title="Hermes 任务" meta={d ? `${d.total}` : undefined}>
       {err ? <ErrLine e={err} /> : d === null ? <Loading /> : (
         <div className="flex flex-col gap-1.5">
           {d.tasks.map((t) => (

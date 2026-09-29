@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { apiGet, apiPost } from "../lib/api";
+import { apiPost } from "../lib/api";
+import { fetchProjects } from "../lib/sessionApi";
 import { useLocale } from "../i18n";
-import { Button, cream, dname, inputStyle, Modal, ModalSub, ModalTitle, toast } from "./ui";
+import { Button, cream, dname, inputStyle, Modal, ModalTitle, toast } from "./ui";
 
 const slugify = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
 
@@ -19,11 +20,11 @@ export function NewAgentModal({ onClose, onCreated, initialParent = null }: { on
   const idEdited = useRef(false);
 
   useEffect(() => {
-    apiGet<{ profiles: { name: string; label?: string; is_draft?: boolean }[] }>("/api/profiles")
+    fetchProjects()
       .then((d) => {
         setParentsErr(null);
-        setParents(d.profiles.filter((p) => !p.is_draft)
-          .map((p) => ({ name: p.name, label: p.label }))
+        setParents(d.projects.filter((p) => p.status === "active")
+          .map((p) => ({ name: p.slug, label: p.displayName }))
           .sort((a, b) => (a.name === "default" ? -1 : b.name === "default" ? 1 : a.name.localeCompare(b.name))));
       })
       .catch((e) => setParentsErr(String(e?.message ?? e)));
@@ -52,7 +53,6 @@ export function NewAgentModal({ onClose, onCreated, initialParent = null }: { on
   return (
     <Modal onClose={onClose} width={520}>
       <ModalTitle>{t("newAgent.title")}</ModalTitle>
-      <ModalSub>{t("newAgent.sub")}</ModalSub>
       <div className="mb-1 text-[0.7rem]" style={{ color: cream(55) }}>{t("newAgent.field.display")}</div>
       <input value={display} onChange={(e) => onDisplay(e.target.value)} autoFocus placeholder={t("newAgent.placeholder.display")} style={inputStyle()} />
       <div className="mb-1 mt-3 text-[0.7rem]" style={{ color: cream(55) }}>{t("newAgent.field.id")}</div>

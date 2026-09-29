@@ -700,7 +700,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
                 <h3>{t("graph.section.identity")}</h3>
                 <div className="ag-prow"><span>{t("graph.row.type")}</span><span>{node.main_twin ? t("graph.value.twinShared") : sel === "default" ? t("graph.value.apexRoot") : roleFull(node.role)}</span></div>
                 <div className="ag-prow"><span>{t("graph.row.parent")}</span><span>{node.parent ? displayName(node.parent) : t("graph.value.topLevel")}</span></div>
-                <div className="ag-prow"><span>{t("graph.row.model")}</span><span>{node.model || t("common.dash")}</span></div>
               </div>
               <div className="ag-panel-section">
                 <h3>{t("graph.section.capabilities")}</h3>
@@ -709,7 +708,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
                   <div><strong>{(node.symlinks || []).length}</strong><span>{t("graph.stat.links")}</span></div>
                   <div><strong>{domainKids(sel).length}</strong><span>{t("graph.stat.children")}</span></div>
                 </div>
-                <div className="ag-prow"><span>{t("graph.row.gateway")}</span><span>{node.gateway || t("common.dash")}</span></div>
               </div>
               <div className="ag-panel-section">
                 <h3>{t("graph.section.inheritance")}</h3>

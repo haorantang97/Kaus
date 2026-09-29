@@ -42,6 +42,7 @@ export interface OrgNode {
   main_twin: boolean;
   twin_mode?: string;        // 分身的模式语义标（architect 模式·高权限 / steward 模式·低权限）
   is_draft: boolean;
+  native_engine?: string | null;
   children: string[];        // 全部下级（含分身，供遍历用）
   twins?: string[];          // 其中的分身 = 主 agent 的"模式"，渲染时挂在本体上、不当分叉子节点
 }

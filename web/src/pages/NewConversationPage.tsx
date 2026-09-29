@@ -6,7 +6,7 @@ import { cream } from "../components/ui";
 import { BarMenu, ComposerBar, type BarMenuOption } from "../components/ComposerBar";
 import { AttentionBlock } from "../components/AttentionBlock";
 import { backendDisplay, engineBrand, engineFamily } from "../lib/backend-display";
-import { preferredEngineConnections } from "../lib/enginePresets";
+import { engineSelectionChoices } from "../lib/engineSelection";
 import type { SidebarGroup } from "../lib/conversationIndex";
 import {
   createConversation,
@@ -282,18 +282,10 @@ export function NewConversationPage({
 
   const engineChoices: BarMenuOption[] = useMemo(() => {
     if (bindings === null) return [];
-    // Profiles belong to the project menu. Each product gets one engine choice.
-    // An explicitly disabled association stays disabled.
-    const linked = new Set(bindings.map((item) => item.backendId));
-    return [
-      ...[...engineGroups].map(([product, { choice }]) => ({
-        value: choice.id, icon: <EngineIcon engine={product} />, label: engineLabel(choice.backendId, connectedBackends.find((item) => item.id === choice.backendId)),
-      })),
-      ...preferredEngineConnections(connectedBackends.filter((item) => !linked.has(item.id) && !engineGroups.has(item.productId ?? engineFamily(item.id)))).map((item) => ({
-        value: item.id, icon: <EngineIcon engine={item.productId ?? item.id} />, label: engineLabel(item.id, item),
-      })),
-    ];
-  }, [bindings, connectedBackends, engineGroups]);
+    return engineSelectionChoices(bindings, connectedBackends, bindingId, [...engineGroups.values()].map(g => g.choice.id))
+      .map(item => ({ value: item.value, icon: <EngineIcon engine={item.productId} />,
+        label: engineLabel(item.backendId, connectedBackends.find(connection => connection.id === item.backendId)) }));
+  }, [bindings, connectedBackends, engineGroups, bindingId]);
   const selectedBackendId = binding?.backendId ?? connectedBackends.find((item) => item.id === bindingId)?.id;
   const selectedEngine = connectedBackends.find(item => item.id === selectedBackendId);
   const selectedProduct = selectedEngine?.productId ?? engineFamily(selectedBackendId ?? "");

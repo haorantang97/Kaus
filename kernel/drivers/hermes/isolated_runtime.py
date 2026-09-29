@@ -16,9 +16,13 @@ def available(command):
 
 
 def create_driver(owner, binding):
+    from drivers.hermes import project_scope
     preset = get_preset("hermes-acp")
+    home = owner.gateway_config_for(binding).hermes_home
+    if project_scope.enabled(binding):
+        home = project_scope.prepare(owner.hermes_root, home, binding)
     spec = AcpAgentSpec(command=(owner.hermes_bin, "acp"), env={
-        "HERMES_HOME": str(owner.gateway_config_for(binding).hermes_home),
+        "HERMES_HOME": str(home),
     })
     driver = AcpDriver(spec, backend_key=owner.backend_id, preset=preset)
     driver.register_binding(binding)

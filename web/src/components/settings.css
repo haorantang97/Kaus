@@ -25,4 +25,10 @@
 .kaus-archive-row button { display:grid; place-items:center; width:32px; height:32px; border:0; border-radius:6px; color:inherit; background:transparent; }
 .kaus-archive-row button:hover { background:color-mix(in srgb,var(--midground-base) 7%,transparent); }
 .kaus-archive-row button:disabled { opacity:.4; }
+.kaus-agent-connection { display:flex; align-items:center; gap:12px; padding:15px 0; border-bottom:1px solid color-mix(in srgb,var(--midground-base) 9%,transparent); }
+.kaus-agent-connection>div { flex:1; min-width:0; }
+.kaus-agent-connection strong { display:flex; align-items:center; gap:9px; font-size:13px; font-weight:500; }
+.kaus-agent-connection .kaus-engine-icon { flex-shrink:0; }
+.kaus-agent-connection small { display:block; font-size:11px; color:color-mix(in srgb,var(--midground-base) 65%,transparent); }
+.kaus-agent-connection>div>small { margin:5px 0 0 29px; }
 @media(max-width:720px) { .kaus-settings { grid-template-columns:1fr; gap:22px; } .kaus-settings-nav { flex-direction:row; flex-wrap:wrap; position:static; } .kaus-settings-nav button { padding:7px 10px; } }

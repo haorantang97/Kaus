@@ -161,3 +161,35 @@ async def test_a_driver_without_the_hook_is_simply_skipped() -> None:
     assert called is False
     assert world.host.session_projection(conversation.id) is None
     await world.host.stop_runtime(conversation.id)
+
+
+async def test_required_project_config_failure_releases_lease_and_does_not_start(monkeypatch):
+    import pytest
+    world = make_world()
+    driver, conversation = await world.add_backend()
+    monkeypatch.setattr(driver, "requires_project_projection", lambda binding: True, raising=False)
+
+    async def broken(binding):
+        raise RuntimeError("project configuration unavailable")
+
+    _install(world, broken)
+    with pytest.raises(RuntimeError, match="project configuration unavailable"):
+        await world.host.start_runtime(conversation)
+    assert not world.host.is_active(conversation.id)
+    assert await world.host.leases.describe(conversation.id) is None
+    assert driver.received_session_metadata == {}
+
+
+async def test_external_creation_applies_required_project_config_first(monkeypatch):
+    world = make_world()
+    driver, conversation = await world.add_backend()
+    monkeypatch.setattr(driver, "requires_project_projection", lambda binding: True, raising=False)
+
+    async def projector(binding):
+        return _effective(binding.project_id, ("files", {"command": "node"}))
+
+    _install(world, projector)
+    binding = await world.host._bindings.get(conversation.agent_binding_id)
+    await world.host.prepare_external_session(conversation, binding, driver)
+    assert driver.projected_capabilities[conversation.id] == ("files",)
+    assert not world.host.is_active(conversation.id)

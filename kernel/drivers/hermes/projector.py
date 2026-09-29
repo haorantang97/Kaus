@@ -454,6 +454,17 @@ def _judge(
 
     current = config_yaml.get_path(existing, desired.key_path)
     exists = current is not config_yaml.UNSET
+    owners = [record.project_id for key, record in provenance.records.items()
+              if key == desired.key_path or key.startswith(desired.key_path + ".")
+              or desired.key_path.startswith(key + ".")]
+    if any(owner != project_id for owner in owners):
+        for capability_type, capability_id in desired.rows:
+            plan.unsupported.append(ProjectionEntry(
+                capability_type=capability_type, capability_id=capability_id,
+                level=desired.level, key_path=desired.key_path, target_ref=target_ref,
+                reason="workspace_shared", detail="此配置由其他项目管理，请使用项目独立配置。",
+            ))
+        return
     if exists and not provenance.manages(desired.key_path):
         # AD-59：这个键当前有值、又不是 Kaus 写下的 → 不覆盖别人的东西。
         if not adopt:

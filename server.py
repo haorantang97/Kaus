@@ -60,6 +60,7 @@ HERMES_HOME = Path(
 ).resolve()
 PROFILES_DIR = HERMES_HOME / "profiles"
 HERE = Path(__file__).resolve().parent
+import project_config_store
 STATIC_DIR = HERE / "static"
 INDEX_HTML = STATIC_DIR / "index.html"
 MODEL_OPTIONS_FILE = HERE / "model-options.json"
@@ -256,6 +257,8 @@ def _cached_profile_list_from_cli() -> tuple[list | None, str | None]:
 # --------------------------------------------------------------------------- #
 def _profile_dir(name: str) -> Path:
     """default profile 就是 ~/.hermes 本身；其余在 profiles/<name>。"""
+    if project_config_store.contains(HERE, name):
+        return project_config_store.directory(HERE, name)
     return HERMES_HOME if name == "default" else PROFILES_DIR / name
 
 
@@ -271,7 +274,7 @@ def _all_profile_names() -> list:
                     names.append(entry.name)
         except OSError:
             pass
-    return names
+    return sorted(set(names) | set(project_config_store.names(HERE)))
 
 
 def symlink_providers() -> set:
@@ -848,6 +851,8 @@ def build_profiles():
     if not rows:
         rows = list_profiles_fs()
         source = "filesystem"
+    existing = {r["name"] for r in rows}
+    rows.extend({"name": name, "is_default": False} for name in project_config_store.names(HERE) if name not in existing)
     providers = symlink_providers()  # 一次全盘扫描，下面每个 agent 复用
     skill_count_cache: dict = {}
     model_cache: dict = {}
@@ -1103,6 +1108,7 @@ def build_tree() -> dict:
             "effective_killed": effective_killed(nm, ks, h),
             "main_twin": is_main_twin(nm),
             "is_draft": nm in drafts,
+            "native_engine": None if project_config_store.contains(HERE, nm) else "hermes",
             "children": [],
         }
         if nm in drafts:
@@ -3498,10 +3504,7 @@ class CreateEmptyReq(BaseModel):
 
 @app.post("/api/agent/create-empty")
 def api_create_empty(req: CreateEmptyReq):
-    """新建"空 agent"（草稿态）：跑 hermes profile create --no-skills --no-alias，
-       同时加进 drafts.json。草稿 effective_parent 显式为 None（不挂 default、不参与树继承），
-       用户随后拖到位置时 /api/move 自动清掉草稿标记。
-       display：可选显示名（中文等）→ 写 labels.json；底层 ID 仍是小写 name。"""
+    """创建项目配置草稿，不创建或连接任何 Agent。"""
     name = (req.name or "").strip()
     if not _PROFILE_ID_RE.match(name):
         raise HTTPException(400, "非法 profile 名（连字符小写、长度 1-32）")
@@ -3510,14 +3513,9 @@ def api_create_empty(req: CreateEmptyReq):
     if _profile_dir(name).is_dir():
         raise HTTPException(409, f"profile {name} 已存在")
     desc = (req.description or "").strip()
-    args = ["profile", "create", name, "--no-skills", "--no-alias"]
-    if desc:
-        args.extend(["--description", desc])
-    rc, out, err = run_hermes(args, timeout=30)
-    if rc != 0:
-        raise HTTPException(500, f"hermes profile create 失败: {(err or out or '未知错误').strip()[:300]}")
-    if not _profile_dir(name).is_dir():
-        raise HTTPException(500, "hermes profile create 返回成功但 profile 目录未生成")
+    if not HERMES_HOME.is_dir() and not project_config_store.contains(HERE, "default"):
+        project_config_store.create(HERE, "default")
+    project_config_store.create(HERE, name, description=desc)
     _invalidate_profile_list_cache()
     if req.display:
         _set_label(name, req.display)            # 写显示名映射
@@ -3526,7 +3524,7 @@ def api_create_empty(req: CreateEmptyReq):
     drafts.add(name)
     _save_drafts(drafts)
     return {"ok": True, "name": name, "label": _label(name), "is_draft": True,
-            "description": desc, "hermes_stdout": out.strip()[:300]}
+            "description": desc}
 
 
 # --------------------------------------------------------------------------- #
@@ -3593,8 +3591,7 @@ class ForkReq(BaseModel):
 
 @app.post("/api/agent/{name}/fork")
 def api_fork(name: str, req: ForkReq):
-    """克隆一个 agent：hermes profile create <new> --clone-from <source>。
-       新 agent 落在和源同一个父级下（同级），继承源的全部 config；显示名可另起。"""
+    """复制项目配置到同级项目；不复制登录、原生历史或记忆。"""
     if name != "default" and not _PROFILE_ID_RE.match(name):
         raise HTTPException(400, "非法源 profile 名")
     if not _profile_dir(name).is_dir():
@@ -3604,9 +3601,7 @@ def api_fork(name: str, req: ForkReq):
         raise HTTPException(400, "非法新 profile 名（小写连字符）")
     if new == "default" or _profile_dir(new).is_dir():
         raise HTTPException(409, f"目标名已存在: {new}")
-    rc, out, err = run_hermes(["profile", "create", new, "--clone-from", name, "--no-alias"], timeout=40)
-    if rc != 0 or not _profile_dir(new).is_dir():
-        raise HTTPException(500, f"克隆失败: {(err or out or '未知错误').strip()[:300]}")
+    project_config_store.create(HERE, new, source=_profile_dir(name))
     _invalidate_profile_list_cache()
     # 落在与源同一父级下（同级）
     h = _load_hierarchy()
@@ -3635,9 +3630,12 @@ def api_delete_agent(name: str):
     kids = [k for k, v in h.items() if v == name]
     if kids:
         raise HTTPException(409, f"该 agent 还有下属 {kids}，请先移走或删除它们")
-    rc, out, err = run_hermes(["profile", "delete", name, "-y"], timeout=30)
-    if rc != 0 and _profile_dir(name).is_dir():
-        raise HTTPException(500, f"删除失败: {(err or out or '未知错误').strip()[:300]}")
+    if project_config_store.contains(HERE, name):
+        project_config_store.archive(HERE, name)
+    else:
+        rc, out, err = run_hermes(["profile", "delete", name, "-y"], timeout=30)
+        if rc != 0 and _profile_dir(name).is_dir():
+            raise HTTPException(500, f"删除失败: {(err or out or '未知错误').strip()[:300]}")
     _invalidate_profile_list_cache()
     # 清 dashboard 状态：hierarchy / labels / pinned / drafts / killed / config_block / skill_off / 宪法订阅
     h.pop(name, None)
@@ -4332,6 +4330,8 @@ def _effective_config(name: str, cache: dict = None) -> dict:
 
 def _materialize_config(name: str, cache: dict, dry_run: bool = False):
     """把 name 的有效 config 物化进它的 config.yaml（首次改前备份、幂等）。返回 diff 或 None。"""
+    if project_config_store.contains(HERE, name):
+        return None  # Kaus projects inherit through the domain resolver, not native profile files.
     if name == MAIN_AGENT or is_main_twin(name):
         return None
     cfgp = _profile_dir(name) / "config.yaml"
@@ -6874,6 +6874,8 @@ def api_kanban_create(req: KanbanCreateReq, board: str | None = None):
         raise HTTPException(400, "标题为空")
     if req.assignee != "default" and not _PROFILE_ID_RE.match(req.assignee):
         raise HTTPException(400, "非法 assignee")
+    if project_config_store.contains(HERE, req.assignee):
+        raise HTTPException(409, "任务板仅支持 Hermes 原生实例")
     if not _profile_dir(req.assignee).is_dir():
         raise HTTPException(404, "assignee profile 不存在")
     if effective_killed(req.assignee):  # Kill switch 闸：不给已停用的 agent 派活
@@ -6998,6 +7000,8 @@ def api_kanban_assign(tid: str, req: KanbanAssignReq, board: str | None = None):
     if who != "none":
         if who != "default" and not _PROFILE_ID_RE.match(who):
             raise HTTPException(400, "非法 assignee")
+        if project_config_store.contains(HERE, who):
+            raise HTTPException(409, "任务板仅支持 Hermes 原生实例")
         if not _profile_dir(who).is_dir():
             raise HTTPException(404, "assignee profile 不存在")
         if effective_killed(who):  # Kill switch 闸：不给已停用的 agent 派活
@@ -7553,6 +7557,8 @@ def api_profile_subtasks(name: str):
     """这个 profile 担任 assignee 的 kanban 任务（用于 profile 面板的子任务卡区）。"""
     if name != "default" and not _PROFILE_ID_RE.match(name):
         raise HTTPException(400, "非法 profile 名")
+    if project_config_store.contains(HERE, name):
+        return {"name": name, "tasks": [], "total": 0, "supported": False}
     rc, out, _ = _kanban(["list", "--json"])
     if rc != 0:
         return {"name": name, "tasks": [], "note": "kanban 不可用"}
@@ -8377,6 +8383,11 @@ try:
     )
 except Exception as _session_exc:  # 会话 API 是旁路设施,坏掉不得影响仪表盘启动
     print(f"[session_host_v1] 跳过：{_session_exc!r}")
+
+
+if _SESSION_RUNTIME is not None:
+    import project_config_sync
+    project_config_sync.install(app, sys.modules[__name__], _SESSION_RUNTIME.repositories)
 
 
 # --------------------------------------------------------------------------- #

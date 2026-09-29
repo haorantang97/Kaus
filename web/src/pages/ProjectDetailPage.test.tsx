@@ -186,7 +186,7 @@ beforeEach(() => {
 });
 
 describe("项目详情页", () => {
-  it("项目先展示对话入口与已有会话，再展示引擎和能力配置", async () => {
+  it("项目先展示对话入口与已有会话，再展示项目配置", async () => {
     renderPage();
 
     // ① 头部：显示名 · slug · 状态 chip · 三个动作
@@ -198,12 +198,11 @@ describe("项目详情页", () => {
       expect(within(head).getByRole("button", { name: label })).toBeInTheDocument();
     }
     // 会话优先于配置，首屏能直接继续已有对话。
-    expect(await screen.findByText("已接引擎")).toBeInTheDocument();
-    expect(await screen.findByText("能力")).toBeInTheDocument();
+    expect(screen.queryByText("已接引擎")).toBeNull();
+    expect(await screen.findByText("项目配置")).toBeInTheDocument();
     expect(screen.getByText("会话")).toBeInTheDocument();
     expect(await screen.findByText("第一段")).toBeInTheDocument();
-    expect(screen.getByText("会话").compareDocumentPosition(screen.getByText("已接引擎")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText("已接引擎").compareDocumentPosition(screen.getByText("能力")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("会话").compareDocumentPosition(screen.getByText("项目配置")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(mocked.fetchRecentConversations).toHaveBeenCalledWith(undefined, { project: "project:pronto", limit: 50 });
 
     // ③ 能力表的四列与 AD-45 的「禁止」文案
@@ -214,93 +213,14 @@ describe("项目详情页", () => {
     expect(within(head).getByRole("button", { name: "X" })).toBeInTheDocument();
   });
 
-  /* 批次十一第 2 件：字段改动不再"选中即写"，要按「保存」；失败留输入、
-     「取消」回滚到上次保存成功的服务器值。
-     批次十五第 4 件：下拉从原生 `<select>` 换成 Pill + 菜单（AD-120），
-     语义一字不变——所以这几条只改"怎么点"，断言照旧。 */
-  const pickFromMenu = async (
-    user: ReturnType<typeof userEvent.setup>,
-    label: string,
-    option: string,
-  ) => {
-    await user.click(await screen.findByRole("button", { name: label }));
-    await user.click(await screen.findByRole("option", { name: option }));
-  };
-
-  it("改模型 → 点「保存」才 PATCH /bindings/{id}", async () => {
-    const user = userEvent.setup();
+  it("项目不再重复接入 Agent，也不编辑引擎默认模型", async () => {
     renderPage();
-    await pickFromMenu(user, "模型 · default", "Mock Large");
-    // 只选不保存：一个写请求都不该发出去。
+    await screen.findByRole("heading", { name: "Pronto" });
+    expect(screen.queryByRole("button", { name: "接入引擎…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "应用到引擎" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "模型 · default" })).toBeNull();
+    expect(mocked.fetchProjectBindings).not.toHaveBeenCalled();
     expect(mocked.patchBinding).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() =>
-      expect(mocked.patchBinding).toHaveBeenCalledWith("binding:pronto:mock", { defaultModelId: "mock-large", defaultProviderId: null }),
-    );
-  });
-
-  it("改推理强度 → PATCH 的 runtimeConfig.reasoning_effort（通用键白名单里的那个）", async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await pickFromMenu(user, "推理强度 · default", "high");
-    await user.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() =>
-      expect(mocked.patchBinding).toHaveBeenCalledWith("binding:pronto:mock", {
-        runtimeConfig: { reasoning_effort: "high" },
-      }),
-    );
-  });
-
-  it("「取消」把字段回滚到上次保存成功的服务器值", async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await pickFromMenu(user, "模型 · default", "Mock Large");
-    expect(await screen.findByRole("button", { name: "模型 · default" })).toHaveTextContent("Mock Large");
-    await user.click(screen.getByRole("button", { name: "取消" }));
-    // 服务器上还是 mock-small：取消 = 回到它，而不是"关掉编辑态、值留在界面上"。
-    expect(screen.getByRole("button", { name: "模型 · default" })).toHaveTextContent("Mock Small");
-    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
-    expect(mocked.patchBinding).not.toHaveBeenCalled();
-  });
-
-  it("保存失败：错误显示在字段旁，用户输入不回滚", async () => {
-    mocked.patchBinding.mockRejectedValue(new Error("binding is busy"));
-    const user = userEvent.setup();
-    renderPage();
-    await pickFromMenu(user, "模型 · default", "Mock Large");
-    await user.click(screen.getByRole("button", { name: "保存" }));
-    expect(await screen.findByText("保存失败：binding is busy")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "模型 · default" })).toHaveTextContent("Mock Large");
-  });
-
-  it("设为默认 → make-default；解除 → DELETE（都只对非默认挂载出现）", async () => {
-    mocked.fetchProjectBindings.mockResolvedValue({
-      projectId: "project:pronto",
-      bindings: [binding({ id: "binding:pronto:second", displayName: "second", isDefault: false })],
-      count: 1,
-    });
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(await screen.findByRole("button", { name: "设为默认" }));
-    await waitFor(() => expect(mocked.makeBindingDefault).toHaveBeenCalledWith("binding:pronto:second"));
-
-    await user.click(screen.getByRole("button", { name: "解除" }));
-    // 二次确认走现有 confirmAsync；确认框里的按钮同名，取后出现的那个。
-    const confirmButtons = await screen.findAllByRole("button", { name: "解除" });
-    await user.click(confirmButtons[confirmButtons.length - 1]);
-    await waitFor(() => expect(mocked.deleteBinding).toHaveBeenCalledWith("binding:pronto:second"));
-  });
-
-  it("接入引擎 → 自定义后端也从同一目录关联到项目", async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await user.click(await screen.findByRole("button", { name: "接入引擎…" }));
-    await user.click(await screen.findByTestId("connect-preset-custom:backend:other"));
-    await user.click(screen.getByRole("button", { name: "添加到项目" }));
-    await waitFor(() =>
-      expect(mocked.ensureProjectBinding).toHaveBeenCalledWith("project:pronto", "backend:other"),
-    );
   });
 
   /* 批次十一第 1 件（AD-71）：「能力墙」拆掉 —— unknown / 值为 none 的行不渲染、
@@ -340,7 +260,7 @@ describe("项目详情页", () => {
       expect(screen.queryByText("unverified")).toBeNull();
       expect(screen.queryByText("empty-axis")).toBeNull();
       // 分区右上角的计数 = 1（不是后端给的 counts.entries=3）。
-      const head = screen.getByText("能力").parentElement as HTMLElement;
+      const head = screen.getByText("项目配置").parentElement as HTMLElement;
       expect(within(head).getByText("1")).toBeInTheDocument();
     });
 
@@ -350,8 +270,8 @@ describe("项目详情页", () => {
       );
       renderPage();
       // 引擎面板出来了 = 数据已到位，此刻能力分区应该压根不在。
-      expect(await screen.findByText("已接引擎")).toBeInTheDocument();
-      await waitFor(() => expect(screen.queryByRole("table", { name: "能力" })).toBeNull());
+      expect(screen.queryByText("已接引擎")).toBeNull();
+      await waitFor(() => expect(screen.queryByRole("table", { name: "项目配置" })).toBeNull());
       expect(screen.queryByText("暂无能力配置")).toBeNull();
     });
 
@@ -365,7 +285,7 @@ describe("项目详情页", () => {
         ]),
       );
       renderPage();
-      const table = await screen.findByRole("table", { name: "能力" });
+      const table = await screen.findByRole("table", { name: "项目配置" });
       expect(within(table).getByText("pre_tool: audit.sh")).toBeInTheDocument();
       expect(within(table).getByText("filesystem, git")).toBeInTheDocument();
       expect(table.textContent).not.toContain("value=");
@@ -380,7 +300,7 @@ describe("项目详情页", () => {
         caps(Array.from({ length: 11 }, (_, index) => entry(`cap-${index}`))),
       );
       renderPage();
-      const table = await screen.findByRole("table", { name: "能力" });
+      const table = await screen.findByRole("table", { name: "项目配置" });
       const rows = () => within(table).getAllByRole("row").filter((row) => !row.classList.contains("is-head"));
       expect(rows()).toHaveLength(8);
 
@@ -500,10 +420,7 @@ describe("项目详情页", () => {
     const header = screen.getByRole("banner");
     await user.click(within(header).getByRole("button", { name: "新建对话" }));
     expect(props.onNewConversation).toHaveBeenCalledWith("project:pronto");
-    const engineAction = screen.getAllByRole("button", { name: "新建对话" }).find((button) => !header.contains(button));
-    expect(engineAction).toBeDefined();
-    await user.click(engineAction!);
-    expect(props.onNewConversation).toHaveBeenLastCalledWith("project:pronto", "binding:pronto:mock");
+    expect(screen.getAllByRole("button", { name: "新建对话" })).toHaveLength(1);
   });
 });
 

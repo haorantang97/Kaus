@@ -29,6 +29,8 @@ export function capabilityValue(config: Record<string, unknown> | null | undefin
 export function isVisibleCapabilityEntry(entry: EffectiveCapabilityEntryWire): boolean {
   // 没验证过 = 说不出有没有，AD-71 判静默隐藏（不是"显示成未知"）。
   if (entry.verification === "unknown") return false;
+  // Imported native defaults are conversation/connection settings, not project configuration.
+  if (entry.capabilityType.includes(":") && ["model", "approval_mode", "approvals", "reasoning_effort"].includes(entry.capabilityId)) return false;
   const value = capabilityValue(entry.config);
   // `none` 是枚举轴上的"无"，和"这一项不存在"是一回事。
   if (value === "none") return false;

@@ -90,14 +90,18 @@ def test_group_execution_bindings_are_not_reused(rig):
     assert asyncio.run(repos.bindings.get(group.id)) == group
 
 
-def test_disabled_associations_and_missing_connections_are_not_bypassed(rig):
+def test_explicit_selection_restores_old_association_but_requires_global_connection(rig):
     repos, _, client = rig
     disabled = AgentBinding.create(project="one", backend="local", enabled=False)
     asyncio.run(repos.bindings.save(disabled))
-    assert use(client).json()["error"]["code"] == "binding_disabled"
+    assert asyncio.run(repos.bindings.get(disabled.id)) == disabled
+    selected = use(client)
+    assert selected.status_code == 200
+    assert selected.json()["id"] == disabled.id
+    assert selected.json()["enabled"] is True
     assert use(client, backend="orphan").json()["error"]["code"] == "engine_not_connected"
     assert use(client, "missing").status_code == 404
-    assert asyncio.run(repos.bindings.get(disabled.id)) == disabled
+    assert asyncio.run(repos.bindings.get(disabled.id)) == disabled.evolve(enabled=True)
 
 
 def test_use_endpoint_requires_auth_and_rejects_configuration_fields(rig):

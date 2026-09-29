@@ -587,8 +587,8 @@ class SessionHost:
                 "这条会话正由外部终端持有；先在终端里结束，或强制接管后再在站内发送",
                 lease=conflict,
             )
-        projection = await self._session_projection(conversation, binding, driver)
         try:
+            projection = await self._session_projection(conversation, binding, driver)
             if projection is None:
                 handle = await driver.start_runtime(conversation, "card")
             else:
@@ -664,9 +664,7 @@ class SessionHost:
            「随会话送项目能力」这条路——不是所有引擎都有，有的引擎走的是写进
            自己持久配置的那条路，与本方法无关）。
 
-        **算不出来不拦着会话起来。** 能力表读不到、Driver 翻译时抛了——那都不该
-        让用户发不出消息；如实记一条日志，这一轮不带 MCP 照常开（N §13.1：
-        降级要说出来，但降级本身是允许的）。
+        必需的项目配置失败时中止启动；可选的会话扩展失败时记录诊断。
         """
         self._session_projections.pop(conversation.id, None)
         if self._capability_projector is None:
@@ -678,6 +676,9 @@ class SessionHost:
             effective = await self._capability_projector(binding)
             projection = await hook(conversation, effective)
         except Exception:  # noqa: BLE001 - 投射算不出来不该拦住会话起来
+            required = getattr(driver, "requires_project_projection", None)
+            if required is not None and required(binding):
+                raise
             LOGGER.warning(
                 "会话 %s 的项目能力没能算出来，这一轮不带能力照常开",
                 conversation.id,
@@ -688,6 +689,13 @@ class SessionHost:
             return None
         self._session_projections[conversation.id] = projection
         return projection
+
+    async def prepare_external_session(self, conversation: Conversation, binding: AgentBinding,
+                                       driver: BackendDriver) -> None:
+        """Apply required project configuration before native terminal creation."""
+        required = getattr(driver, "requires_project_projection", None)
+        if required is not None and required(binding):
+            await self._session_projection(conversation, binding, driver)
 
     def session_projection(self, conversation_id: str) -> SessionProjection | None:
         """这条会话最近一次**送进引擎**的项目能力（批次四十三）。

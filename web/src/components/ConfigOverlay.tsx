@@ -9,12 +9,13 @@ import { archiveConversation, fetchArchivedConversations, fetchProjects, type Ar
 import { backendDisplay } from "../lib/backend-display";
 import { CoordinatorSettings } from "./CoordinatorSettings";
 import { TerminalSettings } from "./TerminalSettings";
+import { AgentConnections } from "./AgentConnections";
 import { AsyncState, Overlay } from "./ui";
 import "./settings.css";
 
 interface CfgCat { id: string; label: string; desc: string; items: { k: string; v: string }[] }
 interface CfgOverview { categories: CfgCat[] }
-type Section = "general" | "coordinator" | "native" | "archive";
+type Section = "general" | "agents" | "coordinator" | "native" | "archive";
 
 export function ConfigOverlay({ onClose, refreshKey = 0 }: { onClose: () => void; refreshKey?: number }) {
   const { t, locale } = useLocale();
@@ -59,6 +60,7 @@ export function ConfigOverlay({ onClose, refreshKey = 0 }: { onClose: () => void
   };
   const sections = [
     { id: "general" as const, icon: Settings2, label: zh ? "通用" : "General" },
+    { id: "agents" as const, icon: Bot, label: "Agent" },
     { id: "coordinator" as const, icon: Bot, label: zh ? "组长" : "Coordinator" },
     { id: "native" as const, icon: SlidersHorizontal, label: zh ? "原生配置" : "Native settings" },
     { id: "archive" as const, icon: Archive, label: zh ? "已归档" : "Archived" },
@@ -82,6 +84,7 @@ export function ConfigOverlay({ onClose, refreshKey = 0 }: { onClose: () => void
             </select>
           </div>}
         </>}
+        {section === "agents" && <AgentConnections />}
         {section === "coordinator" && <div className="kaus-settings-section"><h2>{zh ? "默认组长" : "Default coordinator"}</h2><CoordinatorSettings global /></div>}
         {section === "native" && <>
           <div className="kaus-settings-heading"><h2>Hermes</h2><span>{zh ? "只读" : "Read only"}</span></div>

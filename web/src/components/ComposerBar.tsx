@@ -133,6 +133,7 @@ export function BarMenu({
   floating = false,
   iconOnly = false,
   allowReselect = false,
+  disabled = false,
   icon,
   onSelect,
 }: {
@@ -149,6 +150,7 @@ export function BarMenu({
   icon?: ReactNode;
   iconOnly?: boolean;
   allowReselect?: boolean;
+  disabled?: boolean;
   onSelect: (value: string) => void;
 }) {
   const { t } = useLocale();
@@ -248,6 +250,7 @@ export function BarMenu({
         aria-label={label}
         aria-expanded={open}
         aria-haspopup="listbox"
+        disabled={disabled}
         title={title ? `${label} · ${title}` : label}
         onClick={() => setOpen((current) => !current)}
       >
@@ -257,7 +260,7 @@ export function BarMenu({
         {degraded && <span className="kaus-bar-dot" data-testid="bar-degraded" aria-hidden />}
         {!iconOnly && <ChevronDown className="kaus-bar-caret" size={12} aria-hidden />}
       </button>
-      {open && menuLayer(
+      {open && !disabled && menuLayer(
         <span className="kaus-bar-pop" ref={menuRef} style={floating ? floatingStyle : undefined} role="listbox" aria-label={label}>
           {/* 第 5 件：清单长了才给过滤框（短清单加一个输入框只会碍事）。 */}
           {showFilter && (

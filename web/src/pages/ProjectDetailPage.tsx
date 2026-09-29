@@ -3,7 +3,7 @@
  * 分区顺序：
  *   ① 头部      面包屑 · 显示名 · slug · 状态 chip · 新建对话 / 到终端打开 / 设置
  *   ② 会话      `GET /api/conversations?project=`
- *   ③ 已接引擎  <ProjectEngines> → <EnginePanel>，写端点已接上
+ *   ③ 项目配置  指令、插件与继承来源。Agent 接入统一在全局设置管理。
  *   ④ 能力      effective-capabilities 表：类型 / 内容摘要 / 来源 / 操作
  *   ⑤ 其余      原 ProfileDrawer 的面板（宪法 / 技能 / 记忆 / 看板…）**原样复用**，
  *               只是不再是抽屉，收进一个折叠区。
@@ -11,7 +11,7 @@
  * 左侧是**次级导航**（★定稿 B）：原来那棵紧凑树 `Sidebar.tsx` 不再进全局侧栏，
  * 在这里当「上级 / 子项目」导航列用，点一下换 `/projects/:id`。会话页不显示它。
  *
- * 叫法按 IA §1 的表：项目 / 已接引擎 / 挂载 / 会话。本文件不出现引擎名（边界①）。
+ * 项目保留工作目录与配置；会话记录保留原有引擎身份。
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -19,16 +19,14 @@ import { ArrowUpRight, ChevronRight, MessageSquare, MoreHorizontal, Plus, Settin
 
 import { useLocale } from "../i18n";
 import { ConstitutionEditor } from "../components/ConstitutionEditor";
+import { ProjectConfigurationApply } from "../components/ProjectConfigurationApply";
 import {
   BackupsSection,
   ImpactSection,
-  LeversSection,
-  MemorySection,
   PersonaSection,
   SkillsSection,
   SubtasksSection,
 } from "../components/ProfileDrawer";
-import { ProjectEngines } from "../components/ProjectEngines";
 import { Sidebar } from "../components/Sidebar";
 import { Button, Card, Pill, Section, cream, dname, toast } from "../components/ui";
 import { type NetworkResp } from "../lib/api";
@@ -126,7 +124,6 @@ export function ProjectDetailPage({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openingTerminal, setOpeningTerminal] = useState(false);
-  const [token, setToken] = useState(0);
 
   const projectId = useMemo(() => matchProjectId(projects, projectRef), [projects, projectRef]);
   const project = useMemo(() => findProject(projects, projectRef), [projects, projectRef]);
@@ -170,12 +167,7 @@ export function ProjectDetailPage({
     return () => {
       cancelled = true;
     };
-  }, [projectId, refreshKey, token]);
-
-  const reload = useCallback(() => {
-    setToken((value) => value + 1);
-    onChanged();
-  }, [onChanged]);
+  }, [projectId, refreshKey]);
 
   /* 第 2 件：写完能力之后只重取能力表（不动会话列表、也不惊动外壳）。
      取失败**保留**桌面上那一份：一次网络抖动不该把整张表变成"加载中"。 */
@@ -379,15 +371,6 @@ export function ProjectDetailPage({
           )}
         </Card>
 
-        {/* ③ 已接引擎 */}
-        <ProjectEngines
-          projectId={projectId}
-          projectLabel={projectLabel}
-          onNewConversation={(row) => onNewConversation(projectId, row.binding.id)}
-          onChanged={reload}
-          refreshToken={refreshKey}
-        />
-
         {/* ④ 能力 */}
         <CapabilitiesSection
           projectId={projectId}
@@ -410,8 +393,6 @@ export function ProjectDetailPage({
               <Section title={t("project.instructions.title")}>
                 <ConstitutionEditor name={project.slug} onSaved={onChanged} />
               </Section>
-              <MemorySection name={project.slug} refreshKey={refreshKey} />
-              <LeversSection name={project.slug} onSaved={onChanged} refreshKey={refreshKey} />
               <SkillsSection name={project.slug} onChanged={onChanged} refreshKey={refreshKey} />
               <ImpactSection name={project.slug} refreshKey={refreshKey} />
               <BackupsSection name={project.slug} refreshKey={refreshKey} />
@@ -586,7 +567,13 @@ export function CapabilitiesSection({
 
   /* 第 1 件（AD-71）：`unknown` / 值为 `none` 的行不渲染，计数只数渲染出来的。
      规则在 `lib/capabilityRows.ts`（要单测，且页面层不许出现 detail 层字段名）。 */
-  const { entries, blocked, total } = visibleCapabilityRows(capabilities);
+  const available = visibleCapabilityRows(capabilities);
+  const [showNative, setShowNative] = useState(false);
+  const native = (row: { capabilityType: string }) => row.capabilityType.includes(":");
+  const nativeCount = available.entries.filter(native).length + available.blocked.filter(native).length;
+  const entries = available.entries.filter(row => showNative || !native(row)).sort((a, b) => Number(native(a)) - Number(native(b)));
+  const blocked = available.blocked.filter(row => showNative || !native(row));
+  const total = entries.length + blocked.length;
   /* batch40（★L 第 4 条）：默认只摊开前 8 行。这张表是**取证**用的，
      一屏 15 行把下面的东西全推走；想看的人点一下「显示全部 N 项」。 */
   const [showAllCaps, setShowAllCaps] = useState(false);
@@ -595,10 +582,10 @@ export function CapabilitiesSection({
   const shownBlocked = blocked.slice(0, Math.max(0, budget - entries.length));
 
   // 一行都没有 → 整个分区不渲染（不是空态文案）。仍在读的时候要留住加载态。
-  if (capabilities !== null && total === 0) return null;
+  if (capabilities !== null && available.total === 0) return null;
 
   return (
-    <Card title={t("capabilities.title")} icon={Sparkles} right={<Pill tone="muted">{total}</Pill>}>
+    <Card title={t("capabilities.title")} icon={Sparkles} right={<div className="flex items-center gap-2"><Pill tone="muted">{available.total}</Pill>{projectId && <ProjectConfigurationApply projectId={projectId} />}</div>}>
       {capabilities === null ? (
         <div className="py-2 text-xs" style={{ color: cream(45) }}>
           {t("capabilities.loading")}
@@ -705,6 +692,8 @@ export function CapabilitiesSection({
             : t("capabilities.showAll", { count: total })}
         </button>
       )}
+      {nativeCount > 0 && <button type="button" className="mt-2 block text-xs" style={{ color: cream(50) }}
+        aria-expanded={showNative} onClick={() => { setShowNative(v => !v); setShowAllCaps(true); }}>{t("capabilities.native", { count: nativeCount })}</button>}
     </Card>
   );
 }

@@ -1,4 +1,5 @@
 import { EngineIcon } from "./EngineIcon";
+import { ProjectAgentPicker } from "./ProjectAgentPicker";
 /* Group 浮窗（DESIGN ★ 定稿 J，batch23 第 2 件）。
  *
  * 右下角常驻一枚中性 Pill「协作组 · N」；点开是一个固定在右下、宽 420px、最高 60vh
@@ -66,7 +67,6 @@ import {
   useGroupState,
 } from "../lib/groupStore";
 import {
-  fetchProjectBindings,
   fetchRecentConversations,
   fetchProjects,
   fetchModelCatalog,
@@ -356,7 +356,7 @@ function MembersPane({
  * 添加成员：两条路
  * ------------------------------------------------------------------ */
 
-/** 「启动新成员」的小表单：项目 ▾ → 引擎（默认绑定，只读）→ 模型 ▾ → 首句（可选）。 */
+/** A new member chooses a global engine before its conversation starts. */
 function SpawnForm({
   projects,
   defaultProjectId,
@@ -370,32 +370,16 @@ function SpawnForm({
 }) {
   const { t } = useLocale();
   const [projectId, setProjectId] = useState(defaultProjectId ?? projects[0]?.id ?? "");
-  const [bindings, setBindings] = useState<BindingWire[] | null>(null);
+  const [binding, setBinding] = useState<BindingWire | null>(null);
   const [models, setModels] = useState<BarMenuOption[]>([]);
   const [modelId, setModelId] = useState<string | null>(null);
   const [first, setFirst] = useState("");
   const [busy, setBusy] = useState(false);
 
-  /* 引擎**不允许在这里切**（用户已定的口味）：只显示该项目的默认 Binding。
-     项目没有默认 Binding 时这一行整个不渲染，交给后端的 `binding_required` 说话。 */
-  const binding = useMemo(
-    () => bindings?.find((row) => row.isDefault) ?? bindings?.[0] ?? null,
-    [bindings],
-  );
+  useEffect(() => { setBinding(null); setModels([]); setModelId(null); }, [projectId]);
 
   useEffect(() => {
-    if (!projectId) return;
-    const controller = new AbortController();
-    setBindings(null);
-    setModels([]);
-    setModelId(null);
-    fetchProjectBindings(projectId, controller.signal)
-      .then((payload) => setBindings(payload.bindings))
-      .catch(() => setBindings([]));
-    return () => controller.abort();
-  }, [projectId]);
-
-  useEffect(() => {
+    setModels([]); setModelId(null);
     if (!binding) return;
     const controller = new AbortController();
     fetchModelCatalog(binding.backendId, binding.id, controller.signal)
@@ -411,7 +395,7 @@ function SpawnForm({
   }, [binding]);
 
   const submit = async () => {
-    if (!projectId || busy) return;
+    if (!projectId || !binding || busy) return;
     setBusy(true);
     try {
       await onSubmit({
@@ -434,12 +418,7 @@ function SpawnForm({
         options={projects.map((project) => ({ value: project.id, label: project.displayName || project.slug }))}
         onSelect={setProjectId}
       />
-      {/* 引擎只读（会话里不允许切引擎）。没有默认 Binding 就整枚不渲染。 */}
-      {binding && (
-        <span className="kaus-bar-pill" data-testid="group-spawn-engine">
-          <EngineIcon engine={binding.backendId} />{backendDisplay(binding.backendId).displayName}
-        </span>
-      )}
+      <ProjectAgentPicker projectId={projectId} value={binding?.id} onChange={setBinding} disabled={busy} />
       {models.length > 0 && (
         <BarMenu
           label={t("group.spawn.model")}
@@ -459,7 +438,7 @@ function SpawnForm({
       />
       <span className="kaus-group-form-actions">
         <Button onClick={onCancel}>{t("ui.cancel")}</Button>
-        <Button variant="primary" disabled={busy || !projectId} onClick={() => void submit()}>
+        <Button variant="primary" disabled={busy || !projectId || !binding} onClick={() => void submit()}>
           {t("group.spawn.submit")}
         </Button>
       </span>

@@ -435,3 +435,18 @@ def test_projection_summary_carries_key_paths_and_counts_only():
     flat = json.dumps(summary, ensure_ascii=False)
     for forbidden in ("旧", "新", "before", "after"):
         assert forbidden not in flat
+
+
+def test_shared_native_scope_refuses_first_write_from_different_projects(client, harness, monkeypatch):
+    monkeypatch.setattr(harness.driver, "projection_scope", lambda binding: harness.home, raising=False)
+
+    async def add_other():
+        project = await harness.repositories.projects.save(Project.create(slug="other"))
+        await harness.repositories.bindings.save(AgentBinding.create(project=project, backend="mock"))
+
+    asyncio.run(add_other())
+    assert _materialize(client, harness).status_code == 200
+    result = _materialize(client, harness, confirm="1", adopt="1")
+    assert result.status_code == 409
+    assert result.json()["error"]["code"] == "shared_projection_scope"
+    assert not harness.config_path().exists()

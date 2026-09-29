@@ -201,7 +201,7 @@ describe("全局引擎在项目中选用", () => {
     expect(barButton("模型")).toHaveTextContent("Root model");
   });
 
-  it("does not bypass a disabled association or duplicate existing named profiles", async () => {
+  it("keeps global Agent selection available without automatically restoring disabled associations", async () => {
     mocked.fetchProjectBindings.mockResolvedValue({ bindings: [binding, { ...linked, enabled: false }] });
     mocked.fetchConnectedBackends.mockResolvedValue({ backends: [connected, { id: binding.backendId }] });
     mocked.fetchEffectiveSettings.mockResolvedValue(toolbarBundle(binding, "Current model"));
@@ -209,8 +209,8 @@ describe("全局引擎在项目中选用", () => {
     render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
     await waitFor(() => expect(barButton("模型")).toHaveTextContent("Current model"));
     await user.click(barButton("引擎"));
-    expect(screen.queryByRole("option", { name: "Codex" })).toBeNull();
-    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.getByRole("option", { name: "Codex" })).toBeInTheDocument();
+    expect(screen.getAllByRole("option")).toHaveLength(2);
     expect(mocked.ensureProjectBinding).not.toHaveBeenCalled();
   });
 });

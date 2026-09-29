@@ -13,7 +13,7 @@
  *     键默认不覆盖（`factory_protected`）；勾了「接管」才带 `adopt=1` 重新预演。
  *  4. **这个弹窗自己请求数据。** 它是一段有状态的交互流（预演 → 接管 → 写入 →
  *     成功态），不是展示组件；`EnginePanel` 那条"面板不请求数据"的边界因此没被破——
- *     卡片只发出回调，弹窗由容器 `ProjectEngines` 渲染。
+ *     项目配置入口选择全局 Agent 后打开预览，不设置项目默认引擎。
  */
 
 import { useCallback, useEffect, useState } from "react";

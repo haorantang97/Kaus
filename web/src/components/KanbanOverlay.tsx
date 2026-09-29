@@ -112,7 +112,7 @@ export function KanbanOverlay({ onClose, onGoProfile, refreshKey = 0 }: { onClos
   useEffect(() => { loadTasks(); }, [archived, statusF, assigneeF, curBoard]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const nodes = useMemo(() => net?.nodes ?? {}, [net]);
-  const allNames = useMemo(() => Object.keys(nodes), [nodes]);
+  const allNames = useMemo(() => Object.keys(nodes).filter(n => nodes[n].native_engine !== null), [nodes]);
   useEffect(() => { if (!assignee && allNames[0]) setAssignee(allNames[0]); }, [allNames, assignee]);
 
   const depthOf = (n: string) => { let d = 0, c = nodes[n]; const seen = new Set<string>(); while (c?.parent && !seen.has(c.parent)) { seen.add(c.parent); d++; c = nodes[c.parent]; } return d; };
@@ -312,7 +312,7 @@ export function KanbanOverlay({ onClose, onGoProfile, refreshKey = 0 }: { onClos
     <div className="flex flex-wrap items-center gap-2">
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="任务标题…" style={{ ...inputStyle(), width: 220 }} />
       <select value={assignee} onChange={(e) => setAssignee(e.target.value)} style={{ ...inputStyle(), width: 160, padding: "6px 8px" }}>
-        {(focus ? [...focusSet] : allNames).map((n) => <option key={n} value={n}>{dname(nodes[n])}</option>)}
+        {allNames.filter(n => !focus || focusSet.has(n)).map((n) => <option key={n} value={n}>{dname(nodes[n])}</option>)}
       </select>
       <input value={pri} onChange={(e) => setPri(e.target.value)} type="number" placeholder="优先级" style={{ ...inputStyle(), width: 88 }} />
       <input value={tenant} onChange={(e) => setTenant(e.target.value)} placeholder="tenant/cluster" style={{ ...inputStyle(), width: 130 }} />
@@ -331,7 +331,7 @@ export function KanbanOverlay({ onClose, onGoProfile, refreshKey = 0 }: { onClos
   );
 
   return (
-    <Overlay title="任务板 · Kanban" onClose={onClose} onReload={() => load()}>
+    <Overlay title="Hermes 任务板" onClose={onClose} onReload={() => load()}>
       <AsyncState data={data} err={err}>{(data) => {
         const note = data.note;
         const curName = boards.find((b) => b.slug === curBoard)?.name || curBoard;
@@ -346,8 +346,7 @@ export function KanbanOverlay({ onClose, onGoProfile, refreshKey = 0 }: { onClos
             <div className="flex flex-col items-start gap-3 py-8" data-testid="kanban-empty">
               <h3 className="text-sm font-semibold" style={{ color: cream(80) }}>还没有任务</h3>
               <p className="max-w-[46ch] text-xs leading-relaxed" style={{ color: cream(50) }}>
-                任务板把要做的事排成队，交给对应的 AI 去执行。新建的任务先进「待分类」，
-                你放行之后才会进调度流。
+                由 Hermes 执行。新任务默认进入待分类。
               </p>
               {showCreate ? createRow : <Button variant="primary" onClick={() => setShowCreate(true)}>新建任务</Button>}
             </div>

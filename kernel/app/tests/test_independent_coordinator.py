@@ -329,3 +329,24 @@ async def test_empty_finish_does_not_claim_success(tmp_path):
         assert len(calls) == 1
     finally:
         await cleanup(b, api)
+
+
+async def test_coordinator_lists_global_engines_without_project_binding(tmp_path):
+    from drivers.acp.driver import AcpDriver
+    from drivers.acp.testing.fake_acp_agent import fake_agent_spec
+    built = GroupHarness(tmp_path, coordinator_enabled=True)
+    await built.seed()
+    api = _api(built)
+    global_driver = AcpDriver(fake_agent_spec(), backend_key="global-agent")
+    built.registry.register(global_driver)
+    try:
+        response = await api.get('/api/group-settings/coordinator/options')
+        assert response.status_code == 200
+        payload = response.json()
+        assert 'backend:global-agent' in payload['engineIds']
+        assert any(p['id'] == built.binding.project_id for p in payload['projects'])
+        assert not any(b['backendId'] == 'backend:global-agent' for b in payload['bindings'])
+        assert await built.repositories.bindings.list_for_backend(built.binding.project_id, global_driver.backend_id) == ()
+    finally:
+        await api.aclose()
+        await built.aclose()

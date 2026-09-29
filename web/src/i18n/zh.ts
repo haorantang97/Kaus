@@ -151,7 +151,8 @@ export const zh = {
   "project.instructions.meta": "沿组织树分层继承 · 注入 SOUL 顶部",
 
   /* ---- 能力表（项目详情页 ③ 区） ---- */
-  "capabilities.title": "能力",
+  "capabilities.title": "项目配置",
+  "capabilities.native": "引擎专属配置（{count}）",
   "capabilities.loading": "正在读取能力…",
   "capabilities.empty": "暂无能力配置",
   "capabilities.col.type": "类型",
@@ -958,6 +959,7 @@ export const zh = {
   "engines.connect.search": "搜索 Agent",
   "engines.connect.refresh": "刷新",
   "engines.connect.available": "可用",
+  "engines.connect.unavailable": "不可用",
   "engines.connect.registered": "已接入",
   "engines.connect.detected": "已安装",
   "engines.connect.notDetected": "未检测到",

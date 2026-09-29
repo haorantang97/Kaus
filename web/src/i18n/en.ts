@@ -144,7 +144,8 @@ export const en: Record<keyof typeof zh, string> = {
   "project.instructions.title": "Instructions & rules",
   "project.instructions.meta": "Inherited down the project tree · injected at the top of SOUL",
 
-  "capabilities.title": "Capabilities",
+  "capabilities.title": "Project configuration",
+  "capabilities.native": "Engine-specific configuration ({count})",
   "capabilities.loading": "Loading capabilities…",
   "capabilities.empty": "No capabilities configured",
   "capabilities.col.type": "Type",
@@ -886,6 +887,7 @@ export const en: Record<keyof typeof zh, string> = {
   "engines.connect.search": "Search agents",
   "engines.connect.refresh": "Refresh",
   "engines.connect.available": "Available",
+  "engines.connect.unavailable": "Unavailable",
   "engines.connect.registered": "Connected",
   "engines.connect.detected": "Installed",
   "engines.connect.notDetected": "Not detected",

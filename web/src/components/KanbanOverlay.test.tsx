@@ -48,6 +48,16 @@ beforeEach(() => {
 });
 
 describe("任务板空态", () => {
+  it("不会将独立项目列为 Hermes 执行者", async () => {
+    stubApi([]);
+    mocked.fetchNetwork.mockResolvedValue({ ...net, nodes: { ...net.nodes,
+      design: { ...net.nodes.default, name: "design", label: "设计项目", native_engine: null } } });
+    const user = userEvent.setup();
+    render(<KanbanOverlay onClose={() => {}} onGoProfile={() => {}} />);
+    await user.click(await screen.findByRole("button", { name: "新建任务" }));
+    expect(screen.queryByRole("option", { name: "设计项目" })).toBeNull();
+    expect(screen.getByRole("option", { name: "X" })).toBeInTheDocument();
+  });
   it("没有任务时只剩标题、一句说明和一枚「新建任务」", async () => {
     stubApi([]);
     render(<KanbanOverlay onClose={() => {}} onGoProfile={() => {}} />);

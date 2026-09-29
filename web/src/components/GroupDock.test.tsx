@@ -48,6 +48,8 @@ const session = vi.hoisted(() => ({
   fetchProjects: vi.fn(),
   fetchRecentConversations: vi.fn(),
   fetchProjectBindings: vi.fn(),
+  fetchConnectedBackends: vi.fn(),
+  ensureProjectBinding: vi.fn(),
   fetchModelCatalog: vi.fn(),
   fetchBackendUiCapabilities: vi.fn(),
 }));
@@ -177,6 +179,7 @@ beforeEach(() => {
     ],
     count: 1,
   });
+  session.fetchConnectedBackends.mockResolvedValue({ backends: [], count: 0 });
   session.fetchModelCatalog.mockResolvedValue({
     bindingId: "binding:default:mock",
     mode: "open",
@@ -344,7 +347,7 @@ describe("Group 浮窗：添加成员两条路", () => {
     );
   });
 
-  it("启动新成员：项目 / 引擎（只读）/ 模型 / 首句 → POST /spawn", async () => {
+  it("启动新成员：项目 / 全局 Agent/ 模型 / 首句 → POST /spawn", async () => {
     const user = userEvent.setup();
     seed([g], { "collaboration:1": [] });
     api.spawnGroupMember.mockResolvedValue({
@@ -359,7 +362,7 @@ describe("Group 浮窗：添加成员两条路", () => {
     await user.click(screen.getByRole("menuitem", { name: "启动新成员" }));
 
     // 引擎是**只读**的一枚（会话里不允许切引擎）。
-    expect(await screen.findByTestId("group-spawn-engine")).toHaveTextContent("Mock");
+    await waitFor(() => expect(screen.getByRole("button", { name: "引擎" })).toHaveTextContent("Mock"));
     await user.type(screen.getByTestId("group-spawn-first"), "看一下这个接口");
     await user.click(screen.getByRole("button", { name: "启动" }));
 

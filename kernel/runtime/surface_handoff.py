@@ -186,13 +186,14 @@ class SurfaceCoordinator:
         conversation = await self._release_card(conversation)
         binding, driver = await self._driver_for(conversation)
 
+        await self._precheck_external_lease(conversation, force=force)
+        await self._host.prepare_external_session(conversation, binding, driver)
+
         # v1.0 §8.7：先有确定的 native_session_id，再去开窗。
         conversation = await self._ensure_native_session(conversation, binding, driver)
 
         # 冲突先看一眼再开窗：拿不到写权还把终端开出来，用户就得手动去关一个
         # 本来不该存在的窗口。真正的授予以下面的 try_acquire 为准。
-        await self._precheck_external_lease(conversation, force=force)
-
         try:
             spec = await driver.build_external_cli_launch(conversation)
         except UnsupportedCapabilityError as exc:

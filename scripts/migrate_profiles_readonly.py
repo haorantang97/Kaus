@@ -233,6 +233,7 @@ class ProfileScan:
     scanned: bool
     names: list[str] = field(default_factory=list)
     twins: dict[str, str] = field(default_factory=dict)  # twin name -> twin_mode ("" 表示提取不到)
+    standalone: set[str] = field(default_factory=set)
 
     @classmethod
     def empty(cls) -> "ProfileScan":
@@ -376,6 +377,12 @@ def load_sources(paths: dict[str, Path], layout: ProfileLayout | None, sink: War
         setattr(state, attr, _as_str_set(raw, key, sink))
 
     state.profiles = scan_profiles(layout, sink)
+    project_configs = paths["hierarchy"].parent / "state" / "project-configs"
+    if project_configs.is_dir():
+        state.profiles.standalone = {p.name for p in project_configs.iterdir()
+            if PROFILE_ID_RE.fullmatch(p.name) and (p / ".kaus-project.json").is_file()}
+        state.profiles.names = sorted(set(state.profiles.names) | state.profiles.standalone)
+        state.profiles.scanned = True
     return state
 
 
@@ -610,7 +617,7 @@ def build_plan(state: SourceState, sink: WarningSink) -> dict[str, Any]:
 
     # --- Bindings -----------------------------------------------------------
     bindings: list[dict[str, Any]] = []
-    for name in sorted(project_nodes):
+    for name in sorted(project_nodes - state.profiles.standalone):
         bindings.append(
             {
                 "id": binding_id(name),
@@ -751,7 +758,7 @@ def check_invariants(
     bad += [
         p["slug"]
         for p in projects
-        if not defaults.get(p["id"]) or defaults[p["id"]][0]["native_profile_id"] != p["slug"]
+        if p["slug"] not in state.profiles.standalone and (not defaults.get(p["id"]) or defaults[p["id"]][0]["native_profile_id"] != p["slug"])
     ]
     record(
         "R-05/slug-invariant",
@@ -770,7 +777,7 @@ def check_invariants(
 
     # §16.1：每个 Project 只生成一个（默认）Hermes Binding
     multi = sorted(pid for pid, rows in defaults.items() if len(rows) != 1)
-    missing = sorted(p["id"] for p in projects if p["id"] not in defaults)
+    missing = sorted(p["id"] for p in projects if p["slug"] not in state.profiles.standalone and p["id"] not in defaults)
     record(
         "16.1/one-default-binding-per-project",
         not multi and not missing,
@@ -946,8 +953,8 @@ def render_report(plan: dict[str, Any], state: SourceState) -> str:
                     f"`{old_parent}`",
                     flags,
                     "→",
-                    "**Project** + 默认 Hermes Binding",
-                    f"`{p['id']}`<br>`{binding_id(slug)}`",
+                    "**Project**" if slug in state.profiles.standalone else "**Project** + 默认 Hermes Binding",
+                    f"`{p['id']}`" if slug in state.profiles.standalone else f"`{p['id']}`<br>`{binding_id(slug)}`",
                     f"`{slug}`",
                     p["display_name"],
                     f"`{new_parent}`",

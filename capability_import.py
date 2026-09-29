@@ -528,6 +528,10 @@ def build_capability_plan(
         if home is not None:
             directory = home if slug == MAIN_AGENT else (profiles / slug if profiles else None)
 
+        import project_config_store
+        if project_config_store.contains(Path(state_root), slug):
+            directory = project_config_store.directory(Path(state_root), slug)
+
         local_keys: set[str] = set()
         if directory is not None and directory.is_dir():
             own = own_config(directory)
@@ -744,7 +748,7 @@ def bound_server(
     state = Path(state_root).resolve()
     profiles = Path(profiles_dir).resolve() if profiles_dir is not None else home / "profiles"
 
-    desired: dict[str, Path] = {}
+    desired: dict[str, Path] = {"HERE": state}
     for attribute, base, relative in _SERVER_PATH_GLOBALS:
         if attribute == "PROFILES_DIR":
             desired[attribute] = profiles

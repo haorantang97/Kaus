@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CoordinatorSettings } from "./CoordinatorSettings";
 import { GroupRunContent, publicGroupText } from "./GroupRunContent";
 import type { GroupWire } from "../lib/groupsApi";
-const api = vi.hoisted(() => ({ sessionRequest: vi.fn(), fetchProjects: vi.fn(), fetchProjectBindings: vi.fn(), fetchModelCatalog: vi.fn(), fetchEffectiveSettings: vi.fn(), fetchEventsSnapshot: vi.fn(), resolveInteraction: vi.fn() }));
+const api = vi.hoisted(() => ({ sessionRequest: vi.fn(), fetchProjects: vi.fn(), fetchProjectBindings: vi.fn(), fetchConnectedBackends: vi.fn(), ensureProjectBinding: vi.fn(), fetchModelCatalog: vi.fn(), fetchEffectiveSettings: vi.fn(), fetchEventsSnapshot: vi.fn(), resolveInteraction: vi.fn() }));
 vi.mock("../lib/sessionApi", async original => ({ ...await original<object>(), ...api }));
 vi.mock("../lib/groupStore", () => ({ refreshGroups: vi.fn().mockResolvedValue(undefined) }));
 const group = { id: "g1", title: "讨论", status: "active", settings: {}, coordinatorEnabled: true } as GroupWire;
 beforeEach(() => {
   vi.clearAllMocks();
   api.sessionRequest.mockImplementation((path: string) => Promise.resolve(path.endsWith("/options") ? { bindings: [{ id: "b1", projectId: "p1", projectName: "项目", displayName: "引擎", backendId: "mock", enabled: true }] } : { config: { bindingId: "b1", modelId: "same", providerId: "vendor-a", revision: 2 } }));
+  api.fetchConnectedBackends.mockResolvedValue({ backends: [], count: 0 });
   api.fetchProjects.mockResolvedValue({ projects: [{ id: "p1", displayName: "项目" }] });
   api.fetchProjectBindings.mockResolvedValue({ bindings: [{ id: "b1", projectId: "p1", displayName: "引擎", backendId: "mock", enabled: true }] });
   api.fetchModelCatalog.mockResolvedValue({ bindingId: "b1", models: ["vendor-a", "vendor-b"].map(providerId => ({ modelId: "same", providerId, providerLabel: providerId, displayName: providerId + " 模型", reasoningLevels: ["low", "high"] })) });
@@ -17,6 +18,19 @@ beforeEach(() => {
   api.fetchEventsSnapshot.mockResolvedValue({ events: [], lastSequence: 0, truncated: false });
 });
 describe("独立组长", () => {
+  it("Agent 列表延迟返回时保留已打开的配置菜单", async () => {
+    let finish!: (value: object) => void;
+    api.fetchProjectBindings.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    render(<CoordinatorSettings group={group} />);
+    fireEvent.click(screen.getByRole("button", { name: "组长配置" }));
+    fireEvent.click(await screen.findByRole("button", { name: "推理强度" }));
+    expect(screen.getByText("high")).toBeInTheDocument();
+    await act(async () => finish({ bindings: [{ id: "b1", projectId: "p1", backendId: "mock", enabled: true }] }));
+    expect(screen.getByText("high")).toBeInTheDocument();
+    expect(api.fetchModelCatalog).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByText("high"));
+    expect(screen.getByRole("button", { name: "推理强度" })).toHaveTextContent("high");
+  });
   it("原生无模型目录时保存引擎默认，并使用其实际推理档位", async () => {
     api.sessionRequest.mockImplementation((path: string) => Promise.resolve(path.endsWith("/options")
       ? { bindings: [{ id: "b1", projectId: "p1", projectName: "项目", displayName: "引擎", backendId: "mock", enabled: true }] }

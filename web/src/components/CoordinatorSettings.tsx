@@ -1,6 +1,4 @@
-import { EngineIcon } from "./EngineIcon";
-import { bindingDisplayName } from "../lib/backend-display";
-import { distinctEngineBindings } from "../lib/enginePresets";
+import { ProjectAgentPicker } from "./ProjectAgentPicker";
 import "./coordinator.css";
 import { projectPath } from "../lib/routes";
 import { useEffect, useState, type ReactNode } from "react";
@@ -38,6 +36,9 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
   const [revision, setRevision] = useState(0);
   const [defaults, setDefaults] = useState<CoordinatorConfig | null>(null);
   const [bindings, setBindings] = useState<(BindingWire & { projectName: string })[]>([]);
+  const [projects, setProjects] = useState<{ id: string; displayName: string }[]>([]);
+  const [projectId, setProjectId] = useState("");
+  const [engineIds, setEngineIds] = useState<string[] | undefined>();
   const [catalog, setCatalog] = useState<ModelCatalogWire | null>(null);
   const [effective, setEffective] = useState<EffectiveSettingsWire | null>(null);
   const [error, setError] = useState("");
@@ -46,6 +47,7 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
   const [more, setMore] = useState(false);
   const groupConfig = group?.settings?.coordinator as CoordinatorConfig | undefined;
   const running = group?.thread?.status === "running" || group?.thread?.status === "closing";
+  const selectedBinding = bindings.find(b => b.id === draft.bindingId);
   useEffect(() => {
     if (!group) return;
     const show = (event: Event) => { if ((event as CustomEvent).detail === group.id) setOpen(true); };
@@ -57,18 +59,22 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
     let cancelled = false;
     setError(""); setLoading(true);
     Promise.all([sessionRequest<ConfigurationView>(pathFor(group?.id)),
-      sessionRequest<{ bindings: (BindingWire & { projectName: string })[] }>(`${defaultsPath}/options`)]).then(([view, options]) => {
+      sessionRequest<{ bindings: (BindingWire & { projectName: string })[]; projects?: { id: string; displayName: string }[]; engineIds?: string[] }>(`${defaultsPath}/options`)]).then(([view, options]) => {
       if (cancelled) return;
       setBindings(options.bindings);
+      const availableProjects = options.projects ?? [...new Map(options.bindings.map(b => [b.projectId, { id: b.projectId, displayName: b.projectName }])).values()];
+      setProjects(availableProjects); setEngineIds(options.engineIds);
       setRevision(view.config?.revision ?? 0);
       setDefaults(view.defaults ?? (global ? view.config : null));
       const candidate = view.config ?? view.candidate ?? view.defaults;
-      setDraft(candidate && options.bindings.some(b => b.id === candidate.bindingId) ? candidate : { bindingId: "" });
+      const selected = options.bindings.find(b => b.id === candidate?.bindingId);
+      setProjectId(selected?.projectId ?? availableProjects[0]?.id ?? "");
+      setDraft(candidate && selected ? candidate : { bindingId: "" });
     }).catch(e => { if (!cancelled) setError(e.message); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [open, group?.id, global]);
   useEffect(() => {
-    const binding = bindings.find(b => b.id === draft.bindingId);
+    const binding = selectedBinding;
     setCatalog(null); setEffective(null);
     if (!open || !binding) return;
     let cancelled = false;
@@ -76,12 +82,11 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
       .then(([models, settings]) => { if (!cancelled) { setCatalog(models); setEffective(settings); } })
       .catch(e => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
-  }, [open, draft.bindingId, bindings]);
+  }, [open, selectedBinding?.id, selectedBinding?.backendId]);
   const models = catalog?.models.filter(model => model.availability !== "unavailable") ?? [];
   const engineDefault = models.length === 0 && catalog?.engineDefaultAvailable === true && catalog.degraded !== true;
   const catalogReady = !!catalog && (models.length > 0 || engineDefault);
   const catalogError = catalog && !catalogReady ? catalog.diagnostics?.[0] ?? "引擎未提供可用模型" : "";
-  const selectedBinding = bindings.find(b => b.id === draft.bindingId);
   const modelOptions = modelOptionsFor(catalog, selectedBinding, draft.modelId ?? undefined);
   const selected = models.find(m => m.modelId === draft.modelId && (!draft.providerId || m.providerId === draft.providerId));
   const reasoning = selected?.reasoningLevels ?? (engineDefault ? effective?.conversationControls?.reasoningLevels : undefined) ?? effective?.reasoningEffort.levels ?? [];
@@ -114,9 +119,16 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
       <div className="kaus-coordinator-settings kaus-settings-sheet" aria-busy={loading}>
         {loading && <span role="status" className="kaus-group-dim">读取配置…</span>}
         <div className="kaus-coordinator-grid">
-        <CoordinatorField label="Agent" wide><BarMenu floating label="Agent" icon={<EngineIcon engine={selectedBinding?.backendId} />} value={draft.bindingId} display={selectedBinding ? bindingDisplayName(selectedBinding.backendId, selectedBinding.displayName) : "选择 Agent"}
-          options={distinctEngineBindings(bindings, draft.bindingId).map(b => ({ value: b.id, label: bindingDisplayName(b.backendId, b.displayName), icon: <EngineIcon engine={b.backendId} />, group: b.projectName }))}
-          onSelect={bindingId => setDraft({ bindingId, revision: Math.max(1, revision), instructions: draft.instructions, callCap: draft.callCap, timeLimitMinutes: draft.timeLimitMinutes })} /></CoordinatorField>
+        <CoordinatorField label={t("draft.field.project")} wide><BarMenu floating label={t("draft.field.project")} value={projectId}
+          display={projects.find(p => p.id === projectId)?.displayName ?? t("draft.project.choose")}
+          options={projects.map(p => ({ value: p.id, label: p.displayName }))}
+          onSelect={id => { setProjectId(id); setDraft(current => ({ bindingId: "", instructions: current.instructions, callCap: current.callCap, timeLimitMinutes: current.timeLimitMinutes })); }} /></CoordinatorField>
+        <CoordinatorField label="Agent" wide><ProjectAgentPicker projectId={projectId} value={draft.bindingId} allowedBackendIds={engineIds} disabled={busy}
+          onChange={binding => {
+            if (!binding) { setDraft(current => ({ ...current, bindingId: "" })); return; }
+            setBindings(current => [...current.filter(b => b.id !== binding.id), { ...binding, projectName: projects.find(p => p.id === binding.projectId)?.displayName ?? binding.projectId }]);
+            setDraft(current => current.bindingId === binding.id ? current : { bindingId: binding.id, instructions: current.instructions, callCap: current.callCap, timeLimitMinutes: current.timeLimitMinutes });
+          }} /></CoordinatorField>
         <CoordinatorField label="模型" wide><BarMenu floating label="模型" value={draft.modelId ? modelKey(draft.modelId, draft.providerId) : engineDefault ? engineDefaultKey : null}
           display={selected?.displayName ?? draft.modelId ?? (engineDefault ? "引擎默认" : "选择模型")}
           options={engineDefault ? [{ value: engineDefaultKey, label: "引擎默认" }] : modelOptions.map(m => ({ ...m, value: modelKey(modelSelection(m.value).modelId, m.providerId) }))}
@@ -151,7 +163,7 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
         {running && <span className="kaus-group-dim">下次任务生效</span>}
         {(error || catalogError) && <div role="alert" className="kaus-group-error">{error || catalogError}</div>}
         <div className="kaus-coordinator-actions">
-          {!global && defaults && <Button onClick={() => setDraft({ ...defaults, revision: Math.max(1, revision), sourceRevision: defaults.revision })}>应用默认</Button>}
+          {!global && defaults && <Button onClick={() => { const source = bindings.find(b => b.id === defaults.bindingId); if (source) setProjectId(source.projectId); setDraft({ ...defaults, revision: Math.max(1, revision), sourceRevision: defaults.revision }); }}>应用默认</Button>}
           {!global && <Button disabled={busy || loading || !draft.bindingId || !catalogReady} onClick={() => void save(true)}>设为默认</Button>}
           {running && <Button disabled={busy || loading || !draft.bindingId || !catalogReady} onClick={() => void save(false, true)}>停止并接管</Button>}
           <Button disabled={busy || loading || !draft.bindingId || !catalogReady} onClick={() => void save()}>{busy ? "保存中…" : "保存"}</Button>

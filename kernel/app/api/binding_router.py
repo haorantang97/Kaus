@@ -480,7 +480,10 @@ def build_binding_write_router(
                 chosen = chosen or next((item for item in enabled if item.discriminator is None), enabled[0])
                 return binding_to_wire(chosen)
             if ordinary:
-                raise ApiError(409, "binding_disabled", "此项目已停用这个引擎，请先在项目中启用")
+                # Explicitly choosing a globally connected Agent restores its
+                # old association. There is no longer a per-project enable UI.
+                chosen = next((item for item in ordinary if item.discriminator is None), ordinary[0])
+                return binding_to_wire(await repositories.bindings.save(chosen.evolve(enabled=True)))
             new_id = make_binding_id(project.slug, backend.key)
             if await repositories.bindings.get(new_id) is not None:
                 raise ApiError(409, "binding_id_conflict", "这个关联标识已被占用")
@@ -488,6 +491,9 @@ def build_binding_write_router(
                 project=project, backend=backend, display_name=backend.display_name,
                 is_default=False, origin="domain",
             )
+            prepare = getattr(driver, "prepare_project_binding", None)
+            if prepare is not None:
+                binding = prepare(binding)
             return binding_to_wire(await repositories.bindings.save(binding))
 
     # --- 项目工作目录 -------------------------------------------------------- #
@@ -627,6 +633,15 @@ def build_binding_write_router(
         _require_projector(driver)
         write = _flag(confirm)
         if write:
+            scope = getattr(driver, "projection_scope", None)
+            if scope is not None:
+                target = Path(scope(binding)).resolve()
+                for candidate_project in await repositories.projects.list_all():
+                    if candidate_project.id == binding.project_id:
+                        continue
+                    for other in await repositories.bindings.list_for_backend(candidate_project.id, binding.backend_id):
+                        if Path(scope(other)).resolve() == target:
+                            raise ApiError(409, "shared_projection_scope", "此引擎配置由多个项目共用，请使用项目独立配置。")
             active = await _running_conversations(binding)
             if active:
                 raise ApiError(

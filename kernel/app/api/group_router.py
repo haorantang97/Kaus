@@ -2736,7 +2736,13 @@ def build_group_router(
     async def coordinator_options():
         from app.api.views import binding_to_wire
         rows = []
-        for project in await repositories.projects.list_all():
+        engine_ids = []
+        for driver in registry.list_drivers():
+            hook = getattr(driver, 'group_context_isolation', None)
+            if driver.driver_kind != 'mock' and hook and hook():
+                engine_ids.append(driver.backend_id)
+        projects = await repositories.projects.list_all()
+        for project in projects:
             for binding in await repositories.bindings.list_for_project(project.id):
                 if not binding.enabled or binding.runtime_config.get('group_execution'):
                     continue
@@ -2748,7 +2754,8 @@ def build_group_router(
                 supported = bool(hook and hook())
                 if supported:
                     rows.append({**binding_to_wire(binding), 'projectName': project.display_name})
-        return {'bindings': rows}
+        return {'bindings': rows, 'engineIds': engine_ids,
+                'projects': [{'id': p.id, 'displayName': p.display_name} for p in projects if p.status != 'disabled']}
 
     @_endpoint
     async def coordinator_defaults():
