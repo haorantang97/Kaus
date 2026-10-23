@@ -41,6 +41,19 @@ def fake_install(monkeypatch):
     monkeypatch.setattr(installer, "_verify", lambda bundle: None)
 
 
+@pytest.fixture
+def permission_host(monkeypatch, tmp_path):
+    temporary = tmp_path / "darwin-temporary"
+    temporary.mkdir()
+    query = Mock(return_value=f"{temporary}\n")
+    monkeypatch.setattr(installer, "sys", SimpleNamespace(platform="darwin"))
+    monkeypatch.setattr(installer, "subprocess", SimpleNamespace(check_output=query))
+    yield temporary
+    query.assert_called_once_with(
+        ["/usr/bin/getconf", "DARWIN_USER_TEMP_DIR"], text=True, timeout=5)
+    assert not list(temporary.iterdir())
+
+
 def test_default_disabled_read_does_not_create_files(private_state):
     assert settings.is_enabled() is False
     assert installer.snapshot() == {"status": "idle"}
@@ -218,8 +231,7 @@ def test_runtime_launch_uses_exact_bundle_no_permission_gate(monkeypatch, privat
     assert '--permission-mode' not in args and '--grant' not in args
 
 
-def test_permission_request_targets_exact_bundle_and_no_capture(monkeypatch, private_state):
-    monkeypatch.setattr(installer, "sys", SimpleNamespace(platform="darwin"))
+def test_permission_request_targets_exact_bundle_and_no_capture(monkeypatch, private_state, permission_host):
     fake_install(monkeypatch)
     settings.save_enabled(True)
     installer.install(reuse_existing=False)
@@ -231,6 +243,7 @@ def test_permission_request_targets_exact_bundle_and_no_capture(monkeypatch, pri
     async def spawn(*args, **kwargs):
         commands.append(args)
         result = Path(args[-1])
+        assert result.parent == permission_host
         assert result.name.startswith('cua-driver-permissions-')
         assert result.stat().st_mode & 0o777 == 0o600
         result.write_text(json.dumps({"structuredContent": {"accessibility": False,
@@ -246,8 +259,7 @@ def test_permission_request_targets_exact_bundle_and_no_capture(monkeypatch, pri
 
 
 @pytest.mark.parametrize('exit_code, receipt, succeeds', [(1, True, True), (0, False, False)])
-def test_permission_receipt_is_authoritative_over_launchservices_exit(monkeypatch, exit_code, receipt, succeeds):
-    monkeypatch.setattr(installer, "sys", SimpleNamespace(platform="darwin"))
+def test_permission_receipt_is_authoritative_over_launchservices_exit(monkeypatch, permission_host, exit_code, receipt, succeeds):
     fake_install(monkeypatch)
     settings.save_enabled(True)
     installer.install(reuse_existing=False)
@@ -256,6 +268,7 @@ def test_permission_receipt_is_authoritative_over_launchservices_exit(monkeypatc
         returncode = exit_code
         async def wait(self): return self.returncode
     async def spawn(*args, **kwargs):
+        assert Path(args[-1]).parent == permission_host
         if receipt:
             Path(args[-1]).write_text(json.dumps({'structuredContent': {
                 'accessibility': True, 'screen_recording': False,

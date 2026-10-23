@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | 前端完整检查 | `cd web && npm run check` | 115 个测试文件、1,046 项通过；边界检查、类型检查和构建通过 |
 | 内核完整回归（10 月 24 日，含 OAuth 修复） | `.venv/bin/python -m pytest -q kernel` | 4,126 项通过，125 项跳过，2 个子测试通过；6 项 warning |
-| CI 环境依赖修复 | 电脑操作安装、Hermes 项目范围/技能快照、接入目录 4 个测试模块 | 44 项通过；显式模拟 macOS 接口与测试解释器，保留全部原有断言 |
+| CI 环境依赖修复 | 电脑操作安装、Hermes 项目范围/技能快照、接入目录 4 个测试模块 | 44 项通过；显式模拟 macOS 平台、原生临时目录查询与测试解释器，保留原有断言并核对回执目录及清理 |
 | 宿主与备份恢复 | `.venv/bin/python -m pytest -q tests scripts/ops/tests` | 525 项通过；2 项 warning |
 | 独立工作流示例 | `cd examples/workflow-module && npm ci && npm run check` | 7 项通过，类型检查与生产构建通过 |
 | 全新启动 | 独立 Mock 配置、临时数据目录与回环端口；真实 Chromium 打开 `/new` | 健康检查、认证、项目/对话/组 API、生产静态资源及输入框通过；无页面异常；未调用模型 |
