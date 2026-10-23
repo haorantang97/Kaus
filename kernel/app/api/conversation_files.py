@@ -217,10 +217,9 @@ class ConversationFiles:
             name = name[33:]
         return LocalFile(resolved, name, mime, content)
 
-    def upload(self, conversation_id: str, *, name: Any, data: Any, mime_type: Any = None) -> AttachmentRef:
-        folder = self.conversation_dir(conversation_id)
-        if folder is None:
-            raise ApiError(503, "attachment_storage_unavailable", "附件存储尚未配置。")
+    @staticmethod
+    def validate_upload(*, name: Any, data: Any) -> tuple[str, str, bytes]:
+        """Apply the exact upload contract without writing a file."""
         if not isinstance(name, str) or not isinstance(data, str):
             raise ApiError(400, "invalid_attachment", "附件需要文件名和 base64 内容。")
         # Never interpret the client filename as a path, including Windows paths.
@@ -243,6 +242,13 @@ class ConversationFiles:
                 raise ApiError(415, "file_encoding_unsupported", "文本附件需要使用 UTF-8 编码。") from None
             if b"\x00" in content:
                 raise ApiError(415, "file_type_unsupported", "附件内容不是可读取的文本。")
+        return clean, mime, content
+
+    def upload(self, conversation_id: str, *, name: Any, data: Any, mime_type: Any = None) -> AttachmentRef:
+        folder = self.conversation_dir(conversation_id)
+        if folder is None:
+            raise ApiError(503, "attachment_storage_unavailable", "附件存储尚未配置。")
+        clean, mime, content = self.validate_upload(name=name, data=data)
         # Declared MIME never widens the extension allowlist or grants executable content.
         del mime_type
         try:

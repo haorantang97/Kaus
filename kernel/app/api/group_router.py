@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from app.api.api_errors import ApiError, json_error_endpoint
+from app.api.backend_facets import accepts_new_work, require_new_work
 from app.api.group_views import (
     GROUP_EVENT_NAME,
     GROUP_EVENT_NAMESPACE,
@@ -846,7 +847,8 @@ def build_group_router(
         if coordinator_enabled:
             default = await coordinator.defaults()
             settings = {"coordinationVersion": 1}
-            if default:
+            default_binding = await repositories.bindings.get(default["bindingId"]) if default else None
+            if default and default_binding and accepts_new_work(registry.try_get(default_binding.backend_id), backend_id=default_binding.backend_id):
                 settings[CONFIG_KEY] = {**default, "revision": 1, "sourceRevision": default["revision"]}
             group = await repositories.collaborations.save(group.evolve(settings=settings))
         await _notify(group=group, change="group_created")
@@ -1114,6 +1116,9 @@ def build_group_router(
         conversation = await _load_conversation(body.conversation_id)
         await _reject_if_duplicate(conversation.id, group=group)
         source = conversation
+        source_binding = await repositories.bindings.get(source.agent_binding_id)
+        if source_binding:
+            require_new_work(registry.try_get(source_binding.backend_id), backend_id=source_binding.backend_id)
         owns_session = (source.created_by_collaboration_id == group.id and source.visibility == "group_only")
         if not owns_session:
             conversation = await repositories.conversations.save(
@@ -1481,6 +1486,7 @@ def build_group_router(
         if await repositories.projects.get(project_id) is None:
             raise _not_found("project_not_found", f"未知 Project：{body.project_id}")
         binding = await _resolve_binding(project_id, body.binding_id)
+        require_new_work(registry.try_get(binding.backend_id), backend_id=binding.backend_id)
         model_id = (body.model_id or "").strip() or None
         provider_id = None
         if model_id:
@@ -1708,9 +1714,16 @@ def build_group_router(
     #: ``stopped``）。为它加一列，等于给一件只在几秒内有意义的事开一本永久的账。
     delivery_marks: dict[tuple[str, str], tuple[int | None, int | None]] = {}
 
+    # A fast engine may finish before the send acknowledgement and delivery
+    # receipt are persisted. Defer its terminal observer instead of waiting in
+    # the event pump: a driver may itself be waiting for that pump to return.
+    deliveries_in_flight: set[tuple[str, str]] = set()
+    deferred_member_turns: dict[tuple[str, str], dict[tuple[str, str], Any]] = {}
+
     #: 还在飞的「投给下一位」后台任务。留一份强引用只为不被 GC 提前收走
     #: （``asyncio`` 不为任务持有强引用），done 之后自己退出来。
     pending_pumps: set[Any] = set()
+    room_pumps_closed = False
 
     def _schedule_pump(group_id: str, message_id: str | None) -> None:
         """把「投给下一位」丢到一个**后台任务**里，而不是在旁观者里直接投。
@@ -1725,6 +1738,8 @@ def build_group_router(
         任务里抛的异常只记一条 WARNING：推不动下一位是这条线程的事，不该让上一位
         那条会话的事件流跟着断（与 ``add_event_observer`` 的第三条同一个理由）。
         """
+        if room_pumps_closed:
+            return
 
         async def _runner() -> None:
             try:
@@ -1739,6 +1754,21 @@ def build_group_router(
         task = asyncio.ensure_future(_runner())
         pending_pumps.add(task)
         task.add_done_callback(pending_pumps.discard)
+
+    async def close_room_pumps() -> None:
+        """Stop producers before SessionHost and the event database are closed."""
+        nonlocal room_pumps_closed
+        room_pumps_closed = True
+        # The coordinator owns a separate task loop and desktop-capable member
+        # runtimes. Drain it before SessionHost or the event database closes.
+        if coordinator_enabled:
+            for group_id in tuple(set(coordinator.tasks) | set(coordinator.active)):
+                await coordinator.stop(group_id)
+        tasks = tuple(pending_pumps)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _save_thread(
         group: CollaborationSession, thread: RoomThread | None
@@ -1947,20 +1977,37 @@ def build_group_router(
             member = await repositories.members.get(member_id)
             room = await _room_members(group)
             row: dict[str, Any]
-            if member is None:
-                row = {
-                    "memberId": member_id,
-                    "conversationId": None,
-                    "status": "skipped_left",
-                    "reason": "member_left",
-                    "detail": "这个成员已经不在了",
-                }
-            else:
-                row = await _deliver_to_speaker(group, thread, member, room)
-            if message_id is not None:
-                await _append_delivery(message_id, row)
+            delivery_key = (group.id, member_id)
+            deliveries_in_flight.add(delivery_key)
+            try:
+                if member is None:
+                    row = {
+                        "memberId": member_id,
+                        "conversationId": None,
+                        "status": "skipped_left",
+                        "reason": "member_left",
+                        "detail": "这个成员已经不在了",
+                    }
+                else:
+                    row = await _deliver_to_speaker(group, thread, member, room)
+                if message_id is not None:
+                    await _append_delivery(message_id, row)
+            finally:
+                deferred = False
+                try:
+                    while pending := deferred_member_turns.pop(delivery_key, {}):
+                        deferred = True
+                        for envelope in pending.values():
+                            await _record_member_turn(envelope, delivery_ready=delivery_key)
+                finally:
+                    deliveries_in_flight.discard(delivery_key)
             if row.get("status") == "sent":
                 return group
+            if deferred:
+                latest = await repositories.collaborations.get(group.id)
+                if latest is not None and latest.thread != thread:
+                    # The observed terminal event already advanced this turn.
+                    return latest
             if thread.phase == "closing":
                 stopped = thread.evolve(
                     status="stopped",
@@ -2279,7 +2326,9 @@ def build_group_router(
         # 为的是给账本里已有的撞名历史数据兜底（理由写在那个函数的 docstring 里）。
         return scan_run_started_at(rows, run_id)
 
-    async def _record_member_turn(envelope: Any) -> None:
+    async def _record_member_turn(
+        envelope: Any, *, delivery_ready: tuple[str, str] | None = None
+    ) -> None:
         """成员会话的一轮跑完了 → 每个「那时他在的」组里各记一条 ``member_turn``。
 
         这是 PRD §A1 那句「今天成员的回复根本不进这条时间线（那是个 bug，数据
@@ -2321,6 +2370,12 @@ def build_group_router(
             body = body or ""
         content, truncated = truncate_body(body)
         for member in members:
+            delivery_key = (member.collaboration_session_id, member.id)
+            if delivery_key in deliveries_in_flight and delivery_key != delivery_ready:
+                deferred_member_turns.setdefault(delivery_key, {}).setdefault(
+                    (conversation_id, run_id), envelope
+                )
+                continue
             group = await repositories.collaborations.get(
                 member.collaboration_session_id
             )
@@ -2739,7 +2794,7 @@ def build_group_router(
         engine_ids = []
         for driver in registry.list_drivers():
             hook = getattr(driver, 'group_context_isolation', None)
-            if driver.driver_kind != 'mock' and hook and hook():
+            if accepts_new_work(driver) and driver.driver_kind != 'mock' and hook and hook():
                 engine_ids.append(driver.backend_id)
         projects = await repositories.projects.list_all()
         for project in projects:
@@ -2751,15 +2806,27 @@ def build_group_router(
                 except DriverNotRegisteredError:
                     continue
                 hook = getattr(driver, 'group_context_isolation', None)
-                supported = bool(hook and hook())
+                supported = accepts_new_work(driver) and bool(hook and hook())
                 if supported:
                     rows.append({**binding_to_wire(binding), 'projectName': project.display_name})
         return {'bindings': rows, 'engineIds': engine_ids,
                 'projects': [{'id': p.id, 'displayName': p.display_name} for p in projects if p.status != 'disabled']}
 
+    async def retained_coordinator_binding(config):
+        if not config:
+            return {}
+        binding = await repositories.bindings.get(config.get("bindingId"))
+        if binding is None or accepts_new_work(registry.try_get(binding.backend_id), backend_id=binding.backend_id):
+            return {}
+        from app.api.views import binding_to_wire
+        project = await repositories.projects.get(binding.project_id)
+        return {"retainedBinding": {**binding_to_wire(binding), "catalogStatus": "legacy",
+                                    "projectName": project.display_name if project else ""}}
+
     @_endpoint
     async def coordinator_defaults():
-        return {"config": await coordinator.defaults()}
+        config = await coordinator.defaults()
+        return {"config": config, **await retained_coordinator_binding(config)}
 
     @_endpoint
     async def set_coordinator_defaults(body: CoordinatorBody = Body(...)):
@@ -2777,7 +2844,8 @@ def build_group_router(
                     "providerId": conv.provider_id, "reasoningMode": conv.reasoning_mode,
                     "approvalMode": conv.approval_mode, "executionMode": conv.execution_mode, "configOptions": conv.config_options}
         return {"config": group.settings.get(CONFIG_KEY), "candidate": candidate,
-                "defaults": await coordinator.defaults()}
+                "defaults": await coordinator.defaults(),
+                **await retained_coordinator_binding(group.settings.get(CONFIG_KEY))}
 
     @_endpoint
     async def set_coordinator(group_id: str, body: CoordinatorBody = Body(...)):
@@ -2921,6 +2989,7 @@ def build_group_router(
     host.add_event_observer(_record_member_turn)
     router.group_event_hub = events  # type: ignore[attr-defined]
     router.record_member_turn = _record_member_turn  # type: ignore[attr-defined]
+    router.close_room_pumps = close_room_pumps  # type: ignore[attr-defined]
     return router
 
 

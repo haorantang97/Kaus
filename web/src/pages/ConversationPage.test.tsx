@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { ConversationPage, atBottom, groupRows, FOLLOW_THRESHOLD_PX } from "./ConversationPage";
 import * as api from "../lib/sessionApi";
 import { pendingStorageKey, UNCONFIRMED_AFTER_MS } from "../lib/pendingMessages";
+import { readConversationDraft, writeConversationDraft } from "../lib/conversationDrafts";
+import { externalHistoryStorageKey } from "../lib/externalSurface";
 
 /* 占位气泡（AD-94）：替换 / 失败重发 / 超时。
  *
@@ -15,6 +17,7 @@ vi.mock("../lib/sessionApi", async () => {
   return {
     ...actual,
     fetchConversation: vi.fn(),
+    fetchMessageReceipt: vi.fn(),
     fetchBinding: vi.fn(),
     fetchBackendUiCapabilities: vi.fn(),
     sendConversationMessage: vi.fn(),
@@ -26,6 +29,7 @@ vi.mock("../lib/sessionApi", async () => {
 
 const mocked = api as unknown as {
   fetchConversation: ReturnType<typeof vi.fn>;
+  fetchMessageReceipt: ReturnType<typeof vi.fn>;
   fetchBinding: ReturnType<typeof vi.fn>;
   fetchBackendUiCapabilities: ReturnType<typeof vi.fn>;
   sendConversationMessage: ReturnType<typeof vi.fn>;
@@ -122,6 +126,7 @@ beforeEach(() => {
   sources = [];
   // 占位现在落 sessionStorage（第 5 件）：用例之间不许串台。
   window.sessionStorage.clear();
+  window.localStorage.clear();
   vi.stubGlobal("EventSource", FakeEventSource);
   mocked.fetchConversation.mockResolvedValue(detail);
   mocked.fetchBinding.mockResolvedValue(null);
@@ -129,6 +134,43 @@ beforeEach(() => {
   mocked.fetchProjects.mockResolvedValue({ projects: [], roots: [], count: 0 });
   mocked.fetchModelCatalog.mockResolvedValue({ bindingId: "binding:1", mode: "fixed", models: [], defaultModelId: null, defaultProviderId: null, supportsReasoning: false });
   mocked.interruptConversation.mockResolvedValue({ conversationId: "conversation:1", interrupted: true });
+});
+
+describe("原生历史来源状态", () => {
+  it("handles native cleanup quietly without reviving cached history or hiding retained local content", async () => {
+    let resolveDetail!: (value: unknown) => void;
+    mocked.fetchConversation.mockReturnValue(new Promise(resolve => { resolveDetail = resolve; }));
+    sessionStorage.setItem(externalHistoryStorageKey("conversation:1"), JSON.stringify([{
+      id: "old-native-history", complete: true, gaps: [],
+      entries: [{ entryId: "native-1", role: "assistant", kind: "message", text: "Stale native body", occurredAt: null }],
+    }]));
+    render(<ConversationPage conversationId="conversation:1" />);
+    expect(screen.queryByTestId("external-history-group")).toBeNull();
+    await act(async () => resolveDetail({ ...detail,
+      historyStorage: { mode: "native_text", status: "source_unavailable", missing: ["native_content_unavailable"], nativeSessionId: "native-1" },
+    }));
+    expect(screen.queryByTestId("native-history-unavailable")).toBeNull();
+    expect(screen.queryByText("发第一条消息开始。")).toBeNull();
+    expect(screen.queryByTestId("history-missing")).toBeNull();
+    expect(screen.queryByTestId("external-history-group")).toBeNull();
+    expect(screen.queryByText("Stale native body")).toBeNull();
+    await attached();
+    push(userMessageEvent(0, ""));
+    push({ ...userMessageEvent(1, ""), event: { type: "message.started", messageId: "local-answer", role: "assistant" } });
+    push({ ...userMessageEvent(2, ""), event: { type: "message.completed", messageId: "local-answer", text: "Retained local content" } });
+    expect(screen.getByText("Retained local content")).toBeInTheDocument();
+    expect(screen.queryByText("Stale native body")).toBeNull();
+    expect(mocked.sendConversationMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, { mode: "native_text", status: "native", missing: [] }])("keeps available and legacy histories free of unavailable warnings (%j)", async historyStorage => {
+    mocked.fetchConversation.mockResolvedValue({ ...detail, historyStorage });
+    render(<ConversationPage conversationId="conversation:1" />);
+    await attached();
+    expect(screen.queryByTestId("native-history-unavailable")).toBeNull();
+    push(userMessageEvent(0, "Available history"));
+    expect(screen.getByText("Available history")).toBeInTheDocument();
+  });
 });
 
 describe("占位气泡", () => {
@@ -354,7 +396,7 @@ describe("自动跟随（G-9）", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: /回到最新/ })).toBeNull());
   });
 
-  it("atBottom 的门槛就是 120px", () => {
+  it("底部40px内继续跟随，超过40px退出贴底", () => {
     expect(atBottom({ scrollHeight: 1000, scrollTop: 600, clientHeight: 400 })).toBe(true);
     expect(atBottom({ scrollHeight: 1000, scrollTop: 600 - FOLLOW_THRESHOLD_PX, clientHeight: 400 })).toBe(true);
     expect(atBottom({ scrollHeight: 1000, scrollTop: 600 - FOLLOW_THRESHOLD_PX - 1, clientHeight: 400 })).toBe(false);
@@ -470,5 +512,112 @@ describe("引擎没接下的那一句（R6 / R7）", () => {
 
     expect(await screen.findByText(/消息未发送 · 引擎未运行/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /未发送|发送结果未确认/ })).toBeNull();
+  });
+});
+
+
+describe("接续首发草稿", () => {
+  const attachment = { kind: "file" as const, ref: "file:///synthetic/reference.txt", name: "reference.txt", mimeType: "text/plain", size: 5 };
+  it("cleans an older generated file suffix without replacing locally edited handoff content", async () => {
+    writeConversationDraft("conversation:1", { text: "My edited handoff\n\n完整对话记录（按需读取）：\n" + attachment.ref, attachments: [] });
+    mocked.fetchConversation.mockResolvedValue({ ...detail, continuation: { draft: "Original seed", files: [attachment], attachments: [] } });
+    render(<ConversationPage conversationId="conversation:1" />);
+    await waitFor(() => expect(screen.getByLabelText("消息")).toHaveValue("My edited handoff"));
+    expect(readConversationDraft("conversation:1").text).toBe("My edited handoff");
+    expect(mocked.sendConversationMessage).not.toHaveBeenCalled();
+  });
+  it("opens a linked source and presents named handoff files without exposing their local URI", async () => {
+    mocked.fetchConversation.mockResolvedValue({ ...detail, continuation: {
+      source: { kind: "conversation", id: "conversation:source", projectId: detail.conversation.projectId },
+      sourceTitle: "Original task", draft: "Reviewed seed", files: [attachment], attachments: [],
+    } });
+    const user = userEvent.setup(), navigate = vi.fn();
+    render(<ConversationPage conversationId="conversation:1" onContinue={navigate} />);
+    await screen.findByRole("button", { name: "接续自 Original task" });
+    expect(screen.getByRole("button", { name: "reference.txt" })).toBeVisible();
+    expect(document.body.textContent).not.toContain("file:///synthetic");
+    await waitFor(() => expect(screen.getByLabelText("消息")).toHaveValue("Reviewed seed"));
+    expect(mocked.sendConversationMessage).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "接续自 Original task" }));
+    expect(navigate).toHaveBeenCalledWith("conversation:source");
+  });
+  it.each([
+    { name: "明确拒绝后恢复实际提交文本与附件", failure: new api.SessionApiError(400, "unsupported_capability", "Rejected"), later: "", expected: "Edited handoff" },
+    { name: "明确拒绝不覆盖等待期间的新输入", failure: new api.SessionApiError(413, "attachment_too_large", "Rejected"), later: "New input", expected: "New input" },
+    { name: "网络未确认不恢复草稿以免重复执行", failure: new TypeError("Network error"), later: "", expected: "" },
+  ])("$name", async ({ failure, later, expected }) => {
+    mocked.fetchConversation.mockResolvedValue({ ...detail, continuation: { draft: "Reviewed seed", attachments: [attachment] } });
+    let reject!: (failure: unknown) => void;
+    mocked.sendConversationMessage.mockImplementation(() => new Promise((_, fail) => { reject = fail; }));
+    const user = userEvent.setup();
+    render(<ConversationPage conversationId="conversation:1" />);
+    const input = screen.getByLabelText("消息");
+    await waitFor(() => expect(input).toHaveValue("Reviewed seed"));
+    fireEvent.change(input, { target: { value: "Edited handoff" } });
+    await user.click(screen.getByRole("button", { name: /发送/ }));
+    expect(mocked.sendConversationMessage).toHaveBeenCalledWith("conversation:1", "Edited handoff", expect.any(String), [attachment]);
+    expect(input).toHaveValue("");
+    if (later) fireEvent.change(input, { target: { value: later } });
+    await act(async () => reject(failure));
+    await waitFor(() => expect(input).toHaveValue(expected));
+    const saved = readConversationDraft("conversation:1");
+    expect(saved.text).toBe(expected);
+    expect(saved.attachments).toEqual(expected === "Edited handoff" ? [attachment] : []);
+  });
+});
+
+
+describe("持久化发送回执对账", () => {
+  const ref = "stored-ref-zero";
+  function pending() {
+    sessionStorage.setItem(pendingStorageKey("conversation:1"), JSON.stringify([
+      { clientRef: ref, text: "Question at sequence zero", state: "unconfirmed", at: Date.now() },
+    ]));
+  }
+  it("按编号恢复漏过的seq0正文并保留已有回答，不重拉整段历史", async () => {
+    pending();
+    mocked.fetchMessageReceipt.mockResolvedValue({ conversationId: "conversation:1", clientRef: ref,
+      status: "recorded", events: [userMessageEvent(0, "Question at sequence zero", ref)] });
+    const user = userEvent.setup();
+    render(<ConversationPage conversationId="conversation:1" />);
+    await attached();
+    push({ ...userMessageEvent(1, ""), event: { type: "message.started", messageId: "answer:1", role: "assistant" } });
+    push({ ...userMessageEvent(2, ""), event: { type: "message.completed", messageId: "answer:1", text: "Existing answer" } });
+    expect(screen.getByText("Existing answer")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "检查发送状态" }));
+    await waitFor(() => expect(screen.queryByTestId("pending-message")).toBeNull());
+    expect(mocked.fetchMessageReceipt).toHaveBeenCalledWith("conversation:1", ref);
+    expect(mocked.fetchConversation).toHaveBeenCalledTimes(1);
+    const question = screen.getByText("Question at sequence zero");
+    const answer = screen.getByText("Existing answer");
+    expect(question.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(sessionStorage.getItem(pendingStorageKey("conversation:1"))).toBeNull();
+    push(userMessageEvent(0, "Question at sequence zero", ref));
+    expect(screen.getAllByText("Question at sequence zero")).toHaveLength(1);
+  });
+  it("尚无持久化回执时保留未确认，不当成失败或自动重发", async () => {
+    pending();
+    mocked.fetchMessageReceipt.mockResolvedValue({ conversationId: "conversation:1", clientRef: ref, status: "unknown", events: [] });
+    const user = userEvent.setup();
+    render(<ConversationPage conversationId="conversation:1" />);
+    await attached();
+    await user.click(screen.getByRole("button", { name: "检查发送状态" }));
+    await waitFor(() => expect(screen.getByTestId("pending-message")).toHaveAttribute("data-status", "unconfirmed"));
+    expect(mocked.sendConversationMessage).not.toHaveBeenCalled();
+    expect(mocked.fetchConversation).toHaveBeenCalledTimes(1);
+  });
+  it("失败事件先到达时，将其重新配给查回来的用户消息", async () => {
+    pending();
+    const failure = userMessageFailedEvent(1, "unsupported_capability", "Rejected", ref);
+    mocked.fetchMessageReceipt.mockResolvedValue({ conversationId: "conversation:1", clientRef: ref,
+      status: "failed", events: [userMessageEvent(0, "Question at sequence zero", ref), failure] });
+    const user = userEvent.setup();
+    render(<ConversationPage conversationId="conversation:1" />);
+    await attached();
+    push(failure);
+    await user.click(screen.getByRole("button", { name: "检查发送状态" }));
+    await waitFor(() => expect(screen.queryByTestId("pending-message")).toBeNull());
+    expect(screen.getByText("Question at sequence zero").closest(".kaus-msg")).toHaveClass("is-undelivered");
+    expect(screen.getByRole("button", { name: "重发" })).toBeInTheDocument();
   });
 });

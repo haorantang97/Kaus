@@ -2,7 +2,7 @@
  * Copy and time are reachable below the body, including received streaming text.
  * Callbacks only govern actions that send or edit messages, never read-only copy. */
 
-import { Component, type ReactNode, useState } from "react";
+import { Component, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { useLocale } from "../../i18n";
 import { StreamCursor } from "./CardShell";
@@ -15,6 +15,7 @@ import { MessageDeliveryStatus } from "./MessageDeliveryStatus";
 import { useContentText } from "./contentStrings";
 import { isConfirmedMessageRejection, messageRejectionReasonKey } from "../../lib/messageDelivery";
 import "./conversationContent.css";
+import "../composer-interactions.css";
 
 export interface MessageActions {
   /** 助手消息上的「重发上一条」；没有可重发的上一条时调用方不传。 */
@@ -50,8 +51,23 @@ function MessageActionBar({
   copiedLabel: string;
   editing: boolean;
 }) {
+  const toolbar = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const buttons = Array.from(toolbar.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+    buttons.forEach((button, index) => { button.tabIndex = index === 0 ? 0 : -1; });
+  }, [Boolean(text), onExtra]);
   return (
-    <div className="kaus-msg-actions" data-testid="message-actions" aria-label={ariaLabel}>
+    <div ref={toolbar} role="toolbar" className="kaus-msg-actions" data-testid="message-actions" aria-label={ariaLabel}
+      onFocus={event => { toolbar.current?.querySelectorAll<HTMLButtonElement>("button").forEach(button => { button.tabIndex = button === (event.target as HTMLElement) ? 0 : -1; }); }}
+      onKeyDown={event => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        const buttons = Array.from(toolbar.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+        if (!buttons.length) return;
+        event.preventDefault(); event.stopPropagation();
+        const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+        buttons[next]?.focus();
+      }}>
       {text && <CopyButton className="kaus-msg-action" text={text} label={copyLabel} copiedLabel={copiedLabel} />}
       {onExtra && extraLabel && (
         <button type="button" className="kaus-msg-action" onClick={onExtra} aria-label={extraLabel} title={extraLabel}>
@@ -102,6 +118,30 @@ export class MarkdownBoundary extends Component<{ text: string; children: ReactN
   }
 }
 
+function UserMessageText({ text }: { text: string }) {
+  const { locale } = useLocale();
+  const body = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const [overflowing, setOverflowing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  useLayoutEffect(() => {
+    const node = body.current;
+    if (!node) return;
+    const measure = () => setOverflowing(node.scrollHeight > 300);
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(node);
+    window.addEventListener("resize", measure);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
+  }, [text]);
+  return <>
+    <div ref={body} id={id} className={`kaus-user-text${overflowing && !expanded ? " is-collapsed" : ""}`}>{text}</div>
+    {overflowing && <button type="button" className="kaus-user-expand" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(value => !value)}>
+      {locale === "zh" ? expanded ? "收起" : "展开全文" : expanded ? "Show less" : "Show more"}
+    </button>}
+  </>;
+}
+
 export function TextCard({
   item,
   time,
@@ -135,6 +175,7 @@ export function TextCard({
   const deliveryLabel = unconfirmed ? c("chat.content.deliveryUnconfirmed")
     : reasonKey ? t("conversation.message.failed", { reason: t(reasonKey) })
       : t("conversation.message.failed.noReason");
+  const attachmentGallery = item.attachments?.map(attachment => ({ uri: attachment.ref, title: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.size }));
   const footer = (
     <div className="kaus-msg-footer">
       {(text || onExtra) && <MessageActionBar
@@ -174,8 +215,8 @@ export function TextCard({
         {...focusProps}
       >
         {(text || item.attachments?.length) ? <div className="kaus-msg-body">
-          {text}
-          {!!item.attachments?.length && <div className="kaus-msg-attachments">{item.attachments.map((attachment, index) => <FileReference key={`${attachment.ref}:${index}`} source={{ uri: attachment.ref, title: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.size }} conversationId={conversationId} />)}</div>}
+          {text && <UserMessageText text={text} />}
+          {!!item.attachments?.length && <div className="kaus-msg-attachments">{item.attachments.map((attachment, index) => <FileReference key={`${attachment.ref}:${index}`} source={{ uri: attachment.ref, title: attachment.name, mimeType: attachment.mimeType, sizeBytes: attachment.size }} gallery={attachmentGallery} conversationId={conversationId} />)}</div>}
         </div> : null}
         {footer}
       </div>

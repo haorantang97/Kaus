@@ -1,17 +1,7 @@
-"""Event Store 的 Repository 接口与内存参考实现。
+"""本地会话记录的 Repository 接口与内存参考实现。
 
-对应规范
---------
-- v1.0 §11.1 ``event_store``。
-- v1.0 §8.5 / D-16 / AD-13：短期重放缓冲。接口层因此长这样：
-  * 只有 ``append`` 没有 ``update`` —— 事件流是追加的，改历史不是这张表的职能；
-  * ``append`` 按 ``event_id`` 幂等 —— 断线重放同一条事件不产生第二行；
-  * 必须有 :meth:`EventStoreRepository.purge_expired` 与
-    :meth:`EventStoreRepository.delete_for_conversation` —— 「全表可删除且不影响
-    对话内容的可恢复性」是这张表的定义性质，不是可选功能；
-  * 没有任何「按内容查询 / 全文检索」形态的方法 —— 那会诱使它变成第二本账
-    （v1.0 §17 风险 9）。
-- v1.0 §8.5：``?after=<sequence>`` 断线续传 → :meth:`list_after`。
+事件按 ID 幂等追加、按 sequence 重放。期限由写入层决定，过期清理只应影响
+临时事件；明确删除会话可移除全部记录。引擎原生文件不在本接口的管理范围内。
 """
 
 from __future__ import annotations
@@ -26,6 +16,14 @@ from app.events.models import StoredEvent
 @runtime_checkable
 class EventStoreRepository(Protocol):
     """v1.0 §11.1 ``event_store``。"""
+
+    async def get_native_storage(self, conversation_id: str) -> dict | None: ...
+
+    async def save_native_storage(self, conversation_id: str, state: dict) -> None: ...
+
+    async def replace_with_native_references(self, events: Sequence[StoredEvent]) -> int:
+        """Atomically replace verified text with references; keep event identity."""
+        ...
 
     async def get(self, event_id: str) -> StoredEvent | None: ...
 
@@ -57,6 +55,10 @@ class EventStoreRepository(Protocol):
         """Group 时间线聚合（v1.0 §11.1 ``collaboration_session_id``）。"""
         ...
 
+    async def message_receipt(self, conversation_id: str, client_ref: str) -> Sequence[StoredEvent]:
+        """Latest matching user receipt and any subsequent rejection, at most two rows."""
+        ...
+
     async def latest_sequence(self, conversation_id: str) -> int | None:
         """该 Conversation 已缓冲到的最大 sequence；空缓冲返回 ``None``。"""
         ...
@@ -66,10 +68,7 @@ class EventStoreRepository(Protocol):
         ...
 
     async def delete_for_conversation(self, conversation_id: str) -> int:
-        """丢弃某条 Conversation 的全部缓冲；返回删除条数。
-
-        v1.0 §11.3：删除后重新打开卡片从原生历史重建，对话内容不受影响。
-        """
+        """明确删除某条 Conversation 的全部本地记录；返回删除条数。"""
         ...
 
 
@@ -77,9 +76,26 @@ class InMemoryEventStoreRepository:
     """参考实现。"""
 
     def __init__(self, events: Sequence[StoredEvent] = ()) -> None:
+        self._native_storage: dict[str, dict] = {}
         self._by_id: dict[str, StoredEvent] = {}
         for event in events:
             self._by_id[event.event_id] = event
+
+    async def get_native_storage(self, conversation_id: str) -> dict | None:
+        state = self._native_storage.get(conversation_id)
+        return dict(state) if state else None
+
+    async def save_native_storage(self, conversation_id: str, state: dict) -> None:
+        self._native_storage[conversation_id] = dict(state)
+
+    async def replace_with_native_references(self, events: Sequence[StoredEvent]) -> int:
+        for event in events:
+            old = self._by_id.get(event.event_id)
+            if old is None or old.native_reference is not None:
+                raise DomainInvariantError("native_reference_conflict")
+        for event in events:
+            self._by_id[event.event_id] = event
+        return len(events)
 
     async def get(self, event_id: str) -> StoredEvent | None:
         return self._by_id.get(event_id)
@@ -136,6 +152,18 @@ class InMemoryEventStoreRepository:
         )
         return tuple(selected)
 
+    async def message_receipt(self, conversation_id: str, client_ref: str) -> Sequence[StoredEvent]:
+        rows=[]
+        for row in self._by_id.values():
+            event=row.envelope.event
+            if (row.conversation_id == conversation_id and event.type == "extension.event"
+                and getattr(event, "namespace", None) == "kaus"
+                and getattr(event, "name", None) in {"user.message", "user.message.failed"}
+                and isinstance(getattr(event, "data", None), dict)
+                and event.data.get("clientRef") == client_ref):
+                rows.append(row)
+        return latest_message_receipt(rows)
+
     async def latest_sequence(self, conversation_id: str) -> int | None:
         sequences = [
             event.sequence
@@ -156,6 +184,7 @@ class InMemoryEventStoreRepository:
         return len(doomed)
 
     async def delete_for_conversation(self, conversation_id: str) -> int:
+        self._native_storage.pop(conversation_id, None)
         doomed = [
             event.event_id
             for event in self._by_id.values()
@@ -164,6 +193,17 @@ class InMemoryEventStoreRepository:
         for event_id in doomed:
             del self._by_id[event_id]
         return len(doomed)
+
+
+def latest_message_receipt(rows: Sequence[StoredEvent]) -> tuple[StoredEvent, ...]:
+    """An earlier rejected attempt must not override a later retry with this ref."""
+    user=max((row for row in rows if row.envelope.event.name == "user.message"),
+             key=lambda row: row.sequence, default=None)
+    if user is None:
+        return ()
+    failed=max((row for row in rows if row.envelope.event.name == "user.message.failed" and row.sequence > user.sequence),
+               key=lambda row: row.sequence, default=None)
+    return (user, failed) if failed else (user,)
 
 
 __all__ = ["EventStoreRepository", "InMemoryEventStoreRepository"]

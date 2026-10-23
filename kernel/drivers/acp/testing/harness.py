@@ -122,6 +122,12 @@ class FakeAcpHarness:
     # --- 构造被测对象 ---------------------------------------------------- #
 
     def make_driver(self) -> BackendDriver:
+        # This subprocess implements ACP, not a vendor's native loader or
+        # private runtime RPC. Exercise those adapters in their native fixtures.
+        from dataclasses import replace
+        protocol_preset = replace(
+            self.preset, skill_projection_adapter=None, runtime_adapter=None,
+        ) if self.preset else None
         return AcpDriver(
             self._spec(),
             backend_key=self.backend_key,
@@ -129,7 +135,7 @@ class FakeAcpHarness:
             call_timeout=20.0,
             prompt_timeout=30.0,
             cancel_grace=2.0,
-            preset=self.preset,
+            preset=protocol_preset,
         )
 
     def make_project(self, slug: str = "contract") -> Project:

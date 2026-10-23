@@ -27,6 +27,8 @@ export function capabilityValue(config: Record<string, unknown> | null | undefin
 
 /** 这一行该不该出现在能力表里。 */
 export function isVisibleCapabilityEntry(entry: EffectiveCapabilityEntryWire): boolean {
+  // Individual skills are edited in the Project skill tree, including native scopes.
+  if (entry.capabilityType.split(":").at(-1) === "skills") return false;
   // 没验证过 = 说不出有没有，AD-71 判静默隐藏（不是"显示成未知"）。
   if (entry.verification === "unknown") return false;
   // Imported native defaults are conversation/connection settings, not project configuration.
@@ -137,6 +139,6 @@ export function visibleCapabilityRows(capabilities: EffectiveCapabilitiesWire | 
   total: number;
 } {
   const entries = (capabilities?.entries ?? []).filter(isVisibleCapabilityEntry);
-  const blocked = capabilities?.blocked ?? [];
+  const blocked = (capabilities?.blocked ?? []).filter(row => row.capabilityType.split(":").at(-1) !== "skills");
   return { entries, blocked, total: entries.length + blocked.length };
 }

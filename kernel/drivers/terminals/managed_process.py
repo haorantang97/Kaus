@@ -44,6 +44,56 @@ def _group_active(pgid: int) -> bool:
                for line in result.stdout.splitlines() if len(parts := line.split()) == 2)
 
 
+def _wait_group_exit(pgid: int, timeout: float) -> bool:
+    deadline = time.monotonic() + max(0, timeout)
+    while _group_active(pgid):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.05, remaining))
+    return True
+
+
+def register_owned_child(pid: int) -> None:
+    """Record a detached service created by a Kaus terminal adapter."""
+    launch = os.environ.get("KAUS_MANAGED_LAUNCH_DIR")
+    if not launch:
+        return
+    directory = Path(launch)
+    saved = json.loads((directory / "process.json").read_text())
+    if saved["uid"] != os.getuid() or saved["pgid"] != os.getpgrp():
+        raise RuntimeError("终端服务归属无法确认")
+    identity = process_identity(pid)
+    if identity is None:
+        if _group_active(pid):
+            raise RuntimeError("终端服务归属无法确认")
+        return  # The service exited before registration.
+    if identity["uid"] != os.getuid() or identity["pgid"] != pid:
+        raise RuntimeError("终端服务归属无法确认")
+    child = directory / "owned-processes" / str(pid)
+    child.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _write_json(child / "process.json", identity)
+
+
+def owned_children_active(directory: Path) -> bool:
+    for record in (directory / "owned-processes").glob("*/process.json"):
+        saved = json.loads(record.read_text())
+        if saved["uid"] != os.getuid() or saved["pid"] != saved["pgid"]:
+            return True
+        if _group_active(int(saved["pgid"])):
+            return True
+    return False
+
+
+def _stop_owned_children(directory: Path, timeout: float) -> tuple[bool, str | None]:
+    # These are explicit adapter-owned services, not arbitrary user shell jobs.
+    for record in (directory / "owned-processes").glob("*/process.json"):
+        stopped, reason = stop(record.parent, record.parent.name, timeout=timeout)
+        if not stopped:
+            return False, reason
+    return True, None
+
+
 def enter(directory: Path, arguments: list[str]) -> int:
     config = json.loads((directory / "native.json").read_text())
     executable = config["executable"]
@@ -74,6 +124,7 @@ def enter(directory: Path, arguments: list[str]) -> int:
         if (directory / "revoked").exists():
             return 125
     environment = dict(os.environ)
+    environment["KAUS_MANAGED_LAUNCH_DIR"] = str(directory.resolve())
     config_directory = config.get("config_directory")
     if config_directory:
         environment[config_directory[0]] = config_directory[1]
@@ -103,16 +154,16 @@ def stop(directory: Path, pid_hint: str | None, *, timeout: float = 3.0) -> tupl
         # is checked again after recording identity, before exec, closing the
         # race with an entrypoint that is still starting up.
         if (directory / "native.json").exists():
-            return True, None
+            return _stop_owned_children(directory, timeout)
         # Older launch scripts can be stopped only when the recorded shell is
         # still the leader of its own group and is running this exact script.
         if not pid_hint or not pid_hint.isdigit():
             return False, "尚未确认终端进程，请稍后重试"
         saved = process_identity(int(pid_hint))
         if saved is None:
-            if _group_active(int(pid_hint)):
+            if not _wait_group_exit(int(pid_hint), timeout):
                 return False, "终端子进程仍在运行，请先在终端结束任务"
-            return True, None
+            return _stop_owned_children(directory, timeout)
         command = subprocess.run(["/bin/ps", "-p", pid_hint, "-o", "command="],
                                  capture_output=True, text=True, timeout=3).stdout.strip()
         try:
@@ -125,9 +176,12 @@ def stop(directory: Path, pid_hint: str | None, *, timeout: float = 3.0) -> tupl
         return False, "无法确认终端进程，请先退出终端中的 Agent"
     current = process_identity(int(saved["pid"]))
     if current is None:
-        if _group_active(int(saved["pgid"])):
+        # A native CLI can exit just before its MCP clients finish their EOF
+        # cleanup. Allow that bounded cleanup without signalling a group whose
+        # leader identity can no longer be checked.
+        if not _wait_group_exit(int(saved["pgid"]), timeout):
             return False, "终端子进程仍在运行，请先在终端结束任务"
-        return True, None
+        return _stop_owned_children(directory, timeout)
     if current != saved or saved["uid"] != os.getuid() or saved["pgid"] != saved["pid"]:
         return False, "无法确认终端进程，请先退出终端中的 Agent"
     pgid = int(saved["pgid"])
@@ -135,15 +189,11 @@ def stop(directory: Path, pid_hint: str | None, *, timeout: float = 3.0) -> tupl
         try:
             os.killpg(pgid, sig)
         except ProcessLookupError:
-            return True, None
+            return _stop_owned_children(directory, timeout)
         except PermissionError:
             return False, "无法结束终端进程，请先退出终端中的 Agent"
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            # The entire group must exit, including tools that outlive the CLI.
-            if not _group_active(pgid):
-                return True, None
-            time.sleep(0.05)
+        if _wait_group_exit(pgid, timeout):
+            return _stop_owned_children(directory, timeout)
     return False, "终端尚未结束，请稍后重试"
 
 

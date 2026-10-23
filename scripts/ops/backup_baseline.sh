@@ -284,7 +284,7 @@ if [ -d "$DASH_SRC" ]; then
     copy_file "$p" "dashboard/$rel" "dashboard/$rel"
   done < <(find "$DASH_SRC" "${FIND_PRUNE[@]}" -prune -o -type f -print0 2>/dev/null)
 else
-  log "[1/3] 跳过 dashboard 树（不存在: $DASH_SRC）"
+  log "[1/3] 跳过 dashboard 树（不存在: ${DASH_SRC}）"
 fi
 
 # ===========================================================================
@@ -428,13 +428,13 @@ record_manifest "SKIPPED.txt"
 record_manifest "SYMLINKS.txt"
 
 cat > "$DEST/RESTORE.md" <<EOF
-# 还原说明（备份 $STAMP）
+# 还原说明（备份 ${STAMP}）
 
 - 备份目录：\`$DEST\`
 - 来源 HERMES_HOME：\`$HHOME\`
 - 复制的文件数：$COPIED
-- 被排除的路径数：$SKIPPED_N（见 \`SKIPPED.txt\`，只有路径）
-- 记录的符号链接数：$LINKS_N（见 \`SYMLINKS.txt\`）
+- 被排除的路径数：${SKIPPED_N}（见 \`SKIPPED.txt\`，只有路径）
+- 记录的符号链接数：${LINKS_N}（见 \`SYMLINKS.txt\`）
 
 ## 这份备份里有什么
 

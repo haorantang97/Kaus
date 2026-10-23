@@ -61,3 +61,19 @@ it("组长按适用连接筛选后合并产品，保留可用的备用协议", a
   fireEvent.click(screen.getByRole("option", { name: "Hermes" }));
   await waitFor(() => expect(api.ensureProjectBinding).toHaveBeenCalledWith("project:one", "backend:hermes-acp"));
 });
+
+it("已退出目录的默认关联不会被自动选中或出现在新选择中", async () => {
+  api.fetchConnectedBackends.mockResolvedValue({ backends: [
+    { id:'backend:retired', productId:'retired', productName:'Retired', preset:{ catalogStatus:'legacy' } },
+    { id:'backend:codex', productId:'codex', productName:'Codex' },
+  ] });
+  api.fetchProjectBindings.mockResolvedValue({ bindings:[
+    { ...binding('one','retired'), isDefault:true, catalogStatus:'legacy' }, binding('one'),
+  ] });
+  render(<Picker />);
+  await waitFor(() => expect(selected).toHaveBeenLastCalledWith(binding('one')));
+  fireEvent.click(screen.getByRole('button', { name:'引擎' }));
+  expect(screen.queryByRole('option', { name:'Retired' })).toBeNull();
+  expect(screen.getByRole('option', { name:'Codex' })).toBeInTheDocument();
+  expect(api.ensureProjectBinding).not.toHaveBeenCalled();
+});

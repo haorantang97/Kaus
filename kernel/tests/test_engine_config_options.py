@@ -54,7 +54,7 @@ async def test_boolean_and_select_round_trip_restore_and_session_isolation(monke
     one = await driver.start_runtime(conv, 'card')
     two = await driver.start_runtime(h.make_conversation(p, b).evolve(model_id=None), 'card')
     try:
-        assert [(call['optionId'], call['value']) for call in calls] == [('my-policy', 'allow'), ('allow-network', True)]
+        assert [(call['configId'], call['value']) for call in calls] == [('my-policy', 'allow'), ('allow-network', True)]
         assert calls[-1]['type'] == 'boolean'
         assert driver.runtime_conversation_controls(one, b)['configOptions'][1]['currentValue'] is True
         assert driver.runtime_conversation_controls(two, b)['configOptions'][1]['currentValue'] is False

@@ -33,6 +33,7 @@ import { ReasoningCard } from "./ReasoningCard";
 import { TextCard, type MessageActions } from "./TextCard";
 import { ToolCard } from "./ToolCard";
 import { FileReference } from "./ArtifactPreview";
+import { DiffViewer } from "./DiffViewer";
 import { messageRejectionReasonKey } from "../../lib/messageDelivery";
 import { useContentText } from "./contentStrings";
 import {
@@ -168,7 +169,7 @@ export function CardRenderer({
           name={t("card.file.row", { path: cleanLine(item.path) ?? item.itemId })}
           time={time}
         >
-          {item.diff ? <MonoBlock max={320}>{item.diff}</MonoBlock> : null}
+          {item.diff ? <DiffViewer text={item.diff} /> : null}
           {item.path && <FileReference source={{ uri: item.path }} conversationId={conversationId} />}
         </RowCard>
       );

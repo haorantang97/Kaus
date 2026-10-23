@@ -99,6 +99,7 @@ class Session:
         self.lock = asyncio.Lock()
         self.process: asyncio.subprocess.Process | None = None
         self.cancelled = False
+        self.mcp_titles: dict[str, str] = {}
 
     def save(self) -> None:
         directory = self.bridge.state_dir
@@ -117,6 +118,10 @@ class Session:
                 os.unlink(name)
 
     def emit(self, update: dict, *, record: bool = True) -> None:
+        if update.get('sessionUpdate') in ('tool_call', 'tool_call_update'):
+            title = self.mcp_titles.get(update.get('title'))
+            if title:
+                update = {**update, 'title': title}
         if record:
             self.history.append(update)
         self.bridge.peer.notify("session/update", {"sessionId": self.ident, "update": update})
@@ -349,23 +354,46 @@ class Bridge:
             return {"protocolVersion": 1, "agentInfo": {"name": "kaus-commandcode-bridge", "version": "1"},
                     "agentCapabilities": {"loadSession": True,
                         "promptCapabilities": {"image": False, "audio": False, "embeddedContext": True},
-                        "mcpCapabilities": {"http": False, "sse": False},
+                        "mcpCapabilities": {"http": True, "sse": True},
                         "sessionCapabilities": {"resume": {}, "close": {}}}, "authMethods": []}
         if method == "initialized":
             return {}
         if method in ("session/new", "session/load", "session/resume"):
+            mcp_titles = {}
             if params.get("mcpServers"):
-                raise BridgeError("Host MCP projection is not supported by this native interface", -32602)
+                from drivers.session_mcp.broker import Broker, read_config
+                path = self.environment().get("KAUS_SESSION_MCP_CONFIG")
+                if not path:
+                    raise BridgeError("Project MCP extension is unavailable", -32602)
+                broker = None
+                try:
+                    config = read_config(path)
+                    if config["servers"] != params["mcpServers"]:
+                        raise ValueError()
+                    cwd = params.get("cwd")
+                    if not isinstance(cwd, str) or not Path(cwd).is_absolute() or not Path(cwd).is_dir():
+                        raise ValueError()
+                    broker = Broker({**config, "cwd": cwd})
+                    async with asyncio.timeout(25):
+                        await broker.open()
+                    mcp_titles = {tool['name']: tool['title'] for tool in broker.catalog}
+                except Exception:
+                    raise BridgeError("MCP connection failed; check the server configuration", -32000) from None
+                finally:
+                    if broker:
+                        await broker.close()
             await self.load_models()
             if method == "session/new":
                 cwd = params.get("cwd")
                 if not isinstance(cwd, str) or not Path(cwd).is_absolute() or not Path(cwd).is_dir():
                     raise BridgeError("An existing absolute working directory is required", -32602)
                 value = Session(self, str(uuid.uuid4()), str(Path(cwd).resolve()))
+                value.mcp_titles = mcp_titles
                 self.sessions[value.ident] = value
                 value.save()
             else:
                 value = self.session(params.get("sessionId"), params.get("cwd"))
+                value.mcp_titles = mcp_titles
                 if method == "session/load":
                     for update in value.history:
                         value.emit(update, record=False)

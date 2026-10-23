@@ -57,9 +57,8 @@ export function WarehouseOverlay({ onClose, refreshKey = 0 }: { onClose: () => v
               </div>
               <div className="flex items-center gap-1">
                 {["all", ...types].map((ty) => (
-                  <button key={ty} onClick={() => setTypeFilter(ty)}
-                    className="rounded-[2px] px-2.5 py-1 text-[0.66rem] uppercase tracking-[0.1em] transition-colors"
-                    style={{ border: `1px solid ${typeFilter === ty ? "var(--gold-deep)" : cream(15)}`, background: typeFilter === ty ? "var(--gold-soft)" : "transparent", color: typeFilter === ty ? "var(--accent-text)" : cream(55) }}>
+                  <button key={ty} onClick={() => setTypeFilter(ty)} aria-pressed={typeFilter === ty}
+                    className="kaus-button kaus-button--ghost kaus-button--accent">
                     {ty === "all" ? t("warehouse.filter.all", { count: d.item_total }) : t("warehouse.filter.type", { label: typeLabel(ty), count: d.type_totals[ty] })}
                   </button>
                 ))}
@@ -106,7 +105,7 @@ function ItemCard({ it, onPick }: { it: WHItem; onPick: (s: WHItem) => void }) {
     <div className="flex flex-col gap-1.5 p-2.5 transition-shadow hover:shadow-[0_2px_12px_rgba(60,50,20,0.08)]" style={{ border: `1px solid ${cream(15)}`, background: cream(2) }}>
       <div className="flex items-start justify-between gap-1.5">
         <span className="break-all text-[0.78rem] font-semibold leading-tight" style={{ color: "var(--midground-base)" }}>{it.name}</span>
-        <button onClick={() => onPick(it)} title={t("warehouse.assign")} className="grid size-6 shrink-0 place-items-center rounded transition-colors hover:bg-black/[0.05]" style={{ border: `1px solid color-mix(in srgb, var(--gold) 40%, transparent)`, color: "var(--accent-text)" }}>
+        <button onClick={() => onPick(it)} title={t("warehouse.assign")} aria-label={t("warehouse.assign")} className="kaus-icon-control kaus-icon-control--accent">
           <Plus className="size-3.5" />
         </button>
       </div>
@@ -188,8 +187,8 @@ function AgentNode({ name, net, sel, onToggle, depth }: { name: string; net: Net
     : t("warehouse.role.standalone");
   return (
     <div>
-      <button onClick={() => onToggle(name)} className="mb-1 flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors"
-        style={{ marginLeft: depth * 18, border: `1px solid ${on ? "var(--gold-deep)" : cream(14)}`, background: on ? "var(--gold-soft)" : cream(2) }}>
+      <button onClick={() => onToggle(name)} aria-pressed={on} className="kaus-button kaus-button--ghost kaus-button--accent mb-1 w-full text-left"
+        style={{ marginLeft: depth * 18, justifyContent: "flex-start", whiteSpace: "normal" }}>
         <span className="grid size-4 shrink-0 place-items-center rounded-[3px] text-[0.6rem]" style={{ border: `1px solid ${on ? "var(--gold-deep)" : cream(30)}`, background: on ? "var(--gold-deep)" : "transparent", color: "#fff" }}>{on ? "✓" : ""}</span>
         <span className="text-[0.8rem] font-medium" style={{ color: "var(--midground-base)" }}>{dname(n)}</span>
         <span className="text-[0.62rem] uppercase tracking-[0.12em]" style={{ color: cream(42) }}>{role} · {t("warehouse.node.skills", { count: n.skill_count })}</span>

@@ -26,9 +26,9 @@
 ``sessions.history``  ACP 没有「读取历史条目」的方法。``session/load`` 的语义是
                       «把会话装回来并重放 ``session/update``»，不是「返回历史
                       列表」，而且实测存在 agent 拒绝该方法（形状校验永远失败）
-                      的情况。Driver 因此对 ``load_native_history`` 抛
-                      :class:`UnsupportedCapabilityError`，而不是拿重放流拼一份
-                      看起来完整、实则缺工具结果与权限决策的假历史（R-02）。
+                      的情况。本函数不从该声明推导历史可读；Driver 仅在专用
+                      适配器提供原生历史读取入口时声明可用，并由每次读取结果
+                      报告完整度及缺失项。
 ``card.usage``        指 **token** 用量。ACP 的事件流里没有 token 字段（实测）。
                       上下文占用（``usage_update{size, used}``）是另一回事，
                       它有来源，翻译器会如实产出 ``usage.updated``，但只填
@@ -163,6 +163,10 @@ def capability_projection_for(preset: Any = None) -> dict[str, SupportLevel]:
     不同，理由由投射报告里的 ``reason`` 说（``no_convention``）。
     """
     projection = dict(CAPABILITY_PROJECTION)
+    quirks = getattr(preset, "quirks", None)
+    if (getattr(quirks, "mcp_via_session_new", True) is False and
+            not getattr(preset, "project_mcp_via_runtime", False)):
+        projection["mcp"] = SupportLevel.UNSUPPORTED
     workspace = getattr(preset, "workspace", None)
     if getattr(workspace, "instructions_file", None):
         projection["instructions"] = SupportLevel.ADAPTED

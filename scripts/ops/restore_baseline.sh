@@ -155,7 +155,7 @@ while IFS="$(printf '\t')" read -r brel trel; do
   case "$brel" in ''|'#'*) continue ;; esac
   if [ -z "${trel:-}" ]; then continue; fi
   if [ ! -f "$SRC/$brel" ]; then
-    warn "  备份里缺: $brel（RESTORE_MAP 有记录）"
+    warn "  备份里缺: ${brel}（RESTORE_MAP 有记录）"
     N_MISS=$((N_MISS+1))
     continue
   fi
@@ -182,19 +182,19 @@ while IFS="$(printf '\t')" read -r brel trel; do
 done < "$RESTORE_MAP"
 
 if [ "$N_OVER" -gt 0 ] && [ "$QUIET" -eq 0 ]; then
-  log "   将被【覆盖】的文件（$N_OVER）:"
+  log "   将被【覆盖】的文件（${N_OVER}）:"
   printf '%s' "$PLAN_OVERWRITE" | while IFS="$(printf '\t')" read -r b a; do
     if [ -n "${a:-}" ]; then printf '     M %s\n' "$a"; fi
   done
 fi
 if [ "$N_NEW" -gt 0 ] && [ "$QUIET" -eq 0 ]; then
-  log "   将被【新建】的文件（$N_NEW）:"
+  log "   将被【新建】的文件（${N_NEW}）:"
   printf '%s' "$PLAN_CREATE" | while IFS="$(printf '\t')" read -r b a; do
     if [ -n "${a:-}" ]; then printf '     + %s\n' "$a"; fi
   done
 fi
 if [ "$N_SKIP" -gt 0 ] && [ "$QUIET" -eq 0 ]; then
-  log "   跳过（$N_SKIP）:"
+  log "   跳过（${N_SKIP}）:"
   printf '%s' "$PLAN_SKIP" | while IFS="$(printf '\t')" read -r t r; do
     if [ -n "${t:-}" ]; then printf '     - %s  (%s)\n' "$HHOME/$t" "$r"; fi
   done

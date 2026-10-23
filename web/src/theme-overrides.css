@@ -6,7 +6,7 @@
 /* Loaded after index.css.                                              */
 /* ------------------------------------------------------------------ */
 :root {
-  /* Terminal/computer font everywhere. */
+  /* UI, brand and code each retain a dedicated type role. */
   --theme-font-sans:
     "Inter", "PingFang SC", ui-sans-serif, system-ui, sans-serif;
   --theme-font-display: "Anton", Impact, "PingFang SC", sans-serif;
@@ -16,18 +16,23 @@
   /* 侧栏宽度：主区被「推」开时要平移这么多（批次七 d 第 1 条）。 */
   --kaus-rail-width: 280px;
 
-  /* Base: white canvas, warm near-black ink. The cream() helper in the
-     components resolves to ink-at-opacity, so it becomes light warm-grey
-     borders/muted text automatically on this light theme. */
-  --background-base: #eae7dd;
-  --background-secondary: #e3dfd3;
-  --foreground-base: #1a1a15;
-  --midground-base: #1a1a15;
-  --panel: #f1eee5;
-  --surface-raised: #f8f5ec;
+  /* Neutral light palette; dark mode keeps its original olive surfaces. */
+  --surface-0: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --surface-2: #ffffff;
+  --surface-3: #ffffff;
+  --background-base: var(--surface-1);
+  --background-secondary: var(--surface-0);
+  --foreground-base: #242428;
+  --midground-base: #242428;
+  --panel: var(--surface-2);
+  --surface-raised: var(--surface-3);
   --overlay-scrim: rgba(35, 32, 25, 0.22);
-  --shadow-lg: 0 18px 50px rgba(60, 50, 20, 0.2);
-  --shadow-drawer: -14px 0 44px rgba(60, 50, 20, 0.13);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 5%), 0 2px 8px rgb(0 0 0 / 8%);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 5%), 0 6px 16px rgb(0 0 0 / 8%);
+  --shadow-lg: 0 4px 8px rgb(0 0 0 / 6%), 0 12px 28px -2px rgb(0 0 0 / 8%);
+  --shadow-popover: 0 0 0 var(--hairline) var(--border-subtle), 0 8px 24px rgb(0 0 0 / 12%), 0 2px 6px rgb(0 0 0 / 8%);
+  --shadow-drawer: -8px 0 32px rgb(20 20 24 / 8%);
 
   /* Accent (historic name "gold"; the value is a lime). Flat solid — no metallic
      gradient since 2026-09-02. Solid variants for tiny elements. */
@@ -45,19 +50,22 @@
   --danger-on-dark: #cc929f;
   --warning: var(--danger);
 
-  /* 轮盘图谱里**未选中**的那些连线（AgentGraph.redraw）。浅色保持历史取值不动
-     （AD-78「不改视觉」）；深色在 body.dark 里换成跟着 --gold 走的取值——那条
-     暖褐色在深底上几乎看不见。选中的连线两套主题都是 --gold-deep。 */
-  --graph-link-idle: rgba(120, 100, 40, 0.22);
+  /* Idle links are neutral in light mode and mint-tinted in dark mode.
+     Selected links use --gold-deep in both palettes. */
+  --graph-link-idle: color-mix(in srgb, var(--midground-base) 16%, transparent);
 }
 
 body.dark {
-  --background-base: #16180f;
-  --background-secondary: #1e211a;
+  --surface-0: #1e211a;
+  --surface-1: #16180f;
+  --surface-2: #1e211a;
+  --surface-3: #25281f;
+  --background-base: var(--surface-1);
+  --background-secondary: var(--surface-0);
   --foreground-base: #edeadd;
   --midground-base: #edeadd;
-  --panel: #1e211a;
-  --surface-raised: #25281f;
+  --panel: var(--surface-2);
+  --surface-raised: var(--surface-3);
   --overlay-scrim: rgba(4, 5, 3, 0.58);
   /* AD-78: the lime accent crushed the sidebar and the graph edges on the dark
      canvas (user-reported). Same role, a desaturated mint that keeps its
@@ -71,8 +79,17 @@ body.dark {
   --graph-link-idle: color-mix(in srgb, var(--gold) 26%, transparent);
   --danger: var(--danger-on-dark);
   --warning: var(--danger);
-  --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.42);
-  --shadow-drawer: -14px 0 44px rgba(0, 0, 0, 0.36);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%), 0 2px 8px rgb(0 0 0 / 40%);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 40%), 0 6px 16px rgb(0 0 0 / 40%);
+  --shadow-lg: 0 4px 8px rgb(0 0 0 / 50%), 0 16px 36px -2px rgb(0 0 0 / 40%);
+  --shadow-popover: inset 0 0 0 var(--hairline) rgb(255 255 255 / 10%), 0 8px 28px rgb(0 0 0 / 65%), 0 2px 8px rgb(0 0 0 / 45%);
+  --shadow-drawer: -8px 0 32px rgb(0 0 0 / 20%);
+}
+
+:root, body.dark {
+  --border-subtle: color-mix(in srgb, var(--midground-base) 10%, transparent);
+  --surface-hover: color-mix(in srgb, var(--midground-base) 5%, transparent);
+  --surface-selected: color-mix(in srgb, var(--midground-base) 9%, transparent);
 }
 
 html,
@@ -356,33 +373,29 @@ body,
 .theme-toggle {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
-  border: 1px solid color-mix(in srgb, var(--midground-base) 24%, transparent);
-  border-radius: 999px;
-  padding: 5px 8px;
+  min-height: 28px;
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 7px;
   cursor: pointer;
   background: transparent;
   color: color-mix(in srgb, var(--midground-base) 72%, transparent);
-  font: 600 9px/1 var(--theme-font-mono);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  transition:
-    color 0.18s,
-    border-color 0.18s;
+  font: 500 10px/1.4 var(--theme-font-sans);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .theme-toggle:hover {
   color: var(--midground-base);
-  border-color: var(--midground-base);
+  background: var(--surface-hover);
 }
 
-/* 选中态（批次十一第 6 件）：主题 / 语言 / 图钉这三枚小胶囊原来没有 selected
-   视觉，走查者分不清"当前是哪个"。用与导航项**同一套** `.is-active`（深底反白），
-   不加新颜色。 */
+/* Selected preferences stay visible with the same neutral fill as navigation. */
 .theme-toggle.is-active {
-  border-color: var(--midground-base);
-  background: var(--midground-base);
-  color: var(--background-base);
+  background: var(--surface-selected);
+  color: var(--midground-base);
 }
 
 .shell-nav {
@@ -411,8 +424,8 @@ body,
 }
 
 .shell-nav-item.is-active {
-  background: var(--midground-base);
-  color: var(--background-base);
+  background: var(--surface-selected);
+  color: var(--midground-base);
 }
 
 .shell-nav-item.is-new {
@@ -435,7 +448,11 @@ body,
 }
 
 .shell-nav-item.is-active .shell-nav-icon {
-  color: var(--gold);
+  color: inherit;
+}
+
+body.dark .shell-nav-item.is-active .shell-nav-icon {
+  color: var(--accent-text);
 }
 
 .shell-nav-label {
@@ -479,8 +496,8 @@ body,
 }
 
 .sidebar-agent-row.is-current {
-  background: var(--midground-base);
-  color: var(--background-base) !important;
+  background: var(--surface-selected);
+  color: var(--midground-base) !important;
 }
 
 .sidebar-agent-row.is-current::before {
@@ -503,322 +520,16 @@ body,
 
 .sidebar-context-title {
   margin: 0 4px 8px;
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
-  font: 700 8.5px/1 var(--theme-font-mono);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-}
-
-.sidebar-legend {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding-top: 14px;
-  border-top: 1px solid
-    color-mix(in srgb, var(--midground-base) 13%, transparent);
-}
-
-.sidebar-legend > div:not(.sidebar-context-title) {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
-  font: 11px/1 var(--theme-font-sans);
-}
-
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  margin-left: 5px;
-  border: 1.5px solid var(--midground-base);
-  border-radius: 50%;
-}
-
-.legend-dot.is-online {
-  border-color: #3c7a30;
-  background: #3c7a30;
-}
-
-.legend-dot.is-twin {
-  border-color: var(--danger);
-  background: var(--danger);
-}
-
-body.dark .legend-dot.is-online {
-  border-color: #86c64f;
-  background: #86c64f;
-}
-
-.legend-inherit {
-  width: 18px;
-  margin-left: 0;
-  border-top: 1.5px dashed var(--midground-base);
-}
-
-.sidebar-manifesto {
-  margin-top: auto;
-  padding-top: 16px;
-}
-
-.sidebar-headline {
-  font: 400 32px/0.86 var(--theme-font-display);
-  text-transform: uppercase;
-}
-
-.sidebar-stats {
-  margin-top: 10px;
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
-  font: 10.5px/1.5 var(--theme-font-mono);
-}
-
-.sidebar-copy {
-  margin-top: 12px;
-  color: color-mix(in srgb, var(--midground-base) 36%, transparent);
-  font: 700 8.5px/1 var(--theme-font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  color: color-mix(in srgb, var(--midground-base) 58%, transparent);
+  font: 500 11px/1.5 var(--theme-font-sans);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 body.dark select,
 body.dark textarea,
 body.dark input {
   color-scheme: dark;
-}
-
-/* ===== HOME hero — exact structure from redesign-demo-21-themed ===== */
-.home-hero {
-  position: relative;
-  height: 100%;
-  overflow: hidden;
-  background: #16180f;
-}
-
-.home-hero-image {
-  position: absolute;
-  inset: 0;
-  /* Quiet dark canvas instead of the former gold map photo. */
-  background:
-    radial-gradient(70% 55% at 30% 18%, rgba(255, 255, 255, 0.05), transparent 70%),
-    linear-gradient(160deg, #1c1f16 0%, #16180f 55%, #121409 100%);
-}
-
-.home-hero-grade {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(20, 18, 12, 0.16),
-    transparent 28%,
-    transparent 72%,
-    rgba(20, 18, 12, 0.2)
-  );
-}
-
-.home-hero-frame {
-  position: absolute;
-  z-index: 3;
-  inset: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  pointer-events: none;
-}
-
-.home-grid-line {
-  position: absolute;
-  z-index: 2;
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.home-grid-line-x {
-  top: 22px;
-  bottom: 22px;
-  width: 1px;
-}
-
-.home-grid-line-x-one {
-  left: 36%;
-}
-.home-grid-line-x-two {
-  left: 68%;
-}
-.home-grid-line-y {
-  top: 40%;
-  right: 22px;
-  left: 22px;
-  height: 1px;
-}
-
-.home-tick,
-.home-vertical,
-.home-scale {
-  position: absolute;
-  z-index: 4;
-  color: #efe9d6;
-  font: 700 9px/1 var(--theme-font-mono);
-  letter-spacing: 0.14em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-}
-
-.home-tick {
-  top: 30px;
-  transform: translateX(-50%);
-}
-.home-tick-time {
-  left: 36%;
-}
-.home-tick-year {
-  left: 68%;
-}
-
-.home-vertical {
-  top: 35%;
-  writing-mode: vertical-rl;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-}
-
-.home-vertical-left {
-  left: 30px;
-}
-.home-vertical-right {
-  right: 30px;
-  top: 31%;
-}
-
-.home-logo-stamp {
-  position: absolute;
-  z-index: 5;
-  top: 44px;
-  left: 48px;
-  color: #f3efe0;
-  font: 400 56px/0.8 var(--theme-font-display);
-  letter-spacing: 0.02em;
-  transform: skewX(-7deg);
-}
-
-.home-logo-stamp small {
-  display: block;
-  margin-top: 8px;
-  color: #eef2dd;
-  font: 700 9px/1.4 var(--theme-font-mono);
-  letter-spacing: 0.26em;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
-  transform: skewX(7deg);
-}
-
-.home-big-title {
-  position: absolute;
-  z-index: 5;
-  bottom: 54px;
-  left: 48px;
-  margin: 0;
-  color: #f3efe0;
-  font: 400 58px/0.84 var(--theme-font-display);
-  text-transform: uppercase;
-  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.5);
-}
-
-.home-scale {
-  bottom: 34px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  letter-spacing: 0.1em;
-}
-.home-scale-left {
-  left: 48px;
-}
-.home-scale-right {
-  right: 48px;
-}
-.home-scale-right span {
-  width: 54px;
-  border-top: 2px solid #efe9d6;
-}
-
-/* 概览页的下一步（批次十一第 5 件）：形态沿用导航项 `.shell-nav-item`（同一个
-   圆角、同一份内边距），颜色用这块 hero 自己已有的局部色值（#efe9d6 /
-   rgba(255,255,255,…)），不引入新颜色（AD-78）。 */
-.home-actions {
-  position: absolute;
-  z-index: 6;
-  bottom: 168px;
-  left: 48px;
-  display: flex;
-  gap: 10px;
-}
-
-.home-actions .shell-nav-item {
-  width: auto;
-  padding: 8px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(26, 26, 21, 0.55);
-  color: #f3efe0;
-  backdrop-filter: blur(14px);
-}
-
-.home-actions .shell-nav-item:hover {
-  border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(26, 26, 21, 0.75);
-}
-
-.home-actions .shell-nav-item.is-active {
-  border-color: #efe9d6;
-  background: #efe9d6;
-  color: #16180f;
-}
-
-.home-hotspot {
-  position: absolute;
-  z-index: 6;
-  right: 40px;
-  bottom: 80px;
-  display: block;
-  width: 206px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 12px;
-  background: rgba(26, 26, 21, 0.55);
-  color: var(--background-base);
-  text-align: left;
-  backdrop-filter: blur(14px);
-  transition:
-    transform 0.18s,
-    border-color 0.18s;
-}
-
-.home-hotspot:hover {
-  border-color: rgba(255, 255, 255, 0.32);
-  transform: translateY(-2px);
-}
-
-.home-hotspot-head {
-  display: flex;
-  justify-content: space-between;
-  padding: 9px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  color: #cfcabb;
-  font: 700 8.5px/1 var(--theme-font-mono);
-  letter-spacing: 0.12em;
-}
-
-.home-hotspot-body {
-  display: block;
-  padding: 12px;
-  text-align: center;
-}
-
-.home-hotspot-label {
-  display: block;
-  color: var(--gold);
-  font: 700 8px/1 var(--theme-font-mono);
-  letter-spacing: 0.12em;
-}
-
-.home-hotspot-name {
-  display: block;
-  margin: 7px 0 2px;
-  color: #f3efe0;
-  font: 400 28px/1 var(--theme-font-display);
 }
 
 @media (max-width: 900px) {
@@ -832,18 +543,10 @@ body.dark input {
     padding-inline: 14px;
   }
 
-  .shell-nav-en,
-  .sidebar-manifesto {
+  .shell-nav-en {
     display: none;
   }
 
-  .home-big-title {
-    font-size: 44px;
-  }
-
-  .home-hotspot {
-    right: 30px;
-  }
 }
 
 /* ===== AGENTS chat — exact demo-21 shell around the real PTY ===== */
@@ -982,7 +685,7 @@ body.dark .agent-chat-status.is-online {
   z-index: 50;
   min-width: 320px;
   max-height: 380px;
-  background: #16180f;
+  background: var(--surface-raised);
   border: 1px solid color-mix(in srgb, var(--gold-deep) 28%, transparent);
   border-radius: 8px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
@@ -990,6 +693,8 @@ body.dark .agent-chat-status.is-online {
   display: flex;
   flex-direction: column;
 }
+body.dark .agent-session-dropdown { background: var(--background-base); }
+
 .agent-session-dropdown-head {
   padding: 8px 14px;
   font: 600 10px/1.4 var(--theme-font-mono);
@@ -1563,28 +1268,26 @@ body.dark .agent-chat-status.is-online {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px;
-  border: 1px solid color-mix(in srgb, var(--midground-base) 14%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-raised) 62%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .agent-browser-modes button {
+  min-height: 32px;
   border: 0;
-  border-radius: 999px;
-  padding: 6px 11px;
-  color: color-mix(in srgb, var(--midground-base) 46%, transparent);
+  border-radius: 7px;
+  padding: 7px 12px;
+  color: color-mix(in srgb, var(--midground-base) 65%, transparent);
   background: transparent;
   cursor: pointer;
-  font: 700 9px/1 var(--theme-font-mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font: 500 12px/1.5 var(--theme-font-sans);
 }
 
-.agent-browser-modes button:hover,
+.agent-browser-modes button:hover { background: var(--surface-hover); }
 .agent-browser-modes button.is-active {
-  color: var(--background-base);
-  background: var(--midground-base);
+  color: var(--midground-base);
+  background: var(--surface-selected);
+  font-weight: 600;
 }
 
 .agent-browser-body {
@@ -1922,15 +1625,11 @@ body.dark .ag-dot.on {
   width: 344px;
   flex: none;
   overflow: auto;
-  background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
-  backdrop-filter: blur(20px);
-  border-left: 1px solid
-    color-mix(in srgb, var(--midground-base) 12%, transparent);
+  background: var(--background-secondary);
+  border-left: 1px solid var(--border-subtle);
 }
 .ag-panel-head {
   padding: 22px 22px 16px;
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--midground-base) 13%, transparent);
 }
 .ag-ptag {
   display: flex;
@@ -1994,16 +1693,12 @@ body.dark .ag-status:not(.idle) {
   color: var(--midground-base);
 }
 .ag-panel-section {
-  padding: 14px 22px;
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--midground-base) 13%, transparent);
+  padding: 20px 22px;
 }
 .ag-panel-section h3 {
   margin-bottom: 12px;
-  color: color-mix(in srgb, var(--midground-base) 36%, transparent);
-  font: 700 9px/1 var(--theme-font-mono);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  font: 500 12px/1.5 var(--theme-font-sans);
 }
 .ag-prow {
   display: flex;
@@ -2827,25 +2522,24 @@ button.kaus-conversation-title:hover {
   display: none;
 }
 
-/* ---- batch13：工具栏（DESIGN ★ I + H-4） ---- *
- * 全中性描边 Pill，可点的多一个 `▾`。形态（圆角 1px、9.6px 等宽大写、0.14em 字距）
- * 沿用原来那枚 `.kaus-composer-select`，只是不再是原生 `<select>`。 */
+/* Compact toolbar controls show their shape on hover and keyboard focus. */
 .kaus-bar-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   max-width: 220px;
+  min-height: 28px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--midground-base) 13%, transparent);
-  border-radius: 1px;
-  padding: 2px 5px;
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 8px;
   background: transparent;
-  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  color: color-mix(in srgb, var(--midground-base) 72%, transparent);
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 9.6px/1.4 var(--theme-font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 500 12px/1.4 var(--theme-font-sans);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .kaus-bar-pill.is-button {
@@ -2853,7 +2547,7 @@ button.kaus-conversation-title:hover {
 }
 
 .kaus-bar-pill.is-button:hover {
-  border-color: color-mix(in srgb, var(--midground-base) 26%, transparent);
+  background: var(--surface-hover);
   color: var(--midground-base);
 }
 
@@ -2909,11 +2603,11 @@ button.kaus-conversation-title:hover {
 /* 组头：小号大写的中性小字，与站内其它 section 标签同形（★H：工作区不上强调色）。
    它不可点、不该被选中，所以没有 hover 也没有指针。 */
 .kaus-bar-pop-head {
-  padding: 6px 8px 3px;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 600 9.5px/1.3 var(--theme-font-sans);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding: 8px 8px 4px;
+  color: color-mix(in srgb, var(--midground-base) 60%, transparent);
+  font: 500 11px/1.4 var(--theme-font-sans);
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
   user-select: none;
 }
@@ -2946,22 +2640,23 @@ button.kaus-conversation-title:hover {
 
 .kaus-bar-pop-item {
   border-radius: 6px;
-  padding: 5px 8px;
+  min-height: 32px;
+  padding: 6px 8px;
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
   color: var(--midground-base);
-  font: 11.5px/1.4 var(--theme-font-sans);
+  font: 12px/1.5 var(--theme-font-sans);
 }
 
 .kaus-bar-pop-item:hover {
   background: color-mix(in srgb, var(--midground-base) 6%, transparent);
 }
 
-/* 当前项也用中性的深底反白（与导航选中项同一套），不用强调色（H-4）。 */
+/* Persistent selection uses a neutral tint; it does not compete with primary actions. */
 .kaus-bar-pop-item.is-current {
-  background: var(--midground-base);
-  color: var(--background-base);
+  background: var(--surface-selected);
+  color: var(--midground-base);
 }
 
 /* 目录降级时垫在下拉底部的一行小字。 */
@@ -3099,7 +2794,7 @@ button.kaus-conversation-title:hover {
   gap: 10px;
   border-radius: 7px;
   padding: 7px 8px;
-  font: 13px/1 var(--theme-font-mono);
+  font: 13px/1.5 var(--theme-font-sans);
   text-align: left;
 }
 
@@ -3162,7 +2857,7 @@ button.kaus-conversation-title:hover {
 .kaus-cap-icon-button { display: inline-grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; border-radius: 7px; color: color-mix(in srgb, var(--midground-base) 60%, transparent); cursor: pointer; transition: background 150ms ease, color 150ms ease; }
 .kaus-cap-icon-button:hover { color: var(--midground-base); background: color-mix(in srgb, var(--midground-base) 8%, transparent); }
 .kaus-cap-icon-button svg { transition: transform 150ms ease; }
-.kaus-cap-icon-button:hover svg { transform: scale(1.08); }
+.kaus-cap-icon-button:hover svg { transform: none; }
 .kaus-cap-value-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .kaus-cap-value-head h3 { font: 600 15px/1.5 var(--theme-font-sans); overflow-wrap: anywhere; }
 .kaus-cap-raw { max-height: 60vh; overflow: auto; padding: 14px; border-radius: 8px; background: var(--surface-raised); font: 12px/1.7 var(--theme-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -3309,7 +3004,7 @@ button.kaus-conversation-title:hover {
   align-items: center;
   gap: 8px;
   color: color-mix(in srgb, var(--midground-base) 70%, transparent);
-  font: 11.5px/1.4 var(--theme-font-sans);
+  font: 12px/1.5 var(--theme-font-sans);
 }
 
 .kaus-external-degraded-head > button {
@@ -3610,7 +3305,7 @@ body.dark .kaus-cap-row.is-head {
   gap: 6px;
   border-radius: 6px;
   padding: 5px 7px;
-  font: 11.5px/1.4 var(--theme-font-sans);
+  font: 12px/1.5 var(--theme-font-sans);
 }
 
 .kaus-group-member:hover {
@@ -3938,20 +3633,6 @@ body.dark .kaus-cap-row.is-head {
   margin: 2px 0 6px;
 }
 
-/* 「回到最新 · N 条新」浮在底部：它要在用户往上翻着的时候一直看得见，
-   所以 sticky 而不是跟着内容滚走。 */
-.kaus-group-jump {
-  position: sticky;
-  bottom: 4px;
-  align-self: center;
-  margin: 6px 0 2px;
-  padding: 3px 8px;
-  border: 1px solid color-mix(in srgb, var(--midground-base) 18%, transparent);
-  border-radius: 1px;
-  background: var(--panel);
-  color: var(--midground-base);
-}
-
 .kaus-group-deliveries {
   display: flex;
   flex-direction: column;
@@ -4237,9 +3918,10 @@ body.dark .kaus-cap-row.is-head {
 .kaus-project-primary, .kaus-project-secondary { min-height: 42px; padding: 10px 16px; font-size: 13px; }
 .ag-node-enter { position: relative; z-index: 1; display: inline-grid; place-items: center; align-self: center; width: 30px; height: 30px; margin-left: 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent-text) 25%, transparent); color: var(--accent-text); background: var(--surface-raised); cursor: pointer; }
 .ag-node-enter:hover { background: var(--gold-soft); }
-.kaus-project-conversation { min-height: 52px; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent); border-radius: 10px; background: var(--surface-raised); font: 500 13px/1.5 var(--theme-font-sans); cursor: pointer; transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease; }
-.kaus-project-conversation:hover { border-color: color-mix(in srgb, var(--accent-text) 42%, transparent); background: color-mix(in srgb, var(--surface-raised) 94%, var(--gold)); box-shadow: 0 2px 6px rgb(0 0 0 / 5%); }
-.kaus-project-conversation-icon { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; border-radius: 8px; color: var(--accent-text); background: var(--gold-soft); }
+.kaus-project-conversation { min-height: 48px; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; font: 500 13px/1.5 var(--theme-font-sans); cursor: pointer; }
+.kaus-project-conversation:hover { background: var(--surface-hover); }
+.kaus-project-conversation-icon { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; color: color-mix(in srgb, var(--midground-base) 65%, transparent); background: transparent; }
+body.dark .kaus-project-conversation-icon { color: var(--accent-text); }
 .kaus-project-conversation-arrow { flex-shrink: 0; color: var(--accent-text); }
 .kaus-engine-transports { margin-top: 14px; font-size: 12px; color: color-mix(in srgb, var(--midground-base) 70%, transparent); }
 .kaus-engine-transports summary { cursor: pointer; }

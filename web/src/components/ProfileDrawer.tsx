@@ -1,3 +1,4 @@
+import { ErrorNotice } from "./ui";
 import { BarMenu } from "./ComposerBar";
 import { useProfileModelCatalog } from "../lib/useProfileModelCatalog";
 import { modelSelection, modelValue } from "../lib/modelCatalogView";
@@ -426,7 +427,7 @@ function SkillAddModal({ name, onClose, onDone }: { name: string; onClose: () =>
       <div className="flex gap-2"><input value={install} onChange={(e) => setInstall(e.target.value)} placeholder="如 anthropic/skills/pdf" style={inputStyle()} /><Button variant="primary" disabled={busy} onClick={doInstall}>安装</Button></div>
       <div className="mb-1 mt-3 text-[0.7rem]" style={{ color: cream(55) }}>卸载（技能名）</div>
       <div className="flex gap-2"><input value={uninstall} onChange={(e) => setUninstall(e.target.value)} placeholder="技能名" style={inputStyle()} /><Button variant="danger" disabled={busy} onClick={doUninstall}>卸载</Button></div>
-      {err && <div className="mt-2 text-xs" style={{ color: "var(--danger)" }}>{err}</div>}
+      {err && <ErrorNotice error={err} className="mt-2 text-xs" />}
       <div className="mt-4 flex justify-end"><Button onClick={onClose}>关闭</Button></div>
     </Modal>
   );
@@ -506,7 +507,7 @@ export function SubtasksSection({ name, refreshKey = 0 }: { name: string; refres
               <div className="mt-1 flex gap-1.5"><Pill tone="muted">{t.status || "?"}</Pill>{t.priority ? <Pill tone="gold">P{t.priority}</Pill> : null}</div>
             </div>
           ))}
-          <button className="rounded-lg border border-dashed px-3 py-2 text-xs" style={{ borderColor: cream(20), color: cream(55) }} onClick={() => setCreating(true)}>+ 新建子任务（分配给 {name}）</button>
+          <button className="kaus-button kaus-button--ghost" style={{ color: cream(55) }} onClick={() => setCreating(true)}>+ 新建子任务（分配给 {name}）</button>
         </div>
       )}
       {creating && <SubtaskCreateModal assignee={name} onClose={() => setCreating(false)} onDone={() => { setCreating(false); load(); }} />}
@@ -535,7 +536,7 @@ function SubtaskCreateModal({ assignee, onClose, onDone }: { assignee: string; o
       <select value={pri} onChange={(e) => setPri(e.target.value)} style={{ ...selStyle, marginTop: 8 }}>
         <option value="">默认优先级</option><option value="1">P1 紧急</option><option value="2">P2 高</option><option value="3">P3 中</option><option value="4">P4 低</option>
       </select>
-      {err && <div className="mt-2 text-xs" style={{ color: "var(--danger)" }}>{err}</div>}
+      {err && <ErrorNotice error={err} className="mt-2 text-xs" />}
       <div className="mt-3 flex justify-end gap-3"><Button onClick={onClose}>取消</Button><Button variant="primary" onClick={create}>创建</Button></div>
     </Modal>
   );

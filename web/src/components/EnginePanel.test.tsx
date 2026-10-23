@@ -128,6 +128,15 @@ const capabilities = {
 
 const row: EngineRow = { binding, backend, capabilities };
 
+it("退出目录的连接保留管理操作，移除新建和设为默认入口", () => {
+  const retired: EngineRow = { ...row, binding:{ ...binding, isDefault:false },
+    backend:{ ...backend, preset:{ id:'retired', label:'Retired', catalogStatus:'legacy' } } };
+  render(<EnginePanel rows={[retired]} onNewConversation={vi.fn()} onMakeDefault={vi.fn()} onDetach={vi.fn()} />);
+  expect(screen.queryByRole('button', { name:'新建对话' })).toBeNull();
+  expect(screen.queryByRole('button', { name:'设为默认' })).toBeNull();
+  expect(screen.getByRole('button', { name:'解除' })).toBeInTheDocument();
+});
+
 const projectLabel = (id: string) => (id === "project:default" ? "X" : "Pronto");
 
 function renderPanel(rows: EngineRow[] = [row]) {

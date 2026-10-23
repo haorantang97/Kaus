@@ -46,7 +46,8 @@ describe("workspace selection", () => {
     render(<WorkspacePill setting={{ value: "/work", source: "project" }} onSave={save} />);
     await user.click(screen.getByRole("button", { name: "工作目录" }));
     await user.click(await screen.findByRole("button", { name: "Project" }));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "工作目录" })).toHaveValue("/work/Project"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "输入文件夹位置" })).toHaveTextContent("Project"));
+    expect(screen.queryByRole("textbox", { name: "工作目录" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "选择此文件夹" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("保存失败");
     expect(save).toHaveBeenCalledWith("/work/Project");
@@ -61,6 +62,7 @@ describe("workspace selection", () => {
     render(<WorkspacePill setting={{ value: "/work", source: "project" }} onSave={save} />);
     await user.click(screen.getByRole("button", { name: "工作目录" }));
     await screen.findByRole("button", { name: "Project" });
+    await user.click(screen.getByRole("button", { name: "输入文件夹位置" }));
     await user.type(screen.getByRole("textbox", { name: "工作目录" }), "/missing");
     expect(screen.getByRole("button", { name: "选择此文件夹" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "取消" }));

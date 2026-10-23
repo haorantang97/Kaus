@@ -27,7 +27,7 @@ Conversation 领域对象、替代 Agent Harness、让某个 Agent 的私有概�
 - v1.0 §8.8：通用层只看到 ``native_session_id`` / ``native_session_head_id``
   （+ 可选 segments），原生的分段与续接概念不得泄露。
 - v1.0 §16.6 / §11.1：CLI 启动信息不得保存 Secret →
-  :class:`CliLaunchSpec` 只允许列出要透传的环境变量**名**，不接受值。
+  :class:`CliLaunchSpec` 可持久化字段只列变量名；临时值使用不序列化、不显示的内存字段。
 - R-02：``NativeHistory`` 必须能报告「缺什么」，以判定是否需要可丢弃缓存回退。
 """
 
@@ -816,6 +816,9 @@ class MessageInput(_DriverModel):
 
     text: str
     attachments: tuple[AttachmentRef, ...] = ()
+    # Host-owned reference documents are delivered as tool-readable context,
+    # separately from visible composer text and model attachment capabilities.
+    context_files: tuple[AttachmentRef, ...] = Field(default=(), exclude=True, repr=False)
     metadata: dict[str, Any] = Field(default_factory=dict)
     #: 调用方（页面）自己生成的一次性编号，用于把本地占位与回程事件对上号。
     #: 公共层**不解释**它的形状、不生成、不校验唯一性，只原样带回时间线事件；
@@ -842,7 +845,7 @@ class CliLaunchSpec(_DriverModel):
     """外部 CLI 启动规格（v1.0 §8.5）。
 
     安全约束（v1.0 §16.6 / §11.1 ``terminal_launches``：不得保存 Secret）：
-    认证环境变量只接受变量名（``env_passthrough``），密钥不进入可持久化的
+    认证环境变量的持久化字段只接受变量名（``env_passthrough``），密钥不进入可持久化的
     启动规格。``config_directory`` 仅接受已知的非敏感配置目录。
     """
 
@@ -855,6 +858,8 @@ class CliLaunchSpec(_DriverModel):
     config_directory: tuple[str, str] | None = None
     cwd: str | None = None
     env_passthrough: tuple[str, ...] = ()
+    #: In-memory only; excluded from wire formats, persistence and diagnostics.
+    private_env: dict[str, str | None] = Field(default_factory=dict, exclude=True, repr=False)
     title: str | None = None
     #: v1.0 §8.7：用于把外部进程与本次启动确定性地关联起来。
     correlation_id: str | None = None

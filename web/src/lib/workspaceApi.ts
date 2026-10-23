@@ -10,7 +10,8 @@ export interface WorkspaceDirectories {
 
 declare global {
   interface Window {
-    pywebview?: { api?: { choose_directory?: (initialPath: string | null) => Promise<string | null> } };
+    pywebview?: { api?: { choose_directory?: (initialPath: string | null) => Promise<string | null>;
+      choose_executable?: (initialPath: string | null) => Promise<string | null> } };
   }
 }
 

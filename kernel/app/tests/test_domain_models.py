@@ -21,7 +21,7 @@ from app.collaboration.models import (
 )
 from app.conversations.models import Conversation
 from app.errors import DomainInvariantError, SlugImmutableError
-from app.events.models import DEFAULT_RETENTION, DIAGNOSTIC_RETENTION, StoredEvent
+from app.events.models import DEFAULT_RETENTION, DIAGNOSTIC_RETENTION, RETAIN_UNTIL_CONVERSATION_GONE, StoredEvent
 from app.ids import collaboration_id, collaboration_member_id, conversation_id
 from app.projects.models import AgentBinding, Backend, Project, assert_binding_set_valid
 from app.runtimes.models import (
@@ -524,10 +524,10 @@ def test_stored_event_expiry_follows_the_retention_baseline() -> None:
     diagnostic = StoredEvent.from_envelope(
         envelope_of(DiagnosticNotice(level="warn", message="注意"), 1), now=NOW
     )
-    assert normal.expires_at == NOW + DEFAULT_RETENTION
+    assert normal.expires_at == RETAIN_UNTIL_CONVERSATION_GONE
     assert diagnostic.expires_at == NOW + DIAGNOSTIC_RETENTION
     assert diagnostic.expires_at < normal.expires_at
-    assert normal.is_expired(NOW + DEFAULT_RETENTION) is True
+    assert normal.is_expired(NOW + DEFAULT_RETENTION) is False
     assert normal.is_expired(NOW) is False
 
 

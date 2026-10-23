@@ -1,5 +1,7 @@
 # Kaus development
 
+- Start with `docs/handoff/README.md`, then `docs/handoff/current-state.md` and `docs/handoff/product-decisions.md`. They describe the current product contract, source map, acceptance limits and device setup. Earlier dated design documents are history where superseded; do not restore an old feature from them without a new decision.
+- Keep the handoff current with substantive product changes: record the reason, affected paths, tests actually run, remaining limitations and user decisions. Keep raw local evidence and private configuration outside Git. Do not turn a prior test count into evidence for newly changed code.
 - Kaus is the host workbench. Agent-specific behavior belongs in `kernel/drivers/`; public app/runtime types and conversation cards use capabilities rather than engine-name branches.
 - Projects manage workspace configuration, instructions and capabilities. Group material and conversation history have their own scopes. Preserve the original private conversation when adding a member to a group.
 - Engine identity stays fixed once a conversation starts. Model, reasoning and permissions may change only when the driver supports them.

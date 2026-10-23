@@ -1,35 +1,14 @@
-"""Event Store 的领域模型（v1.0 §11.1 ``event_store``）。
+"""Kaus replay identities, host metadata and verified native-source references.
 
-职责
-----
-把一条 :class:`~runtime.event_envelope.AgentEventEnvelope` 包成可持久化的一行，
-并给它一个**必填的过期时间**。
-
-为什么 ``expires_at`` 必填
---------------------------
-v1.0 §8.5 明确要求：「必须有显式保留策略，不允许『不要无期限保存』这种无策略
-表述」。因此过期时间不是可空字段、也没有「永不过期」的取值——想留久一点只能
-把 ``expires_at`` 往后放，不能不填。AD-13 进一步把 Group 时间线从这套保留期里
-摘了出去（Group 消息归 Group 自己，见
-:class:`~app.collaboration.models.CollaborationMessage`），所以本表过期删除
-不会削掉 Group 的历史。
-
-对应规范
---------
-- v1.0 §11.1 ``event_store``：event_id（去重键）/ conversation_id / sequence /
-  collaboration_session_id / envelope_json / native_event_id / expires_at /
-  created_at。
-- v1.0 §8.5：保留期基线 —— run 结束后默认 7 天；诊断类原始事件默认 24 小时。
-- D-16 / AD-13 / v1.0 §11.3：Event Store 是短期重放缓冲 + 渲染缓存，
-  永不构成第二本权威账，不参与冲突仲裁。
-- v1.0 §8.5：写入前脱敏，不得存入 Secret（本模块不做脱敏本身——那是写入方的
-  职责——但把这条约束写进契约，见 :meth:`StoredEvent.from_envelope` 的注意事项）。
+Payloads without a verified complete local source stay durable. Source-backed
+text keeps its original replay row while the body is read from native history.
+Temporary diagnostics still expire; native retention remains engine-owned.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import ClassVar, Final, Self
+from typing import Any, ClassVar, Final, Self
 
 from pydantic import Field, model_validator
 
@@ -38,14 +17,14 @@ from app.ids import CollaborationId, ConversationId
 from runtime.event_envelope import AgentEventEnvelope
 
 DEFAULT_RETENTION: Final[timedelta] = timedelta(days=7)
-"""v1.0 §8.5 基线：run 结束后 N 天过期，默认 7 天（可配置）。"""
+"""未分类临时事件的默认 TTL；用户可见记录不使用这个期限。"""
 
 DIAGNOSTIC_RETENTION: Final[timedelta] = timedelta(hours=24)
 """v1.0 §8.5 基线：诊断类原始事件保留期更短，默认 24 小时。"""
 
-#: 走短保留期的事件类型。其余按 :data:`DEFAULT_RETENTION`。
+#: 临时事件中走短保留期的类型；正文分类优先。
 DIAGNOSTIC_EVENT_TYPES: Final[frozenset[str]] = frozenset(
-    {"diagnostic.notice", "extension.event"}
+    {"diagnostic.notice", "extension.event", "authentication.requested", "authentication.resolved"}
 )
 
 #: 产品自己的扩展事件 namespace（AD-86 / AD-143）。
@@ -67,24 +46,18 @@ PRODUCT_NAMESPACE: Final[str] = "kaus"
 #: 不是一条诊断。按诊断期清掉，「刷新之后仍然看得见这句话没被处理」这件事就只成立
 #: 一天，而它要解释的正是「这条历史为什么和别的不一样」。
 PRODUCT_CONTENT_EVENT_NAMES: Final[frozenset[str]] = frozenset(
-    {"user.message", "model.adopted", "user.message.failed"}
+    {"user.message", "model.adopted", "user.message.failed",
+     "history.reconciled", "history.checkpoint"}
 )
 
 
-#: 时间线**正文**类核心事件的类型前缀（AD-162）。
-#:
-#: 这三类合起来就是「重开这条会话时用户要看见的东西」：助手正文（``message.*``）、
-#: 工具卡（``tool.*``）与回合的生命周期（``run.*``，少了它时间线连一轮的边界都画
-#: 不出来）。其余核心事件（``usage.*`` / ``permission.*`` / ``diagnostic.*`` …）
-#: 不在此列——它们要么是过程数据，要么早就闭合了。
-CONTENT_EVENT_TYPE_PREFIXES: Final[tuple[str, ...]] = ("message.", "tool.", "run.")
+#: 重开时间线所需的完整记录，包含增量与对应闭合事件。
+CONTENT_EVENT_TYPE_PREFIXES: Final[tuple[str, ...]] = (
+    "session.", "message.", "tool.", "run.", "reasoning.", "plan.",
+    "terminal.", "file.", "artifact.", "permission.", "question.", "usage.",
+)
 
-#: 「留到会话本身消失为止」的过期时刻（AD-162）。
-#:
-#: v1.0 §8.5 不接受「无保留策略」这种表述，所以这里**不是**把 ``expires_at`` 改成
-#: 可空，而是给出一个明确的、写得进库也读得回来的时刻：这批事件的保留期就是
-#: **这条 Conversation 的生命周期**，它由 ``DELETE /api/conversations/{id}``
-#: （AD-105 的 ``purge_conversation``）与归档路径负责回收，不由 TTL 回收。
+#: 明确删除会话时才删除本地记录；归档只改变可见性，不缩短保留期。
 RETAIN_UNTIL_CONVERSATION_GONE: Final[datetime] = datetime(
     9999, 12, 31, 23, 59, 59, tzinfo=timezone.utc
 )
@@ -93,12 +66,7 @@ RETAIN_UNTIL_CONVERSATION_GONE: Final[datetime] = datetime(
 def is_content_event(
     event_type: str, *, namespace: str | None = None, name: str | None = None
 ) -> bool:
-    """这条事件是不是「时间线正文」（AD-162）。
-
-    正文 = 助手说的话、工具卡、回合边界，加上产品自己那两条借道 ``extension.event``
-    的正文（``kaus/user.message`` / ``kaus/model.adopted``，AD-86 / AD-155）。
-    诊断与 Backend 私有的未知扩展帧**不算**——它们照旧按诊断期过期。
-    """
+    """是否为需要长期保留的会话记录；未知扩展不自动升级为正文。"""
     if event_type.startswith(CONTENT_EVENT_TYPE_PREFIXES):
         return True
     return (
@@ -114,7 +82,7 @@ def _now() -> datetime:
 
 def retention_for(event_type: str, *, namespace: str | None = None,
                   name: str | None = None) -> timedelta:
-    """v1.0 §8.5 的保留期基线：诊断类更短，其余走默认。
+    """临时事件的 TTL 基线；正文由调用方使用会话生命周期期限。
 
     ``namespace`` / ``name`` 只对 ``extension.event`` 有意义：产品自己的正文类
     扩展事件（见 :data:`PRODUCT_CONTENT_EVENT_NAMES`）按普通保留期，其余扩展
@@ -165,8 +133,11 @@ class StoredEvent(DomainModel):
     #: 可空；Group 时间线聚合多条 Conversation 的事件时使用（v1.0 §11.1）。
     collaboration_session_id: CollaborationId | None = None
     envelope: AgentEventEnvelope
-    #: 可空；用于锚定原生消息。无法锚定的事件按 v1.0 §8.5 视为短期诊断数据。
+    #: Optional protocol-native identity; verified body references are separate.
     native_event_id: str | None = None
+    # Verified local source reference. The envelope keeps replay identity and
+    # host metadata; only its mapped text field is empty while at rest.
+    native_reference: dict[str, Any] | None = None
     #: **必填**：v1.0 §8.5 不接受「无保留策略」。
     expires_at: datetime
     created_at: datetime = Field(default_factory=_now)
@@ -192,12 +163,22 @@ class StoredEvent(DomainModel):
         now: datetime | None = None,
         collaboration_session_id: str | None = None,
     ) -> StoredEvent:
-        """按 v1.0 §8.5 的保留期基线包一条 Envelope。
+        """正文默认长期保存；低层导入或测试可显式指定 ``expires_at``。
 
         注意：**脱敏是写入方的职责**（v1.0 §8.5：写入前执行与日志同级的脱敏，
         不得存入 Secret）。本方法原样收下传进来的 Envelope，不做也不假装做脱敏。
         """
         at = now or _now()
+        event = envelope.event
+        default_expiry = (
+            RETAIN_UNTIL_CONVERSATION_GONE
+            if is_content_event(
+                event.type,
+                namespace=getattr(event, "namespace", None),
+                name=getattr(event, "name", None),
+            )
+            else at + retention_for_envelope(envelope)
+        )
         return cls(
             event_id=envelope.event_id,
             conversation_id=envelope.conversation_id,
@@ -205,7 +186,7 @@ class StoredEvent(DomainModel):
             collaboration_session_id=collaboration_session_id,
             envelope=envelope,
             native_event_id=envelope.native_event_id,
-            expires_at=expires_at or (at + retention_for_envelope(envelope)),
+            expires_at=expires_at if expires_at is not None else default_expiry,
             created_at=at,
         )
 
@@ -214,7 +195,7 @@ class StoredEvent(DomainModel):
 
     @property
     def is_anchored_to_native(self) -> bool:
-        """v1.0 §8.5：能锚定原生消息 ID 的事件才不算「短期诊断数据」。"""
+        """是否有原生消息引用；本地记录无需该引用也可长期保存。"""
         return self.native_event_id is not None
 
 

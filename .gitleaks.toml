@@ -3,6 +3,25 @@ title = "Kaus source scanning"
 [extend]
 useDefault = true
 
+[[rules]]
+id = "google-oauth-application-metadata"
+description = "Native OAuth application metadata must remain outside product source"
+regex = '''(?:GOCSPX-[A-Za-z0-9_-]{20,}|[0-9]{8,}-[a-z0-9]{20,}\.apps\.googleusercontent\.com)'''
+
+[[allowlists]]
+description = "Synthetic subprocess diagnostic used to verify credential redaction"
+condition = "AND"
+paths = ['''^kernel/drivers/acp/tests/test_startup_diagnostics\.py$''']
+regexTarget = "secret"
+regexes = ['''^fixture-private-secret-01234$''']
+
+[[allowlists]]
+description = "Base64 of secret-example used by deterministic signing fixtures"
+condition = "AND"
+paths = ['''^kernel/drivers/explicit_quota/tests/test_cloud\.py$''']
+regexTarget = "secret"
+regexes = ['''^c2VjcmV0LWV4YW1wbGU=$''']
+
 [[allowlists]]
 description = "Synthetic payload in the credential-prefix classifier test"
 condition = "AND"

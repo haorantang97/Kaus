@@ -1,3 +1,6 @@
+import { AttachmentFilename } from "../components/AttachmentFilename";
+import { useComposerAutosize, useComposerInputGuard } from "../hooks/useComposerInput";
+import { engineAcceptsNewWork } from "../lib/engineAvailability";
 import { EngineIcon } from "../components/EngineIcon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileText, LoaderCircle, Paperclip, ArrowUp, X } from "lucide-react";
@@ -145,8 +148,8 @@ export function NewConversationPage({
   // Remember each product's selected profile only for this draft, never in project defaults.
   const selectedBindings = useRef(new Map<string, string>());
   const binding = useMemo(
-    () => bindings?.find((item) => item.id === bindingId && item.projectId === projectId && item.enabled) ?? null,
-    [bindings, bindingId, projectId],
+    () => bindings?.find((item) => item.id === bindingId && item.projectId === projectId && item.enabled && engineAcceptsNewWork(item) && engineAcceptsNewWork(connectedBackends.find(c => c.id === item.backendId))) ?? null,
+    [bindings, bindingId, projectId, connectedBackends],
   );
   const [engineOptions, setEngineOptions] = useState<DraftEngineOptions | null>(null);
   const currentOptions = engineOptions?.bindingId === binding?.id ? engineOptions : null;
@@ -207,7 +210,7 @@ export function NewConversationPage({
     selectionEpoch.current += 1;
     const applyBindings = (list: BindingWire[]) => {
       setBindings(list);
-      const usable = list.filter((item) => item.enabled);
+      const usable = list.filter((item) => item.enabled && engineAcceptsNewWork(item));
       const preferred = usable.find((item) => item.id === initialBindingId) ?? usable.find((item) => item.isDefault) ?? usable[0];
       setBindingId(preferred?.id ?? "");
     };
@@ -265,7 +268,7 @@ export function NewConversationPage({
     const baseRank = (item: BindingWire) => Number(!item.discriminator) * 4 + Number(item.isDefault) * 2
       + Number(connectedBackends.find((backend) => backend.id === item.backendId)?.preferred ?? false);
     for (const item of bindings ?? []) {
-      if (!item.enabled || item.projectId !== projectId) continue;
+      if (!item.enabled || !engineAcceptsNewWork(item) || !engineAcceptsNewWork(connectedBackends.find(c => c.id === item.backendId)) || item.projectId !== projectId) continue;
       const product = connectedBackends.find((backend) => backend.id === item.backendId)?.productId ?? engineFamily(item.backendId);
       const remembered = selectedBindings.current.get(`${projectId}:${product}`);
       const choiceRank = (candidate: BindingWire) => Number(candidate.id === bindingId) * 32
@@ -348,13 +351,8 @@ export function NewConversationPage({
     writeDraftText(text);
   }, [text]);
 
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(240, Math.max(72, textarea.scrollHeight))}px`;
-    textarea.style.overflowY = textarea.scrollHeight > 240 ? "auto" : "hidden";
-  }, [text]);
+  useComposerAutosize(textareaRef, text);
+  const composerInput = useComposerInputGuard();
 
   const bar = settings ?? emptyEffectiveSettings(bindingId);
   const modelOptions: BarMenuOption[] = useMemo(
@@ -482,9 +480,8 @@ export function NewConversationPage({
      中文输入法组字期间的 Enter 是"选词"，绝不能当发送（`isComposing`）。 */
   const onComposerKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key !== "Enter") return;
-      if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
-      if (event.shiftKey) return;
+      if (composerInput.guardKeyDown(event)) return;
+      if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
       event.preventDefault();
       void send();
     },
@@ -585,7 +582,7 @@ export function NewConversationPage({
           {!!files.length && <div className="kaus-attachment-tray" aria-label={t("conversation.attach.list")}>
             {files.map((file, index) => <div className="kaus-attachment-chip" key={`${file.name}:${file.lastModified}:${index}`} title={file.name}>
               {uploadingName === file.name ? <LoaderCircle size={17} /> : <FileText size={17} />}
-              <span><strong>{file.name}</strong><small>{uploadingName === file.name ? t("conversation.attach.uploading") : fileSizeLabel(file.size)}</small></span>
+              <span><strong><AttachmentFilename name={file.name} /></strong><small>{uploadingName === file.name ? t("conversation.attach.uploading") : fileSizeLabel(file.size)}</small></span>
               <button type="button" disabled={sending} onClick={() => updateFiles(files.filter((_, itemIndex) => itemIndex !== index))} aria-label={t("conversation.attach.remove", { name: file.name })}><X size={14} /></button>
             </div>)}
           </div>}
@@ -599,6 +596,8 @@ export function NewConversationPage({
               disabled={sending}
               rows={3}
               onChange={(event) => setText(event.target.value)}
+              onCompositionStart={composerInput.onCompositionStart}
+              onCompositionEnd={composerInput.onCompositionEnd}
               onKeyDown={onComposerKeyDown}
               onPaste={(event) => { if (!event.clipboardData.files.length) return; event.preventDefault(); addFiles(Array.from(event.clipboardData.files)); }}
             />

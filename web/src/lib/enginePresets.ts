@@ -1,8 +1,22 @@
-import { sessionRequest } from "./sessionApi";
+import { sessionRequest, type BackendWire } from "./sessionApi";
 import { bindingDisplayName, engineBrand, engineFamily } from "./backend-display";
+import { SKILL_ONBOARDING_EVENT } from "./skillOnboarding";
 
 /** The backend catalog owns engine names, installation hints, and runtime state. */
-export interface EnginePreset {
+export interface EngineSetupFields {
+  nativePath?: string | null;
+  canSelectExecutable?: boolean;
+  loginAvailable?: boolean;
+  runtimeIdentity?: {
+    adapterVersion?: string | null; engineVersion?: string | null;
+    protocolVersion?: string | number | null; nativePath?: string | null;
+    updateState?: string; versionSource?: string;
+  };
+}
+export type EngineConnection = BackendWire & EngineSetupFields;
+
+export interface EnginePreset extends EngineSetupFields {
+  catalogStatus?: "active" | "legacy";
   id: string;
   label: string;
   backendId: string;
@@ -12,19 +26,36 @@ export interface EnginePreset {
   probeState: "unknown" | "available" | "unavailable" | "degraded";
   executable?: string;
   installCommand?: string;
+  adapterInstallCommand?: string;
   setupUrl?: string;
   loginCommand?: string;
   productId?: string;
   productName?: string;
   preferred?: boolean;
+  version?: string | null;
 }
 
-export function fetchEngineCatalog(signal?: AbortSignal): Promise<{ engines: EnginePreset[] }> {
-  return sessionRequest("/api/engine-catalog", { signal });
+export function fetchEngineCatalog(signal?: AbortSignal, backendId?: string): Promise<{ engines: EnginePreset[] }> {
+  return sessionRequest(`/api/engine-catalog${backendId ? `?backendId=${encodeURIComponent(backendId)}` : ""}`, { signal });
 }
 
-export function connectEngine(presetId: string): Promise<{ backendId: string; registered: true }> {
-  return sessionRequest("/api/engine-connections", { method: "POST", body: { presetId } });
+export async function connectEngine(presetId: string, nativePath?: string): Promise<{ backendId: string; registered: true }> {
+  const result = await sessionRequest<{ backendId: string; registered: true }>("/api/engine-connections", { method: "POST", body: { presetId, ...(nativePath ? { nativePath } : {}) } });
+  window.dispatchEvent(new Event(SKILL_ONBOARDING_EVENT));
+  return result;
+}
+
+export function refreshEngineConnections(backendIds?: string[]): Promise<{ backends: EngineConnection[]; count: number }> {
+  return sessionRequest("/api/engine-connections/refresh", { method: "POST", body: backendIds ? { backendIds } : {} });
+}
+
+export function openEngineLogin(backendId: string): Promise<{ launched: true; backendId: string; launcher: string }> {
+  return sessionRequest(`/api/engine-connections/${encodeURIComponent(backendId)}/login`, { method: "POST" });
+}
+
+export async function chooseNativeExecutable(initialPath: string | null): Promise<string | null | undefined> {
+  const choose = window.pywebview?.api?.choose_executable;
+  return choose ? await choose(initialPath) : undefined;
 }
 
 export interface EngineCatalogGroup {

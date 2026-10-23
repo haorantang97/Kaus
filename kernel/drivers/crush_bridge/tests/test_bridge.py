@@ -225,6 +225,35 @@ async def test_rejected_setting_does_not_mutate_bridge_state(session):
     assert instance.permission == "ask"
 
 
+@pytest.mark.parametrize('servers', [[], [{'name': 'next', 'command': 'synthetic-tool', 'args': []}]])
+async def test_current_mcp_replaces_previous_before_native_start(session, monkeypatch, servers):
+    from unittest.mock import AsyncMock
+    import drivers.crush_bridge.bridge as module
+
+    instance, _ = session
+    data = instance.directory / 'data'
+    data.mkdir(parents=True)
+    path = data / 'crush.json'
+    path.write_text(json.dumps({'mcp': {'previous': {'command': 'removed-tool'}},
+                                'models': {'large': {'provider': 'keep', 'model': 'keep'}}}))
+    monkeypatch.setattr(module.skills, 'prepare', AsyncMock(return_value=None))
+    observed = []
+
+    async def spawn(*args, **kwargs):
+        observed.append(json.loads(path.read_text()))
+        raise OSError('Synthetic spawn boundary')
+
+    monkeypatch.setattr(module.asyncio, 'create_subprocess_exec', spawn)
+    try:
+        with pytest.raises(BridgeError, match='cannot start'):
+            await instance.start(servers, 'native-1')
+    finally:
+        await instance.close()
+    assert observed == [{'mcp': mcp_config(servers),
+                         'models': {'large': {'provider': 'keep', 'model': 'keep'}}}]
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
 async def test_resume_missing_and_different_workspace_never_make_new_session(tmp_path, monkeypatch):
     bridge = Bridge("crush", tmp_path / "state", Peer(lambda _: None))
     called = False

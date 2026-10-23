@@ -24,5 +24,5 @@ def prepare(spec, role):
     if not python:
         raise ValueError('无法找到支持独立上下文的 Hermes 运行环境')
     launcher = Path(__file__).with_name('group_launcher.py')
-    return spec.model_copy(update={'command': (python, str(launcher), role),
+    return spec.model_copy(update={'command': (python, '-B', str(launcher), role),
         'env': {**dict(spec.env), 'HERMES_ACP_SKIP_CONFIGURED_MCP': '1'}})

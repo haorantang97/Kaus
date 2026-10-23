@@ -465,6 +465,48 @@ MIGRATIONS: Final[tuple[Migration, ...]] = (
         "CREATE TABLE conversation_bookmarks (conversation_id TEXT NOT NULL, message_id TEXT NOT NULL,"
         " PRIMARY KEY (conversation_id, message_id))",
     )),
+    # Freeze the v16 classification here so later event additions cannot change
+    # an already released migration. Preserve every envelope and replay ID.
+    Migration(version=16, name="durable_conversation_history", statements=(
+        """
+        UPDATE event_store SET expires_at = '9999-12-31T23:59:59+00:00'
+        WHERE CASE WHEN json_valid(envelope_json) THEN (
+            json_extract(envelope_json, '$.event.type') IN (
+                'session.created', 'session.resumed', 'session.state',
+                'run.started', 'run.completed', 'run.interrupted', 'run.failed',
+                'message.started', 'message.delta', 'message.completed',
+                'reasoning.delta', 'reasoning.status', 'plan.updated',
+                'tool.started', 'tool.updated', 'tool.completed',
+                'terminal.started', 'terminal.updated', 'terminal.completed',
+                'file.changed', 'artifact.created',
+                'permission.requested', 'permission.resolved',
+                'question.requested', 'question.resolved', 'usage.updated'
+            ) OR (
+                json_extract(envelope_json, '$.event.type') = 'extension.event'
+                AND json_extract(envelope_json, '$.event.namespace') = 'kaus'
+                AND json_extract(envelope_json, '$.event.name') IN (
+                    'user.message', 'model.adopted', 'user.message.failed'
+                )
+            )
+        ) ELSE 0 END
+        """,
+    )),
+    Migration(version=17, name="durable_terminal_history", statements=(
+        """
+        UPDATE event_store SET expires_at = '9999-12-31T23:59:59+00:00'
+        WHERE CASE WHEN json_valid(envelope_json) THEN (
+            json_extract(envelope_json, '$.event.type') = 'extension.event'
+            AND json_extract(envelope_json, '$.event.namespace') = 'kaus'
+            AND json_extract(envelope_json, '$.event.name') IN (
+                'history.reconciled', 'history.checkpoint'
+            )
+        ) ELSE 0 END
+        """,
+    )),
+    Migration(version=18, name="native_primary_text_references", statements=(
+        "ALTER TABLE event_store ADD COLUMN native_reference_json TEXT",
+        "CREATE TABLE native_history_storage (conversation_id TEXT PRIMARY KEY, state_json TEXT NOT NULL)",
+    )),
 )
 """按版本升序排列的全部迁移。新的往后追加，旧的一律不动。"""
 
@@ -483,6 +525,7 @@ EXPECTED_TABLES: Final[frozenset[str]] = frozenset(
         "collaboration_members",
         "collaboration_messages",
         "event_store",
+        "native_history_storage",
         # Phase 5（AD-149）：v1.0 §11.1 推荐表之外新增的一张。
         "projection_results",
         "app_settings",

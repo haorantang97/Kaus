@@ -190,7 +190,7 @@ describe("应用到引擎：dry-run 差异弹窗", () => {
     );
     mocked.materializeBinding.mockResolvedValueOnce(dryRun());
     openModal();
-    expect(await screen.findByText(/预演失败：这台引擎没有投射面/)).toBeInTheDocument();
+    expect(await screen.findByText(/预演失败：当前 Agent 不支持此操作/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(screen.getAllByTestId("materialize-row")).toHaveLength(2));
   });
@@ -217,6 +217,11 @@ describe("确认写入", () => {
       confirm: true,
       adopt: true,
     });
+    const details = within(done).getByTestId("materialize-backup-details");
+    expect(details).not.toHaveAttribute("open");
+    expect(within(done).getByTestId("materialize-rollback")).not.toBeVisible();
+    await userEvent.click(within(details).getByText("查看详情"));
+    expect(within(done).getByTestId("materialize-rollback")).toBeVisible();
     expect(within(done).getAllByText(/config\.yaml\.kaus-backup-20260905T101112Z/).length).toBe(2);
     expect(within(done).getByTestId("materialize-rollback")).toHaveTextContent(
       "cp /home/u/engine-home/config.yaml.kaus-backup-20260905T101112Z /home/u/engine-home/config.yaml",

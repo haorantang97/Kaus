@@ -27,6 +27,7 @@ vi.mock("../lib/sessionApi", async () => {
     archiveConversation: vi.fn(),
     fetchConversation: vi.fn(),
     fetchBinding: vi.fn(),
+    fetchBindingStatus: vi.fn(),
     fetchBackendUiCapabilities: vi.fn(),
     fetchEffectiveSettings: vi.fn(),
     fetchModelCatalog: vi.fn(),
@@ -45,18 +46,21 @@ const { SessionApiError } = api;
 let sources: FakeEventSource[] = [];
 
 class FakeEventSource {
+  closed = false;
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: (() => void) | null = null;
   onopen: (() => void) | null = null;
   constructor(readonly url: string) {
     sources.push(this);
   }
-  close() {}
+  close() { this.closed = true; }
 }
 
 function push(payload: unknown) {
+  const active = sources.filter(source => !source.closed && source.onmessage !== null);
+  expect(active.length, "Test events require an attached conversation stream").toBeGreaterThan(0);
   act(() => {
-    for (const source of sources) source.onmessage?.({ data: JSON.stringify(payload) } as MessageEvent);
+    for (const source of active) source.onmessage?.({ data: JSON.stringify(payload) } as MessageEvent);
   });
 }
 
@@ -158,9 +162,11 @@ function renderPage(onArchived?: (projectId: string) => void) {
   );
 }
 
-/** 页头那枚入口出现之后再往下走：能力是异步读到的。 */
-function findOpenButton() {
-  return screen.findByTestId("open-external");
+/** Capabilities and the event subscription settle independently. */
+async function findOpenButton() {
+  const button = await screen.findByTestId("open-external");
+  await waitFor(() => expect(sources.some(source => !source.closed && source.onmessage !== null)).toBe(true));
+  return button;
 }
 
 beforeEach(() => {
@@ -171,6 +177,7 @@ beforeEach(() => {
   vi.stubGlobal("EventSource", FakeEventSource);
   mocked.fetchConversation.mockResolvedValue(detail);
   mocked.fetchBinding.mockResolvedValue(binding);
+  mocked.fetchBindingStatus.mockResolvedValue({ probeState: "available", probeMessage: null });
   mocked.fetchBackendUiCapabilities.mockResolvedValue(caps("supported"));
   mocked.fetchEffectiveSettings.mockResolvedValue(api.emptyEffectiveSettings("binding:1"));
   mocked.fetchModelCatalog.mockResolvedValue({
@@ -273,7 +280,7 @@ describe("第 1 件：「到终端打开」入口", () => {
     expect(await screen.findByTestId("external-banner")).toBeInTheDocument();
   });
 
-  it("501 时把后端 message 原样显示，不进外部态", async () => {
+  it("501 shows a concise unsupported action and stays in the page", async () => {
     mocked.openExternalSurface.mockRejectedValue(
       new SessionApiError(501, "external_cli_unsupported", "该引擎不支持从站内开终端", {}),
     );
@@ -281,7 +288,7 @@ describe("第 1 件：「到终端打开」入口", () => {
     renderPage();
     await user.click(await findOpenButton());
 
-    expect(await screen.findByText("该引擎不支持从站内开终端")).toBeInTheDocument();
+    expect(await screen.findByText("当前 Agent 不支持此操作")).toBeInTheDocument();
     expect(screen.queryByTestId("external-banner")).toBeNull();
   });
 });
@@ -380,9 +387,10 @@ describe("第 3 件：切回 Kaus与校准", () => {
     expect(stored).toHaveLength(1);
   });
 
-  it("complete=false 时组头补一行中性小字，列出缺口（不是红色错误）", async () => {
+  it("keeps partial-history diagnostics out of the passive conversation surface", async () => {
+    const user = userEvent.setup();
     renderPage();
-    await screen.findByTestId("open-external");
+    await findOpenButton();
     push(
       kausEvent(6, "history.reconciled", {
         entries: [{ entryId: "e1", role: "assistant", kind: "message", text: "残缺的一段", occurredAt: null }],
@@ -391,9 +399,11 @@ describe("第 3 件：切回 Kaus与校准", () => {
       }),
     );
 
-    const gap = await screen.findByTestId("external-history-gap");
-    expect(gap).toHaveTextContent("部分记录无法恢复（窗口已滚过, 只折入了最近 200 条）");
-    // 降级不是错误：不走错误行那条路。
+    await screen.findByTestId("external-history-group");
+    expect(screen.queryByTestId("external-history-gap")).not.toBeInTheDocument();
+    expect(screen.queryByText(/窗口已滚过/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /外部终端期间的 1 条记录/ }));
+    expect(screen.getByTestId("external-history-details")).not.toHaveAttribute("open");
     expect(document.querySelector(".kaus-draft-error")).toBeNull();
   });
 });
@@ -482,6 +492,23 @@ describe("第 5 件：启动记录", () => {
 
 
 describe("可恢复归档", () => {
+  it("侧栏重命名刷新标题时保留输入草稿和事件连接", async () => {
+    const user = userEvent.setup();
+    const view = render(<ConversationPage conversationId="conversation:1" metadataRefreshToken={0} />);
+    await findOpenButton();
+    await user.type(screen.getByRole("textbox", { name: "消息" }), "尚未发送的草稿");
+    push({ ...kausEvent(1, "run.started", {}), event: { type: "run.started", runId: "run:1" } });
+    expect(screen.getByTestId("open-external")).toBeDisabled();
+    const existingSources = [...sources];
+    mocked.fetchConversation.mockResolvedValue({ ...detail, runState: "idle", conversation: { ...detail.conversation, title: "侧栏新标题" } });
+    view.rerender(<ConversationPage conversationId="conversation:1" metadataRefreshToken={1} />);
+    await waitFor(() => expect(screen.getByTestId("conversation-title")).toHaveTextContent("侧栏新标题"));
+    expect(screen.getByRole("textbox", { name: "消息" })).toHaveValue("尚未发送的草稿");
+    expect(sources).toEqual(existingSources);
+    expect(screen.getByTestId("open-external")).toBeDisabled();
+    expect(mocked.sendConversationMessage).not.toHaveBeenCalled();
+  });
+
   it("更多菜单归档成功后通知索引与导航，归档期间保留历史", async () => {
     const user = userEvent.setup();
     const archived = { ...detail.conversation, archivedAt: "2026-09-27T00:00:00Z" };

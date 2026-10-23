@@ -205,11 +205,11 @@ def test_background_task_is_only_scheduled_when_enabled(tmp_path, monkeypatch):
         log=lambda _m: None,
     )
     try:
-        # 批次十七第 1 件：启动自愈（AD-136）与后台开关无关，两种装配都有它，
-        # 因此「关掉后台任务」= 只剩这一个 on_startup、没有 on_shutdown。
-        assert len(without.router.on_startup) == 1
-        assert without.router.on_shutdown == []
-        assert len(with_task.router.on_startup) == 2
+        # Reconciliation and module registration are independent of maintenance.
+        # On-demand jobs must still release their runtimes when maintenance is off.
+        assert len(without.router.on_startup) == 2
+        assert len(without.router.on_shutdown) == 1
+        assert len(with_task.router.on_startup) == 3
         assert len(with_task.router.on_shutdown) == 1
     finally:
         asyncio.run(quiet.aclose())
@@ -369,7 +369,10 @@ def test_the_shipped_example_config_actually_parses():
     config = json.loads(example.read_text(encoding="utf-8"))
     specs, warnings = session_bootstrap.parse_backend_specs(config)
     assert warnings == (), warnings
-    assert len(specs) == 5
+    assert {spec.backend_id for spec in specs} == {
+        "backend:mock", "backend:hermes", "backend:claude-code",
+        "backend:codex", "backend:opencode", "backend:dsh",
+    }
     presets = [s.preset for s in specs if s.driver == "acp"]
     # 批次三十四多一行 dsh（AD-158）：它没有 ACP 内的登录方式，凭据只经环境变量，
     # 所以样例里顺带示范 env_keys 该怎么写。

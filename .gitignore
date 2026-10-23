@@ -33,6 +33,7 @@ credentials.json
 /dedup-backups/
 /handoffs/
 /reports/
+/output/
 /session-archives/
 /log-archives/
 /probe-report.*
@@ -52,6 +53,7 @@ credentials.json
 
 # Dependencies and generated outputs
 node_modules
+node_modules */
 dist/
 dist.bak*/
 .venv/

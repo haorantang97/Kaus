@@ -1,0 +1,1 @@
+"""Goose-specific capability adapters."""

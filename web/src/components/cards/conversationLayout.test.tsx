@@ -228,15 +228,15 @@ describe("推理行（G-4）", () => {
     expect(screen.getByTestId("reasoning-row")).not.toHaveTextContent("思考了");
   });
 
-  it("运行中显示「正在思考…」，并复用现有 pulse 点", () => {
+  it("运行中显示「正在思考…」与三点状态", () => {
     const { container } = render(<ReasoningCard running />);
     expect(screen.getByTestId("reasoning-row")).toHaveTextContent("正在思考…");
-    expect(container.querySelector(".kaus-run-dot")).not.toBeNull();
+    expect(container.querySelectorAll(".kaus-thinking-dots > span")).toHaveLength(3);
   });
 
   it("默认折叠：推理文本要点开才出现", async () => {
     render(<ReasoningCard text="这段是推理正文" seconds={2} />);
-    expect(screen.queryByText("这段是推理正文")).toBeNull();
+    expect(screen.getByText("这段是推理正文").closest(".kaus-reasoning-expand")).toHaveAttribute("aria-hidden", "true");
     await userEvent.click(screen.getByRole("button"));
     expect(screen.getByText("这段是推理正文")).toBeInTheDocument();
   });

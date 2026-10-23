@@ -351,7 +351,7 @@ async def test_rebuilding_never_touches_a_conversation_that_still_has_events(tmp
 
 
 async def test_the_user_message_outlives_the_diagnostic_retention(tmp_path):
-    """``kaus/user.message`` 走 7 天，``diagnostic.notice`` 走 24 小时。"""
+    """用户消息长期保留，``diagnostic.notice`` 走 24 小时。"""
     from datetime import datetime, timezone
 
     from runtime.event_envelope import DiagnosticNotice, ExtensionEvent

@@ -29,6 +29,12 @@ if str(_KERNEL_ROOT) not in sys.path:
     sys.path.insert(0, str(_KERNEL_ROOT))
 
 
+@pytest.fixture(autouse=True)
+def private_computer_use_settings(tmp_path, monkeypatch):
+    """Ordinary tests must not inherit the user's live desktop opt-in."""
+    monkeypatch.setenv("KAUS_COMPUTER_USE_HOME", str(tmp_path / "computer-use-settings"))
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
     """用 asyncio.run 执行协程测试函数；同步函数交回 pytest 默认实现。"""

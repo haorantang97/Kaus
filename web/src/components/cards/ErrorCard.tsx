@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 
+import { failureDiagnostic, failureSummary } from "../../lib/userFacingErrors";
 import { useLocale } from "../../i18n";
 import { Button, cream } from "../ui";
 import { CardShell, MonoBlock, type CardStatus, type EngineLabel } from "./CardShell";
@@ -36,6 +37,8 @@ export function ErrorCard({
 }) {
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
+  const publicSummary = failureSummary({ message: summary, code });
+  const diagnostic = failureDiagnostic([code, publicSummary !== summary ? summary : null, detail].filter(Boolean).join("\n"));
   return (
     <CardShell
       engine={engine}
@@ -45,16 +48,11 @@ export function ErrorCard({
     >
       <div className="flex items-start gap-2">
         <p className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: "var(--midground-base)" }}>
-          {summary}
-          {code && (
-            <span className="ml-2 text-[0.65rem]" style={{ color: cream(45) }}>
-              {code}
-            </span>
-          )}
+          {publicSummary}
         </p>
         {onRetry && <Button onClick={onRetry}>{t("card.error.retry")}</Button>}
       </div>
-      {detail && (
+      {diagnostic && (
         <div className="mt-2">
           <button
             type="button"
@@ -66,7 +64,7 @@ export function ErrorCard({
           </button>
           {open && (
             <div className="mt-1">
-              <MonoBlock>{detail}</MonoBlock>
+              <MonoBlock>{diagnostic}</MonoBlock>
             </div>
           )}
         </div>

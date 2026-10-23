@@ -43,6 +43,7 @@ export type KausRoute =
   | { name: "new"; projectId: string | null; bindingId?: string }
   | { name: "conversation"; conversationId: string; after: number | null }
   | { name: "project"; projectRef: string }
+  | { name: "workbench"; moduleId: string | null }
   | { name: "unknown"; pathname: string };
 
 /** 这条路由是不是"某个视图"（概览 / 轮盘 / 五个旧浮层）。 */
@@ -57,6 +58,9 @@ export function parseRoute(pathname: string, search = ""): KausRoute {
   if (segments.length === 1) {
     const view = PATH_VIEWS.get(`/${segments[0]}`);
     if (view) return { name: view };
+  }
+  if (segments[0] === "workbench" && segments.length <= 2) {
+    return { name: "workbench", moduleId: segments[1] ? decodeURIComponent(segments[1]) : null };
   }
   if (segments[0] === "new" && segments.length === 1) {
     return { name: "new", projectId: params.get("project"), ...(params.get("binding") ? { bindingId: params.get("binding")! } : {}) };
@@ -85,4 +89,8 @@ export function newConversationPath(projectId?: string | null, bindingId?: strin
   if (projectId) params.set("project", projectId);
   if (bindingId) params.set("binding", bindingId);
   return `/new${params.size ? `?${params}` : ""}`;
+}
+
+export function workbenchPath(moduleId?: string | null): string {
+  return moduleId ? `/workbench/${encodeURIComponent(moduleId)}` : "/workbench";
 }

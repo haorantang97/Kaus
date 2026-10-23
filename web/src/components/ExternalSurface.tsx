@@ -16,7 +16,8 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, RotateCw, Settings2, Terminal, X } from "lucide-react";
 
 import { useLocale } from "../i18n";
-import { Button, Modal } from "./ui";
+import { Button, ErrorNotice, Modal } from "./ui";
+import { failureDiagnostic } from "../lib/userFacingErrors";
 import type { ExternalHistoryGroup as HistoryGroup, ReconciledEntry } from "../lib/externalSurface";
 import type { TerminalLaunchWire } from "../lib/sessionApi";
 
@@ -140,7 +141,7 @@ export function DegradedLaunchPanel({
           <X className="size-3.5" aria-hidden />
         </button>
       </div>
-      {reason && <p className="kaus-external-degraded-reason">{reason}</p>}
+      {reason && <ErrorNotice error={reason} className="kaus-external-degraded-reason" />}
     </div>
   );
 }
@@ -255,17 +256,15 @@ export function ExternalHistoryGroup({ group }: { group: HistoryGroup }) {
           {t("surface.history.group", { count: group.entries.length })}
         </span>
       </button>
-      {/* 降级不是错误：中性小字，常显（不藏在折叠里——它说明的正是"你看到的不全"）。 */}
-      {!group.complete && (
-        <div className="kaus-external-gap" data-testid="external-history-gap">
-          {t("surface.history.incomplete", { gaps: group.gaps.join(", ") })}
-        </div>
-      )}
       {open && (
         <div className="kaus-tool-group-body kaus-external-history-body">
           {group.entries.map((entry) => (
             <HistoryEntry key={entry.entryId} entry={entry} />
           ))}
+          {!group.complete && group.gaps.length > 0 && <details className="text-xs opacity-60" data-testid="external-history-details">
+            <summary>{t("card.error.showDetail")}</summary>
+            <pre className="mt-2 whitespace-pre-wrap">{failureDiagnostic(group.gaps.join("\n"))}</pre>
+          </details>}
         </div>
       )}
     </div>

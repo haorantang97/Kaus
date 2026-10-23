@@ -1,3 +1,5 @@
+import { engineAcceptsNewWork } from "../lib/engineAvailability";
+import { ErrorNotice } from "./ui";
 import { EngineIcon } from "./EngineIcon";
 import { ProjectAgentPicker } from "./ProjectAgentPicker";
 /* Group 浮窗（DESIGN ★ 定稿 J，batch23 第 2 件）。
@@ -68,6 +70,7 @@ import {
 } from "../lib/groupStore";
 import {
   fetchRecentConversations,
+  fetchConnectedBackends,
   fetchProjects,
   fetchModelCatalog,
   fetchBackendUiCapabilities,
@@ -318,24 +321,35 @@ function MemberRow({
   );
 }
 
-/* batch42 第 2 件（★J-4）：**成员栏 = 放置目标**。
- *
- * 这一栏是展开态浮窗的左栏，同时也就是组工作区的成员栏（`GroupWorkspace` 把它
- * 原样摆在三栏的第一栏），所以这一枚组件同时覆盖了那两处。放置的动作与浮窗里
- * 手点的那两条路是同一条调用（会话 → 加入，项目 → 启动新成员），虚线框按
- * DESIGN §5.9：2px `--k-accent` 虚线，不加别的。 */
+/** Every visible surface of a group accepts membership drops, including its composer. */
+function GroupDropItem({ group, onDropConversation, children }: {
+  group: GroupWire;
+  onDropConversation: (dropped: GroupDropPayload) => void;
+  children: React.ReactNode;
+}) {
+  const { dragProps, isOver } = useGroupDrop(onDropConversation, !isGroupOpen(group));
+  return (
+    <div className={`kaus-group-item ${isOver ? "is-drop-target" : ""}`}
+      data-testid={`group-item-${group.id}`} {...dragProps}>
+      {children}
+    </div>
+  );
+}
+
 function MembersPane({
   title,
   emptyNote,
   onDropConversation,
+  disabled,
   children,
 }: {
   title: string;
   emptyNote: React.ReactNode;
   onDropConversation: (dropped: GroupDropPayload) => void;
+  disabled: boolean;
   children: React.ReactNode;
 }) {
-  const { dragProps, isOver } = useGroupDrop(onDropConversation);
+  const { dragProps, isOver } = useGroupDrop(onDropConversation, disabled);
   return (
     <div
       className={`kaus-group-pane ${isOver ? "is-drop-target" : ""}`}
@@ -467,10 +481,10 @@ function ExistingPicker({
     const controller = new AbortController();
     /* 缺省的 `GET /api/conversations` **不含** `group_only` 的那些——它们本来就已经
        在某个组里，列出来只会让人点到一个必然 409 的选项。 */
-    fetchRecentConversations(controller.signal, projectId ? { project: projectId } : {})
-      .then((payload) =>
+    Promise.all([fetchRecentConversations(controller.signal, projectId ? { project: projectId } : {}), fetchConnectedBackends(controller.signal)])
+      .then(([payload, connections]) =>
         setOptions(
-          payload.conversations.map((row) => ({
+          payload.conversations.filter(row => engineAcceptsNewWork(connections.backends.find(engine => engine.id === row.backendId))).map((row) => ({
             value: row.id,
             icon: row.backendId ? <EngineIcon engine={row.backendId} /> : undefined,
             /* batch52 第 5 件（真机「藏过头了」第 1 条）：一行由「只有标题」改成
@@ -672,6 +686,7 @@ export function GroupDock() {
   const [projects, setProjects] = useState<ProjectWire[]>([]);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [spawnProjectId, setSpawnProjectId] = useState<string | null>(null);
   const [addMode, setAddMode] = useState<AddMode>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [closing, setClosing] = useState<GroupWire | null>(null);
@@ -724,12 +739,12 @@ export function GroupDock() {
 
   /** 写操作的统一回执：成功一句 toast，失败按 code 翻人话，末了重取一次列表。 */
   const run = useCallback(
-    async (action: () => Promise<unknown>, okKey: DictKey, vars?: Record<string, string | number>) => {
+    async (action: () => Promise<unknown>, okKey: DictKey, vars?: Record<string, string | number>, recover?: (failure: unknown) => boolean) => {
       try {
         await action();
         toast(t(okKey, vars), "ok");
       } catch (failure) {
-        toast(describeGroupFailure(failure, t), "bad");
+        if (!recover?.(failure)) toast(describeGroupFailure(failure, t), "bad");
       } finally {
         await refreshGroups();
       }
@@ -772,6 +787,11 @@ export function GroupDock() {
         () => spawnGroupMember(groupId, { projectId }),
         name ? "group.toast.memberSpawnedFrom" : "group.toast.memberSpawned",
         name ? { name } : undefined,
+        failure => {
+          if (!(failure instanceof SessionApiError) || !["engine_not_selectable", "binding_required"].includes(failure.code)) return false;
+          openGroupDock(groupId); setSpawnProjectId(projectId); setAddMode("spawn");
+          return true;
+        },
       );
     },
     [run, projects],
@@ -802,7 +822,7 @@ export function GroupDock() {
       },
       [expanded, openGroups, joinByDrop, t],
     ),
-    openGroups.length === 0,
+    openGroups.length === 0 || (dock.open && expandedGroup !== null && !isGroupOpen(expandedGroup)),
   );
 
   const onMemberAction = useCallback(
@@ -860,10 +880,11 @@ export function GroupDock() {
       {/* 展开一个组之后浮层变宽（三栏要放得下）：宽度是**同一个浮层**换了个尺寸，
           不是另开一块面板——这一片要读起来像一件工具（DESIGN ★J 追加节）。 */}
       <div
-        className={`kaus-group-panel ${expandedGroup ? "is-wide" : ""}`}
+        className={`kaus-group-panel ${expandedGroup ? "is-wide" : ""} ${pillDrop.isOver ? "is-drop-target" : ""}`}
         data-testid="group-dock-panel"
         role="dialog"
         aria-label={t("group.pill")}
+        {...pillDrop.dragProps}
       >
         <div className="kaus-group-head">
           <span className="kaus-group-head-title">{t("group.pill")}</span>
@@ -938,7 +959,7 @@ export function GroupDock() {
         )}
 
         <div className={`kaus-group-body ${expandedGroup ? "is-workspace" : ""}`}>
-          {error && <div className="kaus-group-error">{error}</div>}
+          {error && <ErrorNotice error={error} className="kaus-group-error" />}
           {!error && groups.length === 0 && <div className="kaus-group-empty">{t("group.empty")}</div>}
 
           {groups.map((group) => {
@@ -947,7 +968,7 @@ export function GroupDock() {
             const count = group.memberCount ?? rows.length;
             const active = rows.filter((row) => row.participationState === "active").length;
             return (
-              <div key={group.id} className="kaus-group-item" data-testid={`group-item-${group.id}`}>
+              <GroupDropItem key={group.id} group={group} onDropConversation={(dropped) => joinByDrop(group.id, dropped)}>
                 <button
                   type="button"
                   className="kaus-group-row"
@@ -1004,7 +1025,7 @@ export function GroupDock() {
                               className="kaus-bar-pop-item"
                               onClick={() => {
                                 setAddMenuOpen(false);
-                                setAddMode("spawn");
+                                setSpawnProjectId(null); setAddMode("spawn");
                               }}
                             >
                               {t("group.add.spawn")}
@@ -1041,7 +1062,7 @@ export function GroupDock() {
                     {addMode === "spawn" && (
                       <SpawnForm
                         projects={projects}
-                        defaultProjectId={group.homeProjectId}
+                        defaultProjectId={spawnProjectId ?? group.homeProjectId}
                         onCancel={() => setAddMode(null)}
                         onSubmit={async (body) => {
                           setAddMode(null);
@@ -1088,6 +1109,7 @@ export function GroupDock() {
                       onClearDirected={() => setDirected(null)}
                       membersPane={
                         <MembersPane
+                          disabled={!isGroupOpen(group)}
                           title={t("group.tab.members")}
                           emptyNote={
                             rows.length === 0 ? (
@@ -1113,7 +1135,7 @@ export function GroupDock() {
                     />
                   </div>
                 )}
-              </div>
+              </GroupDropItem>
             );
           })}
         </div>

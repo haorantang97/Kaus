@@ -53,6 +53,14 @@ describe("isVisibleCapabilityEntry", () => {
 });
 
 describe("visibleCapabilityRows", () => {
+  it("技能统一进入项目树，不在配置表重复显示内部条目", () => {
+    const view = visibleCapabilityRows(wire([
+      entry({ capabilityType: "skills" }), entry({ capabilityType: "alpha:skills" }),
+      entry({ capabilityType: "mcp" }),
+    ], [{ capabilityType: "alpha:skills", capabilityId: "hidden", blockedByProjectId: "project:x", blocked: true }]));
+    expect(view.entries.map(row => row.capabilityType)).toEqual(["mcp"]);
+    expect(view.blocked).toEqual([]);
+  });
   it("计数只数渲染出来的行；被禁止的行照常显示并计入", () => {
     const view = visibleCapabilityRows(
       wire(

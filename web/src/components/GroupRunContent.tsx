@@ -1,3 +1,4 @@
+import { ErrorNotice } from "./ui";
 import { useEffect, useState } from "react";
 import { EventTransport } from "../lib/eventTransport";
 import { conversationEventsUrl, fetchEventsSnapshot, resolveInteraction } from "../lib/sessionApi";
@@ -88,6 +89,7 @@ export function GroupRunContent({ conversationId, after = 0, runId, live = false
           onQuestionRespond: (interaction, answer) => void respond(interaction, answer),
         } : {}} />;
     })}
-    {(error || reconnecting) && <div className="kaus-group-error" role="alert">{error || t("group.run.reconnecting")}</div>}
+    {error && <ErrorNotice error={error} className="kaus-group-error" />}
+    {!error && reconnecting && <div className="kaus-group-dim" role="status">{t("group.run.reconnecting")}</div>}
   </div>;
 }

@@ -18,6 +18,23 @@ beforeEach(() => {
   api.fetchEventsSnapshot.mockResolvedValue({ events: [], lastSequence: 0, truncated: false });
 });
 describe("独立组长", () => {
+  it("已有下架组长保留当前配置，不成为新增选项或默认目标", async () => {
+    const retained = { id:'b1', projectId:'p1', projectName:'项目', backendId:'backend:retired', displayName:'Retired', enabled:true, catalogStatus:'legacy' };
+    api.sessionRequest.mockImplementation((path: string) => Promise.resolve(path.endsWith('/options')
+      ? { bindings:[], projects:[{id:'p1',displayName:'项目'}], engineIds:[] }
+      : { config:{bindingId:'b1',modelId:'same',providerId:'vendor-a',revision:2}, retainedBinding:retained,
+          defaults:{bindingId:'b1',revision:1} }));
+    api.fetchProjectBindings.mockResolvedValue({bindings:[retained]});
+    api.fetchConnectedBackends.mockResolvedValue({backends:[{id:'backend:retired',productName:'Retired',preset:{catalogStatus:'legacy'}}]});
+    render(<CoordinatorSettings group={group} />);
+    fireEvent.click(screen.getByRole('button', {name:'组长配置'}));
+    await waitFor(() => expect(screen.getByRole('button', {name:'引擎'})).toHaveTextContent('Retired'));
+    expect(screen.getByRole('button', {name:'保存'})).toBeEnabled();
+    expect(screen.getByRole('button', {name:'设为默认'})).toBeDisabled();
+    expect(screen.queryByRole('button', {name:'应用默认'})).toBeNull();
+    fireEvent.click(screen.getByRole('button', {name:'引擎'}));
+    expect(screen.queryByRole('option', {name:'Retired'})).toBeNull();
+  });
   it("Agent 列表延迟返回时保留已打开的配置菜单", async () => {
     let finish!: (value: object) => void;
     api.fetchProjectBindings.mockImplementation(() => new Promise(resolve => { finish = resolve; }));

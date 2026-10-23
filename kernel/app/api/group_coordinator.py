@@ -15,6 +15,7 @@ from tempfile import gettempdir
 
 from app.conversations.configuration import validate_config_values
 from app.api.api_errors import ApiError
+from app.api.backend_facets import require_new_work
 from app.collaboration.coordinator import (
     CONFIG_KEY, COORDINATOR_ID, DEFAULTS_KEY, CoordinatorConfig,
     collaboration_requested, coordinator_excluded, directed_targets, extract_control, public_body,
@@ -47,7 +48,7 @@ class GroupCoordinator:
     def owns(self, conversation_id, run_id):
         return conversation_id in self.active.values() or (conversation_id, run_id) in self.managed
 
-    async def validate_config(self, raw: dict) -> CoordinatorConfig:
+    async def validate_config(self, raw: dict, *, existing=False) -> CoordinatorConfig:
         try:
             config = CoordinatorConfig.model_validate(raw)
         except ValueError as exc:
@@ -57,6 +58,8 @@ class GroupCoordinator:
             raise ApiError(400, 'binding_not_found', '请选择可用的 Agent 引擎')
         try:
             driver = self.registry.get(binding.backend_id)
+            if not existing:
+                require_new_work(driver, backend_id=binding.backend_id)
             await register_binding_snapshot(driver, binding, self.repos.projects)
             catalog = await driver.get_model_catalog(binding)
             hook = getattr(driver, 'group_context_isolation', None)
@@ -137,7 +140,7 @@ class GroupCoordinator:
             old = group.settings.get(CONFIG_KEY) or {}
             if expected_revision != old.get('revision', 0):
                 raise ApiError(409, 'configuration_changed', '本组配置已变化，请重新打开')
-            config = await self.validate_config(raw)
+            config = await self.validate_config(raw, existing=bool(old and old.get("bindingId") == raw.get("bindingId")))
             config = config.model_copy(update={'revision': old.get('revision', 0) + 1})
             ranks = {'read_only': 0, 'plan': 0, 'ask': 1, 'host:ask': 1, 'auto': 2, 'host:auto': 2, 'bypass': 3}
             old_approval = old.get('approvalMode')
@@ -189,7 +192,7 @@ class GroupCoordinator:
             group = await self.repos.collaborations.get(group.id)
             config_raw = group.settings.get(CONFIG_KEY)
             needs_chair = targets is None or COORDINATOR_ID in targets or (len(targets) > 1 and collaboration_requested(text) and not excluded)
-            config = (await self.validate_config(config_raw) if needs_chair else CoordinatorConfig.model_validate(config_raw)) if config_raw else None
+            config = (await self.validate_config(config_raw, existing=True) if needs_chair else CoordinatorConfig.model_validate(config_raw)) if config_raw else None
             epoch = (group.thread.epoch if group.thread else 0) + 1
             message = await self.append(group=group, kind='directed' if targets else 'broadcast',
                 content=text, metadata={'targetMemberIds': list(targets or ()), 'deliveries': [], 'epoch': epoch,

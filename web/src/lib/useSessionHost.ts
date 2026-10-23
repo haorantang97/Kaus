@@ -1,34 +1,51 @@
-import { useEffect, useState } from "react";
-import { bootstrapSessionAuth } from "./sessionApi";
-
-/* 「会话功能开没开」的唯一判据：`GET /api/session-auth/bootstrap` 成不成功。
- *
- * 前端不读后端的 feature flag（那要么得多一个端点，要么得把配置搬到前端）；
- * flag 关闭时这条路由根本不存在，一次 404 就够回答这个问题。
- * 探测期间界面**保持旧样子**——这样 flag 关闭时看不出任何差别（验收点 1）。
- */
+import { useCallback, useEffect, useState } from "react";
+import { bootstrapSessionAuth, SessionUnavailableError } from "./sessionApi";
 
 export type SessionHostStatus = "probing" | "available" | "unavailable";
 
-export function useSessionHost(): { status: SessionHostStatus; error: string | null } {
+/** Connection readiness never selects a different version of the interface. */
+export function useSessionHost() {
   const [status, setStatus] = useState<SessionHostStatus>("probing");
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    setStatus("probing");
+    setError(null);
+    setAttempt(value => value + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    bootstrapSessionAuth()
-      .then(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let retries = 0;
+    const connect = async () => {
+      try {
+        await bootstrapSessionAuth();
         if (!cancelled) setStatus("available");
-      })
-      .catch((failure) => {
+      } catch (failure) {
         if (cancelled) return;
+        const transient = !(failure instanceof SessionUnavailableError)
+          || failure.status === 0 || failure.status >= 500;
+        if (transient && retries < 2) {
+          timer = setTimeout(connect, [500, 1500][retries++]);
+          return;
+        }
         setError(String((failure as Error)?.message ?? failure));
         setStatus("unavailable");
-      });
+      }
+    };
+    void connect();
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, []);
+  }, [attempt]);
 
-  return { status, error };
+  useEffect(() => {
+    if (status !== "unavailable") return;
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [status, retry]);
+
+  return { status, error, retry };
 }

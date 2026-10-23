@@ -16,12 +16,13 @@ export function CopyButton({ text, label, copiedLabel, className }: {
       await copyText(text);
       setCopied(true);
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setCopied(false), 1600);
+      timer.current = setTimeout(() => setCopied(false), 2500);
     } catch {
       toast(c("chat.content.copyFailed"), "bad");
     }
   };
-  return <button type="button" className={className} aria-label={label} title={copied ? copiedLabel : label} onClick={() => void copy()}>
+  return <button type="button" className={className} aria-label={label} title={copied ? copiedLabel : label} data-copied={copied || undefined} onClick={() => void copy()}>
     {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+    <span className="sr-only" role="status">{copied ? copiedLabel : ""}</span>
   </button>;
 }

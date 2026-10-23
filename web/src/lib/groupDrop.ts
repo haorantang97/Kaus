@@ -26,12 +26,15 @@
  * 早晚会长成两套。
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePointerDrop } from "./pointerDrag";
 
 /** 拖一条会话时 `dataTransfer` 里唯一的那个类型。 */
 export const CONVERSATION_DRAG_MIME = "application/x-kaus-conversation";
 /** 拖一个项目时 `dataTransfer` 里唯一的那个类型（batch43）。 */
 export const PROJECT_DRAG_MIME = "application/x-kaus-project";
+/** Internal labels must not be inserted as text when dropped over an editor. */
+export const GROUP_DRAG_LABEL_MIME = "application/x-kaus-label";
 
 /** `types` 在 jsdom 里是普通数组，在浏览器里是 DOMStringList，两边都支持
  *  `includes`，所以按数组读并兜一层。 */
@@ -59,13 +62,14 @@ export function isGroupDrag(transfer: DataTransfer | null | undefined): boolean 
 }
 
 export interface ConversationDropProps {
+  ref: (node: HTMLElement | null) => void;
   onDragOver: (event: React.DragEvent) => void;
   onDragLeave: (event: React.DragEvent) => void;
   onDrop: (event: React.DragEvent) => void;
 }
 
 /** 拖过来的那条会话：id 是唯一要紧的东西，`label` 只用来把回执说成人话
- *  （拖源顺手在 `text/plain` 上带了标题；带不到就空串，回执退回一句通名）。 */
+ *  （拖源通过内部 MIME 传递标题）。 */
 export interface DroppedConversation {
   kind: "conversation";
   conversationId: string;
@@ -91,7 +95,7 @@ export function groupDropTarget(openGroups: readonly { id: string }[], expandedG
 /** 从一次 `drop` 的 `dataTransfer` 上读出我们认得的那件东西；认不出来给 null。 */
 export function readGroupDrag(transfer: DataTransfer | null | undefined): GroupDropPayload | null {
   if (!transfer) return null;
-  const label = transfer.getData("text/plain") || "";
+  const label = transfer.getData(GROUP_DRAG_LABEL_MIME) || transfer.getData("text/plain") || "";
   if (isConversationDrag(transfer)) {
     const conversationId = transfer.getData(CONVERSATION_DRAG_MIME);
     if (conversationId) return { kind: "conversation", conversationId, label };
@@ -113,34 +117,51 @@ export interface ConversationDrop {
  * 一个放置目标。
  *
  * @param onDrop   松手时拿到那件东西（会话或项目，外加用来写回执的显示名）。
- * @param disabled 这个目标现在不接受放置（例如收起态的胶囊上一个组都没有）——
- *                 这时连 `preventDefault` 都不发，浏览器会显示"禁止"光标，
- *                 也**不加**虚线框（AD-71：不能做的事不要装得能做）。
+ * @param disabled 拒绝内部拖放，避免被外层目标或文本输入接收。
  */
 export function useGroupDrop(
   onDrop: (dropped: GroupDropPayload) => void,
   disabled = false,
 ): ConversationDrop {
   const [isOver, setIsOver] = useState(false);
+  const pointer = usePointerDrop(onDrop, disabled);
+
+  useEffect(() => {
+    if (!isOver) return;
+    const reset = () => setIsOver(false);
+    window.addEventListener("dragend", reset, true);
+    window.addEventListener("drop", reset, true);
+    return () => {
+      window.removeEventListener("dragend", reset, true);
+      window.removeEventListener("drop", reset, true);
+    };
+  }, [isOver]);
 
   const handleDragOver = useCallback(
     (event: React.DragEvent) => {
-      if (disabled || !isGroupDrag(event.dataTransfer)) return;
+      if (!isGroupDrag(event.dataTransfer)) return;
       // preventDefault 才算"这里可以放"；不发就等于拒收。
       event.preventDefault();
-      event.dataTransfer.dropEffect = "link";
-      setIsOver(true);
+      event.stopPropagation();
+      // Group membership receives an independent conversation.
+      event.dataTransfer.dropEffect = disabled ? "none" : "copy";
+      setIsOver(!disabled);
     },
     [disabled],
   );
 
-  const handleDragLeave = useCallback(() => setIsOver(false), []);
+  const handleDragLeave = useCallback((event: React.DragEvent) => {
+    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+    setIsOver(false);
+  }, []);
 
   const handleDrop = useCallback(
     (event: React.DragEvent) => {
       setIsOver(false);
-      if (disabled || !isGroupDrag(event.dataTransfer)) return;
+      if (!isGroupDrag(event.dataTransfer)) return;
       event.preventDefault();
+      event.stopPropagation();
+      if (disabled) return;
       const dropped = readGroupDrag(event.dataTransfer);
       if (dropped) onDrop(dropped);
     },
@@ -149,9 +170,9 @@ export function useGroupDrop(
 
   return useMemo(
     () => ({
-      dragProps: { onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop },
-      isOver: isOver && !disabled,
+      dragProps: { ref: pointer.ref, onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop },
+      isOver: (isOver || pointer.isOver) && !disabled,
     }),
-    [handleDragOver, handleDragLeave, handleDrop, isOver, disabled],
+    [handleDragOver, handleDragLeave, handleDrop, isOver, disabled, pointer.ref, pointer.isOver],
   );
 }

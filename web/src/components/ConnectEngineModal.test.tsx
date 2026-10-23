@@ -3,11 +3,11 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ConnectEngineModal } from "./ConnectEngineModal";
-import { connectEngine, fetchEngineCatalog, type EnginePreset } from "../lib/enginePresets";
+import { connectEngine, fetchEngineCatalog, openEngineLogin, refreshEngineConnections, chooseNativeExecutable, type EnginePreset } from "../lib/enginePresets";
 
 vi.mock("../lib/enginePresets", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/enginePresets")>(),
-  fetchEngineCatalog: vi.fn(), connectEngine: vi.fn(),
+  fetchEngineCatalog: vi.fn(), connectEngine: vi.fn(), openEngineLogin: vi.fn(), refreshEngineConnections: vi.fn(), chooseNativeExecutable: vi.fn(),
 }));
 
 const engine = (id: string, extra: Partial<EnginePreset> = {}): EnginePreset => ({
@@ -19,6 +19,9 @@ const engine = (id: string, extra: Partial<EnginePreset> = {}): EnginePreset => 
 beforeEach(() => {
   vi.mocked(fetchEngineCatalog).mockReset();
   vi.mocked(connectEngine).mockReset();
+  vi.mocked(openEngineLogin).mockReset();
+  vi.mocked(refreshEngineConnections).mockResolvedValue({ backends: [], count: 0 });
+  vi.mocked(chooseNativeExecutable).mockResolvedValue(undefined);
   vi.mocked(fetchEngineCatalog).mockResolvedValue({ engines: [
     engine("alpha", { loginCommand: "alpha login" }),
     engine("new-vendor", { label: "New Vendor", installCommand: "install-new-vendor", loginCommand: "new-vendor login", detected: true }),
@@ -28,6 +31,19 @@ beforeEach(() => {
 });
 
 describe("接入引擎面板", () => {
+  it("下架引擎仅可通过现有连接的详情打开", async () => {
+    vi.mocked(fetchEngineCatalog).mockResolvedValue({ engines:[
+      engine('retired', { registered:true, catalogStatus:'legacy', version:'1.0' }), engine('active'),
+    ] });
+    const view = render(<ConnectEngineModal onClose={() => {}} />);
+    await screen.findByTestId('connect-preset-active');
+    expect(screen.queryByTestId('connect-preset-retired')).toBeNull();
+    view.rerender(<ConnectEngineModal onClose={() => {}} initialBackendId="backend:retired" />);
+    await screen.findByTestId('connect-preset-retired');
+    expect(fetchEngineCatalog).toHaveBeenLastCalledWith(expect.any(AbortSignal), 'backend:retired');
+    expect(screen.getByTestId('connect-details')).toHaveTextContent('retired Agent');
+    expect(connectEngine).not.toHaveBeenCalled();
+  });
   it("DeepSeek 只显示一个产品入口，自动连接推荐的实际后端", async () => {
     const user = userEvent.setup();
     const attach = vi.fn();
@@ -161,9 +177,12 @@ describe("接入引擎面板", () => {
     })] });
     render(<ConnectEngineModal onClose={() => {}} />);
     await user.click(await screen.findByTestId("connect-preset-new-vendor"));
+    expect(screen.getByRole("button", { name: "复制 · 安装" }).closest("details")).not.toHaveAttribute("open");
+    await user.click(screen.getAllByText("安装").find(element => element.tagName === "SUMMARY")!);
     await user.click(screen.getByRole("button", { name: "复制 · 安装" }));
     expect(writeText).toHaveBeenLastCalledWith("install-new-vendor");
     expect(screen.getByRole("button", { name: "已复制 · 安装" }).textContent).toBe("");
+    await user.click(screen.getAllByText("登录").find(element => element.tagName === "SUMMARY")!);
     await user.click(screen.getByRole("button", { name: "复制 · 登录" }));
     expect(writeText).toHaveBeenLastCalledWith("new-vendor login");
     expect(screen.getByRole("link", { name: "官方文档" })).toHaveAttribute("href", "https://example.com/new-vendor");
@@ -179,4 +198,42 @@ describe("接入引擎面板", () => {
     await screen.findByTestId("connect-preset-new-vendor");
     expect(screen.queryByRole("alert")).toBeNull();
   });
+});
+
+
+it("保存自定义路径并打开原生登录，返回后刷新同一连接", async () => {
+  const user = userEvent.setup();
+  vi.mocked(fetchEngineCatalog).mockResolvedValue({ engines: [engine("codex", {
+    registered: true, nativePath: "/old/codex", canSelectExecutable: true, loginAvailable: true,
+    runtimeIdentity: { adapterVersion: "1.10", engineVersion: "0.9", protocolVersion: 1 },
+  })] });
+  vi.mocked(connectEngine).mockResolvedValue({ backendId: "backend:codex", registered: true });
+  vi.mocked(openEngineLogin).mockResolvedValue({ backendId: "backend:codex", launched: true, launcher: "cmux" });
+  render(<ConnectEngineModal initialBackendId="backend:codex" onClose={() => {}} />);
+  await user.click(await screen.findByRole("button", { name: "指定 CLI" }));
+  const path = screen.getByRole("textbox", { name: "CLI 路径" });
+  await user.clear(path); await user.type(path, "/chosen path/codex");
+  expect(screen.getByRole("button", { name: "打开登录终端" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "保存路径" }));
+  await waitFor(() => expect(connectEngine).toHaveBeenCalledWith("codex", "/chosen path/codex"));
+  await user.click(screen.getByRole("button", { name: "打开登录终端" }));
+  await waitFor(() => expect(openEngineLogin).toHaveBeenCalledWith("backend:codex"));
+  window.dispatchEvent(new Event("focus"));
+  await waitFor(() => expect(refreshEngineConnections).toHaveBeenCalledWith(["backend:codex"]));
+});
+
+it("桌面文件选择结果用于接入，取消保持路径", async () => {
+  const user = userEvent.setup();
+  vi.mocked(fetchEngineCatalog).mockResolvedValue({ engines: [engine("custom", { canSelectExecutable: true })] });
+  vi.mocked(chooseNativeExecutable).mockResolvedValueOnce("/Applications/custom cli").mockResolvedValueOnce(null);
+  render(<ConnectEngineModal onClose={() => {}} />);
+  await user.click(await screen.findByRole("button", { name: "指定 CLI" }));
+  expect(screen.queryByRole("textbox", { name: "CLI 路径" })).toBeNull();
+  expect(screen.getByText("custom cli")).toBeVisible();
+  expect(document.body.textContent).not.toContain("/Applications/custom cli");
+  await user.click(screen.getByRole("button", { name: "指定 CLI" }));
+  expect(screen.getByText("custom cli")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "接入" }));
+  await waitFor(() => expect(connectEngine).toHaveBeenCalledWith("custom", "/Applications/custom cli"));
+  expect(openEngineLogin).not.toHaveBeenCalled();
 });

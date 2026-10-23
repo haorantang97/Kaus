@@ -1230,7 +1230,7 @@ def _handle_extension(
     state: TimelineState, envelope: AgentEventEnvelope
 ) -> TimelineState:
     event = envelope.event
-    if event.namespace == "kaus" and event.name == "runtime.workspace":
+    if event.namespace == "kaus" and event.name in ("runtime.workspace", "history.checkpoint"):
         return state
     if event.namespace == USER_MESSAGE_NAMESPACE and event.name == USER_MESSAGE_NAME:
         return _handle_user_message(state, envelope)

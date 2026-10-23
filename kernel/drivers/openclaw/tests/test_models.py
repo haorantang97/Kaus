@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -51,6 +52,11 @@ class GatewayFixture:
 
 def setup_driver():
     driver = OpenClawAcpDriver(fake_agent_spec("text-stream", cwd="/tmp"), backend_key="openclaw", preset=get_preset("openclaw"))
+    from drivers.openclaw import skill_adapter
+    adapter = SimpleNamespace(**{**vars(skill_adapter), "computer_use_fallback_allowed": lambda *_args: False, "probe_computer_use": AsyncMock(return_value={
+        cap: {"status": "unavailable", "enabled": False} for cap in ("browser", "desktop")
+    })})
+    driver._runtime_adapter = lambda: adapter
     driver.gateway = GatewayFixture()
     harness = FakeAcpHarness(backend_key="openclaw")
     project = harness.make_project()
@@ -182,6 +188,7 @@ async def test_cli_uses_native_auth_and_forbids_broader_mutations(tmp_path, monk
 
 
 async def test_cli_error_does_not_reveal_native_credentials(monkeypatch):
+    monkeypatch.setattr("drivers.openclaw.driver.sidecar_spec", lambda *args: None)
     gateway = OpenClawGateway(AcpAgentSpec(command=("openclaw", "acp")))
     async def communicate():
         return b'{"message":"token=hidden credential"}', b"private stderr"

@@ -15,7 +15,7 @@ import { HISTORY_REPLAY_GRACE_MS } from "../lib/historyReplay";
  * 状态机本身在 `lib/eventTransport.test.ts` 里逐条验过；这里验的是接线：
  *
  *   ① 宽限窗口过完 → 页面真的去取快照，快照里的信封渲染成时间线；
- *   ② 「连接方式：轮询」那句小字**只在**走轮询时出现（SSE 正常时一个字都不多）；
+ *   ② 自动切换传输方式不增加常驻提示；
  *   ③ 「历史没有随重放到达」只在**两条路都失败**时才出现。
  */
 
@@ -239,7 +239,7 @@ describe("batch30：SSE 一个字节都不到时改走轮询", () => {
     mocked.fetchConversation.mockResolvedValue(detail("idle", 7, 4));
   });
 
-  it("窗口过完取快照，快照里的信封渲染成时间线，并出现「连接方式：轮询」", async () => {
+  it("窗口过完取快照，快照里的信封正常渲染且不增加连接方式提示", async () => {
     mocked.fetchEventsSnapshot.mockResolvedValue({
       conversationId: "conversation:1",
       events: [
@@ -264,7 +264,7 @@ describe("batch30：SSE 一个字节都不到时改走轮询", () => {
     expect(mocked.fetchEventsSnapshot).toHaveBeenCalledWith("conversation:1", null);
     expect(await screen.findByText("请列出当前目录")).toBeInTheDocument();
     expect(screen.getByText("目录里有两个文件。")).toBeInTheDocument();
-    expect(screen.getByTestId("transport-polling")).toHaveTextContent("连接方式：轮询");
+    expect(screen.queryByTestId("transport-polling")).toBeNull();
     // 内容到齐了就不该再说"历史没到"。
     expect(screen.queryByTestId("history-missing")).toBeNull();
   }, 15_000);
@@ -288,8 +288,8 @@ describe("batch30：SSE 一个字节都不到时改走轮询", () => {
 
     // 快照也失败了：这时那句话才是实话。
     expect(await screen.findByTestId("history-missing")).toBeInTheDocument();
-    // 轮询照旧在（网络回来之前它是唯一的希望），所以那句小字仍旧在。
-    expect(screen.getByTestId("transport-polling")).toBeInTheDocument();
+    // 继续自动重连，仅保留必要的历史重试入口。
+    expect(screen.queryByTestId("transport-polling")).toBeNull();
   }, 15_000);
 
   /* batch31 第 2 件：真机复测①里，「复测」那一句发出去之后页面**二十五秒**只有一个
@@ -305,7 +305,7 @@ describe("batch30：SSE 一个字节都不到时改走轮询", () => {
     render(<ConversationPage conversationId="conversation:1" />);
     await attached();
     await afterGrace();
-    expect(screen.getByTestId("transport-polling")).toBeInTheDocument();
+    expect(screen.queryByTestId("transport-polling")).toBeNull();
 
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("消息"), "复测");
@@ -315,7 +315,7 @@ describe("batch30：SSE 一个字节都不到时改走轮询", () => {
     await waitFor(() => expect(bubble).toHaveAttribute("data-status", "unconfirmed"));
     expect(screen.getByRole("button", { name: "发送结果未确认" })).toHaveTextContent(/^$/);
     expect(screen.queryByRole("button", { name: "重发" })).toBeNull();
-    expect(screen.getByText("引擎没接受这一句 稍后再试")).toBeInTheDocument();
+    expect(screen.getByText("引擎没接受这一句")).toBeInTheDocument();
     // 「正在回复…」那一行不该出现：这一轮压根没开始。
     expect(screen.queryByTestId("replying")).toBeNull();
   }, 15_000);

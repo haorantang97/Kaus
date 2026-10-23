@@ -96,6 +96,35 @@ async def test_simple_question_only_chair(tmp_path):
         await cleanup(b, api)
 
 
+async def test_retired_engine_cannot_be_new_coordinator_but_existing_group_still_runs(tmp_path):
+    from types import SimpleNamespace
+    b, api, gid, members = await setup(tmp_path)
+    try:
+        b.driver.preset = SimpleNamespace(catalog_status='legacy')
+        options = await api.get('/api/group-settings/coordinator/options')
+        assert options.status_code == 200
+        assert b.binding.backend_id not in options.json()['engineIds']
+        assert not any(row['id'] == b.binding.id for row in options.json()['bindings'])
+        response = await api.put('/api/group-settings/coordinator', json={
+            'config':{'bindingId':b.binding.id, 'modelId':'mock-small', 'providerId':'mock-provider'},
+            'expectedRevision':0})
+        assert response.status_code == 409, response.text
+        assert response.json()['error']['code'] == 'engine_not_selectable'
+        view = await api.get(f'/api/groups/{gid}/coordinator')
+        assert view.json()['retainedBinding']['id'] == b.binding.id
+        updated = await api.put(f'/api/groups/{gid}/coordinator', json={
+            'config':{**view.json()['config'], 'instructions':'Updated host instructions'}, 'expectedRevision':1})
+        assert updated.status_code == 200, updated.text
+        calls = install_responder(b, lambda c, all: {'action':'finish'})
+        result = await api.post(f'/api/groups/{gid}/broadcast', json={'text':'Simple question'})
+        assert result.status_code == 200, result.text
+        group = await completed(b, gid)
+        assert group.thread.ended_reason == 'task_completed'
+        assert len(calls) == 1
+    finally:
+        await cleanup(b, api)
+
+
 @pytest.mark.parametrize('text', ['@写手 请回答', '写手你来帮我解答一下', '评审，请解释写手的观点'])
 async def test_one_addressee_without_chair(tmp_path, text):
     b, api, gid, members = await setup(tmp_path, configured=False)
@@ -261,6 +290,30 @@ async def test_restart_stops_task_without_assigning_oldest_member(tmp_path):
         assert group.thread.status == 'stopped'
         assert group.leader_member_id is None
         assert group.settings['coordinator']['modelId'] == 'mock-small'
+    finally:
+        await cleanup(b, api)
+
+
+async def test_shutdown_drains_coordinator_before_closing_event_database(tmp_path):
+    b, api, gid, members = await setup(tmp_path)
+    try:
+        calls = install_responder(b, lambda c, all: None)
+        response = await api.post(f'/api/groups/{gid}/broadcast', json={'text': '慢任务'})
+        assert response.status_code == 200
+        async with asyncio.timeout(3):
+            while not calls or not b.group_router.group_coordinator.active:
+                await asyncio.sleep(.01)
+        owned_tasks = tuple(b.group_router.group_coordinator.tasks.values())
+        await b.group_router.close_room_pumps()
+        assert owned_tasks and all(task.done() for task in owned_tasks)
+        assert not b.group_router.group_coordinator.tasks
+        assert not b.group_router.group_coordinator.active
+        group = await b.repositories.collaborations.get(gid)
+        assert group.thread.status == 'stopped'
+        assert group.thread.ended_reason is None
+        assert group.thread.coordination['activeConversationId'] is None
+        # Shutdown can be called by both application lifespan and harness close.
+        await b.group_router.close_room_pumps()
     finally:
         await cleanup(b, api)
 

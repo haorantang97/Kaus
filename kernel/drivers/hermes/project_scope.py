@@ -17,7 +17,10 @@ SCOPE_KEY = "project_execution"
 
 
 def enabled(binding) -> bool:
-    return binding.runtime_config.get(SCOPE_KEY) == "isolated"
+    # Group executions own a separate binding even when their source connection
+    # still uses a native home. Their frozen selection must never write there.
+    return (binding.runtime_config.get(SCOPE_KEY) == "isolated"
+            or bool(binding.runtime_config.get("group_execution")))
 
 
 def home_for(root: Path, binding) -> Path:
@@ -28,10 +31,11 @@ def home_for(root: Path, binding) -> Path:
 def prepare(root: Path, source: Path, binding, *, refresh: bool = False) -> Path:
     home = home_for(root, binding)
     marker = home / ".kaus-scope.json"
+    ownership = {"bindingId": binding.id, "projectId": binding.project_id}
     home.mkdir(mode=0o700, parents=True, exist_ok=True)
     if marker.exists():
         ownership = json.loads(marker.read_text())
-        if ownership != {"bindingId": binding.id, "projectId": binding.project_id}:
+        if ownership.get("bindingId") != binding.id or ownership.get("projectId") != binding.project_id:
             raise ValueError("项目执行目录归属不匹配")
         if not refresh:
             return home
@@ -60,5 +64,5 @@ def prepare(root: Path, source: Path, binding, *, refresh: bool = False) -> Path
     soul = source / "SOUL.md"
     text = soul.read_text() if binding.native_scope_ref and binding.native_scope_ref != "default" and soul.is_file() else ""
     atomic_write_text(home / "SOUL.md", text)
-    atomic_write_text(marker, json.dumps({"bindingId": binding.id, "projectId": binding.project_id}))
+    atomic_write_text(marker, json.dumps(ownership))
     return home

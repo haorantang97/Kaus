@@ -1,0 +1,164 @@
+diff --git a/crates/codegen/xai-grok-agent/src/prompt/skills.rs b/crates/codegen/xai-grok-agent/src/prompt/skills.rs
+index 2eac4fe..38b56f7 100644
+--- a/crates/codegen/xai-grok-agent/src/prompt/skills.rs
++++ b/crates/codegen/xai-grok-agent/src/prompt/skills.rs
+@@ -128,7 +128,26 @@ pub async fn list_skills_with_plugins(
+         }
+     }
+ 
+-    merged
++    // Kaus modification: one process keeps one immutable selection across reloads,
++    // including plugin, bundled and server-provided skills.
++    let selection = std::env::var_os("KAUS_GROK_SKILL_ALLOWLIST");
++    kaus_filter_selected(merged, selection.as_deref())
++}
++
++fn kaus_filter_selected(skills: Vec<SkillInfo>, selection: Option<&std::ffi::OsStr>) -> Vec<SkillInfo> {
++    let Some(selection) = selection else { return skills; };
++    let paths = selection.to_str().and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok());
++    let Some(paths) = paths else {
++        tracing::warn!("Invalid Kaus skill selection; no skills loaded");
++        return Vec::new();
++    };
++    let allowed: HashSet<PathBuf> = paths.iter()
++        .filter_map(|path| dunce::canonicalize(path).ok())
++        .collect();
++    // Explicit copies are loaded directly, so native same-name precedence and
++    // a config layer that omits skills.paths cannot hide the selected skill.
++    collect_config_skills(&paths, None).into_iter().filter(|skill| dunce::canonicalize(&skill.path)
++        .is_ok_and(|path| allowed.contains(&path))).collect()
+ }
+ 
+ /// Canonical source of all config directories that may contain skills.
+@@ -2497,6 +2516,30 @@ mod tests {
+         assert!(ends_with(&dirs, ".grok"), "grok must remain: {dirs:?}");
+     }
+ 
++    #[test]
++    fn kaus_selection_covers_all_sources_and_empty() {
++        let temp = tempfile::tempdir().unwrap();
++        let selected = temp.path().join("selected/SKILL.md");
++        std::fs::create_dir_all(selected.parent().unwrap()).unwrap();
++        let ambient = temp.path().join("ambient.md");
++        std::fs::write(&selected, "---\nname: selected\ndescription: selected fixture\n---\nselected").unwrap();
++        std::fs::write(&ambient, "ambient").unwrap();
++        let source = vec![
++            named_skill("selected", selected.to_str().unwrap(), SkillScope::User),
++            named_skill("ambient", ambient.to_str().unwrap(), SkillScope::Local),
++            named_skill("plugin", ambient.to_str().unwrap(), SkillScope::Plugin),
++            named_skill("bundled", ambient.to_str().unwrap(), SkillScope::Bundled),
++            named_skill("server", ambient.to_str().unwrap(), SkillScope::Server),
++        ];
++        let allow = serde_json::to_string(&vec![selected]).unwrap();
++        let scoped = kaus_filter_selected(source.clone(), Some(std::ffi::OsStr::new(&allow)));
++        assert_eq!(scoped.len(), 1);
++        assert_eq!(scoped[0].name, "selected");
++        assert!(kaus_filter_selected(source.clone(), Some(std::ffi::OsStr::new("[]"))).is_empty());
++        assert!(kaus_filter_selected(source.clone(), Some(std::ffi::OsStr::new("invalid"))).is_empty());
++        assert_eq!(kaus_filter_selected(source, None).len(), 5);
++    }
++
+     // ── Same-scope frontmatter-name collisions (copied skill dirs) ──────
+ 
+     fn named_skill(name: &str, path: &str, scope: SkillScope) -> SkillInfo {
+diff --git a/crates/codegen/xai-grok-tools/src/types/skill_discovery_tracker/mod.rs b/crates/codegen/xai-grok-tools/src/types/skill_discovery_tracker/mod.rs
+index e3f6b66..009c5d2 100644
+--- a/crates/codegen/xai-grok-tools/src/types/skill_discovery_tracker/mod.rs
++++ b/crates/codegen/xai-grok-tools/src/types/skill_discovery_tracker/mod.rs
+@@ -279,6 +279,16 @@ fn render_listing(
+     }
+ }
+ 
++// Kaus modification: runtime discoveries and plugin reloads obey the same
++// exact-file selection as initial discovery. The native process has no scope env.
++fn kaus_scope_skills(skills: Vec<SkillInfo>) -> Vec<SkillInfo> {
++    let Some(raw) = std::env::var_os("KAUS_GROK_SKILL_ALLOWLIST") else { return skills; };
++    let paths = raw.to_str().and_then(|value| serde_json::from_str::<Vec<String>>(value).ok()).unwrap_or_default();
++    let allowed: HashSet<PathBuf> = paths.iter().filter_map(|path| dunce::canonicalize(path).ok()).collect();
++    skills.into_iter().filter(|skill| dunce::canonicalize(&skill.path)
++        .is_ok_and(|path| allowed.contains(&path))).collect()
++}
++
+ impl SkillManager {
+     /// Create a new tracker with no state.
+     pub fn new() -> Self {
+@@ -343,7 +353,7 @@ impl SkillManager {
+         }
+         self.cwd = cwd.map(|p| dunce::canonicalize(&p).unwrap_or(p));
+         self.git_root = git_root.map(|p| dunce::canonicalize(&p).unwrap_or(p));
+-        let unconditional = self.conditional.take_unconditional(startup_skills);
++        let unconditional = self.conditional.take_unconditional(kaus_scope_skills(startup_skills));
+         let has_skills = !unconditional.is_empty();
+         self.startup_skills = unconditional;
+         // Only set pending if announced_names is empty (fresh session). When announced_names is
+@@ -355,6 +365,7 @@ impl SkillManager {
+     }
+ 
+     pub fn update_plugin_skills(&mut self, plugin_skills: Vec<SkillInfo>) {
++        let plugin_skills = kaus_scope_skills(plugin_skills);
+         let old_plugin: HashMap<PathBuf, &SkillInfo> = self
+             .startup_skills
+             .iter()
+@@ -443,7 +454,7 @@ impl SkillManager {
+             .iter()
+             .map(|s| (s.path.clone(), s.enabled))
+             .collect();
+-        let unconditional = self.conditional.take_unconditional(new_skills);
++        let unconditional = self.conditional.take_unconditional(kaus_scope_skills(new_skills));
+         self.startup_skills = unconditional;
+         let current_keys: HashSet<String> = self
+             .slash_skills()
+@@ -493,6 +504,7 @@ impl SkillManager {
+     /// canonical filesystem path. `paths:`-gated skills are held back (same gate as `seed`) so
+     /// dynamic discovery can't leak them into the listing before a matching file is touched.
+     pub fn add_discovered(&mut self, skills: Vec<SkillInfo>) -> bool {
++        let skills = kaus_scope_skills(skills);
+         let mut any_new = false;
+         for skill in skills {
+             let canonical = canonical_path(&skill.path);
+@@ -732,6 +744,45 @@ mod tests {
+     use super::*;
+     use std::fs;
+ 
++    #[test]
++    fn kaus_runtime_dynamic_scope_parent() {
++        let root = tempfile::tempdir().unwrap();
++        let selected = root.path().join("selected.md");
++        let ambient = root.path().join("ambient.md");
++        std::fs::write(&selected, "selected").unwrap();
++        std::fs::write(&ambient, "ambient").unwrap();
++        for enabled in [true, false] {
++            let allow = if enabled { vec![selected.to_string_lossy().to_string()] } else { vec![] };
++            let status = std::process::Command::new(std::env::current_exe().unwrap())
++                .args(["--exact", "types::skill_discovery_tracker::tests::kaus_runtime_dynamic_scope_child", "--nocapture"])
++                .env("KAUS_SCOPE_TEST_ROOT", root.path())
++                .env("KAUS_GROK_SKILL_ALLOWLIST", serde_json::to_string(&allow).unwrap())
++                .status().unwrap();
++            assert!(status.success());
++        }
++    }
++
++    #[test]
++    fn kaus_runtime_dynamic_scope_child() {
++        let Some(root) = std::env::var_os("KAUS_SCOPE_TEST_ROOT") else { return; };
++        let root = PathBuf::from(root);
++        let selected = make_skill("selected", root.join("selected.md").to_str().unwrap());
++        let mut ambient = make_skill("ambient", root.join("ambient.md").to_str().unwrap());
++        let enabled = std::env::var("KAUS_GROK_SKILL_ALLOWLIST").unwrap() != "[]";
++        let mut manager = SkillManager::new();
++        manager.seed(Some(root.clone()), None, vec![selected.clone(), ambient.clone()], None, None, None);
++        assert_eq!(manager.slash_skills().len(), usize::from(enabled));
++        ambient.plugin_name = Some("runtime-plugin".to_owned());
++        manager.update_plugin_skills(vec![ambient.clone()]);
++        assert!(!manager.add_discovered(vec![ambient.clone()]));
++        manager.update_startup_baseline(vec![selected, ambient]);
++        manager.on_compaction();
++        manager.on_clear();
++        let current = manager.slash_skills();
++        assert_eq!(current.len(), usize::from(enabled));
++        assert!(current.iter().all(|skill| skill.name == "selected"));
++    }
++
+     fn make_skill(name: &str, path: &str) -> SkillInfo {
+         SkillInfo {
+             name: name.to_owned(),

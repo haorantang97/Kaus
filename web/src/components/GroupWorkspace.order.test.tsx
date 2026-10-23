@@ -5,25 +5,14 @@ import userEvent from "@testing-library/user-event";
 import {
   GroupWorkspace,
   STICK_TO_BOTTOM_SLACK_PX,
-  maxSequence,
   mergeGroupTimeline,
   shouldStickToBottom,
-  unseenCount,
 } from "./GroupWorkspace";
 import { ToastHost } from "./ui";
 import type { GroupMemberWire, GroupMessageWire, GroupWire } from "../lib/groupsApi";
 
-/* batch45c（DESIGN ★J-6 / 真机 2026-09-14）：组时间线从**倒序的账本**改成
- * **正序的房间**。
- *
- * 三件事：
- *  ① 顺序：最早在上、最新在下，和会话页一致；乐观占位在最底下；
- *  ② 贴底：新条目到了，用户本来贴着底就跟着滚，往上翻了就不打扰，改露一枚
- *     「回到最新 · N 条新」；
- *  ③ 翻旧：顶上一枚「加载更早」把上一页前插，到头（`nextBefore` 为 null）时不渲染。
- *
- * jsdom 没有真实布局（`scrollHeight` / `clientHeight` 恒为 0），所以像素那一层
- * 一个字都不测：判定是三个纯函数，滚动只验"有没有调用"与按钮的出现/消失。 */
+/* 时间线按时间正序展示；新消息跟随贴底位置，翻旧时保持当前阅读位置。
+ * jsdom 的滚动尺寸由测试显式提供，分页仍走真实组件的加载与归并流程。 */
 
 const api = vi.hoisted(() => ({
   fetchGroupMessages: vi.fn(),
@@ -166,21 +155,6 @@ describe("贴底判定是纯函数（jsdom 没有布局，只测它）", () => {
 
   it("jsdom 里三个值都是 0 → 默认贴着（与刚进组时一致）", () => {
     expect(shouldStickToBottom(0, 0, 0)).toBe(true);
-  });
-});
-
-describe("「N 条新」按序号数，不按列表长度", () => {
-  it("只数比读过的那一条更新的", () => {
-    const rows = [said(1, "一"), said(2, "二"), said(3, "三")];
-    expect(unseenCount(rows, 1)).toBe(2);
-    expect(unseenCount(rows, 3)).toBe(0);
-    expect(maxSequence(rows)).toBe(3);
-    expect(maxSequence([])).toBe(0);
-  });
-
-  it("往前插一页旧的不算「新」（长度差会把翻旧数成 50 条新）", () => {
-    const after = [said(1, "很早"), said(2, "很早"), said(3, "读过了")];
-    expect(unseenCount(after, 3)).toBe(0);
   });
 });
 
@@ -344,17 +318,6 @@ describe("batch53：重取是**归并**，不是替换", () => {
     expect(merged.nextBefore).toBeNull();
   });
 
-  it("归并之后 `unseenCount` 仍然按序号数（长度差会把翻旧数成一堆新的）", () => {
-    const merged = mergeGroupTimeline(heldOf([5, 6], 5), {
-      messages: [said(4, "四"), said(3, "三")],
-      nextBefore: 3,
-    });
-    expect(merged.messages).toHaveLength(4);
-    // 用户读到第 6 条；前插了两条**旧的**，一条「新的」都没有。
-    expect(unseenCount(merged.messages, 6)).toBe(0);
-    expect(maxSequence(merged.messages)).toBe(6);
-  });
-
   it("走界面：翻出两页之后来一条新消息，两页不消失、按钮也不回来", async () => {
     const user = userEvent.setup();
     api.fetchGroupMessages.mockResolvedValueOnce(page([said(6, "第六句"), said(5, "第五句")], 5));
@@ -407,55 +370,81 @@ describe("batch53：重取是**归并**，不是替换", () => {
   });
 });
 
-describe("「回到最新 · N 条新」", () => {
-  /** jsdom 不排版，所以自己把这一栏"撑开"再假装用户滚到了某处。 */
-  function fakeScroll(pane: HTMLElement, scrollTop: number) {
-    Object.defineProperty(pane, "scrollHeight", { value: 1000, configurable: true });
+describe("时间线滚动", () => {
+  function fakeScroll(pane: HTMLElement, scrollTop: number, height = 1000) {
+    Object.defineProperty(pane, "scrollHeight", { value: height, configurable: true });
     Object.defineProperty(pane, "clientHeight", { value: 200, configurable: true });
     pane.scrollTop = scrollTop;
     fireEvent.scroll(pane);
   }
 
-  it("贴着底的时候不出现；往上翻了又来了新的才出现，点一下就没了", async () => {
-    const user = userEvent.setup();
+  function workspace(changeToken: number) {
+    return <><ToastHost /><GroupWorkspace group={GROUP} members={MEMBERS}
+      changeToken={changeToken} membersPane={<div />} directedMemberId={null}
+      onClearDirected={() => {}} /></>;
+  }
+
+  it("贴底时新消息自动跟随，不显示跳转箭头", async () => {
     api.fetchGroupMessages.mockResolvedValue(page([said(1, "第一句")]));
     const { rerender } = renderWorkspace(0);
-
     await screen.findByTestId("group-message-groupmsg:1");
-    // 刚进组：贴着底，没有这一枚。
+    const pane = screen.getByTestId("group-pane-timeline");
+    fakeScroll(pane, 800);
     expect(screen.queryByTestId("group-jump-latest")).toBeNull();
 
-    // 用户往上翻。
-    fakeScroll(screen.getByTestId("group-pane-timeline"), 0);
+    Object.defineProperty(pane, "scrollHeight", { value: 1200, configurable: true });
+    api.fetchGroupMessages.mockResolvedValue(page([said(2, "第二句"), said(1, "第一句")]));
+    rerender(workspace(1));
+    await screen.findByTestId("group-message-groupmsg:2");
+
+    expect(pane.scrollTop).toBe(1200);
+    expect(screen.queryByTestId("group-jump-latest")).toBeNull();
+  });
+
+  it("上翻时新消息不抢滚动，手动回到底部后恢复跟随", async () => {
+    api.fetchGroupMessages.mockResolvedValue(page([said(1, "第一句")]));
+    const { rerender } = renderWorkspace(0);
+    await screen.findByTestId("group-message-groupmsg:1");
+    const pane = screen.getByTestId("group-pane-timeline");
+    fakeScroll(pane, 100);
     expect(screen.queryByTestId("group-jump-latest")).toBeNull();
 
-    // 房间里又来了两条。`changeToken` 变 = 组级流推了一条变更，时间线重取。
-    api.fetchGroupMessages.mockResolvedValue(
-      page([turn(3, "我也看了", "member:b"), turn(2, "我看完了", "member:a"), said(1, "第一句")]),
-    );
-    rerender(
-      <>
-        <ToastHost />
-        <GroupWorkspace
-          group={GROUP}
-          members={MEMBERS}
-          changeToken={1}
-          membersPane={<div />}
-          directedMemberId={null}
-          onClearDirected={() => {}}
+    Object.defineProperty(pane, "scrollHeight", { value: 1200, configurable: true });
+    api.fetchGroupMessages.mockResolvedValue(page([turn(2, "成员发言", "member:a"), said(1, "第一句")]));
+    rerender(workspace(1));
+    await screen.findByTestId("group-message-groupmsg:2");
+    expect(pane.scrollTop).toBe(100);
+    expect(screen.queryByTestId("group-jump-latest")).toBeNull();
 
-        />
-      </>,
-    );
+    fakeScroll(pane, 1000, 1200);
+    Object.defineProperty(pane, "scrollHeight", { value: 1400, configurable: true });
+    api.fetchGroupMessages.mockResolvedValue(page([turn(3, "下一条", "member:b")]));
+    rerender(workspace(2));
+    await screen.findByTestId("group-message-groupmsg:3");
+    expect(pane.scrollTop).toBe(1400);
+    expect(screen.queryByTestId("group-jump-latest")).toBeNull();
+  });
 
-    const jump = await screen.findByTestId("group-jump-latest");
-    expect(jump).toHaveAccessibleName("回到最新 · 2 条新");
-    // 视口没有被动过：往上翻着的人不该被拽下去。
-    expect(screen.getByTestId("group-pane-timeline").scrollTop).toBe(0);
+  it("加载更早的消息补偿新增高度，保持阅读位置", async () => {
+    const user = userEvent.setup();
+    api.fetchGroupMessages.mockResolvedValueOnce(page([said(4, "第四句"), said(3, "第三句")], 3));
+    renderWorkspace();
+    await screen.findByTestId("group-message-groupmsg:3");
+    const pane = screen.getByTestId("group-pane-timeline");
+    fakeScroll(pane, 100);
+    Object.defineProperty(pane, "scrollHeight", {
+      configurable: true,
+      get: () => 600 + pane.querySelectorAll('[data-testid^="group-message-"]').length * 200,
+    });
+    expect(pane.scrollHeight).toBe(1000);
 
-    await user.click(jump);
-    await waitFor(() => expect(screen.queryByTestId("group-jump-latest")).toBeNull());
-    // 点了才滚到底。
-    expect(screen.getByTestId("group-pane-timeline").scrollTop).toBe(1000);
+    api.fetchGroupMessages.mockResolvedValueOnce(page([said(2, "第二句"), said(1, "第一句")], null));
+    await user.click(screen.getByTestId("group-load-earlier"));
+    await screen.findByTestId("group-message-groupmsg:1");
+
+    expect(pane.scrollHeight).toBe(1400);
+    expect(pane.scrollTop).toBe(500);
+    expect(screen.queryByTestId("group-load-earlier")).toBeNull();
+    expect(screen.queryByTestId("group-jump-latest")).toBeNull();
   });
 });

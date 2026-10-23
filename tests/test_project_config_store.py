@@ -104,9 +104,9 @@ async def check_tree_edits(tmp_path):
 
 def test_create_endpoint_does_not_invoke_native_engine(tmp_path, monkeypatch):
     import capability_import
-    os.environ.setdefault("HERMES_HOME", "/nonexistent/kaus-tests")
-    os.environ.setdefault("DASH_FEATURE_SESSION_HOST_V1", "0")
-    os.environ.setdefault("DASH_FEATURE_PROJECT_DOMAIN_V1", "0")
+    monkeypatch.setenv("HERMES_HOME", "/nonexistent/kaus-tests")
+    monkeypatch.setenv("DASH_FEATURE_SESSION_HOST_V1", "0")
+    monkeypatch.setenv("DASH_FEATURE_PROJECT_DOMAIN_V1", "0")
     server = capability_import.load_server_module()
     fixture = host(tmp_path)
     monkeypatch.setattr(server, "HERE", fixture.HERE)

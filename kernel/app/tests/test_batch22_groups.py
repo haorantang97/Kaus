@@ -65,6 +65,10 @@ class GroupHarness(Harness):
         )
         self.app.include_router(self.group_router)
 
+    async def aclose(self) -> None:
+        await self.group_router.close_room_pumps()
+        await super().aclose()
+
 
     def source_for(self, conversation_id):
         row = self.unit_of_work.database.query_one(

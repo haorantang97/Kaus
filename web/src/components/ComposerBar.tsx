@@ -1,3 +1,4 @@
+import { failureSummary } from "../lib/userFacingErrors";
 import { modelSelection } from "../lib/modelCatalogView";
 import { EngineIcon } from "./EngineIcon";
 import { WorkspacePicker } from "./WorkspacePicker";
@@ -6,8 +7,9 @@ import { chooseNativeWorkspace } from "../lib/workspaceApi";
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, CircleHelp, Folder, LoaderCircle, Plus, Settings2, Shield, ShieldAlert } from "lucide-react";
+import { Check, ChevronDown, CircleHelp, Folder, LoaderCircle, Plus, Settings2, Shield, ShieldAlert } from "lucide-react";
 import "../styles/conversation-polish.css";
+import "./composer-interactions.css";
 
 import { useLocale, type DictKey } from "../i18n";
 import type { ApprovalOptionWire, EffectiveSettingWire, EngineConfigOptionWire, SettingSource } from "../lib/sessionApi";
@@ -130,7 +132,7 @@ export function BarMenu({
   footnote,
   emptyNote,
   degraded = false,
-  floating = false,
+  floating = true,
   iconOnly = false,
   allowReselect = false,
   disabled = false,
@@ -164,16 +166,24 @@ export function BarMenu({
   const [expandedGroups, setExpandedGroups] = useState<string[] | null>(null);
   const ref = useRef<HTMLSpanElement | null>(null);
   const menuRef = useRef<HTMLSpanElement | null>(null);
+  const focusedOnOpen = useRef(false);
+  const openingDownward = useRef<boolean | null>(null);
   const [floatingStyle, setFloatingStyle] = useState<CSSProperties>({ visibility: "hidden" });
   useLayoutEffect(() => {
-    if (!open || !floating) return;
+    if (!open) { openingDownward.current = null; return; }
+    if (!floating) return;
     const place = () => {
       const rect = ref.current?.getBoundingClientRect();
       if (!rect) return;
       const below = window.innerHeight - rect.bottom - 14;
       const above = rect.top - 14;
-      const downward = below >= Math.min(260, above);
-      const width = Math.min(Math.max(rect.width, 200), window.innerWidth - 16);
+      const desiredHeight = Math.min(260, menuRef.current?.scrollHeight || 260);
+      // Keep the chosen side while filtering/expanding; scroll rather than jump across the trigger.
+      let downward = openingDownward.current ?? below >= Math.min(desiredHeight, above);
+      if (downward && below < 60 && above > below) downward = false;
+      else if (!downward && above < 60 && below > above) downward = true;
+      openingDownward.current = downward;
+      const width = Math.min(Math.max(rect.width, 260), window.innerWidth - 16);
       setFloatingStyle({
         position: "fixed", zIndex: 1000, bottom: downward ? "auto" : window.innerHeight - rect.top + 6,
         top: downward ? rect.bottom + 6 : "auto", left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
@@ -187,7 +197,16 @@ export function BarMenu({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open, floating]);
+  }, [open, floating, options, query, showUncertain, expandedGroups]);
+  useLayoutEffect(() => {
+    if (!open) { focusedOnOpen.current = false; return; }
+    if (focusedOnOpen.current || (floating && floatingStyle.visibility === "hidden")) return;
+    const target = menuRef.current?.querySelector<HTMLElement>('input')
+      ?? menuRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]')
+      ?? menuRef.current?.querySelector<HTMLElement>('button');
+    target?.focus({ preventScroll: true });
+    focusedOnOpen.current = true;
+  }, [open, floating, floatingStyle.visibility]);
   const showFilter = options.length > BAR_MENU_FILTER_THRESHOLD;
   /* batch29（真机 D4 / ★I-3）：**两个以上不同的组才出组头**。判据看的是整份
      `options` 而不是筛过的 `shown`——筛剩一个组时不该把组头也一起去掉，那样
@@ -229,9 +248,10 @@ export function BarMenu({
     };
     const onKey = (event: KeyboardEvent) => {
       // Esc 先清过滤词（还在筛的时候不该一下子把菜单关掉），再按一次才关菜单。
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.isComposing || event.keyCode === 229) return;
+      event.preventDefault(); event.stopPropagation();
       if (query !== "") setQuery("");
-      else setOpen(false);
+      else { setOpen(false); ref.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true }); }
     };
     document.addEventListener("mousedown", onDocDown);
     document.addEventListener("keydown", onKey);
@@ -241,7 +261,7 @@ export function BarMenu({
     };
   }, [open, query]);
 
-  const menuLayer = (content: ReactNode) => floating ? createPortal(content, document.body) : content;
+  const menuLayer = (content: ReactNode) => floating ? createPortal(content, ref.current?.closest<HTMLElement>('[role="dialog"], [data-kaus-modal]') ?? document.body) : content;
   return (
     <span className="kaus-bar-menu" ref={ref} data-bar-item={label}>
       <button
@@ -253,6 +273,9 @@ export function BarMenu({
         disabled={disabled}
         title={title ? `${label} · ${title}` : label}
         onClick={() => setOpen((current) => !current)}
+        onKeyDown={event => {
+          if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) { event.preventDefault(); setOpen(true); }
+        }}
       >
         {icon}
         {!iconOnly && <span className="kaus-bar-value" title={display}>{display}</span>}
@@ -261,7 +284,40 @@ export function BarMenu({
         {!iconOnly && <ChevronDown className="kaus-bar-caret" size={12} aria-hidden />}
       </button>
       {open && !disabled && menuLayer(
-        <span className="kaus-bar-pop" ref={menuRef} style={floating ? floatingStyle : undefined} role="listbox" aria-label={label}>
+        <span className="kaus-bar-pop" ref={menuRef} style={floating ? floatingStyle : undefined} role="listbox" aria-label={label}
+          onKeyDown={event => {
+            if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+            if (event.key === "Escape") {
+              event.preventDefault(); event.stopPropagation();
+              if (query) setQuery("");
+              else { setOpen(false); ref.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true }); }
+            } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+              event.preventDefault(); event.stopPropagation();
+              const choices = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+              if (!choices.length) return;
+              const index = choices.indexOf(document.activeElement as HTMLButtonElement);
+              const next = event.key === "Home" ? 0 : event.key === "End" ? choices.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + choices.length) % choices.length;
+              choices[next]?.focus();
+            } else if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+              event.preventDefault(); menuRef.current?.querySelector<HTMLButtonElement>('[role="option"]')?.click();
+            } else if (event.key === "Tab") {
+              const trigger = ref.current?.querySelector<HTMLButtonElement>("button");
+              const dialog = trigger?.closest<HTMLElement>('[role="dialog"], [data-kaus-modal]');
+              const stops = Array.from((dialog ?? document).querySelectorAll<HTMLElement>('button, a[href], input:not([type="hidden"]), select, textarea, [tabindex], [contenteditable="true"]')).filter(node => {
+                if (node.tabIndex < 0 || node.matches(':disabled, [aria-disabled="true"]') || node.closest('.kaus-bar-pop, [hidden], [inert], [aria-hidden="true"]')) return false;
+                for (let parent: HTMLElement | null = node; parent; parent = parent.parentElement) {
+                  const style = getComputedStyle(parent);
+                  if (style.display === "none" || style.visibility === "hidden") return false;
+                }
+                return true;
+              });
+              const index = stops.indexOf(trigger!);
+              const successor = (index >= 0 ? stops[index + (event.shiftKey ? -1 : 1)] : undefined) ?? (dialog ? stops[event.shiftKey ? stops.length - 1 : 0] : undefined);
+              setOpen(false); event.stopPropagation();
+              if (successor) { event.preventDefault(); successor.focus(); }
+              else trigger?.focus({ preventScroll: true });
+            }
+          }}>
           {/* 第 5 件：清单长了才给过滤框（短清单加一个输入框只会碍事）。 */}
           {showFilter && (
             <input
@@ -317,16 +373,19 @@ export function BarMenu({
                   type="button"
                   role="option"
                   aria-selected={option.value === value}
+                  aria-description={option.title}
                   title={option.title ?? (option.uncertain ? t("bar.model.unverifiedHint") : undefined)}
                   className={`kaus-bar-pop-item ${option.value === value ? "is-current" : ""}`}
                   /* 层级缩进：项目树在菜单里也看得出父子关系（第 5 件）。 */
                   style={option.depth ? { paddingLeft: 8 + option.depth * 12 } : undefined}
                   onClick={() => {
                     setOpen(false);
+                    ref.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
                     if (allowReselect || option.value !== value) onSelect(option.value);
                   }}
                 >
-                  {option.icon}{option.label}
+                  {option.icon}<span>{option.label}</span>
+                  {option.value === value && <Check size={13} className="kaus-bar-selected-check" aria-hidden="true" />}
                   {option.uncertain && <CircleHelp size={12} className="kaus-model-uncertain-icon" aria-label={t("bar.model.unverified")} />}
                 </button>
               ))}
@@ -340,9 +399,9 @@ export function BarMenu({
           </button>}
           {/* 目录降级时的一行小字：说明这份列表是怎么来的，不阻断选择。 */}
           {footnote && (
-            <span className="kaus-bar-pop-note" data-testid="model-diagnostic">
-              {footnote}
-            </span>
+            <details className="kaus-bar-pop-note" data-testid="model-diagnostic">
+              <summary>{t("card.error.showDetail")}</summary>{footnote}
+            </details>
           )}
         </span>
       )}
@@ -390,7 +449,7 @@ export function WorkspacePill({ setting, onSave }: {
       {busy ? <LoaderCircle size={14} className="kaus-ui-spin" aria-hidden /> : <Folder size={14} aria-hidden />}
       <span className="kaus-bar-value">{setting.value ? tailSegments(setting.value) : t("bar.workspace.choose")}</span>
     </button>
-    {error && <span className="kaus-bar-pop-note is-error" role="alert">{error}</span>}
+    {error && <span className="kaus-bar-pop-note is-error" role="alert">{failureSummary(error)}</span>}
     {editing && <WorkspacePicker initialPath={setting.value} onSelect={onSave} onClose={close} />}
   </span>;
 }
@@ -454,18 +513,19 @@ function EngineConfigMenu(props: EngineConfigProps) {
       if (!anchor.current?.contains(target) && !panel.current?.contains(target) && !target.closest(".kaus-bar-pop")) setOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setOpen(false); anchor.current?.focus(); }
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.keyCode === 229 || panel.current?.querySelector('.kaus-bar-menu > button[aria-expanded="true"]')) return;
+      event.preventDefault(); event.stopPropagation(); setOpen(false); anchor.current?.focus();
     };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); };
   }, [open]);
   return <>
-    <button ref={anchor} type="button" className="kaus-bar-pill is-button is-icon-only" aria-label={label} title={label}
+    <button ref={anchor} data-kaus-engine-config-trigger type="button" className="kaus-bar-pill is-button is-icon-only" aria-label={label} title={label}
       aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)}><Settings2 size={16} aria-hidden /></button>
     {open && createPortal(<div ref={panel} role="dialog" aria-label={label} style={style} className="kaus-engine-config-pop">
       <EngineConfigFields {...props} />
-    </div>, document.body)}
+    </div>, anchor.current?.closest<HTMLElement>('[role="dialog"], [data-kaus-modal]') ?? document.body)}
   </>;
 }
 

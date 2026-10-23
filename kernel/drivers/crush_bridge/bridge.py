@@ -21,6 +21,8 @@ import uuid
 
 from .protocol import BridgeError, Peer
 from .transport import NativeHTTP
+from . import skills
+from drivers.projection_store import atomic_write_text
 
 
 def literal(value: str) -> str:
@@ -174,6 +176,17 @@ class Session:
     async def start(self, servers: list[dict], native_id: str | None = None) -> dict:
         self.directory.mkdir(parents=True, mode=0o700, exist_ok=True)
         os.chmod(self.directory, 0o700)
+        self.skill_scope = await skills.prepare(self.bridge.command, self.cwd, self.directory)
+        # Replace Kaus-owned MCP settings before the native workspace starts.
+        # Updating only through config/set would briefly start the previous
+        # turn's servers (including ones removed by the current Project).
+        data = self.directory / 'data'
+        data.mkdir(parents=True, exist_ok=True, mode=0o700)
+        config_path = data / 'crush.json'
+        config = json.loads(config_path.read_text()) if config_path.exists() else {}
+        config['mcp'] = mcp_config(servers)
+        atomic_write_text(config_path, json.dumps(config))
+        config_path.chmod(0o600)
         # Use a short socket path: macOS sockaddr_un paths are limited to 104 bytes.
         self.socket_dir = tempfile.TemporaryDirectory(prefix="kaus-crush-", dir="/tmp")
         socket_path = str(Path(self.socket_dir.name) / "agent.sock")
@@ -209,6 +222,7 @@ class Session:
             "client_id": self.client_id, "yolo": False,
         })
         self.workspace_id = workspace["id"]
+        await skills.validate(self)
         self.stream_task = asyncio.create_task(self.read_events())
         await asyncio.wait_for(self.ready.wait(), 10)
         if self.stream_error:
@@ -219,6 +233,7 @@ class Session:
         })
         await self.wait_mcp(servers)
         await self.request("POST", self.base + "/agent/init", {"interactive": True})
+        await skills.validate(self)
         if native_id:
             native = await self.request("GET", self.base + "/sessions/" + quote(native_id, safe=""))
             if native.get("id") != native_id or native.get("parent_session_id"):
@@ -354,6 +369,7 @@ class Session:
     async def prompt(self, blocks: list[dict]) -> dict:
         text, attachments = prompt_parts(blocks)
         async with self.lock:
+            await skills.validate(self)
             if self.turn and not self.turn.done():
                 raise BridgeError("The session already has an active turn", -32602)
             if self.closed or self.stream_error or (self.stream_task and self.stream_task.done()):

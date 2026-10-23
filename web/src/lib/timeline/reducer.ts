@@ -1094,7 +1094,7 @@ const handleUserMessageFailed: Handler = (state, envelope) => {
 
 const handleExtension: Handler = (state, envelope) => {
   const event = envelope.event as Extract<AgentEvent, { type: "extension.event" }>;
-  if (event.namespace === "kaus" && event.name === "runtime.workspace") return state;
+  if (event.namespace === "kaus" && (event.name === "runtime.workspace" || event.name === "history.checkpoint")) return state;
   if (event.namespace === USER_MESSAGE_NAMESPACE && event.name === USER_MESSAGE_NAME) {
     return handleUserMessage(state, envelope);
   }

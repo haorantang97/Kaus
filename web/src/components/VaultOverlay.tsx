@@ -1,4 +1,6 @@
+import { ErrorNotice } from "./ui";
 import { useEffect, useState } from "react";
+import { SegmentedControl } from "./SegmentedControl";
 import { Plus } from "lucide-react";
 import { apiGet, apiPost } from "../lib/api";
 import { renderMarkdown } from "../lib/md";
@@ -51,12 +53,12 @@ export function VaultOverlay({ onClose, refreshKey = 0 }: { onClose: () => void;
   return (
     <Overlay title={t("vault.title")} onClose={onClose} onReload={() => load()} actions={<Button onClick={() => setCreating(true)}><Plus className="mr-1 inline size-3.5" />{t("vault.new")}</Button>}>
       <AsyncState data={d} err={err}>{(d) =>
-        !d.exists ? <div className="text-sm" style={{ color: cream(55) }}>{t("vault.missing", { root: d.root })}</div>
+        !d.exists ? <div className="text-sm" style={{ color: cream(55) }}>{t("vault.emptyTree")}</div>
         : (
           <div className="max-w-3xl">
             <p className="mb-4 text-xs leading-relaxed" style={{ color: cream(55) }}>
               {t("vault.sub")}<br />
-              <code>{d.root}</code> · {t("vault.count", { count: d.file_count })} · <a className="underline" style={{ color: "var(--accent-text)" }} href={`obsidian://open?path=${encodeURIComponent(d.root)}`}>{t("vault.openObsidian")}</a>
+              {t("vault.count", { count: d.file_count })} · <a className="underline" style={{ color: "var(--accent-text)" }} href={`obsidian://open?path=${encodeURIComponent(d.root)}`}>{t("vault.openObsidian")}</a>
             </p>
             <div className="vault-tree">{d.tree.length ? <Tree nodes={d.tree} depth={0} onOpen={openNote} /> : <div className="vault-empty">{t("vault.emptyTree")}</div>}</div>
           </div>
@@ -71,20 +73,16 @@ function NoteModal({ note, onClose, onSaved }: { note: NoteResp; onClose: () => 
   const [view, setView] = useState<"md" | "raw" | "edit">("md");
   const [val, setVal] = useState(note.content);
   const save = async () => {
-    try { await apiPost("/api/vault/note", { path: note.path, content: val }); toast(t("vault.saved", { path: note.path }), "ok"); onSaved(); }
+    try { await apiPost("/api/vault/note", { path: note.path, content: val }); toast(t("vault.saved", { path: note.path.split("/").at(-1) ?? "" }), "ok"); onSaved(); }
     catch (e) { toast(t("vault.saveFailed", { error: e instanceof Error ? e.message : String(e) }), "bad"); }
   };
   return (
     <Modal onClose={onClose} width={720}>
       <div className="mb-2 flex items-center gap-3">
-        <ModalTitle>{note.path}</ModalTitle>
-        <div className="ml-auto flex gap-1.5 text-[0.65rem]">
-          {(["md", "raw", "edit"] as const).map((v) => (
-            <button key={v} onClick={() => setView(v)} className="rounded px-2 py-0.5 uppercase tracking-wider"
-              style={{ background: view === v ? "var(--gold-soft)" : "transparent", color: view === v ? "var(--accent-text)" : cream(50), border: HAIR }}>
-              {v === "md" ? t("vault.view.md") : v === "raw" ? t("vault.view.raw") : t("vault.view.edit")}
-            </button>
-          ))}
+        <ModalTitle>{note.path.split("/").at(-1)}</ModalTitle>
+        <div className="ml-auto text-[0.65rem]">
+          <SegmentedControl label={t("vault.title")} value={view} onChange={setView}
+            options={(["md", "raw", "edit"] as const).map(v => ({ value: v, label: t(`vault.view.${v}`) }))} />
         </div>
       </div>
       {view === "md" && <div className="md-body max-h-[60vh] overflow-y-auto rounded-lg p-4" style={{ background: cream(3), border: HAIR }} dangerouslySetInnerHTML={{ __html: renderMarkdown(note.content) }} />}
@@ -121,7 +119,7 @@ function CreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
       <ModalSub>{t("vault.new.sub")}</ModalSub>
       <input value={path} onChange={(e) => setPath(e.target.value)} placeholder={t("vault.new.placeholder")} autoFocus style={inputStyle()} />
       <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={10} placeholder={t("vault.new.bodyPlaceholder")} style={{ ...inputStyle(), marginTop: 8, resize: "vertical" }} />
-      {err && <div className="mt-2 text-xs" style={{ color: "var(--danger)" }}>{err}</div>}
+      {err && <ErrorNotice error={err} className="mt-2 text-xs" />}
       <div className="mt-3 flex justify-end gap-3"><Button onClick={onClose}>{t("common.cancel")}</Button><Button variant="primary" onClick={create}>{t("common.create")}</Button></div>
     </Modal>
   );

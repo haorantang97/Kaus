@@ -129,6 +129,10 @@ def build_domain_router(
             raise ApiError(404, "project_not_found", f"未知 Project：{project_id}")
         bindings = [b for b in await repositories.bindings.list_for_project(normalized) if not b.runtime_config.get("group_execution")]
         rows = [binding_to_wire(b) for b in bindings]
+        for binding, row in zip(bindings, rows):
+            status = (backend_facets(binding.backend_id).get("preset") or {}).get("catalogStatus")
+            if status:
+                row["catalogStatus"] = status
         # 批次十九第 3 件：每行并上 `auth` 与 `nativeSessionCount`（AD-82 / AD-93）。
         # 取数面由会话运行时在装配时登记（它才有 Driver Registry）；没登记时这两个
         # 键**整个不出现**，前端按缺字段静默不渲染那两行（AD-71），而不是收到 null

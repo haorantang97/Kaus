@@ -1,0 +1,9 @@
+{
+  "sourceVersion": "1.0.41",
+  "sourceCommit": "f0e3be1100ef5252488e3be8bb0e91cf68d8c305",
+  "sourceHash": "401350d09406c4a0fd87b38cb8d745d9f2811a5d518a78573d0ab01af95c0c05",
+  "patchVersion": "kaus-skills-1",
+  "patchHash": "6b7e9228555c31c27c68a946c1b97faf5c7c0a790fdf5ad3141f1bb2a3f11a8e",
+  "license": "Apache-2.0",
+  "sourceUrl": "https://github.com/xai-org/grok-build"
+}

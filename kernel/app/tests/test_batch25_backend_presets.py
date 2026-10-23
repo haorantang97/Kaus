@@ -118,12 +118,18 @@ def test_the_list_endpoint_carries_the_same_fields(client, wired) -> None:
     assert "preset" not in rows["backend:mock"]
 
 
-def test_no_launch_argv_and_no_credential_values_reach_the_wire(client, wired) -> None:
+def test_no_launch_argv_and_no_credential_values_reach_the_wire(client, wired, registry) -> None:
     """启动命令不上 wire；``envKeysHint`` 只有变量名（AD-10 / AD-48 / v1.0 §16.6）。"""
+    driver = registry.get("backend:acp-agent")
+    driver.agent_spec = AcpAgentSpec(command=("private-fixture-cli", "--private-token", "synthetic-token"),
+                                   env={"PRIVATE_KEY": "synthetic-env-secret"})
     payload = client.get("/api/backends/acp-agent").json()
     blob = repr(payload)
-    for part in get_preset(PRESET_ID).command:
+    for part in (*driver.agent_spec.command, "synthetic-env-secret"):
         assert part not in blob, "启动 argv 不该出现在能力协商的响应里"
+    # Public installation instructions may name the same package as the
+    # preset; they must remain static and never serialize the assembled argv.
+    assert payload["preset"]["adapterInstallCommand"] == get_preset(PRESET_ID).adapter_install_command
     for name in payload["preset"].get("envKeysHint", ()):
         assert "=" not in name and name.isupper()
 

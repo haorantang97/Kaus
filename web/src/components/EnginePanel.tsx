@@ -1,3 +1,5 @@
+import { engineAcceptsNewWork } from "../lib/engineAvailability";
+import { failureSummary } from "../lib/userFacingErrors";
 import { EngineIcon } from "./EngineIcon";
 import { backendDisplay, bindingDisplayName } from "../lib/backend-display";
 /* 「已接引擎」面板（项目详情页 ② 区，IA §3.2）。
@@ -57,6 +59,7 @@ export type DetailCapabilityTree = {
  *  `quirks` 那七位布尔**不在这里**：它们是 Driver 的分支开关，不是给人看的
  *  能力清单（AD-71），界面上只显示 `label` 一句。 */
 export interface BackendPresetWire {
+  catalogStatus?: "active" | "legacy";
   id: string;
   label: string;
   authModel?: string;
@@ -87,6 +90,7 @@ export interface BackendWire {
 }
 
 export interface BindingWire {
+  catalogStatus?: "active" | "legacy";
   id: string;
   projectId: string;
   backendId: string;
@@ -184,6 +188,8 @@ export interface EngineRow {
 
 /** 一个可接入的引擎（`GET /api/backends`），只要显示用的两项。 */
 export interface AttachableBackend {
+  catalogStatus?: "active" | "legacy";
+  preset?: BackendPresetWire;
   id: string;
   displayName: string;
 }
@@ -345,7 +351,7 @@ function EditableSelect({
       )}
       {error && (
         <span className="text-[0.65rem]" style={{ color: "var(--danger)" }}>
-          {t("engine.field.saveFailed", { error })}
+          {failureSummary(error)}
         </span>
       )}
     </span>
@@ -833,10 +839,10 @@ export function EngineCard({
               {t("materialize.action")}
             </Button>
           )}
-          {onNewConversation && (
+          {onNewConversation && engineAcceptsNewWork(backend) && engineAcceptsNewWork(binding) && (
             <Button variant="primary" onClick={() => onNewConversation(row)}><MessageSquare size={15} />{t("engine.action.newConversation")}</Button>
           )}
-          {!binding.isDefault && onMakeDefault && (
+          {!binding.isDefault && onMakeDefault && engineAcceptsNewWork(backend) && engineAcceptsNewWork(binding) && (
             <Button onClick={() => onMakeDefault(row)}>{t("engine.action.makeDefault")}</Button>
           )}
           {onDetach && !binding.isDefault && (

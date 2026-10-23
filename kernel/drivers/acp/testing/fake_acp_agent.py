@@ -475,13 +475,13 @@ class FakeAcpAgent:
         """
         if not self.dress.config_option_model:
             raise _RpcError(-32601, "Method not found: session/set_config_option")
-        self._require(params, ("sessionId", "optionId", "value"))
+        self._require(params, ("sessionId", "configId", "value"))
         session = self.sessions.get(str(params["sessionId"]))
         if session is None:
             raise _RpcError(
                 -32602, "Invalid params", {"unknownSession": params["sessionId"]}
             )
-        option_id = str(params["optionId"])
+        option_id = str(params["configId"])
         options = self._config_options()
         entry = next((item for item in options if item["id"] == option_id), None)
         if entry is None:

@@ -361,8 +361,8 @@ function conversationWithReply() {
 }
 
 describe("第 4 件：消息悬停动作", () => {
-  it("消息操作只显示图标，复制写进剪贴板并原位反馈", async () => {
-    const user = userEvent.setup();
+  it("消息操作只显示图标，复制反馈可读屏并在 2.5 秒后复位", async () => {
+    userEvent.setup(); // Install the clipboard stub before spying.
     const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
     renderPage();
     await screen.findByTestId("open-external");
@@ -370,13 +370,22 @@ describe("第 4 件：消息悬停动作", () => {
     conversationWithReply();
 
     const assistant = (await screen.findByTestId("assistant-prose")).closest(".kaus-msg") as HTMLElement;
-    await user.click(within(assistant).getByRole("button", { name: "复制" }));
-
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("看完了，结论是这样。"));
     const copy = within(assistant).getByRole("button", { name: "复制" });
-    expect(copy).toHaveAttribute("title", "已复制");
-    expect(copy.textContent).toBe("");
-    expect(screen.queryByText("已复制")).toBeNull();
+    vi.useFakeTimers();
+    try {
+      await act(async () => { copy.click(); });
+      expect(writeText).toHaveBeenCalledWith("看完了，结论是这样。");
+      expect(copy).toHaveAttribute("title", "已复制");
+      const announcement = within(copy).getByRole("status");
+      expect(announcement).toHaveTextContent("已复制");
+      expect(announcement).toHaveClass("sr-only");
+      expect(copy.querySelector("svg")).not.toBeNull();
+      act(() => vi.advanceTimersByTime(2499));
+      expect(copy).toHaveAttribute("title", "已复制");
+      act(() => vi.advanceTimersByTime(1));
+      expect(copy).toHaveAttribute("title", "复制");
+      expect(announcement).toBeEmptyDOMElement();
+    } finally { vi.useRealTimers(); }
   });
 
   it("「重发上一条」把紧邻的上一条用户消息重新发出去（新占位 + 新编号）", async () => {

@@ -405,18 +405,18 @@ def test_sending_a_message_by_hand_still_raises_for_callers(busy) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# 第二轮：保留期钉死在「和用户那句话同一档」（7 天），不是诊断档（24 小时）
+# 失败状态与对应用户消息一起长期保留
 # --------------------------------------------------------------------------- #
 
 
-def test_the_failure_event_is_stored_with_the_seven_day_tier(busy) -> None:
+def test_the_failure_event_is_stored_for_the_conversation_lifetime(busy) -> None:
     """不看规则函数，直接看**落库那一行的 expires_at**。
 
     前端评审提的是这一条：这个事件如果按 24 小时的诊断档清掉，「刷新之后仍然看得见
     这句话没被处理」就只成立一天——而它要解释的正是「这条历史为什么和别的不一样」。
     上一条用例比的是两个函数返回值，这一条比的是真正写进库里的时刻。
     """
-    from datetime import timedelta
+    from app.events.models import RETAIN_UNTIL_CONVERSATION_GONE
 
     conversation = asyncio.run(busy.new_conversation())
     with _client(busy) as client:
@@ -433,11 +433,10 @@ def test_the_failure_event_is_stored_with_the_seven_day_tier(busy) -> None:
     }
     failed = stored[USER_MESSAGE_FAILED_NAME]
     original = stored["user.message"]
-    lifetime = failed.expires_at - failed.created_at
-    assert lifetime == timedelta(days=7)
+    assert failed.expires_at == RETAIN_UNTIL_CONVERSATION_GONE
     # 与它要解释的那条正文同生同灭：两者的保留期必须逐字相同，否则时间线上会出现
     # 「一条失败状态孤零零地指着一条已经不在了的消息」，或者反过来。
-    assert lifetime == original.expires_at - original.created_at
+    assert failed.expires_at == original.expires_at
 
 
 def test_the_failure_event_outlives_the_diagnostic_tier(busy) -> None:

@@ -230,6 +230,31 @@ def test_non_text_content_block_does_not_leak_into_the_message() -> None:
     assert envelopes[0].event.artifact.uri == "data:image/png;base64,AAAA"
 
 
+@pytest.mark.parametrize("tool", ["computer_use", "mcp__browser__browser_take_screenshot"])
+def test_computer_observation_stays_in_tool_result(tool):
+    translator = make_translator()
+    translator.begin_run()
+    translator.on_session_update(update(sessionUpdate="tool_call", toolCallId="screen",
+                                        title=tool, status="pending"))
+    image = {"type": "image", "data": "AAAA", "mimeType": "image/png"}
+    events = translator.on_session_update(update(sessionUpdate="tool_call_update",
+        toolCallId="screen", status="completed", content=[image]))
+    assert types_of(events) == ["tool.completed"]
+    assert events[0].event.output == [image]
+    # The Agent may still explicitly return an image to the user.
+    events = translator.on_session_update(update(sessionUpdate="agent_message_chunk", content=image))
+    assert types_of(events) == ["artifact.created"]
+
+
+def test_generated_tool_image_is_still_a_user_artifact():
+    translator = make_translator()
+    translator.begin_run()
+    events = translator.on_session_update(update(sessionUpdate="tool_call",
+        toolCallId="image", title="image_generation", status="completed",
+        content={"type": "image", "data": "AAAA", "mimeType": "image/png"}))
+    assert "artifact.created" in types_of(events)
+
+
 # --------------------------------------------------------------------------- #
 # 工具：乱序、重复、终态
 # --------------------------------------------------------------------------- #

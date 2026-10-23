@@ -33,6 +33,9 @@ import asyncio
 import contextlib
 import json
 import os
+import signal
+import subprocess
+import sys
 from collections import deque
 from typing import Any, Awaitable, Callable, Mapping, Sequence
 
@@ -53,6 +56,9 @@ DEFAULT_CALL_TIMEOUT: float = 30.0
 # shutdown bounded when a native process does not implement that lifecycle.
 _EOF_EXIT_GRACE_SECONDS: float = 0.5
 _TERMINATE_EXIT_GRACE_SECONDS: float = 5.0
+_KILL_EXIT_GRACE_SECONDS: float = 2.0
+_STDERR_EXIT_GRACE_SECONDS: float = 0.25
+_KILL_SIGNAL = getattr(signal, "SIGKILL", 9)
 
 
 class AcpTransportError(DriverError):
@@ -143,22 +149,34 @@ class AcpConnection:
         process: asyncio.subprocess.Process | None = None,
         stderr: asyncio.StreamReader | None = None,
         command: Sequence[str] = (),
+        owns_process_group: bool = False,
     ) -> None:
         self._reader = reader
         self._writer = writer
         self._process = process
         self._stderr = stderr
         self._command: tuple[str, ...] = tuple(command)
+        self._owns_process_group = owns_process_group
         self._next_id = 0
         self._pending: dict[int, asyncio.Future[Any]] = {}
         self._stderr_lines: deque[str] = deque(maxlen=STDERR_RING_LINES)
+        self._stderr_line_count = 0
         self._noise: deque[str] = deque(maxlen=50)
         self._closed = False
+        self._close_confirmed = False
+        self._close_task: asyncio.Task[None] | None = None
         self._read_task: asyncio.Task[None] | None = None
         self._stderr_task: asyncio.Task[None] | None = None
+        self._stdout_close_drain: asyncio.Task[None] | None = None
+        self._stdout_eof = reader is None
+        self._stderr_eof = stderr is None
         self._request_tasks: set[asyncio.Task[None]] = set()
         self.on_notification: NotificationHandler | None = None
         self.on_request: RequestHandler | None = None
+        self.session_start_retry_policy: Callable[[AcpRpcError, str, int], float | None] | None = None
+        # Native adapters may need time to cascade EOF through harnesses/MCPs.
+        # None preserves the ordinary ACP close policy.
+        self.graceful_shutdown_timeout: float | None = None
 
     # ------------------------------------------------------------------ #
     # 构造
@@ -176,6 +194,7 @@ class AcpConnection:
                 cwd=spec.cwd,
                 env=spec.build_env(),
                 limit=MAX_MESSAGE_BYTES,
+                start_new_session=os.name == "posix",
             )
         except (OSError, ValueError) as exc:
             # AD-159：这是最常见、也最容易被误诊的一类失败。系统已经把原因告诉
@@ -198,6 +217,7 @@ class AcpConnection:
             process=process,
             stderr=process.stderr,
             command=spec.command,
+            owns_process_group=os.name == "posix",
         )
         connection.start()
         return connection
@@ -360,8 +380,10 @@ class AcpConnection:
             while True:
                 raw = await self._stderr.readline()
                 if not raw:
+                    self._stderr_eof = True
                     return
                 self._stderr_lines.append(raw.decode("utf-8", "replace").rstrip("\n"))
+                self._stderr_line_count += 1
         except asyncio.CancelledError:  # pragma: no cover - 关闭路径
             raise
         except Exception:  # noqa: BLE001 - 诊断通道不得拖垮连接
@@ -379,6 +401,13 @@ class AcpConnection:
 
     def stderr_text(self) -> str:
         return "\n".join(self._stderr_lines)
+
+    def stderr_checkpoint(self) -> int:
+        return self._stderr_line_count
+
+    def stderr_since(self, checkpoint: int) -> str:
+        count = self._stderr_line_count - checkpoint
+        return "\n".join(list(self._stderr_lines)[-count:]) if count > 0 else ""
 
     def protocol_noise(self) -> tuple[str, ...]:
         """stdout 上收到的非 JSON-RPC 内容（agent 误把日志写进 stdout 的证据）。"""
@@ -413,49 +442,207 @@ class AcpConnection:
             return True
         return self._process.returncode is None
 
+    @property
+    def owned_process_id(self) -> int | None:
+        return self._process.pid if self._process is not None and self._owns_process_group else None
+
+    @property
+    def close_confirmed(self) -> bool:
+        """True only after the owned process group finished shutting down."""
+        return self._close_confirmed
+
     async def aclose(self) -> None:
-        if self._closed:
+        if self._close_confirmed:
             return
         self._closed = True
-        for task in (self._read_task, self._stderr_task):
-            if task is not None:
-                task.cancel()
+        if self._close_task is None or self._close_task.done():
+            # A previous failed attempt remains retryable. _closed prevents new
+            # protocol traffic; it does not establish that owned children exited.
+            self._close_task = asyncio.create_task(self._close_owned())
+            self._close_task.add_done_callback(
+                lambda task: task.exception() if not task.cancelled() else None)
+        task = self._close_task
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # Retain a shared shutdown task even if one of its waiters leaves.
+            # Some native adapters need EOF cleanup to close detached browsers.
+            # Their bounded cleanup must finish even after repeated cancellation.
+            if self.graceful_shutdown_timeout is not None:
+                while not task.done():
+                    try:
+                        await asyncio.shield(task)
+                    except asyncio.CancelledError:
+                        continue
+                task.result()
+                raise
+            # Ordinary ACP cancellation retains its expedited termination.
+            if self._process is not None:
+                with contextlib.suppress(OSError):
+                    self._signal_owned_process(_KILL_SIGNAL)
+            await asyncio.shield(task)
+            raise
+
+    async def _close_owned(self) -> None:
+        if self._read_task is not None:
+            self._read_task.cancel()
         for task in list(self._request_tasks):
             task.cancel()
         try:
             self._writer.close()
         except (RuntimeError, OSError):  # pragma: no cover - 已断开
             pass
+        if self.graceful_shutdown_timeout is not None:
+            # Retain actual EOF evidence after an unconfirmed close. A detached
+            # child can keep inherited pipes open after the owned group dies.
+            if self._read_task is not None:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await self._read_task
+                self._read_task = None
+            if self._stdout_close_drain is None and self._reader is not None:
+                self._stdout_close_drain = asyncio.create_task(self._drain_closing_stdout())
         try:
-            if self._process is not None and self._process.returncode is None:
-                try:
-                    await asyncio.wait_for(self._process.wait(), _EOF_EXIT_GRACE_SECONDS)
-                except asyncio.TimeoutError:
-                    with contextlib.suppress(ProcessLookupError):
-                        self._process.terminate()
+            if self._process is not None:
+                grace = (self.graceful_shutdown_timeout if self.graceful_shutdown_timeout is not None
+                         else _EOF_EXIT_GRACE_SECONDS)
+                deadline = asyncio.get_running_loop().time() + grace
+                if self._process.returncode is None:
+                    try:
+                        await asyncio.wait_for(self._process.wait(), grace)
+                    except asyncio.TimeoutError:
+                        pass
+                gracefully_closed = False
+                if self.graceful_shutdown_timeout is not None:
+                    # The launcher can finish before the harness has cascaded
+                    # EOF to MCPs. Do not interrupt those children with SIGTERM.
+                    remaining = max(0, deadline - asyncio.get_running_loop().time())
+                    gracefully_closed = await self._confirm_owned_group_exit(timeout=remaining)
+                # A launcher can exit while descendants still own the pipes or
+                # native session. The isolated group remains ours in that case.
+                if not gracefully_closed:
+                    self._signal_owned_process(signal.SIGTERM)
                     try:
                         await asyncio.wait_for(self._process.wait(), _TERMINATE_EXIT_GRACE_SECONDS)
                     except asyncio.TimeoutError:
-                        with contextlib.suppress(ProcessLookupError):
-                            self._process.kill()
-                        await self._process.wait()
+                        self._signal_owned_process(_KILL_SIGNAL)
+                        await self._wait_after_kill()
+                    if self._owns_process_group:
+                        # Let cooperative descendants finish their SIGTERM handlers.
+                        await asyncio.sleep(0.05)
+                        self._signal_owned_process(_KILL_SIGNAL)
         except asyncio.CancelledError:
             # An interrupted shutdown must not leave the owned process running.
-            if self._process is not None and self._process.returncode is None:
-                with contextlib.suppress(ProcessLookupError):
-                    self._process.kill()
-                await self._process.wait()
+            if self._process is not None:
+                self._signal_owned_process(_KILL_SIGNAL)
+                await self._wait_after_kill()
             raise
         finally:
-            for task in (self._read_task, self._stderr_task):
+            # Native agents may write the cause after sending an RPC error, or
+            # while handling stdin EOF. Keep draining stderr through shutdown;
+            # cancelling it before closing stdin loses the useful diagnostic.
+            if self.graceful_shutdown_timeout is not None:
+                drains = [task for task in (self._stdout_close_drain, self._stderr_task)
+                          if task is not None and not task.done()]
+                if drains:
+                    # Observe, never cancel or forcibly close inherited pipes to
+                    # turn an unknown native shutdown into a successful one.
+                    await asyncio.wait(drains, timeout=_STDERR_EXIT_GRACE_SECONDS)
+            elif self._stderr_task is not None and not self._stderr_task.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(self._stderr_task),
+                                           _STDERR_EXIT_GRACE_SECONDS)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    self._stderr_task.cancel()
+            finished = ((self._read_task,) if self.graceful_shutdown_timeout is not None
+                        else (self._read_task, self._stderr_task))
+            for task in finished:
                 if task is not None:
                     try:
                         await task
                     except (asyncio.CancelledError, Exception):  # noqa: BLE001
                         pass
             self._read_task = None
-            self._stderr_task = None
+            if self.graceful_shutdown_timeout is None:
+                self._stderr_task = None
             self._fail_pending(AcpTransportError("连接已关闭"))
+        self._close_confirmed = await self._confirm_owned_group_exit()
+        if self.graceful_shutdown_timeout is not None:
+            self._close_confirmed = (self._close_confirmed and self._stdout_eof and self._stderr_eof
+                                    and (self._process is None or self._process.returncode is not None))
+
+    async def _wait_after_kill(self) -> None:
+        if self.graceful_shutdown_timeout is None:
+            await self._process.wait()
+            return
+        # asyncio's wait can remain pending after the leader exits until every
+        # inherited output pipe reaches EOF. Keep that uncertainty recoverable.
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(self._process.wait(), _KILL_EXIT_GRACE_SECONDS)
+
+    async def _drain_closing_stdout(self) -> None:
+        try:
+            while await self._reader.read(MAX_MESSAGE_BYTES):
+                pass
+            self._stdout_eof = True
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # A failed read is not proof of EOF; preserve unconfirmed shutdown.
+            return
+
+    def _owned_group_active(self) -> bool | None:
+        """Inspect only our process group; zombies no longer execute tools."""
+        if self._process is None:
+            return False
+        if not self._owns_process_group:
+            return self._process.returncode is None
+        try:
+            os.killpg(self._process.pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            pass
+        try:
+            groups = subprocess.check_output(
+                ["ps", "-axo", "pgid=,stat="], text=True,
+                stderr=subprocess.DEVNULL, timeout=0.25)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return any(parts[0] == str(self._process.pid) and not parts[1].startswith("Z")
+                   for row in groups.splitlines() if len(parts := row.split()) == 2)
+
+    async def _confirm_owned_group_exit(self, timeout: float = 0.75) -> bool:
+        deadline = asyncio.get_running_loop().time() + timeout
+        while True:
+            active = await asyncio.to_thread(self._owned_group_active)
+            if active is False:
+                return True
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return False
+            await asyncio.sleep(min(0.025, remaining))
+
+    def _signal_owned_process(self, signum: int) -> None:
+        if self._process is None:
+            return
+        try:
+            if self._owns_process_group:
+                os.killpg(self._process.pid, signum)
+            elif self._process.returncode is None:
+                if signum == signal.SIGTERM:
+                    self._process.terminate()
+                else:
+                    self._process.kill()
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            if not self._owns_process_group or sys.platform != 'darwin':
+                raise
+            groups = subprocess.check_output(['ps', '-axo', 'pgid=,stat='], text=True, timeout=0.25)
+            live = any(parts[0] == str(self._process.pid) and not parts[1].startswith('Z')
+                       for row in groups.splitlines() if len(parts := row.split()) == 2)
+            if live:
+                raise
 
 
 async def call_with_param_shapes(

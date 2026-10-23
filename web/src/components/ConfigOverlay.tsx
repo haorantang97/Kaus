@@ -1,24 +1,28 @@
+import { ErrorNotice } from "./ui";
 import { EngineIcon } from "./EngineIcon";
 import { useEffect, useState } from "react";
-import { Archive, ArchiveRestore, ArrowUpRight, Bot, ChevronRight, Settings2, SlidersHorizontal, Terminal } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUpRight, Bot, ChevronRight, Folder, Gauge, Languages, Moon, Settings2, SlidersHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { apiGet } from "../lib/api";
-import { useLocale } from "../i18n";
+import { useLocale, type LocalePref } from "../i18n";
 import { projectPath, conversationPath } from "../lib/routes";
 import { archiveConversation, fetchArchivedConversations, fetchProjects, type ArchivedConversationWire, type ProjectWire } from "../lib/sessionApi";
 import { backendDisplay } from "../lib/backend-display";
 import { CoordinatorSettings } from "./CoordinatorSettings";
 import { TerminalSettings } from "./TerminalSettings";
+import { SelectPopover } from "./SelectPopover";
 import { AgentConnections } from "./AgentConnections";
+import { AccountQuotaSettings } from "./AccountQuotaSettings";
+import { ComputerUseSettings } from "./ComputerUseSettings";
 import { AsyncState, Overlay } from "./ui";
 import "./settings.css";
 
 interface CfgCat { id: string; label: string; desc: string; items: { k: string; v: string }[] }
 interface CfgOverview { categories: CfgCat[] }
-type Section = "general" | "agents" | "coordinator" | "native" | "archive";
+type Section = "general" | "agents" | "usage" | "coordinator" | "native" | "archive";
 
-export function ConfigOverlay({ onClose, refreshKey = 0 }: { onClose: () => void; refreshKey?: number }) {
-  const { t, locale } = useLocale();
+export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThemeChange }: { onClose: () => void; refreshKey?: number; theme?: "light" | "dark"; onThemeChange?: (theme: "light" | "dark") => void }) {
+  const { t, locale, pref, setPref } = useLocale();
   const zh = locale === "zh";
   const navigate = useNavigate();
   const [section, setSection] = useState<Section>("general");
@@ -61,12 +65,13 @@ export function ConfigOverlay({ onClose, refreshKey = 0 }: { onClose: () => void
   const sections = [
     { id: "general" as const, icon: Settings2, label: zh ? "通用" : "General" },
     { id: "agents" as const, icon: Bot, label: "Agent" },
+    { id: "usage" as const, icon: Gauge, label: zh ? "账号额度" : "Account limits" },
     { id: "coordinator" as const, icon: Bot, label: zh ? "组长" : "Coordinator" },
-    { id: "native" as const, icon: SlidersHorizontal, label: zh ? "原生配置" : "Native settings" },
     { id: "archive" as const, icon: Archive, label: zh ? "已归档" : "Archived" },
+    { id: "native" as const, icon: SlidersHorizontal, label: zh ? "高级" : "Advanced" },
   ];
 
-  return <Overlay title={t("config.title")} onClose={onClose} onReload={() => setReload(n => n + 1)}>
+  return <Overlay title={zh ? "设置" : "Settings"} onClose={onClose} onReload={section === "usage" ? undefined : () => setReload(n => n + 1)}>
     <div className="kaus-settings">
       <nav className="kaus-settings-nav" aria-label={zh ? "设置分类" : "Settings sections"}>
         {sections.map(({ id, icon: Icon, label }) => <button key={id} type="button" className={section === id ? "is-active" : ""}
@@ -74,19 +79,41 @@ export function ConfigOverlay({ onClose, refreshKey = 0 }: { onClose: () => void
       </nav>
       <section className="kaus-settings-content" aria-label={sections.find(s => s.id === section)?.label}>
         {section === "general" && <>
-          <div className="kaus-settings-section"><h2><Terminal size={17} />{zh ? "终端" : "Terminal"}</h2><TerminalSettings key={reload} /></div>
-          {projects.length > 0 && <div className="kaus-settings-section"><h2>{zh ? "项目设置" : "Project settings"}</h2>
-            <select aria-label={zh ? "去项目页" : "Open project"} defaultValue="" onChange={event => {
-              if (event.target.value) navigate(projectPath(event.target.value));
-            }}>
-              <option value="">{t("draft.project.choose")}</option>
-              {projects.map(project => <option key={project.id} value={project.slug || project.id}>{project.displayName || project.slug}</option>)}
-            </select>
-          </div>}
+          <h2 className="kaus-settings-page-title">{zh ? "通用" : "General"}</h2>
+          <div className="kaus-settings-preferences">
+            {onThemeChange && <div className="kaus-settings-preference-row">
+              <label htmlFor="settings-theme"><Moon size={16} aria-hidden="true" />{zh ? "外观" : "Appearance"}</label>
+              <SelectPopover id="settings-theme" label={zh ? "外观" : "Appearance"} value={theme} searchable={false}
+                options={[{ value: "light", label: zh ? "浅色" : "Light" }, { value: "dark", label: zh ? "深色" : "Dark" }]}
+                onChange={value => onThemeChange(value as "light" | "dark")} />
+            </div>}
+            <div className="kaus-settings-preference-row">
+              <label htmlFor="settings-language"><Languages size={16} aria-hidden="true" />{zh ? "语言" : "Language"}</label>
+              <SelectPopover id="settings-language" label={zh ? "语言" : "Language"} value={pref} searchable={false}
+                options={[{ value: "system", label: zh ? "跟随系统" : "System" }, { value: "zh", label: "简体中文" }, { value: "en", label: "English" }]}
+                onChange={value => setPref(value as LocalePref)} />
+            </div>
+            <TerminalSettings key={reload} />
+            {projects.length > 0 && <div className="kaus-settings-preference-row">
+              <label htmlFor="settings-project"><Folder size={16} aria-hidden="true" />{zh ? "项目设置" : "Project settings"}</label>
+              <SelectPopover id="settings-project" label={zh ? "去项目页" : "Open project"} value=""
+                placeholder={t("draft.project.choose")} searchable searchPlaceholder={zh ? "搜索项目…" : "Search projects…"}
+                emptyLabel={zh ? "没有匹配的项目" : "No matching projects"}
+                options={projects.map(project => ({ value: project.slug || project.id, label: project.displayName || project.slug }))}
+                onChange={value => navigate(projectPath(value))} />
+            </div>}
+          </div>
         </>}
-        {section === "agents" && <AgentConnections />}
+        {section === "agents" && <><AgentConnections refreshKey={`${refreshKey}:${reload}`} /><ComputerUseSettings refreshKey={`${refreshKey}:${reload}`} /></>}
+        {section === "usage" && <AccountQuotaSettings key={`${refreshKey}:${reload}`} />}
         {section === "coordinator" && <div className="kaus-settings-section"><h2>{zh ? "默认组长" : "Default coordinator"}</h2><CoordinatorSettings global /></div>}
         {section === "native" && <>
+          <h2 className="kaus-settings-page-title">{zh ? "高级" : "Advanced"}</h2>
+          <button type="button" className="kaus-settings-link" onClick={() => navigate("/dashboard")}>
+            {zh ? "运行概况" : "Runtime overview"}<ArrowUpRight size={16} aria-hidden="true" />
+          </button>
+          <details className="kaus-settings-native">
+          <summary>{zh ? "原生配置" : "Native settings"}<ChevronRight size={15} aria-hidden="true" /></summary>
           <div className="kaus-settings-heading"><h2>Hermes</h2><span>{zh ? "只读" : "Read only"}</span></div>
           <AsyncState data={overview} err={error}>{value => <div className="kaus-config-categories">
             {value.categories.map(category => <details key={category.id}>
@@ -94,10 +121,11 @@ export function ConfigOverlay({ onClose, refreshKey = 0 }: { onClose: () => void
               <dl>{category.items.map((item, i) => <div key={i}><dt>{item.k}</dt><dd title={item.v}>{item.v}</dd></div>)}</dl>
             </details>)}
           </div>}</AsyncState>
+          </details>
         </>}
         {section === "archive" && <>
           <h2>{zh ? "已归档对话" : "Archived conversations"}</h2>
-          {error && archived && <p role="alert" style={{ color: "var(--danger)", fontSize: 12 }}>{error}</p>}
+          {error && archived && <ErrorNotice error={error} className="text-xs" />}
           <AsyncState data={archived} err={archived ? null : error}>{items => items.length === 0 ? <p className="kaus-settings-empty">{zh ? "暂无归档" : "No archived conversations"}</p> :
             <div className="kaus-archive-list">{items.map(item => <div key={item.id} className="kaus-archive-row">
               <div><strong>{item.backendId && <EngineIcon engine={item.backendId} size={13} />}{item.title}</strong><span>{projects.find(p => p.id === item.projectId)?.displayName}{item.backendId ? ` · ${backendDisplay(item.backendId).displayName}` : ""}</span></div>

@@ -95,9 +95,14 @@ def test_the_catalog_has_explicitly_reviewed_presets() -> None:
 
 def test_no_real_engine_command_is_ever_spawned(harness: FakeAcpHarness) -> None:
     """夹具拉起来的必须是假 agent，预设里的真命令一次都不执行。"""
-    command = harness.make_driver().agent_spec.command
+    driver = harness.make_driver()
+    command = driver.agent_spec.command
     assert command[0].endswith("python") or "python" in command[0]
     assert "fake_acp_agent.py" in command[1]
+    assert driver.preset.skill_projection_adapter is None
+    assert driver.preset.runtime_adapter is None
+    assert driver.preset.quirks is harness.preset.quirks
+    assert driver.preset is not harness.preset
 
 
 # --------------------------------------------------------------------------- #
@@ -518,7 +523,8 @@ async def test_running_the_bench_upgrades_declared_to_bench(
     # fail if invoked; all actual protocol traffic must use fake_acp_agent.py.
     native_bin = tmp_path / "native-bin"
     native_bin.mkdir()
-    for executable in ("claude", "codex", "opencode"):
+    for executable in {item.resume_argv_template[0] for item in PRESETS.values()
+                       if item.resume_argv_template}:
         stub = native_bin / executable
         stub.write_text("#!/bin/sh\nexit 97\n", encoding="utf-8")
         stub.chmod(0o755)

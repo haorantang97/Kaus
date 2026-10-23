@@ -323,6 +323,12 @@ def build_history(
     complete_override: bool | None = None,
     extra_missing: Iterable[str] = (),
 ) -> NativeHistory:
+    # Native transcript storage also contains model-only context and hidden
+    # bookkeeping rows. They are not public user/assistant/tool messages.
+    rows = [row for row in rows
+            if row.get("role") in {"user", "assistant", "tool"}
+            and row.get("display_kind") != "hidden"
+            and row.get("_compressed_summary") not in (True, 1, "1")]
     complete, missing = assess_completeness(rows)
     missing = tuple(dict.fromkeys((*missing, *extra_missing)))
     if complete_override is not None:
@@ -495,6 +501,8 @@ MESSAGE_COLUMNS: tuple[str, ...] = (
     "reasoning_content",
     "active",
     "compacted",
+    "display_kind",
+    "_compressed_summary",
 )
 
 SESSION_COLUMNS: tuple[str, ...] = (
@@ -545,11 +553,11 @@ def read_history_from_db(
     db_path: Path | str,
     session_id: str,
     *,
-    limit: int = DEFAULT_PAGE_SIZE,
+    limit: int | None = DEFAULT_PAGE_SIZE,
     before_id: int | None = None,
     tier: SchemaTier | None = None,
 ) -> NativeHistory:
-    """规格 §4.3 的历史查询：尾部窗口 + 向上懒加载（C-2）。"""
+    """Preview defaults to a tail window; ``limit=None`` reads the exact session."""
     tier = tier or classify_schema(read_schema_version(db_path))
     if not tier.enabled:
         return NativeHistory(
@@ -573,20 +581,34 @@ def read_history_from_db(
         if before_id is not None:
             where.append("id < ?")
             params.append(before_id)
-        params.append(max(1, min(limit, MAX_PAGE_SIZE)))
+        limit_sql = ""
+        if limit is not None:
+            params.append(max(1, min(limit, MAX_PAGE_SIZE)))
+            limit_sql = " LIMIT ?"
         rows = connection.execute(
             f"SELECT {', '.join(columns)} FROM messages"
-            f" WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT ?",
+            f" WHERE {' AND '.join(where)} ORDER BY id DESC{limit_sql}",
             params,
         ).fetchall()
     ordered = [dict(row) for row in reversed(rows)]
     cursor = None
-    if ordered and len(rows) >= limit:
+    if limit is not None and ordered and len(rows) >= limit:
         cursor = f"id:{ordered[0]['id']}"
     extra: list[str] = []
     if not tier.full:
         extra.append("schema_downgrade")
     return build_history(session_id, ordered, earlier_cursor=cursor, extra_missing=extra)
+
+
+def read_full_history_from_db(db_path: Path | str, session_id: str) -> NativeHistory:
+    """Read one exact native session for durable terminal reconciliation.
+
+    The ordinary preview query keeps its default window. Reconciliation must
+    retain the outbound checkpoint and every later row, even after long CLI use.
+    """
+    if read_session_row(db_path, session_id) is None:
+        return NativeHistory(native_session_id=session_id, complete=False, missing=("history",))
+    return read_history_from_db(db_path, session_id, limit=None)
 
 
 def read_usage_from_db(db_path: Path | str, session_id: str) -> list[dict[str, Any]]:
@@ -648,6 +670,7 @@ __all__ = [
     "history_from_http",
     "open_readonly",
     "read_history_from_db",
+    "read_full_history_from_db",
     "read_schema_version",
     "read_session_row",
     "read_usage_from_db",

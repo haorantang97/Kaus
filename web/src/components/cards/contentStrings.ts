@@ -18,6 +18,15 @@ export const contentZh = {
   "chat.content.unsupportedLink": "此链接类型暂不支持打开",
   "chat.content.zoomIn": "放大图片",
   "chat.content.zoomOut": "适应窗口",
+  "chat.content.imageControls": "图片查看器；加减键缩放，方向键平移，0 适应窗口",
+  "chat.content.previousImage": "上一张图片",
+  "chat.content.nextImage": "下一张图片",
+  "chat.content.splitPreview": "并排查看源码与预览",
+  "chat.content.resizePreview": "调整源码与预览宽度",
+  "chat.content.restorePreview": "展开预览",
+  "chat.content.diffUnified": "统一差异",
+  "chat.content.diffSplit": "并排差异",
+  "chat.content.copyDiff": "复制差异",
   "chat.content.source": "源文件",
   "chat.content.preview": "预览",
   "chat.content.htmlRestricted": "预览已禁用脚本、表单和外部资源。",
@@ -34,7 +43,6 @@ export const contentZh = {
   "chat.content.pdfFailed": "PDF 预览失败",
   "chat.content.deliveryUnconfirmed": "发送结果未确认",
   "chat.content.checkDelivery": "查看会话状态",
-  "chat.content.thumbnailFailed": "缩略图加载失败，点击打开文件",
 } as const;
 
 export const contentEn: Record<keyof typeof contentZh, string> = {
@@ -55,6 +63,15 @@ export const contentEn: Record<keyof typeof contentZh, string> = {
   "chat.content.unsupportedLink": "This link type cannot be opened here",
   "chat.content.zoomIn": "Zoom in",
   "chat.content.zoomOut": "Fit to window",
+  "chat.content.imageControls": "Image viewer; plus and minus to zoom, arrow keys to pan, 0 to fit",
+  "chat.content.previousImage": "Previous image",
+  "chat.content.nextImage": "Next image",
+  "chat.content.splitPreview": "Show source and preview side by side",
+  "chat.content.resizePreview": "Resize source and preview",
+  "chat.content.restorePreview": "Expand preview",
+  "chat.content.diffUnified": "Unified diff",
+  "chat.content.diffSplit": "Side by side diff",
+  "chat.content.copyDiff": "Copy diff",
   "chat.content.source": "Source",
   "chat.content.preview": "Preview",
   "chat.content.htmlRestricted": "Scripts, forms, and external resources are disabled in this preview.",
@@ -71,7 +88,6 @@ export const contentEn: Record<keyof typeof contentZh, string> = {
   "chat.content.pdfFailed": "PDF preview failed",
   "chat.content.deliveryUnconfirmed": "Delivery is unconfirmed",
   "chat.content.checkDelivery": "Check conversation status",
-  "chat.content.thumbnailFailed": "Thumbnail failed to load. Open the file to view it.",
 };
 
 export function useContentText() {

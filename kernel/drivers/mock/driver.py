@@ -469,6 +469,15 @@ class MockDriver:
             summary={"mcpServers": [entry.capability_id for entry in entries]},
         )
 
+    def supports_workspace_override(self) -> bool:
+        return True
+
+    async def workspace_session_projection(self, conversation, effective, *, workspace_root):
+        projection = await self.session_options_for(conversation, effective)
+        projection = projection or SessionProjection(options=CreateSessionOptions(title=conversation.title))
+        return projection.model_copy(update={"options": projection.options.model_copy(
+            update={"workspace_root": workspace_root})})
+
     async def start_runtime(
         self,
         conversation: Conversation,

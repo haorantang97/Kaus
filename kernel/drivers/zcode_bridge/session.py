@@ -43,6 +43,7 @@ class Session:
             await self.native.call('runtime/capabilities', {})
             params = {'workspace': {'workspacePath': self.cwd, 'workspaceKey': self.cwd},
                       'mcpServers': mcp_servers(servers)}
+            await self.validate_mcp(params['mcpServers'])
             if native_id:
                 params['sessionId'] = native_id
                 snapshot = await self.native.call('session/resume', params)
@@ -72,6 +73,30 @@ class Session:
         finally:
             self.materializing = False
 
+    async def validate_mcp(self, servers):
+        """Verify required servers; release the separate settings probe lease."""
+        if not servers:
+            return
+        workspace = {'workspacePath': self.cwd, 'workspaceKey': self.cwd}
+        request = {'workspace': workspace, 'mcpServers': servers, 'mode': 'connect'}
+        cleanup = {'workspace': workspace, 'mcpServers': [], 'mode': 'connect'}
+        try:
+            result = await self.native.call('mcp/list', request, timeout=30)
+            statuses = result.get('statuses') if isinstance(result, dict) else None
+            if not isinstance(statuses, dict):
+                raise BridgeError('ZCode did not report projected MCP connection status')
+            for server in servers:
+                status = statuses.get(server['name'])
+                if not isinstance(status, dict) or status.get('status') != 'connected':
+                    raise BridgeError(f"ZCode could not connect the projected MCP server {server['name']}; check its native setup")
+        except BaseException:
+            with contextlib.suppress(Exception):
+                await self.native.call('mcp/list', cleanup, timeout=10)
+            raise
+        # mcp/list uses a protocol-settings lease, distinct from the runtime
+        # lease created below. Do not keep an extra stdio MCP process alive.
+        await self.native.call('mcp/list', cleanup, timeout=10)
+
     def result(self):
         settings = self.snapshot.get('settings') or {}
         current = (settings.get('mode') or {}).get('current') or self.snapshot.get('session', {}).get('mode')
@@ -100,7 +125,14 @@ class Session:
                 raise BridgeError('The selected native setting is unavailable', -32602)
             params = {'sessionId': self.native_id, 'persistAsWorkspaceLastUsed': False}
             if config_id == 'model':
-                model = next(row['ref'] for row in self.snapshot['settings']['model']['available'] if model_key(row['ref']) == value)
+                row = next(row for row in self.snapshot['settings']['model']['available'] if model_key(row['ref']) == value)
+                model = dict(row['ref'])
+                # The native registry requires a complete selection. Its TUI
+                # supplies the selected model's default effort as well.
+                reasoning = row.get('reasoning') or {}
+                level = reasoning.get('defaultLevel')
+                if level and level in [entry.get('value') for entry in reasoning.get('levels', [])]:
+                    model['options'] = {**model.get('options', {}), 'reasoningLevel': level}
                 params['model'] = model
                 method = 'session/setModel'
             else:

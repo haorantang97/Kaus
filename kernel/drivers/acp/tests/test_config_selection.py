@@ -40,7 +40,7 @@ async def test_mode_and_effort_reach_separate_rpc_ids_before_first_prompt(monkey
     original = AcpConnection.call
     async def capture(self, method, params, **kwargs):
         if method == "session/set_config_option":
-            calls.append((params.get("optionId"), params["value"]))
+            calls.append((params.get("configId"), params["value"]))
         return await original(self, method, params, **kwargs)
     monkeypatch.setattr(AcpConnection, "call", capture)
     runtime = await driver.start_runtime(conversation, "card")

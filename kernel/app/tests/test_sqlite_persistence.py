@@ -55,7 +55,7 @@ def test_fresh_database_gets_every_recommended_table(tmp_path) -> None:
         assert tables == EXPECTED_TABLES | {"schema_version"}
         # 十二张推荐表 + Phase 5 新增的 projection_results（AD-149）。
         # 数字写死是故意的：再多一张就得有人在这里说明它是什么。
-        assert len(EXPECTED_TABLES) == 15  # Includes conversation bookmark references and application defaults.
+        assert len(EXPECTED_TABLES) == 16  # Includes native-source watermarks, bookmarks and application defaults.
         assert "projection_results" in EXPECTED_TABLES
         # 可选缓存表（v1.0 §11.1 / AD-22：live 探针出结论前不建）确实没建。
         assert "conversation_messages" not in tables

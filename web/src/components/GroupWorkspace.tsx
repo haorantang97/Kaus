@@ -1,3 +1,7 @@
+import { useComposerAutosize, useComposerInputGuard } from "../hooks/useComposerInput";
+import { useScrollInputCooldown } from "../hooks/useConversationPinning";
+import "./composer-interactions.css";
+import { failureSummary } from "../lib/userFacingErrors";
 import { EngineIcon } from "./EngineIcon";
 /* 协作组工作区：默认呈现对话，成员与共享资料通过标签切换。
  * 三个视图保持挂载，草稿、分页、运行输出与资料编辑不因切换丢失。
@@ -7,7 +11,7 @@ import { EngineIcon } from "./EngineIcon";
 import { GroupRunContent } from "./GroupRunContent";
 import { MarkdownContent } from "./cards/MarkdownContent";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, LoaderCircle, MessageSquare, RefreshCw, Square, Users, X, Files } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronRight, Copy, LoaderCircle, MessageSquare, RefreshCw, Square, Users, X, Files } from "lucide-react";
 import "../styles/conversation-polish.css";
 import { GroupMaterialsPane, GroupMessageActions } from "./GroupMaterialsPane";
 
@@ -113,19 +117,6 @@ export function foldPassedTurns(messages: GroupMessageWire[]): TimelineEntry[] {
   return entries;
 }
 
-/* ------------------------------------------------------------------ *
- * batch45c：贴底与翻旧的三个纯函数（DESIGN ★J-6）
- *
- * 时间线在这一批从**倒序的账本**变成**正序的房间**（最早在上、最新在下，和会话页
- * 一样）。倒序是批次二十六定的，那时这里只有"用户广播 + 系统事件"，倒着读像读一份
- * 回执清单；四十五 a/b 之后成员发言、轮次、最终答复都进了这条线，它成了一间房——
- * 房间倒着读是反的，用户得往上滑才能读到刚发生的事。
- *
- * 正序带来两个新问题（贴底、翻旧），它们的判定全收在下面三个纯函数里：jsdom 没有
- * 真实布局（`scrollHeight` / `clientHeight` 恒为 0），所以像素那一层不测，只测这
- * 三个函数与"有没有调用滚动"。
- * ------------------------------------------------------------------ */
-
 /** 离底还有多少算"用户本来就在底部"。一行约 20–40px，一行之内都算贴着。 */
 export const STICK_TO_BOTTOM_SLACK_PX = 40;
 
@@ -139,13 +130,6 @@ export function shouldStickToBottom(
   clientHeight: number,
 ): boolean {
   return scrollHeight - scrollTop - clientHeight <= STICK_TO_BOTTOM_SLACK_PX;
-}
-
-/** 这一页里最大的序号（组内单调递增，也是 `?before=` 的游标）。空页是 0。 */
-export function maxSequence(messages: GroupMessageWire[]): number {
-  let top = 0;
-  for (const message of messages) if (message.sequence > top) top = message.sequence;
-  return top;
 }
 
 /** 一条组时间线在界面这一侧的全部状态：**正序**的行 + 「再往前还有没有」。 */
@@ -163,7 +147,7 @@ export type GroupTimeline = {
  *  `nextBefore` 也退回最近一页的边界。翻旧是用户花力气做的事，一条别人的发言
  *  不该把它撤销。
  *
- *  **归并按 `sequence`**（组内单调递增，见 {@link maxSequence}）。入参是 wire
+ *  **归并按 `sequence`**（组内单调递增）。入参是 wire
  *  那份的倒序也好、正序也好都行：这里按序号排，不靠数组顺序。同一个 `sequence`
  *  出现两份时以**新取回来的那一份**为准——消息的状态（投递、轮次）可能被改过，
  *  旧的那份是过时的快照。
@@ -203,14 +187,6 @@ function earliestSequence(messages: GroupMessageWire[] | null | undefined): numb
   let low = messages[0].sequence;
   for (const message of messages) if (message.sequence < low) low = message.sequence;
   return low;
-}
-
-/** 「回到最新 · N 条新」里的那个 N：序号比用户上次读到的那一条更大的条数。
- *
- *  用**序号**而不是"列表长度差"来数：往上翻旧的时候列表也会变长（前插一页），
- *  长度差会把翻旧当成"来了 50 条新的"。 */
-export function unseenCount(messages: GroupMessageWire[], lastSeenSequence: number): number {
-  return messages.filter((message) => message.sequence > lastSeenSequence).length;
 }
 
 /** 组头那一行要说的话。不在转的时候是 null（AD-71）。
@@ -704,7 +680,7 @@ function ContextPacketPane({
       >
         {t("group.material.overview")}
       </PaneHead>
-      {error && <div className="kaus-group-error">{t("group.packet.failed", { error })}</div>}
+      {error && <div className="kaus-group-error">{failureSummary(error)}</div>}
       {!error && loading && !packet && <div className="kaus-group-empty">{t("group.packet.loading")}</div>}
       {!error && packet && (
         <>
@@ -851,6 +827,9 @@ export function GroupWorkspace({
   const seq = useRef(0);
 
   const open = isGroupOpen(group) && !closedByServer;
+  useComposerAutosize(inputRef, text, open);
+  const composerInput = useComposerInputGuard();
+  const scrollInput = useScrollInputCooldown();
 
   /* 时间线：进组时取一页，之后靠组级流的任一条变更重取（`message_posted` 是其中
      一条，但成员进出也会改摘要，所以不挑事件类型）。 */
@@ -1072,26 +1051,13 @@ export function GroupWorkspace({
    *  一条，它该在用户眼睛所在的那一端，而不是被顶到时间线开头去。 */
   const timelineRows = pending;
 
-  /* ---------------- batch45c：贴底与翻旧（★J-6 / 真机 2026-09-14） ---------------- *
-   *
-   * 正序之后，"新内容在下面"——于是得答两个问题：新的一条到了要不要跟着滚下去，
-   * 以及怎么往回翻到房间刚建的时候。
-   *
-   *  ① **贴底不打扰**：用户本来就在底部（距底 ≤ 40px）→ 自动滚到底；他往上翻了
-   *     → 一个像素都不动，改在时间线底部露一枚「回到最新 · N 条新」。自动滚一个
-   *     正在读旧内容的人的视口，是比"新消息看不见"更糟的一件事。
-   *  ② **前插不跳**：「加载更早」把更早的一页插到最前面，插入前记下 `scrollHeight`，
-   *     插完把长出来的那一段加回 `scrollTop`——用户眼前那一行仍旧停在原处。
-   *
-   * 判定全在上面三个纯函数里（jsdom 没有布局，像素不测）。 */
+  // 新消息只在用户贴底时自动跟随；加载更早的记录时保持当前阅读位置。
   const paneRef = useRef<HTMLDivElement | null>(null);
+  const streamRef = useRef<HTMLDivElement | null>(null);
   /** 用户此刻贴着底没有。进组时是 true（第一次渲染完就滚到底）。 */
   const stick = useRef(true);
   /** 前插那一次的"插入前 scrollHeight"；非 null 表示这一轮渲染要还原位置。 */
   const restoreFrom = useRef<number | null>(null);
-  /** 用户最后一次贴底时读到的最大序号（「N 条新」按它数）。 */
-  const lastSeen = useRef(0);
-  const [unseen, setUnseen] = useState(0);
 
   const scrollToBottom = useCallback(() => {
     const pane = paneRef.current;
@@ -1099,43 +1065,36 @@ export function GroupWorkspace({
     pane.scrollTop = pane.scrollHeight;
   }, []);
 
-  const jumpToLatest = useCallback(() => {
-    stick.current = true;
-    lastSeen.current = maxSequence(messages ?? []);
-    setUnseen(0);
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
-
   const onTimelineScroll = useCallback(() => {
     const pane = paneRef.current;
-    if (!pane) return;
-    const atBottom = shouldStickToBottom(pane.scrollTop, pane.scrollHeight, pane.clientHeight);
-    stick.current = atBottom;
-    if (!atBottom) return;
-    // 回到底 = 这些都读过了。
-    lastSeen.current = maxSequence(messages ?? []);
-    setUnseen(0);
-  }, [messages]);
+    if (pane) stick.current = shouldStickToBottom(pane.scrollTop, pane.scrollHeight, pane.clientHeight);
+  }, []);
 
   /* 用 layout effect 而不是 effect：位置还原与贴底都要在浏览器画这一帧**之前**
      做完，否则用户会看到内容先跳一下再归位。 */
   useLayoutEffect(() => {
     const pane = paneRef.current;
     if (restoreFrom.current !== null) {
-      // 前插：把长出来的那一段加回去，视口停在原处。它不是"新内容"，不计数、不贴底。
+      // 前插：把新增高度加回去，保持用户当前阅读的位置。
       if (pane) pane.scrollTop += pane.scrollHeight - restoreFrom.current;
       restoreFrom.current = null;
       return;
     }
     if (messages === null) return;
-    if (stick.current) {
+    if (stick.current && scrollInput.canFollow()) {
       scrollToBottom();
-      lastSeen.current = maxSequence(messages);
-      setUnseen(0);
-      return;
     }
-    setUnseen(unseenCount(messages, lastSeen.current));
   }, [messages, pending, scrollToBottom, tab]);
+
+  useEffect(() => {
+    const content = streamRef.current;
+    if (!content || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (tab === "timeline" && stick.current && restoreFrom.current === null && scrollInput.canFollow()) scrollToBottom();
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [tab, scrollToBottom, scrollInput.canFollow]);
 
   /** 「加载更早」：把上一页**前插**。`nextBefore` 为 null 时这枚按钮压根不渲染，
    *  所以这里的守卫只是兜底（连点两下也只飞一次）。 */
@@ -1242,7 +1201,11 @@ export function GroupWorkspace({
           data-testid="group-pane-timeline"
           ref={paneRef}
           onScroll={onTimelineScroll}
+          onWheelCapture={scrollInput.markInput}
+          onTouchMove={scrollInput.markInput}
+          onKeyDownCapture={event => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) scrollInput.markInput(); }}
         >
+          <div className="kaus-group-stream-content" ref={streamRef}>
           <PaneHead>{t("group.tab.timeline")}</PaneHead>
           {/* batch27：常驻通知在时间线最上面。它是**这个组里出过的一件事**，
               所以位置在时间线里，而不是一枚会被下一条盖掉的 toast。 */}
@@ -1251,10 +1214,10 @@ export function GroupWorkspace({
               <span className="kaus-group-bad">
                 {t("group.notice.firstMessageFailed", {
                   title: notice.title,
-                  error: notice.message ?? t("group.notice.noReason"),
+                  error: failureSummary(notice.message ?? t("group.notice.noReason")),
                 })}
               </span>
-              {notice.hint && <span className="kaus-group-dim">{notice.hint}</span>}
+              {notice.hint && <details className="kaus-group-dim"><summary>{t("card.error.showDetail")}</summary>{notice.hint}</details>}
               {onDismissNotice && (
                 <button
                   type="button"
@@ -1269,7 +1232,7 @@ export function GroupWorkspace({
               )}
             </div>
           ))}
-          {messagesError && <div className="kaus-group-error">{t("group.timeline.failed", { error: messagesError })}</div>}
+          {messagesError && <div className="kaus-group-error">{failureSummary(messagesError)}</div>}
           {!messagesError && messages === null && <div className="kaus-group-empty">{t("group.timeline.loading")}</div>}
           {/* batch45c：往回翻。`nextBefore` 为 null = 已经到组刚建的时候了，
               那时这枚整个不渲染（AD-71：没有更早的，就不给一枚按了没反应的按钮）。 */}
@@ -1308,7 +1271,7 @@ export function GroupWorkspace({
               <div className="kaus-group-message-head">
                 <span className="kaus-group-tag">{t(`group.kind.${row.kind}` as DictKey)}</span>
                 <span className={row.error ? "kaus-group-bad" : "kaus-group-dim"}>
-                  {row.error ? t("group.timeline.sendFailed", { error: row.error }) : t("group.timeline.pending")}
+                  {row.error ? t("group.timeline.sendFailed", { error: failureSummary(row.error) }) : t("group.timeline.pending")}
                 </span>
               </div>
               <p className="kaus-group-message-text">{row.text}</p>
@@ -1317,19 +1280,7 @@ export function GroupWorkspace({
           {messages !== null && messages.length === 0 && timelineRows.length === 0 && (
             <div className="kaus-group-empty">{t("group.timeline.empty")}</div>
           )}
-          {/* 用户往上翻着的时候才有这一枚：贴着底的人不需要被告知"有新的"，他正看着。 */}
-          {unseen > 0 && (
-            <button
-              type="button"
-              className="kaus-group-summary kaus-group-jump"
-              data-testid="group-jump-latest"
-              aria-label={t("group.timeline.jumpLatest", { count: unseen })}
-              title={t("group.timeline.jumpLatest", { count: unseen })}
-              onClick={jumpToLatest}
-            >
-              <ArrowDown size={14} aria-hidden /><span>{unseen}</span>
-            </button>
-          )}
+          </div>
         </div>
 
         <GroupMaterialsPane key={group.id} group={group} members={members} changeToken={changeToken}
@@ -1367,6 +1318,7 @@ export function GroupWorkspace({
                 value={text}
                 onChange={(event) => {
                   setText(event.target.value);
+                  if (composerInput.isComposing()) return;
                   // 每一次输入都重新判一遍「光标前是不是一次 `@`」——不记状态机，
                   // 因为光标可以被鼠标挪到任何地方，记着的那一份一定会过期。
                   setMention(
@@ -1383,8 +1335,14 @@ export function GroupWorkspace({
                   )
                 }
                 onBlur={() => setMention(null)}
+                onCompositionStart={() => { composerInput.onCompositionStart(); setMention(null); }}
+                onCompositionEnd={event => {
+                  composerInput.onCompositionEnd(event);
+                  setMention(mentionQuery(event.currentTarget.value, event.currentTarget.selectionStart ?? 0));
+                  setMentionIndex(0);
+                }}
                 onKeyDown={(event) => {
-                  if (event.nativeEvent.isComposing) return;
+                  if (composerInput.guardKeyDown(event)) return;
                   if (mentionRows.length > 0 && mention) {
                     // 浮层开着的时候，上下键与回车属于它，不属于输入框。
                     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -1410,7 +1368,7 @@ export function GroupWorkspace({
                     }
                     return;
                   }
-                  if (event.key !== "Enter" || event.shiftKey) return;
+                  if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
                   event.preventDefault();
                   void send();
                 }}

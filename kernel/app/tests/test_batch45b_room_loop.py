@@ -549,6 +549,95 @@ async def test_a_whole_thread_runs_and_the_leader_closes_it(tmp_path) -> None:
         await built.aclose()
 
 
+async def test_final_state_waits_for_its_delivery_receipt(tmp_path, monkeypatch) -> None:
+    """A completed run cannot publish final group state ahead of its receipt."""
+    built = await _seeded(tmp_path)
+    entered, release = asyncio.Event(), asyncio.Event()
+    post = None
+    try:
+        leader = await _new_conversation(built, "组长")
+        _script_plan(built, {leader.id: ["最终答复：已确认。"]})
+        save_member = built.repositories.members.save
+
+        async def delayed_cursor_save(member):
+            if member.last_delivered_sequence is not None:
+                entered.set()
+                await release.wait()
+            return await save_member(member)
+
+        async with _api(built) as api:
+            group = await _new_group(api, "投递回执时序")
+            member = await _join(api, group["id"], leader.id)
+            monkeypatch.setattr(built.repositories.members, "save", delayed_cursor_save)
+            post = asyncio.create_task(api.post(f"/api/groups/{group['id']}/broadcast",
+                                               json={"text": "请给出结论"}))
+            await asyncio.wait_for(entered.wait(), 3)
+
+            async def run_finished():
+                events = await built.host.event_store.read_range(member["conversationId"])
+                return next((event.envelope for event in events
+                             if event.envelope.event.type == "run.completed"), None)
+
+            terminal = await _wait_until(run_finished, what="原生执行结束")
+            await built.group_router.record_member_turn(terminal)
+            await built.group_router.record_member_turn(terminal)
+            # The source run is complete, but the delivery receipt is still
+            # gated. Clients must not observe a completed, incomplete ledger.
+            assert (await _thread_of(api, group["id"]))["status"] == "running"
+            assert not [row for row in await _messages(api, group["id"]) if row["kind"] == "member_turn"]
+            release.set()
+            assert (await post).status_code == 200
+            assert (await _settled(api, group["id"]))["status"] == "final"
+            rows = await _messages(api, group["id"])
+            posted = next(row for row in rows if row["kind"] == "broadcast")
+            assert len(posted["deliveries"]) == 1
+            assert posted["deliveries"][0]["status"] == "sent"
+            assert len([row for row in rows if row["kind"] == "member_turn"]) == 1
+    finally:
+        release.set()
+        if post is not None and not post.done():
+            await post
+        await built.aclose()
+
+
+async def test_shutdown_awaits_a_scheduled_room_delivery(tmp_path, monkeypatch) -> None:
+    """A queued next speaker cannot start a runtime after the host has closed."""
+    built = await _seeded(tmp_path)
+    entered, cancelled = asyncio.Event(), asyncio.Event()
+    try:
+        leader = await _new_conversation(built, "组长")
+        reviewer = await _new_conversation(built, "评审")
+        _script_plan(built, {leader.id: ["最终答复：确认。"], reviewer.id: ["评审意见。"]})
+        ensure_runtime = built.host.ensure_runtime
+
+        async with _api(built) as api:
+            group = await _new_group(api, "关闭投递")
+            lead = await _join(api, group["id"], leader.id)
+            await _join(api, group["id"], reviewer.id)
+
+            async def delayed_next_runtime(conversation, *args, **kwargs):
+                if conversation.id == lead["conversationId"]:
+                    entered.set()
+                    try:
+                        await asyncio.Event().wait()
+                    finally:
+                        cancelled.set()
+                return await ensure_runtime(conversation, *args, **kwargs)
+
+            monkeypatch.setattr(built.host, "ensure_runtime", delayed_next_runtime)
+            response = await api.post(f"/api/groups/{group['id']}/broadcast",
+                                      json={"text": "请讨论并给出结论"})
+            assert response.status_code == 200
+            await asyncio.wait_for(entered.wait(), 3)
+            await asyncio.wait_for(built.group_router.close_room_pumps(), 3)
+            assert cancelled.is_set()
+            assert await _delivered(built, leader.id) == []
+            # Repeated shutdown is harmless and cannot re-schedule a delivery.
+            await built.group_router.close_room_pumps()
+    finally:
+        await built.aclose()
+
+
 async def test_the_room_never_carries_a_members_private_body(tmp_path) -> None:
     """AD-154：投给下一位的那一段只含**组时间线上已经公开**的内容。
 

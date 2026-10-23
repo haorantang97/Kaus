@@ -21,11 +21,11 @@ def scrub_env_values(text: str, environ: Mapping[str, str] | None = None) -> str
     return text
 
 
-def safe_error_text(text: str, *, limit: int = 2000) -> str:
+def safe_error_text(text: str, *, limit: int = 2000, environ: Mapping[str, str] | None = None) -> str:
     """Keep the cause readable while excluding credentials and excess output."""
     from drivers.base import plain_text
 
-    text = scrub_env_values(str(text))
+    text = scrub_env_values(str(text), environ)
     text = re.sub(r"(?i)\bbearer\s+[A-Za-z0-9._~+/-]{8,}", "Bearer ***", text)
     text = re.sub(
         r'''(?i)(["']?(?:api[_-]?key|access[_-]?token|token|secret|password)["']?\s*[:=]\s*)["']?[^\s,;"'&}]+["']?''',
@@ -35,7 +35,7 @@ def safe_error_text(text: str, *, limit: int = 2000) -> str:
     return text[:limit] + ("…" if len(text) > limit else "")
 
 
-def safe_exception_message(error: Exception) -> str:
+def safe_exception_message(error: Exception, *, environ: Mapping[str, str] | None = None) -> str:
     """Retain a structured native cause without copying arbitrary error data."""
     messages = [str(error)] if str(error) else [type(error).__name__]
 
@@ -52,4 +52,4 @@ def safe_exception_message(error: Exception) -> str:
     collect(getattr(error, 'data', None))
     if error.__cause__ is not None:
         collect(str(error.__cause__))
-    return safe_error_text('：'.join(messages))
+    return safe_error_text('：'.join(messages), environ=environ)

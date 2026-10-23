@@ -6,8 +6,9 @@
  * SSE 不在侧栏订阅：列表用 30s 轮询 + 当前会话的事件驱动刷新（`refreshToken`）。
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchProjects, fetchRecentConversations, type ProjectWire } from "./sessionApi";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchProjects, fetchRecentConversations, fetchConversation, type ProjectWire } from "./sessionApi";
+import { readSidebarPins, SIDEBAR_PINS_KEY, type SidebarPins } from "./sidebarPins";
 
 /** 侧栏渲染一行只需要这几样。 */
 export interface SidebarConversation {
@@ -134,6 +135,14 @@ export function buildAttentionItems(groups: SidebarGroup[]): AttentionItem[] {
   });
 }
 
+export function plateCounts(groups: SidebarGroup[], projectCount: number) {
+  return {
+    attention: buildAttentionItems(groups).length,
+    running: groups.reduce((total, group) => total + group.conversations.filter(item => isRunning(item.state)).length, 0),
+    projects: projectCount,
+  };
+}
+
 export interface ConversationIndex {
   groups: SidebarGroup[];
   /** batch40：概览页的「项目」一段要**全部**项目（含还没有会话的那些）。 */
@@ -156,6 +165,7 @@ export function useConversationIndex(refreshToken: number, enabled = true): Conv
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const pins = useRef<SidebarPins>(readSidebarPins());
 
   const refresh = useCallback(() => setTick((value) => value + 1), []);
 
@@ -182,9 +192,46 @@ export function useConversationIndex(refreshToken: number, enabled = true): Conv
           updatedAt: entry.updatedAt,
           backendId: entry.backendId,
         }));
-        setGroups(buildConversationGroups(projects, flat));
+        const known = new Set(flat.map(item => item.id));
+        const projectIds = new Set(projects.map(project => project.id));
+        // Keep still-pinned rows stable while their fresh details are pending.
+        // Initial loading has no previous rows, so recent results still appear immediately.
+        setGroups(previous => {
+          const retained = previous.flatMap(group => group.conversations).filter(item =>
+            !known.has(item.id) && projectIds.has(item.projectId) && pins.current[item.projectId]?.includes(item.id));
+          return buildConversationGroups(projects, [...flat, ...retained]);
+        });
         setProjects(projects);
         setError(null);
+        setLoading(false);
+
+        // Pins outlive the bounded recent index. Read only the missing IDs, and
+        // publish recent rows first so one unavailable old conversation cannot block them.
+        const missing = new Map<string, Set<string>>();
+        for (const [projectId, ids] of Object.entries(pins.current)) {
+          if (!projectIds.has(projectId)) continue;
+          for (const id of ids) {
+            if (known.has(id)) continue;
+            const owners = missing.get(id) ?? new Set<string>();
+            owners.add(projectId); missing.set(id, owners);
+          }
+        }
+        if (!missing.size) return;
+        const ids = [...missing.keys()];
+        const details = await Promise.allSettled(ids.map(id => fetchConversation(id, controller.signal)));
+        if (cancelled) return;
+        const pinnedRows: SidebarConversation[] = [];
+        details.forEach((result, index) => {
+          if (result.status !== "fulfilled") return;
+          const detail = result.value, conversation = detail.conversation;
+          if (conversation.id !== ids[index] || conversation.archivedAt || conversation.visibility === "group_only" || !missing.get(conversation.id)?.has(conversation.projectId)) return;
+          pinnedRows.push({
+            id: conversation.id, projectId: conversation.projectId, title: conversation.title,
+            state: conversation.state === "running-card" || conversation.state === "running-external" ? "running" : conversation.state,
+            updatedAt: conversation.updatedAt, backendId: detail.runtime.backendId,
+          });
+        });
+        setGroups(buildConversationGroups(projects, [...flat, ...pinnedRows]));
       } catch (failure) {
         if (!cancelled) setError(String((failure as Error)?.message ?? failure));
       } finally {
@@ -204,8 +251,23 @@ export function useConversationIndex(refreshToken: number, enabled = true): Conv
   }, [refresh, enabled]);
 
   useEffect(() => {
+    const onPins = (event: Event) => {
+      pins.current = (event as CustomEvent<SidebarPins>).detail ?? readSidebarPins();
+      refresh();
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== SIDEBAR_PINS_KEY && event.key !== null) return;
+      pins.current = readSidebarPins();
+      refresh();
+    };
     window.addEventListener("kaus:conversations-changed", refresh);
-    return () => window.removeEventListener("kaus:conversations-changed", refresh);
+    window.addEventListener("kaus:sidebar-pins-changed", onPins);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("kaus:conversations-changed", refresh);
+      window.removeEventListener("kaus:sidebar-pins-changed", onPins);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [refresh]);
 
   return useMemo(

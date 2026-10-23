@@ -1,3 +1,4 @@
+import { ErrorNotice } from "./ui";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { BookmarkPlus, Check, Copy, FileUp, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useLocale } from "../i18n";
@@ -108,7 +109,7 @@ export function GroupMaterialsPane({ group, members, changeToken, capture, onCap
       <input ref={fileInput} type="file" hidden accept=".txt,.md,.csv,.json" onChange={e => { void importFile(e.target.files?.[0]); e.target.value = ""; }} />
     </div>
     {locked && isGroupOpen(group) && <small className="kaus-group-dim">{t("group.material.busy")}</small>}
-    {error && <div className="kaus-group-error" role="alert">{error}</div>}
+    {error && <ErrorNotice error={error} className="kaus-group-error" />}
     {draft && <form className="kaus-material-editor" onSubmit={e => { e.preventDefault(); void save(); }}>
       <input aria-label={t("group.material.title")} placeholder={t("group.material.title")} maxLength={160} value={draft.title} disabled={pending} onChange={e => setDraft({ ...draft, title: e.target.value })} autoFocus />
       {draft.sourceKind !== "group_message" && draft.sourceKind !== "file" && <select aria-label={t("group.material.source")} value={draft.sourceId ?? ""} disabled={pending} onChange={e => setDraft({ ...draft, sourceId: e.target.value || null, sourceKind: e.target.value ? "conversation" : "note" })}>

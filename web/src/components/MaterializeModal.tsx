@@ -290,7 +290,8 @@ export function MaterializeModal({
               {t("materialize.done")}
             </p>
             {phase.result.backupPath ? (
-              <>
+              <details className="mt-2 text-xs" data-testid="materialize-backup-details">
+                <summary className="cursor-pointer" style={{ color: cream(55) }}>{t("card.error.showDetail")}</summary>
                 <p className="mt-1 text-xs" style={{ color: cream(55) }}>
                   {t("materialize.done.backup", { path: phase.result.backupPath })}
                 </p>
@@ -306,7 +307,7 @@ export function MaterializeModal({
                     {t("materialize.done.rollback.unknown")}
                   </p>
                 )}
-              </>
+              </details>
             ) : (
               <p className="mt-1 text-xs" style={{ color: cream(50) }}>
                 {t("materialize.done.noBackup")}

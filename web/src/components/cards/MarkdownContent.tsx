@@ -2,10 +2,11 @@ import { Fragment, useMemo, type ReactNode } from "react";
 import { marked, type Token, type Tokens } from "marked";
 
 import { useLocale } from "../../i18n";
-import { localArtifactPath, inlineImageUrl, remoteArtifactUrl } from "../../lib/artifactApi";
+import { localArtifactPath, inlineImageUrl, remoteArtifactUrl, type ArtifactSource } from "../../lib/artifactApi";
 import { safeUrl } from "../../lib/md";
 import { FileReference } from "./ArtifactPreview";
 import { CopyButton } from "./CopyButton";
+import { DiffViewer } from "./DiffViewer";
 import { useContentText } from "./contentStrings";
 import "./conversationContent.css";
 
@@ -19,12 +20,22 @@ function decodeText(value: string): string {
 function CodeBlock({ text, language }: { text: string; language?: string }) {
   const c = useContentText();
   const { t } = useLocale();
+  if (/^(?:diff|patch)(?:\s|$)/i.test(language || "")) return <DiffViewer text={text} />;
   return <div className="kaus-code-block"><div className="kaus-code-header"><span>{language?.split(/\s+/)[0] || ""}</span><CopyButton text={text} label={c("chat.content.copyCode")} copiedLabel={t("conversation.action.copied")} /></div><pre><code>{text}</code></pre></div>;
 }
 
 export function MarkdownContent({ text, conversationId }: { text: string; conversationId?: string }) {
   // The parser only tokenizes. Raw HTML is rendered as text; it never enters innerHTML.
   const tokens = useMemo(() => marked.lexer(text, { gfm: true, breaks: true }), [text]);
+  const gallery = useMemo(() => {
+    const images: ArtifactSource[] = [];
+    marked.walkTokens(tokens, token => {
+      if (token.type !== "image") return;
+      const uri = decodeText(token.href || "");
+      if (localArtifactPath(uri) || remoteArtifactUrl(uri) || inlineImageUrl(uri)) images.push({ uri, title: token.text || undefined, mimeType: localArtifactPath(uri) ? undefined : "image/png" });
+    });
+    return images;
+  }, [tokens]);
   const render = (items: Token[]): ReactNode => items.map((token, index) => {
     const key = `${token.type}:${index}`;
     const childTokens: Token[] | undefined = "tokens" in token ? token.tokens : undefined;
@@ -65,7 +76,7 @@ export function MarkdownContent({ text, conversationId }: { text: string; conver
       case "image": {
         const uri = decodeText(token.href || "");
         if (!localArtifactPath(uri) && !remoteArtifactUrl(uri) && !inlineImageUrl(uri)) return <span key={key}>{token.text || token.raw}</span>;
-        return <FileReference key={key} source={{ uri, title: token.text || undefined, mimeType: localArtifactPath(uri) ? undefined : "image/png" }} conversationId={conversationId} />;
+        return <FileReference key={key} source={{ uri, title: token.text || undefined, mimeType: localArtifactPath(uri) ? undefined : "image/png" }} conversationId={conversationId} gallery={gallery} />;
       }
       case "html": return <Fragment key={key}>{token.text || token.raw}</Fragment>;
       default: return <Fragment key={key}>{childTokens ? inline() : token.raw}</Fragment>;

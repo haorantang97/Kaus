@@ -7,7 +7,7 @@
 * 孤儿 / 环 / labels 缺失 / 目录缺失等告警；
 * 幂等（两次运行逐字节一致 + `--check`）；
 * 只读（跑完输入文件字节不变）；
-* 真实 `hierarchy.json`（41 节点）冒烟。
+* 合成多层 `hierarchy.json`（41 节点）冒烟。
 
 运行：``python3 -m pytest tests/test_migrator.py -q``（Python 3.11，仅标准库 + pytest）。
 """
@@ -708,17 +708,23 @@ def test_plan_path_imports_only_stdlib():
 
 
 # --------------------------------------------------------------------------- #
-# 7. 真实 hierarchy.json 冒烟（41 节点）
+# 7. 合成 hierarchy.json 冒烟（41 节点，无本机私人配置依赖）
 # --------------------------------------------------------------------------- #
 
 
-def _real_hierarchy() -> dict:
-    return json.loads((REPO_ROOT / "hierarchy.json").read_text(encoding="utf-8"))
+def _large_hierarchy() -> tuple[dict, dict]:
+    hierarchy = {name: "default" for name in ("architect", "steward", "dev", "scrapling")}
+    for index in range(36):
+        hierarchy[f"project-{index}"] = "default" if index < 4 else f"project-{(index - 4) // 4}"
+    labels = {name: name.replace("-", " ").title() for name in hierarchy if name not in {"dev", "scrapling"}}
+    labels["default"] = "X"
+    return hierarchy, labels
 
 
-def test_real_hierarchy_smoke_no_profile_scan():
-    plan, report, _ = mig.generate(repo_root=REPO_ROOT)
-    hierarchy = _real_hierarchy()
+def test_large_hierarchy_smoke_no_profile_scan(tmp_path):
+    hierarchy, labels = _large_hierarchy()
+    state = write_state(tmp_path / "state", hierarchy=hierarchy, labels=labels)
+    plan, report, _ = mig.generate(repo_root=state)
     expected_nodes = set(hierarchy) | {"default"}
     assert expected_nodes
 
@@ -728,7 +734,7 @@ def test_real_hierarchy_smoke_no_profile_scan():
     assert {p["slug"] for p in plan["projects"]} == expected_nodes
     assert projects_by_slug(plan)["default"]["display_name"] == "X"
     assert plan["meta"]["counts"]["warnings_by_severity"]["error"] == 0
-    # 真实 labels.json 缺 dev / scrapling
+    # 覆盖 labels 中缺失两个节点的情况
     assert {w["node"] for w in warnings_for(plan, "label_missing")} == {"dev", "scrapling"}
     # 没给 profile 目录 → twin 判定被跳过，必须显式告警
     assert "profiles_not_scanned" in warning_codes(plan)
@@ -737,10 +743,9 @@ def test_real_hierarchy_smoke_no_profile_scan():
     assert "| 旧 profile |" in report
 
 
-def test_real_hierarchy_smoke_with_synthesized_twins(tmp_path):
-    """把真实 41 节点铺成 fixture 目录，并把 architect / steward 做成 twin，验证 R-09 分流。"""
-    hierarchy = _real_hierarchy()
-    labels = json.loads((REPO_ROOT / "labels.json").read_text(encoding="utf-8"))
+def test_large_hierarchy_smoke_with_synthesized_twins(tmp_path):
+    """用合成 41 节点及两个 twin 验证 R-09 分流。"""
+    hierarchy, labels = _large_hierarchy()
     state = write_state(tmp_path / "state", hierarchy=hierarchy, labels=labels)
     home = make_home(tmp_path, [n for n in hierarchy if n not in ("architect", "steward")])
     make_twin(home, "architect", "【配置模式】\n高权限")
@@ -759,8 +764,10 @@ def test_real_hierarchy_smoke_with_synthesized_twins(tmp_path):
         assert inv["ok"] is True, inv
 
 
-def test_real_hierarchy_plan_is_idempotent():
-    a = mig.generate(repo_root=REPO_ROOT)
-    b = mig.generate(repo_root=REPO_ROOT)
+def test_large_hierarchy_plan_is_idempotent(tmp_path):
+    hierarchy, labels = _large_hierarchy()
+    state = write_state(tmp_path / "state", hierarchy=hierarchy, labels=labels)
+    a = mig.generate(repo_root=state)
+    b = mig.generate(repo_root=state)
     assert mig.canonical_json(a[0]) == mig.canonical_json(b[0])
     assert a[1] == b[1]

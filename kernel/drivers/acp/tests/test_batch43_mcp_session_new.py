@@ -1,13 +1,14 @@
 """项目 MCP 真的到得了 ``session/new``（批次四十三，端到端）。
 
-这一份**不 mock 任何一层**：假 ACP agent 是真的子进程，它收到 ``mcpServers``
+投射和调用链使用真实子进程，仅固定电脑工具发现为空以隔离宿主安装状态。
+假 ACP agent 收到 ``mcpServers``
 之后会真的把那台假 MCP 服务拉起来、走 ``initialize`` / ``tools/list`` /
 ``tools/call``，再把工具回的那句话当作本轮文本发回来。所以断言里出现 nonce，
 等价于「这条链从能力表一路通到了工具输出」。
 
 另外守两件小事：
-- 续接会话（已有 ``native_session_id``）**不**投射——ACP 不允许在续接时换挂载；
-- 怪癖位 ``mcp_via_session_new=false`` 时一个字都不送，并留一条 driverWarning。
+- 冷续接会话重新投射 MCP，避免新进程使用空挂载；
+- 不支持会话 MCP 的引擎拒绝非空投射，避免丢失项目配置。
 """
 
 from __future__ import annotations
@@ -15,19 +16,26 @@ from __future__ import annotations
 import tempfile
 import uuid
 from dataclasses import replace
+from unittest.mock import AsyncMock
+import pytest
 
 from app.capabilities.models import EffectiveCapabilities, EffectiveCapability
 from app.conversations.models import Conversation
 from drivers.acp.driver import AcpDriver
-from drivers.acp.presets import AgentQuirks
+from drivers.acp.presets import AcpPreset, AgentQuirks
 from drivers.acp.testing.fake_acp_agent import fake_agent_spec
 from drivers.acp.testing import fake_mcp_server
-from drivers.base import MessageInput
+from drivers.base import MessageInput, UnsupportedCapabilityError
 from drivers.contract_tests.harness import collect_until_run_terminal
 
 import sys
 
 PROJECT = "project:batch43"
+
+
+@pytest.fixture(autouse=True)
+def isolated_optional_computer_providers(monkeypatch):
+    monkeypatch.setattr("drivers.computer_use.probe.probe_fallbacks", AsyncMock(return_value=()))
 
 
 def _driver(scenario: str = "mcp-ping", *, quirks: AgentQuirks | None = None) -> AcpDriver:
@@ -115,18 +123,44 @@ async def test_the_project_mcp_reaches_the_agent_and_the_tool_answers() -> None:
     assert fake_mcp_server.TOOL_NAME in tool_titles
 
 
-async def test_nothing_is_projected_when_resuming_an_existing_session() -> None:
-    """ACP 不允许在续接时换挂载，所以这条路如实回 None（而不是算一份送不出去的）。"""
+async def test_mcp_is_reprojected_when_resuming_an_existing_session() -> None:
     driver = _driver()
     conversation = _conversation(native_session_id="already-there")
-    assert await driver.session_options_for(conversation, _effective("x")) is None
+    projection = await driver.session_options_for(conversation, _effective("x"))
+    assert projection.options.metadata["mcpServers"][0]["name"] == "kaus-probe"
+    from unittest.mock import AsyncMock
+    from types import SimpleNamespace
+    connection = SimpleNamespace(call=AsyncMock(return_value={"sessionId": "already-there"}))
+    await driver._resume_session(connection, "already-there", tempfile.gettempdir(),
+                                 metadata=projection.options.metadata)
+    assert connection.call.call_args.args[1]["mcpServers"] == projection.options.metadata["mcpServers"]
 
 
-async def test_the_quirk_bit_switches_the_whole_thing_off() -> None:
-    """``mcp_via_session_new=false``：一个字都不送，并留下一条说得出口的 warning。"""
+async def test_unsupported_engine_rejects_requested_mcp() -> None:
     driver = _driver(quirks=replace(AgentQuirks(), mcp_via_session_new=False))
-    assert await driver.session_options_for(_conversation(), _effective("x")) is None
-    assert any("mcp_via_session_new" in w for w in driver.warnings)
+    with pytest.raises(UnsupportedCapabilityError, match="不支持项目 MCP"):
+        await driver.session_options_for(_conversation(), _effective("x"))
+
+
+async def test_unsupported_engine_can_start_without_project_mcp() -> None:
+    driver = _driver(quirks=replace(AgentQuirks(), mcp_via_session_new=False))
+    assert await driver.session_options_for(_conversation(), EffectiveCapabilities(project_id=PROJECT)) is None
+    assert not driver.warnings
+
+
+async def test_runtime_mcp_projection_does_not_claim_native_acp_support() -> None:
+    from drivers.acp.capabilities import capability_projection_for
+    from runtime.capability_matrix import SupportLevel
+    quirks = replace(AgentQuirks(), mcp_via_session_new=False)
+    preset = AcpPreset(id="runtime-mcp", label="Runtime MCP", command=("unused",), quirks=quirks)
+    assert capability_projection_for(preset)["mcp"] == SupportLevel.UNSUPPORTED
+    adapted = replace(preset, project_mcp_via_runtime=True)
+    assert capability_projection_for(adapted)["mcp"] == SupportLevel.ADAPTED
+    driver = _driver(quirks=quirks)
+    driver.preset = adapted
+    projection = await driver.session_options_for(_conversation(), _effective("x"))
+    assert projection.options.metadata["mcpServers"][0]["name"] == "kaus-probe"
+    assert driver.quirks.mcp_via_session_new is False
 
 
 async def test_no_capability_means_no_projection() -> None:

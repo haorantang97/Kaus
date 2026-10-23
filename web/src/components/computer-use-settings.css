@@ -1,0 +1,80 @@
+.kaus-computer-use-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.kaus-computer-use-toolbar {display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:16px 0 6px}
+.kaus-computer-use-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.kaus-computer-use-table th,
+.kaus-computer-use-table td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+.kaus-computer-use-table th { font-weight: 550; }
+.kaus-computer-use-table td,
+.kaus-computer-use-table thead { opacity: .65; }
+.kaus-computer-use-permission-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: 5px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+.kaus-computer-use-permission-link:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.kaus-computer-use-permission-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.kaus-computer-use-permission-link:disabled { opacity: .5; cursor: default; }
+.kaus-computer-use-permission-panel {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.kaus-computer-use-permission-heading,
+.kaus-computer-use-permission-row,
+.kaus-computer-use-permission-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.kaus-computer-use-permission-heading strong { font-weight: 550; }
+.kaus-computer-use-permission-panel p { opacity: .65; margin: 4px 0 10px; }
+.kaus-computer-use-permission-row { padding: 12px 0; }
+.kaus-computer-use-permission-name{display:flex;flex-direction:column;gap:3px}
+.kaus-computer-use-permission-name small{font-size:12px;opacity:.55}
+.kaus-computer-use-granted{display:inline-flex;gap:5px;align-items:center;opacity:.65}
+.kaus-computer-use-help{font-size:12px;margin-top:10px}
+.kaus-computer-use-help>summary{cursor:pointer;opacity:.65}
+.kaus-computer-use-help p{margin-top:10px}
+.kaus-computer-use-permission-footer { justify-content: flex-end; margin-top: 10px; }
+.kaus-computer-use-permission-footer [role="status"] { margin-right: auto; color: var(--danger); }
+.kaus-computer-use-toolbar>label{margin-right:auto;font-size:13px;font-weight:550}
+.kaus-computer-use-switch{position:relative;width:34px;height:20px;border-radius:999px;background:color-mix(in srgb,currentColor 22%,transparent);border:0;padding:3px;flex-shrink:0;transition:background .16s;cursor:pointer}
+.kaus-computer-use-switch>span{display:block;width:14px;height:14px;border-radius:50%;background:var(--background-base,#f5f3ec);transition:transform .16s}
+.kaus-computer-use-switch[aria-checked=true]{background:var(--accent-text,currentColor)}
+.kaus-computer-use-switch[aria-checked=true]>span{transform:translateX(14px)}
+.kaus-computer-use-switch:disabled{opacity:.4;cursor:default}
+.kaus-computer-use-switch:focus-visible{outline:2px solid var(--accent-text,currentColor);outline-offset:3px}
+.kaus-computer-use-caption{font-size:12px;opacity:.55;margin:6px 0 16px}
+.kaus-computer-use-setup{display:flex;align-items:center;gap:10px;font-size:13px;padding:10px 0}
+.kaus-computer-use-setup>span:first-child{font-weight:550;margin-right:auto}
+.kaus-computer-use-setup-status{display:inline-flex;align-items:center;gap:6px;opacity:.65}
+.kaus-computer-use .kaus-computer-use-notice{font-size:12px;color:var(--danger);margin:8px 0;opacity:1}
+.kaus-computer-use-permission-start{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border-radius:7px;background:color-mix(in srgb,currentColor 8%,transparent);margin:0 0 10px;font-size:13px}
+.kaus-computer-use-permission-start:hover{background:color-mix(in srgb,currentColor 13%,transparent)}
+.kaus-computer-use-permission-start:disabled{opacity:.45;cursor:default}
+.kaus-computer-use-details{margin-top:18px;font-size:12px}
+.kaus-computer-use-details>summary{display:flex;align-items:center;justify-content:space-between;list-style:none;cursor:pointer;opacity:.6}
+.kaus-computer-use-details>summary::-webkit-details-marker{display:none}
+.kaus-computer-use-details[open]>summary svg{transform:rotate(90deg)}
+.kaus-computer-use-provider{font-size:12px}
+@media(prefers-reduced-motion:reduce){.kaus-computer-use-switch,.kaus-computer-use-switch>span{transition:none}}
+
+.kaus-computer-use[open]>summary .kaus-computer-use-title svg{transform:none}

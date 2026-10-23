@@ -6,7 +6,7 @@
 2. 断线重连按 ``after_sequence`` 续传：无重复、无遗漏；
 3. Driver 崩溃 → 合成 ``run.failed`` 并收敛状态；
 4. 两条 Conversation 并发互不串流；
-5. 保留期清理后卡片仍可从原生历史重建；
+5. 本地可见历史长期保留，明确清空后的原生历史仍可读取；
 6. 同一 Conversation 二次 ``start_runtime`` 被拒；
 7. 带外变更信号触发「发送前刷新 + 软提示」。
 """
@@ -582,8 +582,8 @@ async def test_event_id_collision_across_conversations_is_loud() -> None:
 # --------------------------------------------------------------------------- #
 
 
-async def test_expired_events_are_purged_and_the_card_rebuilds_from_native_history() -> None:
-    """Phase 3A 验收：过期清理生效；清空后卡片仍可从原生历史重建。"""
+async def test_content_survives_ttl_and_native_history_is_independent() -> None:
+    """清理不删除本地正文，原生历史仍然可以独立读取。"""
     world = make_world(retention=timedelta(hours=1))
     driver, conversation = await world.add_backend(
         script=text_stream_script(), with_native_session=True
@@ -600,9 +600,9 @@ async def test_expired_events_are_purged_and_the_card_rebuilds_from_native_histo
     world.clock.advance(timedelta(hours=2))
     removed = await host.purge_expired_events()
 
-    assert removed == len(events)
-    assert await world.event_store.read_range(conversation.id) == ()
-    # 内容的权威源是原生历史（D-16 / R-02），缓冲清空不影响可恢复性。
+    assert removed == 0
+    assert await world.event_store.replay(conversation.id) == tuple(events)
+    # 本地记录不改变引擎原生历史。
     binding = await world.bindings.get(conversation.agent_binding_id)
     history = await driver.load_native_history(binding, conversation.native_session_id)
     assert history.complete is True and len(history.entries) == 2
@@ -831,5 +831,5 @@ async def test_host_runs_against_the_sqlite_repositories(tmp_path) -> None:
     assert await host.describe_runtime_owner(conversation.id) is None
 
     world.clock.advance(timedelta(days=2))
-    assert await host.purge_expired_events() == len(events)
-    assert await world.event_store.read_range(conversation.id) == ()
+    assert await host.purge_expired_events() == 0
+    assert await world.event_store.replay(conversation.id) == tuple(events)

@@ -11,6 +11,7 @@
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-meta { gap: 7px; }
 .kaus-group-dock .kaus-group-pill { border-radius: 20px; padding: 8px 12px; font: 12px/1.4 var(--theme-font-sans); letter-spacing: 0; text-transform: none; }
 .kaus-group-dock .kaus-group-panel { border-radius: 16px; }
+.kaus-group-dock :is(.kaus-group-panel, .kaus-group-item).is-drop-target { outline: 2px dashed var(--gold); outline-offset: -2px; }
 .kaus-group-dock .kaus-group-panel.is-wide { width: 680px; height: min(80vh, 760px); max-height: min(80vh, 760px); }
 .kaus-group-body.is-workspace > .kaus-group-item:not(:has(.kaus-group-detail)) { display: none; }
 .kaus-group-panel .kaus-group-head { gap: 4px; padding: 10px 12px; }
@@ -32,7 +33,8 @@
 .kaus-group-workspace .kaus-group-panes.is-tab-members > .kaus-group-pane:not([data-pane="members"]),
 .kaus-group-workspace .kaus-group-panes.is-tab-timeline > .kaus-group-pane:not([data-pane="timeline"]),
 .kaus-group-workspace .kaus-group-panes.is-tab-packet > .kaus-group-pane:not([data-pane="packet"]) { display: none; }
-.kaus-group-workspace .kaus-group-pane[data-pane="timeline"] > .kaus-group-pane-head { display: none; }
+.kaus-group-workspace .kaus-group-stream-content { display: flex; flex-direction: column; flex-shrink: 0; min-width: 0; }
+.kaus-group-workspace .kaus-group-stream-content > .kaus-group-pane-head { display: none; }
 .kaus-group-workspace .kaus-group-pane-head { font: 500 12px/1.5 var(--theme-font-sans); letter-spacing: 0; text-transform: none; }
 .kaus-group-workspace .kaus-group-message { padding: 14px 0; font: 13px/1.7 var(--theme-font-sans); }
 .kaus-group-workspace .kaus-group-message-text { font-size: 13px; line-height: 1.75; }
@@ -47,7 +49,6 @@
 .kaus-group-workspace .kaus-group-composer-row:focus-within { border-color: color-mix(in srgb, var(--midground-base) 32%, transparent); }
 .kaus-group-workspace .kaus-group-textarea { border: 0; background: transparent; padding: 3px 0; min-height: 52px; font: 14px/1.6 var(--theme-font-sans); box-shadow: none; }
 .kaus-group-workspace .kaus-send.is-compact { width: 32px; height: 32px; padding: 0; flex: 0 0 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
-.kaus-group-workspace .kaus-group-jump { position: sticky; bottom: 0; margin: 0 auto; border-radius: 18px; padding: 7px 10px; background: var(--panel); }
 .kaus-ui-spin { animation: kaus-ui-spin 1s linear infinite; }
 @keyframes kaus-ui-spin { to { transform: rotate(360deg); } }
 .kaus-coordinator-settings.kaus-settings-sheet { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
@@ -83,8 +84,9 @@
 .kaus-group-workspace .kaus-group-turn .kaus-group-member-title { font-size: 12px; font-weight: 600; }
 .kaus-group-workspace .kaus-group-turn[data-outcome="failed"] { border-left: 2px solid color-mix(in srgb, var(--danger) 40%, transparent); padding-left: 12px; }
 .kaus-group-workspace .kaus-group-turn.is-final { padding: 14px 12px; border-radius: 10px; }
-.kaus-group-workspace .kaus-group-message.is-user { align-self: flex-end; max-width: 88%; margin-block: 10px; padding: 12px 14px; border: 0; border-radius: 14px; background: color-mix(in srgb, var(--midground-base) 6%, transparent); }
+.kaus-group-workspace .kaus-group-message.is-user { align-self: flex-end; width: fit-content; max-width: 88%; margin-block: 10px; margin-inline-start: auto; padding: 12px 14px; border: 0; border-radius: 14px; background: color-mix(in srgb, var(--midground-base) 6%, transparent); }
 .kaus-group-workspace .kaus-group-message.is-user .kaus-group-message-head { justify-content: flex-end; }
+.kaus-group-workspace .kaus-group-message.is-user .kaus-group-message-text { clear: both; }
 .kaus-group-workspace .kaus-group-thread .kaus-group-icon-btn { margin-left: auto; }
 
 /* Composer hierarchy: context, message, then compact actions. */
@@ -145,3 +147,33 @@
 .kaus-engine-config-switch[aria-checked="true"] > span { transform: translateX(12px); }
 .kaus-engine-config-switch:disabled { opacity: .5; cursor: default; }
 .kaus-engine-config-switch:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; }
+
+/* Secondary controls share their module's surface; selected states stay visible. */
+.kaus-group-dock .kaus-group-pill {
+  border: 0;
+  background: var(--background-secondary);
+  box-shadow: none;
+  color: color-mix(in srgb, var(--midground-base) 78%, transparent);
+}
+.kaus-group-dock .kaus-group-pill[aria-expanded="true"] {
+  background: var(--surface-selected);
+  color: var(--midground-base);
+}
+.kaus-group-panel .kaus-group-tabs { gap: 4px; }
+.kaus-group-panel .kaus-group-tab { background: transparent; }
+.kaus-group-panel .kaus-group-tab.is-current {
+  background: var(--surface-selected);
+  color: var(--midground-base);
+}
+.kaus-coordinator-field .kaus-bar-pill {
+  border-color: transparent;
+  background: var(--surface-hover);
+}
+.kaus-coordinator-field .kaus-bar-pill[aria-expanded="true"] { background: var(--surface-selected); }
+.kaus-workspace-cancel { border-color: transparent; }
+.kaus-conversation-page .kaus-jump-latest {
+  border-color: var(--border-subtle);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 6%);
+}
+.kaus-group-panel .kaus-group-message-head,
+.kaus-group-panel .kaus-group-dim { letter-spacing: normal; }

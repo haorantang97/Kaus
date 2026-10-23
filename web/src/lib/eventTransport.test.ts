@@ -68,7 +68,7 @@ function harness(options: {
       snapshotCalls.push(since);
       return (
         options.snapshot?.(since) ??
-        Promise.resolve({ events: [], lastSequence: since ?? 0 })
+        Promise.resolve({ events: [], lastSequence: since ?? -1 })
       );
     },
     onEvent: (event, via) => delivered.push({ event, via }),
@@ -145,7 +145,7 @@ describe("batch30：轮询喂的是同一条 reducer 路径", () => {
     };
     const world = harness({
       snapshot: (since) =>
-        Promise.resolve(pages[String(since)] ?? { events: [], lastSequence: since ?? 0 }),
+        Promise.resolve(pages[String(since)] ?? { events: [], lastSequence: since ?? -1 }),
     });
     world.transport.start();
     await tick(HISTORY_REPLAY_GRACE_MS);
@@ -310,4 +310,21 @@ describe("batch37：重连之后要重新计活性（R9）", () => {
     expect(world.modes).toEqual([]);
     expect(world.snapshotCalls).toEqual([]);
   });
+});
+
+
+it("空历史轮询保留负游标，之后首条sequence 0不会跳过", async () => {
+  let posted = false;
+  const world = harness({ snapshot: async since => !posted
+    ? { events: [], lastSequence: -1 }
+    : { events: since === null || since < 0 ? [envelope(0, "receipt")] : [], lastSequence: 0 } });
+  world.transport.start();
+  await tick(HISTORY_REPLAY_GRACE_MS);
+  expect(world.transport.lastSequence).toBe(-1);
+  posted = true;
+  await tick(POLL_IDLE_MS);
+  expect(world.snapshotCalls).toEqual([null, -1]);
+  expect(world.delivered).toEqual([{ event: envelope(0, "receipt"), via: "polling" }]);
+  expect(world.transport.lastSequence).toBe(0);
+  world.transport.stop();
 });

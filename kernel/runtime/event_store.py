@@ -1,32 +1,9 @@
-"""Event Store 服务：Session Host 与 ``event_store`` 表之间的一层薄门面。
+"""Ordered, idempotent replay with verified local native text references.
 
-职责
-----
-把 :class:`~runtime.event_envelope.AgentEventEnvelope` 变成带**显式保留期**的
-:class:`~app.events.models.StoredEvent` 写进
-:class:`~app.events.repository.EventStoreRepository`，并提供三件事：
-
-1. **追加**（按 ``eventId`` 幂等）——断线重连会把同一段事件再推一遍，这在这张表
-   里是正常流量而不是错误（v1.0 §8.5 / N §7.3 规则 9）；
-2. **按 ``(conversationId, sequence)`` 范围读取**——WebSocket/SSE 的
-   ``?after=<sequence>`` 续传游标就是这个（v1.0 §8.5）；
-3. **按 ``expiresAt`` 清理**——保留期是这张表的定义性质，不是可选运维脚本。
-
-不做什么
---------
-- 不提供任何按内容检索的方法：那会诱使它变成第二本账（v1.0 §17 风险 9）。
-  权威账本是 Backend 的原生 session 存储（D-16 / R-02）。
-- 不做脱敏：写入方（Driver / Session Host）负责在入库前做与日志同级的脱敏，
-  本层原样收下，不假装做过（v1.0 §8.5）。
-- 不承诺内容可恢复性：整表可删，删完重开卡片从原生历史重建（v1.0 §11.3）。
-
-保留期口径
-----------
-v1.0 §8.5 给的是**基线**：普通事件默认 7 天（:data:`~app.events.models.DEFAULT_RETENTION`），
-诊断类事件更短（默认 24 小时）。本服务把它做成可配置项
-（:attr:`EventStore.retention` / :attr:`EventStore.diagnostic_retention`），
-默认值按基线 = **7 天**（AD-39；初版曾取 24 小时），诊断类 24 小时，且诊断类永远
-不会比普通事件留得更久（取两者较小值）。想留更久只能把保留期往后放，**没有「永不过期」的取值**。
+Unverified/rich payloads and host metadata remain durable. After explicit opt-in,
+completed text may be replaced with a native-source reference; replay reads the
+exact local source and never restores text removed by the native engine.
+Diagnostic/authentication records still use TTL. No native retention is changed.
 """
 
 from __future__ import annotations
@@ -45,9 +22,9 @@ from app.events.models import (
 )
 from app.events.repository import EventStoreRepository
 from runtime.event_envelope import AgentEventEnvelope
+from runtime.native_storage import NativeTextStorage
 
-#: 本服务的默认保留期。v1.0 §8.5 / AD-39：普通事件 run 结束后默认 7 天，可配置；
-#: 诊断类 24 小时（见 app.events.models.DIAGNOSTIC_RETENTION）。
+#: 未分类临时事件的默认 TTL；诊断/认证默认 24 小时，正文长期保存。
 DEFAULT_RETENTION: timedelta = timedelta(days=7)
 
 
@@ -89,6 +66,7 @@ class EventStore:
         if retention <= timedelta(0):
             raise ValueError("保留期必须为正：v1.0 §8.5 不接受「无保留策略」")
         self._repository = repository
+        self.native_storage = NativeTextStorage(repository)
         self.retention = retention
         #: 诊断类事件的保留期，默认取「普通保留期」与 24 小时中的较小值。
         self.diagnostic_retention = diagnostic_retention or min(
@@ -130,24 +108,15 @@ class EventStore:
         now: datetime,
         history_recoverable: bool | None = None,
     ) -> datetime:
-        """这条事件什么时候过期。
+        """Preserve replay rows; a capability boolean never releases content.
 
-        AD-162：保留期是 **(事件类别, 这条 Binding 的 backend 有没有
-        ``sessions.history``)** 的函数，而不只是事件类别的函数。
-
-        ``history_recoverable`` 为假时（引擎自己**不提供**可回放的原生历史，
-        ACP 全家就是这样：Driver 对 ``load_native_history`` 明确抛
-        ``UnsupportedCapabilityError``），站内事件是这条会话**唯一**的历史来源，
-        按「可重建的缓存」清掉它等于删掉用户的历史。因此正文类事件
-        （:func:`~app.events.models.is_content_event`）改为留到会话本身被删除或
-        归档为止；**诊断类照旧过期**——这一条不是「什么都不删了」。
-
-        ``None`` = 不知道（没接线的调用方、老代码路径），按老口径走 TTL。
+        Native text externalization uses separate exact-source verification.
+        ``history_recoverable`` remains only for call compatibility.
         """
         event = envelope.event
         namespace = getattr(event, "namespace", None)
         name = getattr(event, "name", None)
-        if history_recoverable is False and is_content_event(
+        if is_content_event(
             event.type, namespace=namespace, name=name
         ):
             return RETAIN_UNTIL_CONVERSATION_GONE
@@ -167,8 +136,7 @@ class EventStore:
     ) -> AppendOutcome:
         """写一条。按 ``eventId`` 幂等：重复投递不产生第二行。
 
-        ``history_recoverable``（AD-162）：这条会话背后的引擎有没有可回放的原生
-        历史。为假时正文类事件不再按 TTL 过期，见 :meth:`expires_at_for`。
+        ``history_recoverable`` 保留兼容，任何取值都不会缩短正文保留期。
         """
         at = now or self._clock()
         existing = await self._repository.get(envelope.event_id)
@@ -209,7 +177,7 @@ class EventStore:
     # ------------------------------------------------------------------ #
 
     async def find(self, event_id: str) -> StoredEvent | None:
-        """按去重键取一行；不存在返回 ``None``。"""
+        """At-rest row for identity/dedup checks; use replay for hydrated content."""
         return await self._repository.get(event_id)
 
     async def contains(self, event_id: str) -> bool:
@@ -238,7 +206,7 @@ class EventStore:
         ]
         if limit is not None:
             selected = selected[:limit]
-        return tuple(selected)
+        return await self.native_storage.hydrate(selected)
 
     async def replay(
         self,
@@ -259,6 +227,10 @@ class EventStore:
             )
         )
 
+    async def message_receipt(self, conversation_id: str, client_ref: str) -> tuple[AgentEventEnvelope, ...]:
+        rows = await self._repository.message_receipt(conversation_id, client_ref)
+        return tuple(row.envelope for row in await self.native_storage.hydrate(rows))
+
     async def latest_sequence(self, conversation_id: str) -> int | None:
         return await self._repository.latest_sequence(conversation_id)
 
@@ -271,11 +243,10 @@ class EventStore:
         self, collaboration_id: str, *, after_sequence: int | None = None
     ) -> tuple[StoredEvent, ...]:
         """Group 的**实时聚合视图**（AD-13：Group 的持久化不靠这张表）。"""
-        return tuple(
-            await self._repository.list_for_collaboration(
-                collaboration_id, after_sequence=after_sequence
-            )
+        rows = await self._repository.list_for_collaboration(
+            collaboration_id, after_sequence=after_sequence
         )
+        return await self.native_storage.hydrate(rows)
 
     # ------------------------------------------------------------------ #
     # 清理
@@ -286,15 +257,7 @@ class EventStore:
         return await self._repository.purge_expired(now=now or self._clock(), exclude_conversations=exclude_conversations)
 
     async def purge_conversation(self, conversation_id: str) -> int:
-        """丢弃一条 Conversation 的全部缓冲，返回删除条数。
-
-        两个用处：v1.0 §11.3「整表可删、内容仍可从原生历史重建」的按会话版本；
-        以及 ``DELETE /api/conversations/{id}`` —— 会话都不在了，它的重放缓冲
-        留着只会让 ``?after=`` 重放出一条已删会话的历史。
-
-        与 :meth:`purge_expired` 同一个动词：两者都是「按某个条件把行删掉」，
-        叫法一致才不会让人以为其中一个是软删除。
-        """
+        """明确删除会话时移除其全部本地记录；不删除引擎的原生会话。"""
         return await self._repository.delete_for_conversation(conversation_id)
 
 

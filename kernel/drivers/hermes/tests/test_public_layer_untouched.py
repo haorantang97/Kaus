@@ -116,6 +116,18 @@ def test_the_preset_catalog_exemption_stays_narrow() -> None:
         # A registered driver hook is a module reference, not native state.
         if preset.group_isolation_adapter:
             text = text.replace(f'"{preset.group_isolation_adapter.lower()}"', '""')
+        if preset.skill_projection_adapter:
+            text = text.replace(f'"{preset.skill_projection_adapter.lower()}"', '""')
+        if preset.restricted_execution_adapter:
+            text = text.replace(f'"{preset.restricted_execution_adapter.lower()}"', '""')
+        if preset.quota_provider_adapter:
+            text = text.replace(f'"{preset.quota_provider_adapter.lower()}"', '""')
+        for field in ("runtime_adapter", "restricted_execution_adapter", "account_quota_adapter"):
+            module = getattr(preset, field, None)
+            if module:
+                text = text.replace(f'"{module.lower()}"', '""')
+        if preset.account_quota_adapter:
+            text = text.replace(f'"{preset.account_quota_adapter.lower()}"', '""')
         upstream_literals.update(preset.auth_method_ids)
         upstream_literals.update(preset.command)
         upstream_literals.update(preset.resume_argv_template or ())

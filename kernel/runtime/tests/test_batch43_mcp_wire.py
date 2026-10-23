@@ -193,3 +193,48 @@ async def test_external_creation_applies_required_project_config_first(monkeypat
     await world.host.prepare_external_session(conversation, binding, driver)
     assert driver.projected_capabilities[conversation.id] == ("files",)
     assert not world.host.is_active(conversation.id)
+
+
+async def test_external_precreate_forwards_exact_projection_and_conversation(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from drivers.base import CreateSessionOptions, NativeSession, SessionProjection
+    from runtime.surface_handoff import SurfaceCoordinator
+    world = make_world()
+    driver, conversation = await world.add_backend()
+    conversation = conversation.evolve(model_id='chosen', reasoning_mode='high')
+    projection = SessionProjection(options=CreateSessionOptions(
+        workspace_root='/tmp/fixture', metadata={'mcpServers': [], '_meta': {'scope': 'selected'}}))
+    world.host._session_projections[conversation.id] = projection
+    native = NativeSession(native_session_id='precreated', binding_id=conversation.agent_binding_id)
+    create = AsyncMock(return_value=native)
+    driver = SimpleNamespace(create_external_native_session=create, create_native_session=AsyncMock())
+    coordinator = SurfaceCoordinator(session_host=world.host, repositories=None, registry=None, launcher=None)
+    save = AsyncMock(return_value=conversation.evolve(native_session_id='precreated'))
+    monkeypatch.setattr(coordinator, '_save_conversation', save)
+    result = await coordinator._ensure_native_session(conversation, None, driver)
+    passed_conversation, options = create.await_args.args
+    assert passed_conversation == conversation
+    assert options.metadata == projection.options.metadata
+    assert options.workspace_root == '/tmp/fixture'
+    assert options.model_id == 'chosen' and options.reasoning_mode == 'high'
+    assert result.native_session_id == 'precreated'
+    driver.create_native_session.assert_not_awaited()
+
+
+async def test_external_precreation_failure_never_saves_a_native_id(monkeypatch):
+    import pytest
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from drivers.base import UnsupportedCapabilityError
+    from runtime.surface_handoff import SurfaceCoordinator, SurfaceUnsupportedError
+    world = make_world()
+    _, conversation = await world.add_backend()
+    driver = SimpleNamespace(create_external_native_session=AsyncMock(
+        side_effect=UnsupportedCapabilityError('scope unavailable')))
+    coordinator = SurfaceCoordinator(session_host=world.host, repositories=None, registry=None, launcher=None)
+    save = AsyncMock()
+    monkeypatch.setattr(coordinator, '_save_conversation', save)
+    with pytest.raises(SurfaceUnsupportedError):
+        await coordinator._ensure_native_session(conversation, None, driver)
+    save.assert_not_awaited()

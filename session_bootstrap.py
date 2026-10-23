@@ -733,7 +733,7 @@ def env_credential_store(
     return read
 
 
-def build_driver(spec: BackendSpec) -> Any:
+def build_driver(spec: BackendSpec, *, managed_root: Path | None = None) -> Any:
     """按一条配置造一个 Driver 实例。不认识的 driver 抛 :class:`BackendConfigError`。"""
     _ensure_kernel_on_path()
     key = spec.backend_id.split(":", 1)[1]
@@ -777,16 +777,26 @@ def build_driver(spec: BackendSpec) -> Any:
         # 显式给的 command / cwd 覆盖预设；两边都没有就是配错了。
         command = spec.command or (preset.command if preset is not None else ())
         process_env = {name: os.environ.get(name, value) for name, value in (preset.process_env.items() if preset else ())}
+        process_env["KAUS_SKILL_STATE_ROOT"] = os.environ.get("KAUS_SKILL_STATE_ROOT") or str(resolve_token_path().parent / "skill-projections")
+        managed_configured = False
         if preset is not None and not spec.command:
-            from managed_runtimes import managed_launch
+            from managed_runtimes import managed_launch, managed_snapshot
             try:
-                installed = managed_launch(preset.id)
+                installed = managed_launch(preset.id, **({"root": managed_root} if managed_root else {}))
+                managed_configured = managed_snapshot(preset.id, root=managed_root)["configured"]
+                if installed is None and managed_configured:
+                    raise ValueError("Configured runtime files are unavailable")
             except (OSError, ValueError) as exc:
                 raise BackendConfigError(f"{spec.backend_id}: 本地 Agent 安装记录无效") from exc
             if installed is not None:
                 managed_command, managed_env = installed
                 command = managed_command or command
                 process_env.update(managed_env)
+        from drivers.acp.native_cli import apply_native_cli
+        try:
+            command, process_env = apply_native_cli(command, process_env, preset, spec.options.get("native_cli_path"))
+        except ValueError as exc:
+            raise BackendConfigError(f"{spec.backend_id}: 原生 CLI 路径不可用") from exc
         if not command:
             raise BackendConfigError(
                 f"{spec.backend_id}: acp driver 必须给 command 或 preset"
@@ -795,12 +805,19 @@ def build_driver(spec: BackendSpec) -> Any:
         if preset is not None and preset.id == "openclaw":
             from drivers.openclaw.driver import OpenClawAcpDriver
             driver_class = OpenClawAcpDriver
-        return driver_class(
+        driver = driver_class(
             AcpAgentSpec(command=tuple(command), cwd=spec.cwd,
                 env=process_env),
             backend_key=key,
             preset=preset,
         )
+        from managed_runtimes import launch_fingerprint
+        driver.assembly_spec = spec
+        driver.managed_runtime_root = managed_root
+        driver.managed_runtime_configured = managed_configured
+        driver.assembly_fingerprint = launch_fingerprint(driver)
+        driver.runtime_identity = {"launchFingerprint": driver.assembly_fingerprint, "updateState": "current"}
+        return driver
 
     raise BackendConfigError(
         f"{spec.backend_id}: 不认识的 driver {spec.driver!r}（支持：{SUPPORTED_DRIVERS}）"
@@ -809,6 +826,7 @@ def build_driver(spec: BackendSpec) -> Any:
 
 def build_registry(
     config: Mapping[str, Any] | None,
+    *, managed_root: Path | None = None,
 ) -> tuple[Any, tuple[str, ...]]:
     """按 AD-53 造 Driver Registry。返回 ``(registry, 警告串)``。
 
@@ -830,7 +848,7 @@ def build_registry(
 
     for spec in specs:
         try:
-            registry.register(build_driver(spec))
+            registry.register(build_driver(spec, managed_root=managed_root))
         except Exception as exc:  # noqa: BLE001 - 单个 Driver 坏掉不拖垮整张表
             problems.append(f"{spec.backend_id}: 注册失败（{type(exc).__name__}: {exc}）")
     if len(registry) == 0:
@@ -872,6 +890,11 @@ class SessionRuntime:
     auth_policy: Any = None
     unit_of_work: Any = None
     maintenance: Any = None
+    runtime_manager: Any = None
+    native_archives: Any = None
+    workbench: Any = None
+    module_backends: Any = None
+    module_intakes: Any = None
     #: Phase 4：Card ⇄ External CLI 的交接编排与外部进程监视器。
     surface_coordinator: Any = None
     external_monitor: Any = None
@@ -879,6 +902,12 @@ class SessionRuntime:
     _monitor_task: Any = None
 
     async def aclose(self) -> None:
+        if self.module_intakes is not None:
+            await self.module_intakes.aclose()
+        if self.module_backends is not None:
+            await self.module_backends.aclose()
+        if self.workbench is not None:
+            await self.workbench.aclose()
         for task in (self._task, self._monitor_task):
             if task is not None and not task.done():
                 task.cancel()
@@ -886,11 +915,25 @@ class SessionRuntime:
                     await task
                 except (asyncio.CancelledError, Exception):  # noqa: BLE001
                     pass
+        close_room_pumps = getattr(self.group_router, "close_room_pumps", None)
+        if close_room_pumps is not None:
+            await close_room_pumps()
         coordinator = getattr(self.group_router, 'group_coordinator', None)
         if coordinator is not None:
             for group_id in list(coordinator.tasks):
                 await coordinator.stop(group_id)
+        if self.runtime_manager is not None:
+            await self.runtime_manager.aclose()
+        if self.surface_coordinator is not None:
+            await self.surface_coordinator.aclose()
         await self.session_host.aclose()
+        for driver in self.registry.list_drivers():
+            close = getattr(driver, "aclose", None)
+            if callable(close):
+                try:
+                    await close()
+                except Exception:
+                    pass  # Other drivers and the database still need cleanup.
         if self.unit_of_work is not None:
             try:
                 self.unit_of_work.close()
@@ -913,7 +956,10 @@ class MaintenanceLoop:
         repositories: Any,
         interval: float = DEFAULT_MAINTENANCE_INTERVAL,
         log: Callable[[str], None] = print,
+        metadata_root: Path | None = None,
     ) -> None:
+        self.metadata_root = metadata_root
+        self._refresh_lock = asyncio.Lock()
         self.session_host = session_host
         self.registry = registry
         self.repositories = repositories
@@ -930,26 +976,117 @@ class MaintenanceLoop:
         self.rounds += 1
         return {"reclaimed": list(reclaimed), "purged": purged, "probed": probed}
 
-    async def refresh_backends(self) -> dict[str, str]:
-        """AD-28 / AD-41：探测每个已注册 backend，把 `probe_state` 写回领域库。
+    def _host_busy(self, backend_id: str) -> bool:
+        # A start captures its driver before awaiting the lease. Do not replace
+        # registry entries during that gap, even if its backend is not known yet.
+        if any(lock.locked() for lock in getattr(self.session_host, "_start_locks", {}).values()):
+            return True
+        for conversation_id in self.session_host.active_conversation_ids():
+            handle = self.session_host.handle_for(conversation_id)
+            if handle is not None and handle.backend_id == backend_id:
+                return True
+        driver = self.registry.get(backend_id)
+        return bool(getattr(driver, "_runtimes", {}))
 
-        库里没有对应行时**建一行**——`backends` 表的存在意义就是「Registry 现状的
-        持久投影」，configured 但没行会让 `/api/backends` 少东西。
-        """
+    async def _backend_busy(self, backend_id: str) -> bool:
+        if self._host_busy(backend_id):
+            return True
+        for lease in await self.repositories.leases.list_all():
+            lease_backend = lease.metadata.get("backendId")
+            if lease_backend is None:
+                conversation = await self.repositories.conversations.get(lease.conversation_id)
+                binding = await self.repositories.bindings.get(conversation.agent_binding_id) if conversation else None
+                lease_backend = binding.backend_id if binding else None
+            # Lease release/reconciliation belongs to SessionHost, not the updater.
+            if lease_backend == backend_id or lease_backend is None:
+                return True
+        return self._host_busy(backend_id)
+
+    async def _current_driver(self, driver):
+        if not hasattr(driver, "assembly_spec"):
+            return driver
+        candidate = build_driver(driver.assembly_spec, managed_root=getattr(driver, "managed_runtime_root", None))
+        if driver.managed_runtime_configured and not candidate.managed_runtime_configured and not candidate.assembly_spec.command:
+            raise BackendConfigError("Previously selected managed runtime is missing")
+        if candidate.assembly_fingerprint == driver.assembly_fingerprint:
+            driver.runtime_identity.update(updateState="current")
+            driver.runtime_identity.pop("pendingFingerprint", None)
+            return driver
+        if await self._backend_busy(driver.backend_id):
+            driver.runtime_identity.update(updateState="pending_idle", pendingFingerprint=candidate.assembly_fingerprint)
+            return driver
+        # Preserve binding scopes and native session identities, never cached
+        # model/permission catalogues or live process handles.
+        for binding in getattr(driver, "_bindings", {}).values():
+            candidate.register_binding(binding)
+        if hasattr(driver, "session_ledger"):
+            candidate.session_ledger = {key: dict(rows) for key, rows in driver.session_ledger.items()}
+        # No await between the final ownership check and registry replacement.
+        self.registry.register(candidate, replace=True)
+        close = getattr(driver, "aclose", None)
+        if callable(close):
+            try:
+                await close()
+            except Exception as exc:
+                self.log(f"[agent-runtime] {driver.backend_id}: discovery cleanup failed ({type(exc).__name__})")
+        self.log(f"[agent-runtime] {driver.backend_id}: launch configuration refreshed")
+        return candidate
+
+    async def refresh_backends(self, backend_ids: Sequence[str] | None = None) -> dict[str, str]:
+        """Shared manual/background refresh; version changes wait for idle."""
         from app.projects.models import Backend
+        from managed_runtimes import read_native_version, save_observation, managed_snapshot
 
         states: dict[str, str] = {}
-        for backend_id in self.registry.backend_ids():
-            driver = self.registry.get(backend_id)
-            record = await self.repositories.backends.get(backend_id)
-            if record is None:
-                record = Backend.create(
-                    key=backend_id.split(":", 1)[1],
-                    driver_kind=driver.driver_kind,
-                )
-            refreshed = await self.registry.refresh_backend(record)
-            await self.repositories.backends.save(refreshed)
-            states[backend_id] = refreshed.probe_state
+        async with self._refresh_lock:
+            keys = self.registry.backend_ids() if backend_ids is None else tuple(dict.fromkeys(backend_ids))
+            for backend_id in keys:
+                driver = self.registry.get(backend_id)
+                record = await self.repositories.backends.get(backend_id)
+                if record is None:
+                    record = Backend.create(key=backend_id.split(":", 1)[1], driver_kind=driver.driver_kind)
+                try:
+                    driver = await self._current_driver(driver)
+                except (BackendConfigError, OSError, ValueError) as exc:
+                    # The existing process remains owned by its original driver.
+                    # Do not silently probe a fallback command after an invalid update.
+                    driver.runtime_identity = {**getattr(driver, "runtime_identity", {}), "updateState": "invalid"}
+                    refreshed = record.evolve(probe_state="unavailable", probe_message="Agent 启动配置不可用")
+                    self.log(f"[agent-runtime] {backend_id}: refresh rejected ({type(exc).__name__})")
+                else:
+                    if getattr(driver, "runtime_identity", {}).get("updateState") == "pending_idle":
+                        await self.repositories.backends.save(record)
+                        states[backend_id] = record.probe_state
+                        if self.metadata_root is not None:
+                            save_observation(self.metadata_root, backend_id, driver.runtime_identity)
+                        continue
+                    refreshed = await self.registry.refresh_backend(record)
+                    if hasattr(driver, "assembly_spec"):
+                        identity = driver.runtime_identity
+                        if record.version != refreshed.version:
+                            for name in ("_catalog", "_catalog_config_stamps"):
+                                cache = getattr(driver, name, None)
+                                if isinstance(cache, dict):
+                                    cache.clear()
+                        if "nativeVersionState" not in identity or backend_ids is not None:
+                            previous_version = identity.get("engineVersion")
+                            identity.update(await read_native_version(driver))
+                            if previous_version != identity.get("engineVersion"):
+                                for name in ("_catalog", "_catalog_config_stamps"):
+                                    cache = getattr(driver, name, None)
+                                    if isinstance(cache, dict):
+                                        cache.clear()
+                        preset = driver.preset
+                        observed = refreshed.probe_state != "unavailable"
+                        identity.update(adapterVersion=refreshed.version if observed else None,
+                            adapterVersionState="observed" if observed else "unavailable",
+                            protocolVersion=getattr(driver, "_protocol_version", None) if observed else None,
+                            nativeVersionScope="launch_override" if preset and preset.native_executable_env and driver.agent_spec.build_env().get(preset.native_executable_env) else "installed_cli",
+                            managedVersion=managed_snapshot(preset.id, root=getattr(driver, "managed_runtime_root", None))["version"] if preset and not driver.assembly_spec.command else None)
+                await self.repositories.backends.save(refreshed)
+                states[backend_id] = refreshed.probe_state
+                if self.metadata_root is not None and hasattr(driver, "runtime_identity"):
+                    save_observation(self.metadata_root, backend_id, driver.runtime_identity)
         return states
 
     async def loop(self) -> None:
@@ -1044,7 +1181,9 @@ def open_session_runtime(
         connection_warning = ()
     except (ValueError, OSError):
         connection_warning = ("本地 Agent 接入记录未能加载；原有配置仍然有效。",)
-    registry, warnings = build_registry(config)
+    registry, warnings = build_registry(config, managed_root=resolved_token_path.parent / 'agent-runtimes')
+    from engine_connections import sync_skill_scopes
+    asyncio.run(sync_skill_scopes(registry, repositories))
     warnings = (*warnings, *connection_warning)
     # 批次十一第 3 件：领域库里有 Binding 指向一个没有 Driver 的 backend，就在
     # 启动时说一声。**只打 id，不打配置内容**（AD-48）；这不是致命错误，别的
@@ -1102,6 +1241,19 @@ def open_session_runtime(
         on_exit=surface_coordinator.on_external_exit,
         log=LOGGER.warning,
     )
+    from app.workbench import WorkbenchService
+    from app.workbench.execution import install_execution_policy
+    from app.workbench.process import ModuleBackends
+    from app.workbench.intake import ModuleIntakes
+    from app.api.workbench_intakes import build_workbench_intakes_router
+    from app.api.module_backend import build_module_backend_router, build_module_callback_router
+    from app.api.workbench import build_workbench_router, build_workbench_assets_router
+    workbench = WorkbenchService(root=resolved_token_path.parent / "workbench",
+        repositories=repositories, session_host=session_host, registry=registry)
+    install_execution_policy(workbench)
+    module_backends = ModuleBackends(workbench)
+    module_intakes = ModuleIntakes(workbench)
+    session_host.workspace_override_resolver = module_intakes.workspace_for
     router = build_session_router(
         session_host=session_host,
         repositories=repositories,
@@ -1111,13 +1263,66 @@ def open_session_runtime(
         surface_coordinator=surface_coordinator,
         debug_endpoints=debug_enabled(),
         attachment_root=resolved_token_path.parent / "conversation-attachments",
+        module_conversation_ids=workbench.module_conversation_ids,
     )
+    router.routes.extend(build_workbench_router(service=workbench, auth_policy=auth_policy).routes)
+    router.routes.extend(build_workbench_intakes_router(intakes=module_intakes, auth_policy=auth_policy).routes)
+    router.routes.extend(build_workbench_assets_router(service=workbench).routes)
+    router.routes.extend(build_module_backend_router(manager=module_backends, auth_policy=auth_policy).routes)
+    router.routes.extend(build_module_callback_router(manager=module_backends).routes)
     # Shares the same authentication and launcher with exact-session handoff.
     terminal_router = build_terminal_router(preferences=terminal_preferences,
         launcher=launcher, repositories=repositories, auth_policy=auth_policy)
     router.routes.extend(terminal_router.routes)
     from local_workspace import build_workspace_router
     router.routes.extend(build_workspace_router(auth_policy=auth_policy).routes)
+    from app.account_quotas import AccountQuotaService
+    from app.api.account_quotas import build_account_quota_router
+    from app.quota_connections import QuotaConnections
+    from app.api.quota_connections import build_quota_connections_router
+    quota_connections = QuotaConnections(resolved_token_path.parent / 'quota-connections')
+    router.routes.extend(build_quota_connections_router(quota_connections, auth_policy=auth_policy).routes)
+    router.routes.extend(build_account_quota_router(AccountQuotaService(registry, connections=quota_connections), auth_policy=auth_policy).routes)
+    from computer_use_settings import ComputerUseSettings
+    from app.api.computer_use import build_computer_use_router
+    router.routes.extend(build_computer_use_router(ComputerUseSettings(registry), auth_policy=auth_policy).routes)
+    # Skill arrangement shares the existing Project and capability repositories.
+    # The driver inventory is read-only; native materialization remains separate.
+    from app.api.skill_tree import build_skill_tree_router
+    from app.capabilities.skill_tree import SkillTreeService
+    from drivers.skill_inventory import configured_roots, discover_skills
+    skill_database = getattr(repositories.settings, "_db", None)
+    skill_tree = None
+    if skill_database is not None:
+        def skill_inventory_ready(agent_key):
+            for driver in registry.list_drivers():
+                preset = getattr(driver, "preset", None)
+                scope = (getattr(preset, "skill_scope_key", None) or getattr(preset, "id", None)
+                         or getattr(driver, "product_id", None) or driver.backend_id.removeprefix("backend:"))
+                pending = getattr(driver, "skill_inventory_pending", None)
+                if scope == agent_key and callable(pending) and pending():
+                    return False
+            return True
+
+        from drivers.acp.presets import PRESETS
+        def skill_onboarding_enabled(agent_key):
+            return all(p.catalog_status != "legacy" for p in PRESETS.values()
+                       if (p.skill_scope_key or p.id) == agent_key)
+
+        skill_tree = SkillTreeService(skill_database, inventory_ready=skill_inventory_ready,
+                                      onboarding_enabled=skill_onboarding_enabled)
+        skill_tree.discover = lambda: discover_skills(configured_roots(
+            registry, *skill_tree.inventory_context()))
+        router.routes.extend(build_skill_tree_router(skill_tree, auth_policy=auth_policy).routes)
+    from native_archives import NativeArchiveStore, NativeArchiveService
+    from app.api.native_archives import build_native_archive_router
+    native_archives = NativeArchiveService(NativeArchiveStore(resolved_token_path.parent / 'native-archives'), repositories)
+    router.routes.extend(build_native_archive_router(native_archives, auth_policy=auth_policy).routes)
+    from app.conversations.continuation import ContinuationService
+    from app.api.continuations import build_continuation_router
+    continuation = ContinuationService(repositories, session_host, registry,
+        resolved_token_path.parent / 'continuations', resolved_token_path.parent / 'conversation-attachments', native_archives)
+    router.routes.extend(build_continuation_router(continuation, auth_policy=auth_policy).routes)
     # 批次二十二：Group 数据面。它要鉴权、要 Session Host（成员摘要里的
     # `runState` 与 spawn 的首句都得问它）、也要 Driver Registry（首句要
     # `register_binding`），三样都在这一层，所以和会话路由同批装配。
@@ -1182,15 +1387,27 @@ def open_session_runtime(
         registry=registry,
         repositories=repositories,
         interval=maintenance_interval,
+        metadata_root=resolved_token_path.parent,
     )
+    from runtime_management import RuntimeManager, build_runtime_management_router
+    runtime_manager = RuntimeManager(root=resolved_token_path.parent / 'agent-runtimes',
+        refresh=maintenance.refresh_backends, registry=registry)
+    router.routes.extend(build_runtime_management_router(runtime_manager, auth_policy=auth_policy).routes)
     return SessionRuntime(
         router=router,
         engine_router=build_engine_connection_router(registry=registry, repositories=repositories,
-            auth_policy=auth_policy, path=connections_path),
+            auth_policy=auth_policy, path=connections_path, launcher=launcher,
+            refresh_backends=maintenance.refresh_backends, runtime_root=resolved_token_path.parent / 'agent-runtimes',
+            skill_tree=skill_tree),
         binding_router=binding_router,
         group_router=group_router,
         session_host=session_host,
         registry=registry,
+        runtime_manager=runtime_manager,
+        native_archives=native_archives,
+        workbench=workbench,
+        module_backends=module_backends,
+        module_intakes=module_intakes,
         repositories=repositories,
         warnings=warnings,
         token_path=resolved_token_path,
@@ -1409,6 +1626,13 @@ def attach_session_api(
     # 是两件事；而且它只跑一次，不是循环。
     async def _reconcile() -> None:
         try:
+            from drivers.computer_use.durable import reconcile_persisted
+            await reconcile_persisted()
+        except Exception:
+            # Durable reservations continue blocking their resources even when
+            # the configured native service cannot be inspected during startup.
+            log("[session_host_v1] 原生工具状态暂未确认，将保留控制权并稍后重试。")
+        try:
             healed = await runtime.session_host.reconcile_startup()
         except Exception as exc:  # noqa: BLE001 - 自愈坏掉不能让服务起不来
             log(f"[session_host_v1] 启动自愈失败（不影响服务）：{exc!r}")
@@ -1421,6 +1645,18 @@ def attach_session_api(
 
     _add_lifecycle_handler(fastapi_app, "on_startup", _reconcile, log=log)
 
+    async def _start_workbench() -> None:
+        if runtime.workbench is not None:
+            await runtime.workbench.initialize()
+        if runtime.module_intakes is not None:
+            await runtime.module_intakes.initialize()
+    _add_lifecycle_handler(fastapi_app, "on_startup", _start_workbench, log=log)
+
+    async def _stop() -> None:
+        await runtime.aclose()
+    # On-demand module and conversation tasks exist even when maintenance is off.
+    _add_lifecycle_handler(fastapi_app, "on_shutdown", _stop, log=log)
+
     if background_enabled(config):
         # AD-41：调度点就在这里——FastAPI 的 startup（lifespan）钩子。
         async def _start() -> None:
@@ -1432,14 +1668,10 @@ def attach_session_api(
                 runtime.external_monitor.loop(), name="external-cli-monitor"
             )
 
-        async def _stop() -> None:
-            await runtime.aclose()
-
         # 直接往 router 的 lifespan 清单里追加。FastAPI 1.x 已经去掉了
         # `app.add_event_handler` 这个壳，但 Starlette 的这两个清单还在，
         # 而且不管宿主用不用 `lifespan=` 都生效。
         _add_lifecycle_handler(fastapi_app, "on_startup", _start, log=log)
-        _add_lifecycle_handler(fastapi_app, "on_shutdown", _stop, log=log)
 
     for warning in runtime.warnings:
         log(f"[session_host_v1] 配置警告：{warning}")

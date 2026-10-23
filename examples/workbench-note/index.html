@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>任务便笺</title>
+<style>body{font:16px/1.6 system-ui,sans-serif;margin:40px;color:#242424;background:#fafafa}main{max-width:720px;margin:auto}textarea{box-sizing:border-box;width:100%;min-height:180px;padding:16px;border:1px solid #ddd;border-radius:14px;font:inherit;background:transparent;color:inherit}button{font:inherit;padding:8px 16px;border-radius:10px;border:1px solid #ddd;cursor:pointer}button:hover{background:#e8e8e8}button:disabled{opacity:.5;cursor:default}nav{display:flex;gap:8px;margin:12px 0}pre{white-space:pre-wrap;font:inherit}body.dark{background:#202020;color:#eee}</style>
+<main><h2>任务便笺</h2><textarea aria-label="任务" placeholder="写下任务"></textarea><nav><button id="save">保存</button><button id="run">运行</button><button id="cancel" hidden>停止</button></nav><p role="status"></p><pre aria-label="结果"></pre></main>
+<script type="module">
+import { connectKaus } from './client.js';
+const kaus=connectKaus('workbench-note'), input=document.querySelector('textarea'), status=document.querySelector('[role=status]'), result=document.querySelector('pre'), run=document.querySelector('#run'), cancel=document.querySelector('#cancel');
+let active=null,timer;
+const report=error=>{status.textContent=error.message;};
+async function poll(){try{const job=await kaus.jobs.get(active);result.textContent=job.steps.map(step=>step.output||'').join('\n\n');const busy=['queued','running','waiting_approval'].includes(job.status);run.disabled=busy;cancel.hidden=!busy;status.textContent=busy?'运行中':job.status==='completed'?'已完成':job.status==='cancelled'?'已停止':'任务已结束';if(busy)timer=setTimeout(poll,500);}catch(error){run.disabled=false;cancel.hidden=true;report(error);}}
+document.querySelector('#save').onclick=async()=>{try{await kaus.data.set('note',input.value);status.textContent='已保存';}catch(error){report(error);}};
+run.onclick=async()=>{if(!input.value.trim())return;run.disabled=true;try{const job=await kaus.jobs.start(input.value);active=job.id;await poll();}catch(error){run.disabled=false;report(error);}};
+cancel.onclick=async()=>{try{await kaus.jobs.cancel(active);clearTimeout(timer);await poll();}catch(error){report(error);}};
+try{const context=await kaus.context();document.body.classList.toggle('dark',context.theme==='dark');const data=await kaus.data.get('note');input.value=typeof data.value==='string'?data.value:'';const {jobs}=await kaus.jobs.list();if(jobs.length){active=jobs[0].id;await poll();}}catch(error){report(error);}
+window.addEventListener('pagehide',()=>{clearTimeout(timer);kaus.close();});
+</script></html>

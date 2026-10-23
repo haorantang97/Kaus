@@ -178,6 +178,14 @@ class HermesDriver:
     driver_kind: Literal["native"] = "native"
     product_id = "hermes"
 
+    def quota_provider_sources(self):
+        from .quota_sources import discover
+        return discover(self)
+
+    async def read_account_quota(self):
+        from .quota import read_account_quota
+        return await read_account_quota(self)
+
     def __init__(
         self,
         *,
@@ -382,6 +390,37 @@ class HermesDriver:
             await self.probe()
         return self._apply_live_evidence(self._capabilities or BackendCapabilities())
 
+    @property
+    def native_computer_use_permission_control(self) -> str:
+        # Remote native HTTP sessions cannot be reconfigured by a local launcher.
+        # This declaration reads connection metadata only, without probing tools.
+        for binding in self._bindings.values():
+            if (not project_scope.enabled(binding) and not binding.runtime_config.get("group_execution")
+                    and self.gateway_config_for(binding).host not in {"127.0.0.1", "localhost", "::1"}):
+                return "agent"
+        if (not self._bindings and self.default_gateway is not None
+                and self.default_gateway.host not in {"127.0.0.1", "localhost", "::1"}):
+            return "agent"
+        return "kaus"
+
+    async def computer_use_status(self, binding: AgentBinding | None = None) -> dict[str, Any]:
+        """Inspect the source runtime without creating or refreshing a project home."""
+        from drivers.acp.client import AcpAgentSpec
+        from drivers.hermes.computer_use import probe_native
+        binding = binding or next(iter(self._bindings.values()), None)
+        config = self.gateway_config_for(binding) if binding else self.default_gateway
+        if (config is not None and config.host not in {"127.0.0.1", "localhost", "::1"}
+                and not (binding and (project_scope.enabled(binding) or binding.runtime_config.get("group_execution")))):
+            return {"nativePermissionControl": "agent", **{cap: {
+                "status": "unknown", "provider": "hermes-native",
+                "requirements": ["remote_native_permission_control"],
+            } for cap in ("browser", "desktop")}}
+        source = self.gateway_config_for(binding).hermes_home if binding else self.hermes_root
+        home = project_scope.home_for(self.hermes_root, binding) if binding and project_scope.enabled(binding) else source
+        if not (home / "config.yaml").is_file():
+            home = source
+        return await probe_native(AcpAgentSpec(command=(self.hermes_bin, "acp"), env={"HERMES_HOME": str(home)}))
+
     def conversation_controls(self, binding: AgentBinding) -> dict[str, Any]:
         if project_scope.enabled(binding):
             return self._project_driver(binding).conversation_controls(binding)
@@ -408,7 +447,7 @@ class HermesDriver:
         self, runtime: RuntimeHandle, conversation: Conversation
     ) -> None:
         if runtime.runtime_id in self._isolated_runtimes:
-            if project_scope.enabled(self._binding_for(conversation)) and not self._binding_for(conversation).runtime_config.get("group_execution"):
+            if not self._binding_for(conversation).runtime_config.get("group_execution"):
                 driver, handle = self._isolated_runtimes[runtime.runtime_id]
                 return await driver.set_conversation_selection(handle, conversation)
             raise UnsupportedCapabilityError("执行中的组长使用已保存的配置，请在下一项任务切换。")
@@ -640,13 +679,16 @@ class HermesDriver:
         它的通用运行配置（审批档 / 推理强度）、以及它的默认模型。
         """
         self._assert_binding(binding)
+        from drivers.hermes import skill_projection
+        selection = skill_projection.selection_of(effective_capabilities)
+        projected_effective = skill_projection.without_selection(effective_capabilities) if selection else effective_capabilities
         home = self.projection_scope(binding)
         if project_scope.enabled(binding) and not dry_run:
             project_scope.prepare(self.hermes_root, self.gateway_config_for(binding).hermes_home, binding, refresh=True)
-        return projector_mod.project_capabilities(
+        result = projector_mod.project_capabilities(
             binding_id=binding.id,
             hermes_home=home,
-            effective=effective_capabilities,
+            effective=projected_effective,
             capabilities=await self.get_capabilities(),
             # 批次十三第 3 件：通用 `approval_mode` 有确定的引擎落点，一并列进
             # 投射报告（映射表见 drivers.hermes.approval_map）。
@@ -657,6 +699,15 @@ class HermesDriver:
             dry_run=dry_run,
             adopt=adopt or project_scope.enabled(binding),
         )
+        if selection is None:
+            return result
+        if not project_scope.enabled(binding):
+            return result.model_copy(update={"unsupported": (*result.unsupported, skill_projection.unavailable(binding.id))})
+        skills = skill_projection.project_skills(home=home, binding=binding,
+            effective=effective_capabilities, dry_run=dry_run)
+        return result.model_copy(update={"applied": (*result.applied, *skills.applied),
+            "unsupported": (*result.unsupported, *skills.unsupported),
+            "backup_path": result.backup_path or skills.backup_path})
 
     def workspace_conventions(self, binding: AgentBinding | None = None) -> dict[str, Any]:
         """这台引擎在它的 profile 目录里认哪个指令文件（批次四十四）。
@@ -667,6 +718,10 @@ class HermesDriver:
         del binding
         rule = projection_map.file_rule_for("instructions")
         return {"instructionsFile": rule.filename if rule is not None else None}
+
+    def skill_inventory_roots(self, projects, bindings):
+        from drivers.hermes.skill_inventory import roots_for
+        return roots_for(self.hermes_root, projects, bindings)
 
     async def inspect_drift(
         self,
@@ -745,6 +800,15 @@ class HermesDriver:
             LOGGER.debug("count_native_sessions 数不出来：%s", redact(str(exc)))
             return None
 
+    async def create_external_native_session(
+        self, conversation: Conversation, options: CreateSessionOptions
+    ) -> NativeSession:
+        binding = self._binding_for(conversation)
+        if binding.runtime_config.get("group_execution") or project_scope.enabled(binding):
+            from drivers.external_session import precreate_external_session
+            return await precreate_external_session(self, conversation, options)
+        return await self.create_native_session(binding, options)
+
     async def create_native_session(
         self, binding: AgentBinding, options: CreateSessionOptions
     ) -> NativeSession:
@@ -782,21 +846,53 @@ class HermesDriver:
             row, binding_id=binding.id, canonical=canonical
         )
 
-    async def load_native_history(
+    async def load_local_native_history(
         self, binding: AgentBinding, native_session_id: str
     ) -> NativeHistory:
-        """规格 §4.2 的三级优先级。**HTTP 是主路径，直读只是回退。**"""
+        """Read the exact local ledger without supervisor, HTTP or account access."""
         self._assert_binding(binding)
         if project_scope.enabled(binding):
             path = self.projection_scope(binding) / "state.db"
+        else:
+            path = self.gateway_config_for(binding).hermes_home / "state.db"
+        if not path.is_file():
+            raise FileNotFoundError("local_native_history_unavailable")
+        return await asyncio.to_thread(history_mod.read_full_history_from_db, path, native_session_id)
+
+    async def load_native_history(
+        self, binding: AgentBinding, native_session_id: str
+    ) -> NativeHistory:
+        import sqlite3
+        try:
+            result = await self._load_native_history(binding, native_session_id, full=True)
+        except (OSError, ValueError, sqlite3.Error):
+            raise RuntimeError("无法读取 Hermes 原生记录，请重试") from None
+        if "history" in result.missing:
+            raise RuntimeError("无法读取 Hermes 原生记录，请重试")
+        return result
+
+    async def load_native_history_preview(
+        self, binding: AgentBinding, native_session_id: str
+    ) -> NativeHistory:
+        return await self._load_native_history(binding, native_session_id, full=False)
+
+    async def _load_native_history(
+        self, binding: AgentBinding, native_session_id: str, *, full: bool
+    ) -> NativeHistory:
+        """规格 §4.2 的三级优先级。**HTTP 是主路径，直读只是回退。**"""
+        self._assert_binding(binding)
+        reader = history_mod.read_full_history_from_db if full else history_mod.read_history_from_db
+        if project_scope.enabled(binding):
+            path = self.projection_scope(binding) / "state.db"
             if path.is_file():
-                return history_mod.read_history_from_db(path, native_session_id)
+                return await asyncio.to_thread(reader, path, native_session_id)
             return await self._project_driver(binding).load_native_history(binding, native_session_id)
         canonical = self.canonical_map_for(binding)
         # 规格 §4.4 规则 5：只加载 head 的 messages，归档分段默认不回放。
         head_id = canonical.head_for(native_session_id)
         supervisor = self.supervisor_for(binding)
         endpoints = self._endpoints()
+        db_path = self.gateway_config_for(binding).hermes_home / "state.db"
         try:
             await supervisor.ensure_ready()
             response = await supervisor.client().request(
@@ -811,14 +907,25 @@ class HermesDriver:
                     self._last_history_payload[head_id] = payload
                 history = history_mod.history_from_http(head_id, payload)
                 if history is not None:
+                    rows = payload.get("data", ()) if isinstance(payload, Mapping) else ()
+                    windowed = bool(history.earlier_cursor) or len(rows) >= history_mod.DEFAULT_PAGE_SIZE
+                    if full and windowed:
+                        if db_path.is_file():
+                            with contextlib.suppress(Exception):
+                                full = await asyncio.to_thread(history_mod.read_full_history_from_db, db_path, head_id)
+                                if "history" not in full.missing:
+                                    return full
+                        # A remote-only tail is useful but cannot establish that
+                        # all terminal messages have been reconciled.
+                        return history.model_copy(update={"complete": False,
+                            "missing": tuple(dict.fromkeys((*history.missing, "history_window")))})
                     return history
         except HermesHttpError:
             pass
         # 回退：直读 state.db（只读、WAL、按 schema 分档）。
-        db_path = self.gateway_config_for(binding).hermes_home / "state.db"
         if db_path.exists():
             with contextlib.suppress(Exception):
-                return history_mod.read_history_from_db(db_path, head_id)
+                return await asyncio.to_thread(reader, db_path, head_id)
         return NativeHistory(
             native_session_id=head_id, complete=False, missing=("history",)
         )
@@ -885,22 +992,91 @@ class HermesDriver:
     # ------------------------------------------------------------------ #
 
     async def session_options_for(
-        self, conversation: Conversation, effective: EffectiveCapabilities
+        self, conversation: Conversation, effective: EffectiveCapabilities, *, workspace_root: str | None = None
     ) -> SessionProjection | None:
         binding = self._binding_for(conversation)
-        if project_scope.enabled(binding) and not binding.runtime_config.get("group_execution"):
+        if project_scope.enabled(binding):
             # The private home is read by both ACP and the native CLI. No
             # project configuration is written back into the connected engine.
             result = await self.materialize_project_capabilities(
-                Project.create(slug=binding.project_id.removeprefix("project:")),
+                Project.create(slug=binding.project_id.removeprefix("project:"), workspace_root=workspace_root),
                 binding, effective, dry_run=False,
             )
-            return SessionProjection(summary={"projectSettings": sorted({item.capability_id for item in result.applied})},
-                                     warnings=tuple(sorted({item.reason or "unsupported" for item in result.unsupported})))
+            from drivers.hermes.skill_projection import selection_of
+            from drivers.hermes.skill_snapshots import pin_session, session_mode
+            mode = "managed" if selection_of(effective) else "native"
+            failed_skills = tuple(item for item in result.unsupported
+                if item.capability_type == "skill-selection" or item.capability_type.split(":")[-1] == "skills")
+            if mode == "managed" and failed_skills:
+                raise UnsupportedCapabilityError("项目技能未完整应用，请检查技能来源后重试")
+            previous_mode = session_mode(self.projection_scope(binding), conversation.id)
+            scope = pin_session(self.projection_scope(binding), conversation.id,
+                resume=bool(conversation.native_session_id) and previous_mode != "native") if mode == "managed" else None
+            session_mode(self.projection_scope(binding), conversation.id, mode=mode)
+            options = CreateSessionOptions(metadata={"kaus_skill_scope": str(scope)} if scope else {"kaus_skill_mode": "native"})
+            summary = {"projectSettings": sorted({item.capability_id for item in result.applied})}
+            warnings = tuple(sorted({item.reason or "unsupported" for item in result.unsupported}))
+            # Both ordinary project conversations and groups execute through
+            # the private ACP child. Project MCP must reach that same child.
+            if project_scope.enabled(binding):
+                from drivers.hermes.isolated_runtime import create_driver
+                protocol_effective = effective.model_copy(update={"entries": tuple(
+                    item for item in effective.entries if item.capability_type != "skill-selection")})
+                protocol = await create_driver(self, binding).session_options_for(conversation, protocol_effective, **({"workspace_root": workspace_root} if workspace_root else {}))
+                from drivers.hermes.terminal_settings import remember_mcp
+                remember_mcp(self.projection_scope(binding), conversation,
+                    protocol.options.metadata.get("mcpServers", ()) if protocol else ())
+                if protocol is not None:
+                    # MCP is mounted by the protocol child. Its successful
+                    # projection must not also appear as an unmapped home setting.
+                    mounted = set(protocol.summary.get("mcpServers", ()))
+                    warnings = tuple(sorted({item.reason or "unsupported" for item in result.unsupported
+                        if not (item.capability_type == "mcp" and item.capability_id in mounted)}))
+                    return protocol.model_copy(update={
+                        "options": protocol.options.model_copy(update={"metadata": {
+                            **protocol.options.metadata, **options.metadata}}),
+                        "summary": {**protocol.summary, **(summary if summary["projectSettings"] else {})},
+                        "warnings": (*protocol.warnings, *warnings)})
+            return SessionProjection(options=options, summary=summary, warnings=warnings)
+        if workspace_root:
+            from drivers.hermes.isolated_runtime import create_driver
+            return await create_driver(self, binding).session_options_for(conversation, effective, workspace_root=workspace_root)
         if not binding.runtime_config.get("group_execution"):
-            return None
+            from drivers.hermes.skill_projection import selection_of
+            from drivers.acp.mcp_projection import project_mcp_servers
+            if project_mcp_servers(effective).servers:
+                raise UnsupportedCapabilityError("此连接未启用独立执行，无法应用项目 MCP")
+            from drivers.hermes.computer_use import local_http_projection
+            computer = await local_http_projection(self, binding, conversation, effective)
+            if computer is not None:
+                # Keep native Skills as before. The ACP process resumes the
+                # identical native session and only applies computer controls.
+                return computer.model_copy(update={"warnings": (
+                    ("此连接使用原生目录，项目技能尚未应用",) if selection_of(effective) else ())})
+            if (effective.get("policies", "computer_use") is not None
+                    or effective.is_blocked("policies", "computer_use")):
+                raise UnsupportedCapabilityError("此连接需启用独立执行后才能应用电脑权限")
+            return SessionProjection(warnings=("此连接使用原生目录，项目技能尚未应用",)) if selection_of(effective) else None
         from drivers.hermes.isolated_runtime import create_driver
         return await create_driver(self, binding).session_options_for(conversation, effective)
+
+    def supports_workspace_override(self) -> bool:
+        return True
+
+    async def workspace_session_projection(self, conversation, effective, *, workspace_root):
+        projection = await self.session_options_for(conversation, effective, workspace_root=workspace_root)
+        projection = projection or SessionProjection(options=CreateSessionOptions(title=conversation.title))
+        return projection.model_copy(update={"options": projection.options.model_copy(
+            update={"workspace_root": workspace_root})})
+
+    def supports_execution_policy(self, policy: str) -> bool:
+        return policy in {"project", "context-only"}
+
+    async def restricted_session_projection(self, conversation, *, policy, workspace_root):
+        if policy != "context-only":
+            raise UnsupportedCapabilityError("当前 Agent 尚未适配此模块的执行范围。")
+        return SessionProjection(options=CreateSessionOptions(workspace_root=workspace_root,
+            metadata={"_kausExecutionPolicy": policy}), summary={"executionPolicy": [policy]})
 
     async def start_runtime(
         self, conversation: Conversation, surface: Literal["card"], *,
@@ -911,9 +1087,23 @@ class HermesDriver:
                 "Driver 只负责 Card Surface；站外 CLI 走 build_external_cli_launch"
             )
         binding = self._binding_for(conversation)
-        if binding.runtime_config.get("group_execution") or project_scope.enabled(binding):
-            from drivers.hermes.isolated_runtime import create_driver, start
-            driver = create_driver(self, binding) if binding.runtime_config.get("group_execution") else self._project_driver(binding)
+        restricted = bool(session_options and session_options.metadata.get("_kausExecutionPolicy") == "context-only")
+        from drivers.hermes.computer_use import LOCAL_TRANSPORT
+        local_computer = bool(session_options and session_options.metadata.get(LOCAL_TRANSPORT))
+        if local_computer and session_options.metadata.get("_kausHermesHttpSession"):
+            conversation = conversation.evolve(native_session_id=session_options.metadata["_kausHermesHttpSession"])
+        if restricted or local_computer or (session_options and session_options.workspace_root) or binding.runtime_config.get("group_execution") or project_scope.enabled(binding):
+            from drivers.hermes.isolated_runtime import create_driver, create_context_driver, start
+            scope = session_options.metadata.get("kaus_skill_scope") if session_options else None
+            from drivers.hermes.skill_snapshots import session_mode
+            mode = (session_options.metadata.get("kaus_skill_mode") if session_options else None) or session_mode(self.projection_scope(binding), conversation.id)
+            if not restricted and not local_computer and scope is None and mode != "native":
+                from drivers.hermes.skill_launch import policy_required
+                from drivers.hermes.skill_snapshots import pin_session
+                if policy_required(self.projection_scope(binding)):
+                    scope = pin_session(self.projection_scope(binding), conversation.id, resume=bool(conversation.native_session_id))
+            driver = create_context_driver(self, binding) if restricted else create_driver(self, binding, skill_scope=scope,
+                native_conversation=conversation.id if mode == "native" else None)
             handle = await start(driver, binding, conversation, surface, session_options=session_options)
             # A new driver starts its counter at one; use a unique owner handle.
             native_handle = handle
@@ -1711,6 +1901,14 @@ class HermesDriver:
                 return
             yield item
 
+    def runtime_reusable(self, runtime: RuntimeHandle) -> bool:
+        isolated = self._isolated_runtimes.get(runtime.runtime_id)
+        if isolated is not None:
+            driver, handle = isolated
+            return driver.runtime_reusable(handle)
+        state = self._runtimes.get(runtime.runtime_id)
+        return bool(state is not None and not state.closed)
+
     async def stop_runtime(self, runtime: RuntimeHandle) -> None:
         """规格 §2.6：关 SSE、清 activeRunId、释放句柄。**不停 gateway 进程。**"""
         isolated = self._isolated_runtimes.pop(runtime.runtime_id, None)
@@ -1766,14 +1964,27 @@ class HermesDriver:
         scoped = project_scope.enabled(binding)
         if scoped:
             project_scope.prepare(self.hermes_root, self.gateway_config_for(binding).hermes_home, binding)
-            command = [self.hermes_bin, "chat"]
+            from drivers.hermes.skill_launch import command_for, policy_required
+            from drivers.hermes.skill_snapshots import pin_session, session_mode, native_output
+            mode = session_mode(self.projection_scope(binding), conversation.id)
+            scope = pin_session(self.projection_scope(binding), conversation.id,
+                resume=bool(conversation.native_session_id)) if mode != "native" and policy_required(self.projection_scope(binding)) else None
+            command = list(command_for(self.hermes_bin, self.projection_scope(binding), ("chat",), scope=scope,
+                native_source=self.gateway_config_for(binding).hermes_home if mode == "native" else None,
+                native_output=native_output(self.projection_scope(binding), conversation.id) if mode == "native" else None))
         resume = False
         if conversation.native_session_id:
             # 规格 §4.4 规则 4：一律用 canonical head，不用分段 id。
             command += ["--resume", canonical.head_for(conversation.native_session_id)]
             resume = True
+        if scoped:
+            from drivers.hermes.terminal_settings import command_for as terminal_command
+            command = list(terminal_command(self.projection_scope(binding), conversation,
+                                           binding, tuple(command), self.hermes_bin))
+        from drivers.hermes.skill_adapter import native_binary_dirs
         return CliLaunchSpec(
             command=tuple(command),
+            path_prefix=native_binary_dirs(self.gateway_config_for(binding).hermes_home, self.hermes_root),
             terminal_integration="hermes",
             cwd=binding.runtime_config.get("workspace_root"),
             config_directory=("HERMES_HOME", str(self.projection_scope(binding))) if scoped else None,
@@ -1845,9 +2056,15 @@ class HermesDriver:
 
     def _project_driver(self, binding: AgentBinding):
         from drivers.hermes.isolated_runtime import create_driver
+        from drivers.hermes.skill_launch import policy_required
         driver = self._project_drivers.get(binding.id)
         if driver is None:
             driver = self._project_drivers[binding.id] = create_driver(self, binding)
+        elif policy_required(self.projection_scope(binding)):
+            # A catalogue probe can create this driver before skill projection.
+            # Refresh only the next-process launch spec; running handles retain
+            # their original process and immutable loader policy.
+            driver.agent_spec = create_driver(self, binding).agent_spec
         driver.register_binding(binding)
         return driver
 

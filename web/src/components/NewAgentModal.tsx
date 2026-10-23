@@ -1,3 +1,4 @@
+import { ErrorNotice } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import { apiPost } from "../lib/api";
 import { fetchProjects } from "../lib/sessionApi";
@@ -65,7 +66,7 @@ export function NewAgentModal({ onClose, onCreated, initialParent = null }: { on
       {parentsErr && <div className="mt-1 text-[0.68rem]" style={{ color: "var(--danger)" }}>{t("newAgent.parentsError", { error: parentsErr })}</div>}
       <div className="mb-1 mt-3 text-[0.7rem]" style={{ color: cream(55) }}>{t("newAgent.field.desc")}</div>
       <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("newAgent.placeholder.desc")} style={inputStyle()} />
-      {err && <div className="mt-2 text-xs" style={{ color: "var(--danger)" }}>{err}</div>}
+      {err && <ErrorNotice error={err} className="mt-2 text-xs" />}
       <div className="mt-4 flex justify-end gap-3"><Button onClick={onClose}>{t("common.cancel")}</Button><Button variant="primary" disabled={busy} onClick={create}>{t("common.create")}</Button></div>
     </Modal>
   );

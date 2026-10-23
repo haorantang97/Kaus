@@ -75,7 +75,7 @@ export function GroupNavItem() {
   return (
     <button
       type="button"
-      className={`shell-nav-item ${dock.open ? "is-active" : ""} ${drop.isOver ? "is-drop-target" : ""}`}
+      className={`shell-nav-item ${drop.isOver ? "is-drop-target" : ""}`}
       data-testid="nav-groups"
       aria-expanded={dock.open}
       title={label}

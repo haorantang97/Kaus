@@ -1,0 +1,1 @@
+"""Native Gemini CLI capabilities."""

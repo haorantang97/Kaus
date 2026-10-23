@@ -191,6 +191,7 @@ class _ToolState:
     call_id: str
     name: str
     terminal: bool = False
+    observation: bool = False
 
 
 class AcpTranslator:
@@ -420,7 +421,8 @@ class AcpTranslator:
         # tool.updated（那会让每次工具调用都多出一张空更新）。终态首帧例外：
         # agent 可以一步到位地报一个已经跑完的工具调用。
         events.extend(self._apply_tool_status(call_id, update, status_only=False))
-        events.extend(self._media_events(update.get("content", update.get("rawOutput"))))
+        if not self._tools[call_id].observation:
+            events.extend(self._media_events(update.get("content", update.get("rawOutput"))))
         return tuple(events)
 
     def _on_tool_call_update(
@@ -440,7 +442,8 @@ class AcpTranslator:
             # 永远建不出卡（丢一次工具调用比多一张卡严重得多）。
             events.extend(self._start_tool(call_id, update))
         events.extend(self._apply_tool_status(call_id, update))
-        events.extend(self._media_events(update.get("content", update.get("rawOutput"))))
+        if not self._tools[call_id].observation:
+            events.extend(self._media_events(update.get("content", update.get("rawOutput"))))
         return tuple(events)
 
     def _start_tool(
@@ -451,7 +454,16 @@ class AcpTranslator:
             or _str_or_none(update.get("kind"))
             or call_id
         )
-        self._tools[call_id] = _ToolState(call_id=call_id, name=name)
+        raw = update.get("rawInput")
+        tool = raw.get("tool") if isinstance(raw, Mapping) else None
+        tool = str(tool or name).rsplit("__", 1)[-1]
+        # Observation frames remain in the tool result and Agent loop. Only
+        # explicit assistant media becomes a separate user-facing artifact.
+        observation = tool in {
+            "computer_use", "computer", "browser_take_screenshot",
+            "browser_screenshot", "screen_snapshot", "screen.snapshot",
+        }
+        self._tools[call_id] = _ToolState(call_id=call_id, name=name, observation=observation)
         return (
             self._emit(
                 ToolStarted(call_id=call_id, name=name, input=update.get("rawInput"))

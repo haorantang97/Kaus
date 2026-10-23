@@ -5,8 +5,9 @@ import { type NetworkResp } from "../lib/api";
 import { t, useLocale, type DictKey } from "../i18n";
 import { Button, cream, dname, Overlay } from "./ui";
 import { ReparentModal } from "./ReparentModal";
+import { ProjectSkillTree } from "./ProjectSkillTree";
 import { wheelAnchor, wheelNodeTransform, wheelTransformCss } from "../lib/wheelGeometry";
-import { PROJECT_DRAG_MIME } from "../lib/groupDrop";
+import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
 
 /* 角色名走词典（批次十一第 4 件）：以前这里写死英文，进项目页语言就突变。 */
 const roleFull = (role: string | null | undefined): string =>
@@ -353,7 +354,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     if (wheelInteracting.current === null) alignWheelToPath(animated);
     wheelHydrated.current = true;
     pendingFocus.current = null;
-  }, [path, sel]); // eslint-disable-line
+  }, [path, sel, canGovern]); // eslint-disable-line
   const appliedFocus = useRef<string | null>(null);
   useEffect(() => {
     if (!focusName || !nodes[focusName]) return;
@@ -369,7 +370,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     window.addEventListener("resize", f);
     const c = canvasRef.current; c?.addEventListener("scroll", f);
     return () => { window.removeEventListener("resize", f); c?.removeEventListener("scroll", f); };
-  }, [path, sel]); // eslint-disable-line
+  }, [path, sel, canGovern]); // eslint-disable-line
 
   useEffect(() => {
     if (!embedded) return;
@@ -418,7 +419,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     return () => {
       canvas.removeEventListener("wheel", onWheel);
     };
-  }, [embedded, net]); // eslint-disable-line
+  }, [embedded, net, canGovern]); // eslint-disable-line
   useEffect(() => {
     if (!embedded || canGovern) return;
     const canvas = canvasRef.current;
@@ -515,7 +516,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     const up = () => { if (pan) { pan = false; c.classList.remove("ag-panning"); } };
     c.addEventListener("mousedown", down); window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
     return () => { c.removeEventListener("mousedown", down); window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
-  }, []);
+  }, [canGovern]);
 
   const node = nodes[sel];
   const drafts = net.drafts || [];
@@ -567,7 +568,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
           if (!canGovern) { e.preventDefault(); return; }
           e.dataTransfer.setData(PROJECT_DRAG_MIME, id);
           // 顺手带一份显示名：组那头的回执要说「已从 <项目名> 启动一名成员」。
-          e.dataTransfer.setData("text/plain", dname(n));
+          e.dataTransfer.setData(GROUP_DRAG_LABEL_MIME, dname(n));
           setDrag(id);
         }}
         onDragEnd={() => setDrag(null)}
@@ -743,7 +744,11 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
             </Button>
           )}
         </header>
-        {graph}
+        {canGovern ? <>
+          <ProjectSkillTree focusProject={sel} refreshKey={net} onFocusProject={slug => focusNode(slug, undefined, false)} onOpenProject={onDetail}
+            onProjectMenu={onOpenMenu} onAddProject={onAddChild} onReparentProject={askReparent} />
+          {reparent && <ReparentModal node={reparent.node} target={reparent.target} onClose={() => setReparent(null)} onDone={() => { setReparent(null); onChanged(); }} />}
+        </> : graph}
       </section>
     );
   }

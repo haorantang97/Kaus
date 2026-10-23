@@ -73,7 +73,7 @@ async def test_legacy_work_modes_and_explicit_options_reach_distinct_rpcs_and_re
             # A native session can use legacy modes alongside configOptions.
             result["modes"] = deepcopy(MODES)
         if method in ("session/set_mode", "session/set_config_option"):
-            calls.append((method, params.get("optionId"), params.get("value", params.get("modeId"))))
+            calls.append((method, params.get("configId"), params.get("value", params.get("modeId"))))
         return result
 
     monkeypatch.setattr(AcpConnection, "call", capture)
@@ -121,7 +121,7 @@ async def test_unmapped_native_workspace_default_is_not_elevated_automatically(m
     permission_changes = []
 
     async def capture(self, method, params, **kwargs):
-        if method == "session/set_config_option" and params.get("optionId") == "file-scope":
+        if method == "session/set_config_option" and params.get("configId") == "file-scope":
             permission_changes.append(params)
         return await original(self, method, params, **kwargs)
 

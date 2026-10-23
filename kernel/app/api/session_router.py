@@ -71,7 +71,7 @@ import contextlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -339,6 +339,7 @@ def build_session_router(
     surface_coordinator: SurfaceCoordinator | None = None,
     debug_endpoints: bool = False,
     attachment_root: str | Path | None = None,
+    module_conversation_ids: Callable[[], set[str]] | None = None,
 ) -> Any:
     """装配会话路由。返回一个框架的 ``APIRouter``，由调用方 include。
 
@@ -666,6 +667,9 @@ def build_session_router(
                 normalized, include_group_only=include_group_only, archived=archived
             )
         )
+        if module_conversation_ids is not None:
+            hidden = module_conversation_ids()
+            conversations = [item for item in conversations if item.id not in hidden]
         return conversation_list_to_wire(
             conversations,
             project_id=normalized,
@@ -694,6 +698,8 @@ def build_session_router(
                 "binding_project_mismatch",
                 f"Binding {binding.id} 不属于 Project {normalized}（D-06：不在中途换绑）",
             )
+        from app.api.backend_facets import require_new_work
+        require_new_work(registry.try_get(binding.backend_id), backend_id=binding.backend_id)
         conversation = Conversation.create(
             project_id=normalized,
             agent_binding_id=binding.id,
@@ -728,15 +734,17 @@ def build_session_router(
             project_id = normalize_project_id(project)
             if await repositories.projects.get(project_id) is None:
                 raise _not_found("project_not_found", f"未知 Project：{project}")
+        hidden = module_conversation_ids() if module_conversation_ids else set()
         conversations = list(
             await repositories.conversations.list_recent(
                 updated_after=since,
                 project_id=project_id,
-                limit=limit,
+                limit=limit + len(hidden),
                 include_group_only=include_group_only,
                 archived=archived,
             )
         )
+        conversations = [item for item in conversations if item.id not in hidden][:limit]
         # Binding 按 id 去重后再取：一条会话一次查库会让 50 条列表变成 50 次
         # 点查，而同一个项目下的会话通常共用少数几条 Binding。
         backend_by_binding: dict[str, str | None] = {}
@@ -803,13 +811,24 @@ def build_session_router(
         run_state = await host.run_state_of(conversation)
         runtime = runtime_view(active=host.is_active(conversation_id), handle=handle, owner=owner)
         runtime["workspaceRoot"] = await _conversation_workspace(conversation)
+        from app.conversations.continuation import readable_record
+        continuation = readable_record(await repositories.settings.get(f"continuation:{conversation_id}"))
+        timeline = await _timeline_of(conversation_id)
+        if continuation:
+            origin = continuation.get("source", {})
+            source_available = origin.get("kind") == "conversation" and await repositories.conversations.get(origin["id"]) is not None
+            continuation = {**{key: value for key, value in continuation.items() if key != "fileAliases"}, "sourceAvailable": source_available}
+        if continuation and timeline and any(item.kind == "message" and item.role == "user" and item.delivery_status != "failed" for item in timeline.items):
+            continuation = {**continuation, "draft": ""}
         return {
             "conversation": conversation_to_wire(conversation, run_state=run_state),
+            **({"continuation": continuation} if continuation else {}),
             "bookmarkedMessageIds": list(await repositories.conversations.bookmarks(conversation_id)),
+            "historyStorage": await host.native_storage_status(conversation),
             "runtime": runtime,
             # 页头以它为准，而不是自己从时间线推断（批次十七第 5 件）。
             "runState": run_state,
-            "timeline": timeline_summary(await _timeline_of(conversation_id)),
+            "timeline": timeline_summary(timeline),
             # R-04：软提示与「能不能发」无关，UI 照常允许发送。
             "advisory": advisory_to_wire(host.advisory_for(conversation_id)),
             # 批次四十三：这条会话建起来时**真的送进引擎**的项目能力，只有名字
@@ -869,8 +888,18 @@ def build_session_router(
         """
         conversation = await _load_conversation(conversation_id)
         await host.stop_runtime(conversation_id)
-        await repositories.conversations.delete(conversation_id)
-        await host.purge_conversation(conversation)
+        try:
+            async with host.conversation_control(conversation_id):
+                conversation = await _load_conversation(conversation_id)
+                owner = await host.describe_runtime_owner(conversation_id)
+                if owner and owner.owner_type == "external-cli":
+                    # Keep the native-session identity until the existing
+                    # handoff confirms local and remote tools have stopped.
+                    raise SessionApiError(409, "surface_external_active", "请先结束终端中的对话。")
+                await repositories.conversations.delete(conversation_id)
+                await host.purge_conversation(conversation)
+        except TurnAlreadyRunningError as exc:
+            raise SessionApiError(409, "turn_already_running", "请结束当前回复后重试。") from exc
         return {"conversationId": conversation_id, "deleted": True}
 
     @_endpoint
@@ -1145,7 +1174,10 @@ def build_session_router(
     @_endpoint
     async def get_file(conversation_id: str, path: str = Query(..., max_length=4096), download: bool = False) -> Any:
         conversation = await _load_conversation(conversation_id)
-        file = files.read(conversation_id, await _conversation_workspace(conversation), path)
+        from app.conversations.continuation import owned_reference_alias
+        continuation = await repositories.settings.get(f"continuation:{conversation_id}")
+        owned = owned_reference_alias(continuation, path)
+        file = files.read(conversation_id, None if owned else await _conversation_workspace(conversation), owned or path)
         disposition = "attachment" if download or not (file.mime_type.startswith("image/") or file.mime_type in {"text/plain", "application/pdf"}) else "inline"
         return Response(
             file.content, media_type=file.mime_type,
@@ -1168,6 +1200,28 @@ def build_session_router(
             raise SessionApiError(400, "empty_message", "请输入消息或添加附件。")
         prepared = files.prepare(conversation_id, await _conversation_workspace(conversation), body.attachments)
         message = MessageInput(text=body.text, attachments=prepared, metadata=dict(body.metadata), client_ref=(body.client_ref or "").strip() or None)
+        # References come only from this conversation's accepted handoff record.
+        # Never interpret client metadata as local-file authorization. They are
+        # supplied on the first accepted turn (or a confirmed failed retry).
+        from app.conversations.continuation import readable_record
+        continuation = readable_record(await repositories.settings.get(f"continuation:{conversation_id}"))
+        if continuation and continuation.get("contextFilesVersion") == 1:
+            prior = await host.timeline_from_store(conversation_id)
+            started = any(item.kind == "message" and item.role == "user" and item.delivery_status != "failed"
+                          for item in (prior.items if prior else ()))
+            if not started:
+                from drivers.base import AttachmentRef
+                context_files = []
+                for reference in continuation.get("files", ()):
+                    # Only conversation-owned uploads qualify; workspace access
+                    # is deliberately absent here. A removed optional reference
+                    # does not prevent sending the reviewed handoff itself.
+                    try:
+                        document = files.read(conversation_id, None, reference["ref"])
+                        context_files.append(AttachmentRef(kind="file", ref=reference["ref"], name=document.name, mime_type=document.mime_type))
+                    except (ApiError, OSError, ValueError, KeyError):
+                        continue
+                message = message.model_copy(update={"context_files": tuple(context_files)})
         # 批次十一第 2 件：Runtime 起不来 = **一个字都没发出去**。这类失败要顺带
         # 告诉前端「这条会话至今是空的」，它才敢紧接着调 DELETE 把空壳收掉。
         # 起来之后再失败就不带这个标记了——那时用户那句话已经在时间线上。
@@ -1269,11 +1323,19 @@ def build_session_router(
             },
         )
 
+    @_endpoint
+    async def message_receipt(conversation_id: str, clientRef: str = Query(..., min_length=1, max_length=64)) -> Any:
+        await _load_conversation(conversation_id)
+        events=await host.event_store.message_receipt(conversation_id,clientRef)
+        status="unknown" if not events else "failed" if events[-1].event.name == "user.message.failed" else "recorded"
+        return {"conversationId":conversation_id,"clientRef":clientRef,"status":status,
+                "events":[envelope_to_wire(event) for event in events]}
+
     # --- 事件流（SSE） ------------------------------------------------------ #
 
     @_endpoint
     async def stream_events(
-        conversation_id: str, after: int | None = Query(None, ge=0)
+        conversation_id: str, after: int | None = Query(None, ge=-1)
     ) -> Any:
         conversation = await _load_conversation(conversation_id)
         # AD-136 的第三处：附着事件流时先收敛一次失配，合成的 `run.failed` 因此
@@ -1323,7 +1385,7 @@ def build_session_router(
 
     @_endpoint
     async def events_snapshot(
-        conversation_id: str, since: int | None = Query(None, ge=0)
+        conversation_id: str, since: int | None = Query(None, ge=-1)
     ) -> Any:
         """``GET /api/conversations/{id}/events/snapshot?since=<sequence>``。
 
@@ -1353,7 +1415,7 @@ def build_session_router(
         elif since is not None:
             last_sequence = since
         else:
-            last_sequence = await host.event_store.latest_sequence(conversation_id) or 0
+            last_sequence = -1  # No delivered event: sequence 0 has not been observed.
         return {
             "conversationId": conversation_id,
             "events": [envelope_to_wire(envelope) for envelope in page],
@@ -1472,7 +1534,8 @@ def build_session_router(
         except DriverNotRegisteredError as exc:
             raise _driver_not_registered(binding.backend_id) from exc
         try:
-            history = await driver.load_native_history(
+            load_preview = getattr(driver, "load_native_history_preview", driver.load_native_history)
+            history = await load_preview(
                 binding, conversation.native_session_id
             )
         except UnsupportedCapabilityError as exc:
@@ -1555,9 +1618,7 @@ def build_session_router(
             # 断的时候（runtime 刚停）。同一份东西走两条路送达，谁先到用谁。
             "entries": [dict(entry) for entry in handoff.entries],
             "entryCount": len(handoff.entries),
-            "lastEntryId": (
-                handoff.entries[-1]["entryId"] if handoff.entries else None
-            ),
+            "lastEntryId": handoff.last_entry_id,
             "complete": handoff.complete,
             "gaps": list(handoff.gaps),
         }
@@ -2076,6 +2137,10 @@ def build_session_router(
             ["POST"],
             "session_send_message",
             [_auth],
+        ),
+        (
+            "/conversations/{conversation_id}/messages/receipt", message_receipt,
+            ["GET"], "session_message_receipt", [_auth],
         ),
         (
             "/conversations/{conversation_id}/attachments", upload_attachment,

@@ -7,6 +7,8 @@ import { App } from "./App";
 import { TerminalLab } from "./components/TerminalLab";
 import { CardsPreview } from "./components/cards/preview";
 import "./styles/controls.css";
+import { currentLocale } from "./i18n";
+import { failureDiagnostic } from "./lib/userFacingErrors";
 
 class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
@@ -21,7 +23,8 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
 
   render() {
     if (!this.state.error) return this.props.children;
-    const message = this.state.error.message || String(this.state.error);
+    const message = failureDiagnostic(this.state.error);
+    const zh = currentLocale() === "zh";
     return (
       <div
         style={{
@@ -44,22 +47,9 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
             boxShadow: "var(--shadow-lg)",
           }}
         >
-          <div
-            style={{
-              color: "var(--accent-text)",
-              fontFamily: "var(--theme-font-mono)",
-              fontSize: 11,
-              letterSpacing: ".16em",
-              textTransform: "uppercase",
-              marginBottom: 8,
-            }}
-          >
-            Dashboard Render Guard
-          </div>
-          <h1 style={{ margin: "0 0 10px", fontSize: 22, fontWeight: 800 }}>The interface hit a rendering error</h1>
-          <p style={{ margin: "0 0 14px", color: "color-mix(in srgb, var(--midground-base) 62%, transparent)", lineHeight: 1.6 }}>
-            Backend services and PTY sessions are not stopped by this error. Try recovering the view first; if it repeats, send the error below to the maintenance agent.
-          </p>
+          <h1 style={{ margin: "0 0 14px", fontSize: 20, fontWeight: 600 }}>{zh ? "界面暂时无法显示" : "Unable to display this view"}</h1>
+          <details>
+            <summary style={{ fontSize: 12, cursor: "pointer", color: "color-mix(in srgb, var(--midground-base) 55%, transparent)" }}>{zh ? "详情" : "Details"}</summary>
           <pre
             style={{
               maxHeight: 160,
@@ -74,6 +64,7 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
           >
             {message}
           </pre>
+          </details>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
             <button
               type="button"
@@ -86,7 +77,7 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
                 background: "transparent",
               }}
             >
-              Recover View
+              {zh ? "重试" : "Try again"}
             </button>
             <button
               type="button"
@@ -99,7 +90,7 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
                 background: "var(--gold-soft)",
               }}
             >
-              Reload
+              {zh ? "重新加载" : "Reload"}
             </button>
           </div>
         </section>

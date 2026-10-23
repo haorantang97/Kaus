@@ -1,19 +1,36 @@
-/* Shared feedback for native controls, menu items and disclosure buttons. */
+/* Quiet controls: shape appears on interaction; emphasis belongs to state. */
 :root, body.dark {
-  --control-hover: color-mix(in srgb, var(--midground-base) 7%, transparent);
-  --control-pressed: color-mix(in srgb, var(--midground-base) 12%, transparent);
-  --control-focus: color-mix(in srgb, var(--midground-base) 58%, transparent);
-  --control-duration: 160ms;
+  --control-hover: color-mix(in srgb, var(--midground-base) 6%, transparent);
+  --control-pressed: color-mix(in srgb, var(--midground-base) 10%, transparent);
+  --control-focus: color-mix(in srgb, var(--midground-base) 64%, transparent);
+  --control-duration: 150ms;
+  --hairline: 1px;
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-dialog: 16px;
+  --radius-composer: 14px;
+  --motion-fast: 60ms;
+  --motion-snap: 120ms;
+  --motion-base: 200ms;
+  --motion-sheet: 300ms;
+  --motion-slow: 450ms;
+  --ease-out: cubic-bezier(.165, .84, .44, 1);
+  --ease-snap: cubic-bezier(.32, .72, 0, 1);
+  --ease-overshoot: cubic-bezier(.34, 1.3, .64, 1);
 }
+
+@media (min-resolution: 2dppx) { :root, body.dark { --hairline: .5px; } }
+@media (min-resolution: 3dppx) { :root, body.dark { --hairline: calc(1px / 3); } }
 
 body :is(button, [role="button"], summary) {
   font-family: var(--theme-font-sans);
   font-weight: 500;
   letter-spacing: normal;
   text-transform: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-body :is(.kaus-button--primary, .kaus-conversation-title, .shell-nav-item) {
+body :is(.kaus-button--primary, .kaus-conversation-title, .shell-nav-item.is-active) {
   font-weight: 600;
 }
 
@@ -27,27 +44,57 @@ body :is(.kaus-button--primary, .kaus-conversation-title, .shell-nav-item) {
   text-transform: none;
 }
 
-:is(.kaus-button--primary, .kaus-send, .kaus-workspace-select,
-    .shell-nav-item.is-active, .sidebar-agent-row.is-current, .theme-toggle.is-active) {
+.kaus-button--ghost,
+.kaus-button--danger,
+.kaus-icon-control {
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.kaus-button--danger {
+  color: var(--danger);
+  --control-hover: color-mix(in srgb, var(--danger) 7%, transparent);
+  --control-pressed: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.kaus-button[aria-pressed="true"]:not(.kaus-button--primary) {
+  background: var(--control-pressed);
+  color: var(--midground-base);
+}
+
+/* Dark mode retains its accent selections; light mode uses neutral states. */
+body.dark .kaus-button--accent[aria-pressed="true"]:not(.kaus-button--primary) {
+  background: var(--gold-soft);
+  color: var(--accent-text);
+}
+body.dark .kaus-icon-control.kaus-icon-control--accent { color: var(--accent-text); }
+
+.kaus-icon-control {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  border-radius: 7px;
+  color: color-mix(in srgb, var(--midground-base) 65%, transparent);
+  cursor: pointer;
+}
+
+:is(.kaus-button--primary, .kaus-send, .kaus-workspace-select) {
   --control-hover: color-mix(in srgb, var(--background-base) 12%, transparent);
   --control-pressed: color-mix(in srgb, var(--background-base) 20%, transparent);
 }
 
-body :is(button, [role="button"], summary, .kaus-preview-actions > a)
-  :is(svg.lucide, .shell-nav-icon > svg) {
-  transition: translate var(--control-duration) ease,
-    scale var(--control-duration) ease, rotate var(--control-duration) ease;
-  transform-origin: center;
-}
-
 body :is(button, [role="button"], summary, .kaus-preview-actions > a) {
-  transition: color var(--control-duration) ease,
-    background-color var(--control-duration) ease,
-    border-color var(--control-duration) ease,
-    box-shadow var(--control-duration) ease;
+  transition: color var(--control-duration) var(--ease-out),
+    background-color var(--control-duration) var(--ease-out),
+    border-color var(--control-duration) var(--ease-out),
+    box-shadow var(--control-duration) var(--ease-out);
 }
 
-/* An inset tint preserves each control's fill and leaves text and layout still. */
+/* The tint leaves primary fills, switches and selected states intact. */
 @media (hover: hover) {
   body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
     :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter, .kaus-jump-marker, .kaus-jump-preview-link
@@ -56,44 +103,227 @@ body :is(button, [role="button"], summary, .kaus-preview-actions > a) {
   }
 }
 
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
-    :disabled, [aria-disabled="true"], [aria-busy="true"]
-  ):hover :is(svg.lucide, .shell-nav-icon > svg):not(
-    .animate-spin, .kaus-ui-spin, .kaus-bar-caret, [class*="lucide-chevron"]
-  ) {
-    translate: 0 -1px;
-    scale: 1.06;
-  }
-
-  body :is(button, [role="button"]):not(:disabled, [aria-disabled="true"], [aria-busy="true"]):hover
-    :is(.lucide-plus, .lucide-settings, .lucide-refresh-cw, .lucide-rotate-cw):not(.animate-spin, .kaus-ui-spin) {
-    rotate: 16deg;
-  }
-
-  body :is(button, [role="button"]):not(:disabled, [aria-disabled="true"], [aria-busy="true"]):hover .lucide-arrow-right {
-    translate: 2px 0;
-  }
-
-  body .kaus-send:not(:disabled):hover .lucide-arrow-up {
-    translate: 0 -2px;
-  }
-}
-
 body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
-  :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter, .kaus-jump-marker, .kaus-jump-preview-link
-):focus-visible {
+  :disabled, [aria-disabled="true"], .kaus-project-enter, .kaus-jump-marker, .kaus-jump-preview-link
+):focus-visible,
+body :is(input, select, textarea):not(:disabled):focus-visible {
   outline: 2px solid var(--control-focus);
   outline-offset: 3px;
-  box-shadow: inset 0 0 0 100vmax var(--control-hover);
 }
 
+/* Press feedback works on touch as well as pointer devices. */
 body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
   :disabled, [aria-disabled="true"], [aria-busy="true"], .kaus-project-enter, .kaus-jump-marker, .kaus-jump-preview-link
 ):active {
   box-shadow: inset 0 0 0 100vmax var(--control-pressed);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  :root, body.dark { --control-duration: 0ms; }
+:is(.kaus-button, .kaus-icon-control):is(:disabled, [aria-disabled="true"]) {
+  cursor: default;
+  opacity: .42;
+  box-shadow: none;
 }
+
+.kaus-icon-control[aria-busy="true"] {
+  cursor: wait;
+}
+
+/* Module boundaries use space and type; borders are reserved for major planes. */
+.kaus-overlay {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  color: var(--midground-base);
+}
+
+.kaus-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 8%, transparent);
+}
+
+body.dark .kaus-overlay-header { border-bottom-color: color-mix(in srgb, var(--gold-deep) 30%, transparent); }
+
+.kaus-overlay-title {
+  margin: 0;
+  color: var(--midground-base);
+  font: 600 20px/1.35 var(--theme-font-sans);
+  letter-spacing: -.02em;
+}
+
+body.dark .kaus-overlay-title { color: var(--accent-text); }
+
+.kaus-overlay-actions {
+  display: flex;
+  margin-left: auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.kaus-overlay-body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px;
+}
+
+.kaus-card {
+  overflow: hidden;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--midground-base) 2%, transparent);
+}
+
+.kaus-card-header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 18px 18px 0;
+}
+
+.kaus-card-title,
+.kaus-section-title {
+  margin: 0;
+  font: 600 13px/1.5 var(--theme-font-sans);
+}
+
+.kaus-card-header > svg {
+  color: color-mix(in srgb, var(--midground-base) 65%, transparent);
+}
+
+body.dark .kaus-card-header > svg { color: var(--accent-text); }
+
+.kaus-card-body { padding: 18px; }
+
+.kaus-section { padding: 20px 0; }
+
+.kaus-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+body.dark .kaus-section-header::before {
+  content: "";
+  align-self: center;
+  flex: 0 0 3px;
+  height: 13px;
+  border-radius: 1px;
+  background: var(--gold-deep);
+}
+
+.kaus-section-meta {
+  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  font-size: 11px;
+}
+
+.kaus-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font: 500 11px/1.5 var(--theme-font-sans);
+  white-space: nowrap;
+}
+
+.kaus-modal-title {
+  margin: 0 0 6px;
+  font: 600 15px/1.5 var(--theme-font-sans);
+}
+
+.kaus-modal-layer { animation: kaus-fade-in var(--motion-snap) var(--ease-out); }
+.kaus-modal-content {
+  max-height: min(88dvh, calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
+  border: 0;
+  border-radius: var(--radius-dialog);
+  background: var(--surface-raised);
+  color: var(--midground-base);
+  box-shadow: var(--shadow-popover);
+  outline: none;
+  animation: kaus-dialog-in var(--motion-base) var(--ease-out);
+  transition: filter var(--motion-snap) var(--ease-out), opacity var(--motion-snap) var(--ease-out);
+}
+.kaus-modal-layer[data-nested-dialog-open] > .kaus-modal-content { filter: blur(2px); opacity: .65; }
+.kaus-modal-content :is(input, textarea, select) { border-color: transparent; }
+.kaus-context-menu { border:0; border-radius:10px; background:var(--surface-raised); box-shadow:var(--shadow-popover); animation:kaus-menu-in var(--motion-base) var(--ease-out); }
+.kaus-context-menu [role="menuitem"] { border-radius:6px; min-height:32px; }
+.sidebar-agent-row:focus-within .opacity-0 { opacity:1; }
+@keyframes kaus-fade-in { from { opacity:0; } to { opacity:1; } }
+@keyframes kaus-dialog-in { from { opacity:0; transform:scale(.95); } to { opacity:1; transform:scale(1); } }
+@keyframes kaus-menu-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+@media (prefers-reduced-motion:no-preference) {
+  :is(.kaus-button, .kaus-icon-control, .kaus-select-trigger) { transition:background-color var(--control-duration) var(--ease-out), scale var(--motion-snap) var(--ease-overshoot); }
+  :is(.kaus-button, .kaus-icon-control, .kaus-select-trigger):not(:disabled):active { scale:.98; }
+}
+
+@media (pointer: coarse) {
+  .kaus-icon-control { min-width: 44px; min-height: 44px; }
+  .kaus-button { min-height: 44px; }
+  .sidebar-agent-row .opacity-0 { opacity:1; }
+}
+
+@media (max-width: 640px) {
+  .kaus-overlay-header { padding: 18px 18px 14px; }
+  .kaus-overlay-body { padding: 20px 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root, body.dark { --control-duration: 0ms; --motion-fast:0ms; --motion-snap:0ms; --motion-base:0ms; --motion-sheet:0ms; --motion-slow:0ms; }
+}
+
+/* Native popup menus need an opaque surface, even when the closed control blends in. */
+select option,
+select optgroup {
+  color: var(--midground-base);
+  background-color: var(--surface-raised);
+}
+select option:disabled { color: color-mix(in srgb, var(--midground-base) 48%, var(--surface-raised)); }
+
+/* Seven-stop optical fade; removes itself at the first and last content edges. */
+.kaus-scroll-fade {
+  --fade-top: 0px;
+  --fade-bottom: 0px;
+  mask-image: linear-gradient(to bottom,
+    transparent 0, rgb(0 0 0 / .051) calc(var(--fade-top) * .15),
+    rgb(0 0 0 / .149) calc(var(--fade-top) * .3), rgb(0 0 0 / .302) calc(var(--fade-top) * .45),
+    rgb(0 0 0 / .502) calc(var(--fade-top) * .6), rgb(0 0 0 / .702) calc(var(--fade-top) * .75),
+    rgb(0 0 0 / .851) calc(var(--fade-top) * .87), #000 var(--fade-top),
+    #000 calc(100% - var(--fade-bottom)), rgb(0 0 0 / .851) calc(100% - var(--fade-bottom) * .87),
+    rgb(0 0 0 / .702) calc(100% - var(--fade-bottom) * .75), rgb(0 0 0 / .502) calc(100% - var(--fade-bottom) * .6),
+    rgb(0 0 0 / .302) calc(100% - var(--fade-bottom) * .45), rgb(0 0 0 / .149) calc(100% - var(--fade-bottom) * .3),
+    rgb(0 0 0 / .051) calc(100% - var(--fade-bottom) * .15), transparent 100%);
+}
+.kaus-scroll-fade[data-fade-top="true"] { --fade-top: 28px; }
+.kaus-scroll-fade[data-fade-bottom="true"] { --fade-bottom: 28px; }
+
+.kaus-segmented { display: inline-grid; position: relative; isolation: isolate; grid-template-columns: repeat(var(--segment-count), minmax(0, 1fr)); padding: 1px; border-radius: var(--radius-control); background: var(--control-hover); }
+.kaus-segmented-indicator { position: absolute; z-index: -1; top: 1px; bottom: 1px; left: 1px; width: calc((100% - 2px) / var(--segment-count)); border-radius: calc(var(--radius-control) - 1px); background: var(--surface-3); box-shadow: var(--shadow-sm); transform: translateX(calc(var(--segment-index) * 100%)); transition: transform var(--motion-snap) var(--ease-snap); }
+.kaus-segmented > button { border: 0; background: transparent; padding: 6px 12px; min-height: 30px; border-radius: calc(var(--radius-control) - 1px); color: var(--text-muted); white-space: nowrap; }
+.kaus-segmented > button[aria-pressed="true"] { color: var(--midground-base); }
+body.dark .kaus-segmented-indicator { background: var(--gold-soft); box-shadow: none; }
+body.dark .kaus-segmented > button[aria-pressed="true"] { color: var(--accent-text); }
+
+.kaus-conversation-row { position: relative; }
+.kaus-sidebar-pin { display: inline-grid; flex: 0 0 24px; width: 24px; height: 24px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--midground-base); opacity: 0; }
+.kaus-sidebar-pin.is-pinned { opacity: .48; }
+.kaus-conversation-row:hover .kaus-sidebar-pin, .kaus-conversation-row:focus-within .kaus-sidebar-pin { opacity: 1; }
+.kaus-conversation-row[data-pin-drop]::after { content: ""; position: absolute; left: 12px; right: 8px; height: 2px; border-radius: 1px; background: var(--accent-text); pointer-events: none; }
+.kaus-conversation-row[data-pin-drop="before"]::after { top: 0; }
+.kaus-conversation-row[data-pin-drop="after"]::after { bottom: 0; }
+@media (hover: none), (pointer: coarse) { .kaus-sidebar-pin { opacity: 1; min-width: 44px; min-height: 44px; } }
+
+.kaus-context-ring { display:inline-flex; vertical-align:middle; flex:none; color:var(--midground-base); opacity:.6; }
+.kaus-context-ring.is-warning { color:var(--danger); opacity:1; }
+.kaus-usage-pill { align-items:center; gap:3px; }
+/* One enclosing composer surface, with restrained resting/hover/focus elevation. */
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer,
+.kaus-group-workspace .kaus-group-composer-row { box-shadow:var(--shadow-sm); transition:box-shadow var(--motion-base) var(--ease-out), border-color var(--motion-base) var(--ease-out); }
+@media (hover:hover) {
+  :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer:hover,
+  .kaus-group-workspace .kaus-group-composer-row:hover { box-shadow:var(--shadow-md); }
+}
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer:focus-within,
+.kaus-group-workspace .kaus-group-composer-row:focus-within { box-shadow:var(--shadow-md),0 0 0 var(--hairline) color-mix(in srgb,var(--midground-base) 16%,transparent); }

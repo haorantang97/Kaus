@@ -30,8 +30,8 @@
 -----------------------------------------
 - 脚本里**不出现任何密钥值**。``env_passthrough`` 只写变量**名**（落在注释里
   给人看、落在 :class:`~app.runtimes.models.TerminalLaunch` 里给账本看），
-  值由用户自己的 shell 提供，本模块从不读 ``.env``、不读凭据文件、
-  不把 ``os.environ`` 的任何值写进文件。
+  显式连接环境通过同用户的一次性 Unix socket 在内存中交接，未覆盖的变量
+  继续使用终端 shell。本模块不读凭据文件、不把环境值写进启动文件或账本。
 - ``command_summary`` 同样只由已引用的 argv 拼成——Driver 已保证规格里没有 Secret。
 
 降级（不抛异常）
@@ -57,6 +57,7 @@ from app.runtimes.models import TerminalLaunch
 from app.runtimes.repository import TerminalLaunchRepository
 from drivers.base import CliLaunchSpec
 from drivers.terminals.integrations import prepare_command
+from drivers.terminals.environment import EnvironmentRelay
 from drivers.terminals.managed_process import stop as stop_managed_process
 from runtime.lease_manager import LeaseManager
 
@@ -117,7 +118,7 @@ def build_launch_script(
     lines = [
         "#!/bin/zsh",
         "# Kaus Terminal Launcher（v1.0 §8.5）。本文件不含任何密钥：",
-        "# 要透传的环境变量只列名字，值由你自己的 shell 提供（AD-10）。",
+        "# 环境值仅在进程间传递，启动文件不保存凭据。",
     ]
     if spec.env_passthrough:
         lines.append("# env passthrough: " + " ".join(spec.env_passthrough))
@@ -190,6 +191,7 @@ class TerminalLauncher:
         path_prefix: str = DEFAULT_PATH_PREFIX,
         clock: Callable[[], datetime] = _utcnow,
         app_provider: Callable[[], str] | None = None,
+        environment_timeout: float = 15.0,
     ) -> None:
         self.root = Path(root)
         self.app = app or DEFAULT_TERMINAL_APP
@@ -198,6 +200,8 @@ class TerminalLauncher:
         self.path_prefix = path_prefix
         self._clock = clock
         self._app_provider = app_provider
+        self.environment_timeout = environment_timeout
+        self._environment_relays: dict[str, EnvironmentRelay] = {}
 
     def selected_app(self) -> str:
         return self._app_provider() if self._app_provider else self.app
@@ -250,26 +254,45 @@ class TerminalLauncher:
         pid_path = directory / PID_FILENAME
         exit_path = directory / EXIT_FILENAME
         script_path = directory / SCRIPT_FILENAME
-        script_path.write_text(
-            build_launch_script(
-                spec.model_copy(update={"command": prepare_command(spec, directory, app)}),
+        relay = None
+        try:
+            command = prepare_command(spec, directory, app)
+            if spec.private_env:
+                relay = EnvironmentRelay(spec.private_env, timeout=self.environment_timeout,
+                    on_close=lambda: self._environment_relays.pop(launch.id, None))
+                await relay.start()
+                self._environment_relays[launch.id] = relay
+                command = relay.command(command)
+            script = build_launch_script(
+                spec.model_copy(update={"command": command}),
                 launch_id=launch.id,
                 pid_path=pid_path,
                 exit_path=exit_path,
                 path_prefix=self.path_prefix,
                 guarded=True,
-            ),
-            encoding="utf-8",
-        )
-        _harden(script_path, SCRIPT_MODE)
-
-        if self._opener is macos_open:
-            opened, reason = await asyncio.to_thread(macos_open, app, script_path, cwd=spec.cwd, title=spec.title)
-        else:
-            opened, reason = await asyncio.to_thread(self._opener, app, script_path)
-        if not opened and read_pid(pid_path) is not None:
-            opened, reason = True, None
+            )
+            script_path.write_text(script, encoding="utf-8")
+            _harden(script_path, SCRIPT_MODE)
+            if self._opener is macos_open:
+                opened, reason = await asyncio.to_thread(macos_open, app, script_path, cwd=spec.cwd, title=spec.title)
+            else:
+                opened, reason = await asyncio.to_thread(self._opener, app, script_path)
+            if not opened and read_pid(pid_path) is not None:
+                opened, reason = True, None
+            if opened and relay is not None and not await relay.wait():
+                opened, reason = False, "终端环境准备超时，请重试"
+        except asyncio.CancelledError:
+            if relay is not None:
+                await relay.aclose()
+            await asyncio.to_thread(stop_managed_process, directory, read_pid(pid_path))
+            raise
+        except Exception:
+            if relay is not None:
+                await relay.aclose()
+            opened, reason = False, "终端启动失败，请重试"
         if not opened:
+            if relay is not None:
+                await relay.aclose()
             # An unconfirmed delayed workspace must not start after its lease
             # has been returned to the conversation page.
             await asyncio.to_thread(stop_managed_process, directory, read_pid(pid_path))
@@ -293,7 +316,15 @@ class TerminalLauncher:
             script_path=script_path,
         )
 
+    async def aclose(self) -> None:
+        for relay in tuple(self._environment_relays.values()):
+            await relay.aclose()
+        self._environment_relays.clear()
+
     async def stop(self, launch: TerminalLaunch) -> tuple[bool, str | None]:
+        relay = self._environment_relays.pop(launch.id, None)
+        if relay is not None:
+            await relay.aclose()
         directory = launch_dir(self.root, launch.id)
         pid = launch.external_process_ref or read_pid(directory / PID_FILENAME)
         return await asyncio.to_thread(stop_managed_process, directory, pid)
@@ -463,6 +494,16 @@ class ExternalCliMonitor:
             )
         pid = launch.external_process_ref or read_pid(directory / PID_FILENAME)
         if pid is None:
+            computer = launch.metadata.get("computerUse", {})
+            owner = computer.get("owner")
+            if computer.get("resources") and isinstance(owner, dict):
+                from drivers.terminals.managed_process import process_identity
+                if process_identity(owner["pid"]) != owner:
+                    # The backend stopped during launch, before a shell PID was
+                    # recorded. Existing entrypoint guards make revocation final.
+                    directory.mkdir(mode=LAUNCH_DIR_MODE, parents=True, exist_ok=True)
+                    (directory / "revoked").touch(mode=0o600)
+                    return ExitSignal(conversation_id, launch, -1, "launch-owner-gone")
             # 还没写出 pid：刚拉起，什么都别做。
             return None
         if self._is_alive(pid):

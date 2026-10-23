@@ -61,11 +61,13 @@ async def test_memory_bookmarks_do_not_cross_conversations_or_survive_deletion()
     assert await repository.bookmarked_conversations() == ()
 
 
-def test_expiry_preserves_bookmarked_history_until_the_last_bookmark_is_removed(harness, client):
+def test_history_retention_does_not_depend_on_bookmarks(harness, client):
     saved = harness.new_conversation(client)
     ordinary = harness.new_conversation(client)
 
     async def exercise():
+        from runtime.event_envelope import DiagnosticNotice
+
         repo = harness.repositories.conversations
         for cid in (saved, ordinary):
             conversation = await repo.get(cid)
@@ -74,12 +76,15 @@ def test_expiry_preserves_bookmarked_history_until_the_last_bookmark_is_removed(
             ))
             if cid == saved:
                 await repo.set_bookmark(cid, f"message:{envelope.event_id}", True)
+            await harness.host.emit_conversation_event(conversation, DiagnosticNotice(
+                level="info", message="Temporary diagnostic",
+            ))
         later = datetime.now(timezone.utc) + timedelta(days=8)
-        assert await harness.host.purge_expired_events(now=later) == 1
+        assert await harness.host.purge_expired_events(now=later) == 2
         assert len(await harness.host.event_store.replay(saved)) == 1
-        assert len(await harness.host.event_store.replay(ordinary)) == 0
+        assert len(await harness.host.event_store.replay(ordinary)) == 1
         mid = (await repo.bookmarks(saved))[0]
         await repo.set_bookmark(saved, mid, False)
-        assert await harness.host.purge_expired_events(now=later) == 1
-        assert len(await harness.host.event_store.replay(saved)) == 0
+        assert await harness.host.purge_expired_events(now=later) == 0
+        assert len(await harness.host.event_store.replay(saved)) == 1
     asyncio.run(exercise())

@@ -1,0 +1,9 @@
+{
+  "upstream": "https://github.com/block/goose",
+  "tag": "v1.52.0",
+  "commit": "302b60806639ea9f0ae8f053f49f8bf0e88b26f4",
+  "license": "Apache-2.0",
+  "sourceModuleSha256": "6a59c9e9ebbf4553cdd8195347757be9e5e13a587b07f035775cb69c3f886a1b",
+  "patchSha256": "812aafa3072ecc863ec51a1e10415cd5d28da019cb032d3a9af5bd72efc2b6d7",
+  "patchVersion": "kaus-skills-1"
+}

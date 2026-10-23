@@ -1,15 +1,6 @@
-/* Session Host（Phase 3B）与 Phase 1 领域库的前端接入层。
- *
- * 三条口径（IA §7.1 / AD-66 / D-17）：
- * 1. token 只放**内存**——不进 localStorage / sessionStorage / cookie。刷新时重新
- *    bootstrap，代价只有一次同源 GET。
- * 2. 普通请求带 `Authorization: Bearer`；**SSE 是唯一**走 `?token=` 的端点
- *    （EventSource 带不了自定义头），URL 由本层拼，组件不碰 token。
- * 3. 401 → 重新 bootstrap 一次再重试原请求；再 401 就抛错，由界面显示
- *    「会话功能未开启」。不做无限重试。
- *
- * 「会话功能开没开」的判断也在这里：前端不读后端 flag，只看
- * `GET /api/session-auth/bootstrap` 成不成功（flag 关闭时这条路由根本不存在 → 404）。
+/* Session API: the token stays in memory; ordinary requests use Bearer auth,
+ * SSE uses a query token, and a 401 refreshes authentication once. Connection
+ * failures are reported to the current shell without selecting a legacy UI.
  */
 
 import type { UiCapabilities } from "../components/cards/capabilities";
@@ -17,6 +8,7 @@ import type { BackendWire } from "../components/EnginePanel";
 import { authorizedFetch, currentSessionToken } from "./authorizedFetch";
 import { t } from "../i18n";
 import { messageRejectionReasonKey } from "./messageDelivery";
+import { failureSummary } from "./userFacingErrors";
 
 export type { BackendWire };
 
@@ -35,20 +27,13 @@ export class SessionApiError extends Error {
   }
 }
 
-/** Busy responses use concise localized copy. Other failures retain their
- *  diagnostic and recovery hint, including required sign-in commands. */
+/** Public failure copy stays short; the original error retains its diagnostic fields. */
 export function describeFailure(failure: unknown): string {
-  if (failure instanceof SessionApiError) {
-    const reasonKey = failure.code === "turn_already_running" ? messageRejectionReasonKey(failure.code) : null;
+  if (failure instanceof SessionApiError && failure.code === "turn_already_running") {
+    const reasonKey = messageRejectionReasonKey(failure.code);
     if (reasonKey) return t(reasonKey);
-    const detail = failure.detailFields.detail;
-    const hint =
-      detail && typeof detail === "object" && typeof (detail as { hint?: unknown }).hint === "string"
-        ? (detail as { hint: string }).hint
-        : null;
-    return hint ? `${failure.message} ${hint}` : failure.message;
   }
-  return String((failure as Error)?.message ?? failure);
+  return failureSummary(failure);
 }
 
 /** batch38 第 2 件（批次三十七 R6 的 wire）：`POST /messages` 在**用户消息已经落库
@@ -156,6 +141,7 @@ export interface EngineAuthStateWire {
 }
 
 export interface BindingWire {
+  catalogStatus?: "active" | "legacy";
   id: string;
   projectId: string;
   backendId: string;
@@ -333,6 +319,14 @@ export interface RuntimeViewWire {
 }
 
 export interface ConversationDetailWire {
+  continuation?: import("./continuations").ContinuationRecord;
+  historyStorage?: {
+    mode: "kaus" | "native_text";
+    status: "local" | "pending_verification" | "native" | "hybrid" | "fallback" | "source_unavailable";
+    missing: string[];
+    fromSequence?: number;
+    nativeSessionId?: string | null;
+  };
   conversation: ConversationWire;
   bookmarkedMessageIds?: string[];
   runtime: RuntimeViewWire;
@@ -744,6 +738,15 @@ export function fetchEventsSnapshot(
   return request(`/api/conversations/${encodeURIComponent(conversationId)}/events/snapshot${query}`, {
     signal,
   });
+}
+
+export function fetchMessageReceipt(conversationId: string, clientRef: string): Promise<{
+  conversationId: string;
+  clientRef: string;
+  status: "recorded" | "failed" | "unknown";
+  events: AgentEventEnvelopeWire[];
+}> {
+  return request(`/api/conversations/${encodeURIComponent(conversationId)}/messages/receipt?clientRef=${encodeURIComponent(clientRef)}`);
 }
 
 /** 中断当前一轮（★ 定稿 G-6 的「停止」）。

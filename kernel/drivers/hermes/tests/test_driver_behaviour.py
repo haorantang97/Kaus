@@ -289,9 +289,10 @@ async def test_history_falls_back_when_http_is_gone(rig, tmp_path: Path) -> None
     """规格 §4.2 第 3 级：HTTP 与直读都不可用 → 显式报缺，不假装成功。"""
     driver, project, binding = await _ready(rig)
     rig.servers["default"].stop()
-    history = await driver.load_native_history(binding, "api_1788339747_a7afdfa5")
-    assert history.complete is False
-    assert history.missing == ("history",)
+    with pytest.raises(RuntimeError, match="原生记录"):
+        await driver.load_native_history(binding, "api_1788339747_a7afdfa5")
+    preview = await driver.load_native_history_preview(binding, "api_1788339747_a7afdfa5")
+    assert preview.complete is False and preview.missing == ("history",)
 
 
 async def test_message_completed_uses_the_backend_output(rig) -> None:

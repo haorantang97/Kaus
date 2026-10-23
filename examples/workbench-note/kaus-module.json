@@ -1,0 +1,9 @@
+{
+  "id": "workbench-note",
+  "name": "任务便笺",
+  "version": "1.0.0",
+  "description": "可安装的模块接入示例",
+  "icon": "box",
+  "entry": "index.html",
+  "permissions": ["agent:run", "data:read", "data:write"]
+}

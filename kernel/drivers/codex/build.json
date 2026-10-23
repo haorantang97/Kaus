@@ -1,0 +1,11 @@
+{
+  "sourceUrl": "https://github.com/openai/codex",
+  "sourceVersion": "0.160.0",
+  "sourceCommit": "a956835d020762cb2b570053af06f643a11c0ecc",
+  "sourceHash": "351a23896ba75c2c32c2d9d2050a0987079d683ea4e92d3429b3e1833945e927",
+  "patchVersion": "kaus-skills-atomic-2",
+  "patchHash": "5885f47d7a727d95af8cc684bf365b7edccc9c6c1ae8934775982ef6162031cb",
+  "license": "Apache-2.0",
+  "rustToolchain": "1.95.0",
+  "sourceTree": "86470ebb896d0db80ef45197bc5f84d6ea41629c"
+}

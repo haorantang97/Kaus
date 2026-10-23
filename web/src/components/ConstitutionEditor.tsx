@@ -1,3 +1,4 @@
+import { ErrorNotice } from "./ui";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../lib/api";
 import { Button, cream, dname, HAIR, inputStyle, Pill, Spinner, toast } from "./ui";
@@ -27,7 +28,7 @@ export function ConstitutionEditor({ name, onSaved }: { name: string; onSaved?: 
     .catch((e) => setErr(String(e?.message ?? e)));
   useEffect(() => { setD(null); setErr(null); load(); }, [name]);
 
-  if (err) return <div className="py-3 text-xs" style={{ color: "var(--danger)" }}>加载失败：{err}</div>;
+  if (err) return <ErrorNotice error={err} className="py-3 text-xs" />;
   if (!d) return <div className="flex items-center gap-2 py-3 text-xs" style={{ color: cream(50) }}><Spinner /> 加载中…</div>;
   if (d.is_twin) return <p className="text-xs leading-relaxed" style={{ color: cream(50) }}>分身与主 agent（X）共享 SOUL，宪法在 X 上统一编辑、自动同步到分身——这里不单独改。</p>;
 

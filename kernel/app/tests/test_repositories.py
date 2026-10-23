@@ -52,7 +52,7 @@ from app.conversations.repository import (
 )
 from app.errors import DomainInvariantError, SlugImmutableError
 from app.events.models import (
-    DEFAULT_RETENTION,
+    RETAIN_UNTIL_CONVERSATION_GONE,
     DIAGNOSTIC_RETENTION,
     StoredEvent,
     retention_for,
@@ -1071,7 +1071,7 @@ async def test_event_store_requires_an_explicit_expiry(repos: RepositorySet) -> 
     """v1.0 §8.5：不接受「无保留策略」——``expires_at`` 是必填字段。"""
     assert StoredEvent.model_fields["expires_at"].is_required()
     stored = await repos.events.append(StoredEvent.from_envelope(envelope(0), now=NOW))
-    assert stored.expires_at == NOW + DEFAULT_RETENTION
+    assert stored.expires_at == RETAIN_UNTIL_CONVERSATION_GONE
     assert retention_for("diagnostic.notice") == DIAGNOSTIC_RETENTION
 
 

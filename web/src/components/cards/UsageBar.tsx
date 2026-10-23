@@ -12,6 +12,16 @@ function formatCount(value: number): string {
   return value >= 10000 ? `${(value / 1000).toFixed(1)}k` : String(value);
 }
 
+export function ContextRing({ usage }: { usage: UsageSnapshot | null }) {
+  const used = usage?.contextUsed, limit = usage?.contextWindow;
+  if (used == null || limit == null || !Number.isFinite(used) || !Number.isFinite(limit) || used < 0 || limit <= 0) return null;
+  const ratio = used / limit, percent = Math.round(ratio * 100);
+  const label = `${t("card.usage.context", { used: formatCount(used), window: formatCount(limit) })} · ${percent}%`;
+  return <span className={`kaus-context-ring${ratio >= .8 ? " is-warning" : ""}`} role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, percent)} aria-valuetext={label} title={label}>
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="2" opacity=".15" /><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="2" pathLength="100" strokeDasharray="100" strokeDashoffset={100 - Math.min(100, percent)} transform="rotate(-90 10 10)" strokeLinecap="round" /></svg>
+  </span>;
+}
+
 /* 用量 Pill（★ 定稿 G-8）：从消息流上方挪到页头右侧，折成一枚 `总 30.7k`。
  * 悬停（`title` + 浮层）展开 in / out / total。一个数都没有时整枚不渲染（AD-71）。 */
 export function UsagePill({ usage }: { usage: UsageSnapshot | null }) {
@@ -20,7 +30,7 @@ export function UsagePill({ usage }: { usage: UsageSnapshot | null }) {
   const total = usage?.totalTokens ?? null;
   if (
     usage == null ||
-    (usage.totalTokens == null && usage.inputTokens == null && usage.outputTokens == null)
+    (usage.totalTokens == null && usage.inputTokens == null && usage.outputTokens == null && (usage.contextUsed == null || !usage.contextWindow))
   ) {
     return null;
   }
@@ -31,9 +41,10 @@ export function UsagePill({ usage }: { usage: UsageSnapshot | null }) {
   });
   return (
     <span className="kaus-usage-pill" data-testid="usage-pill">
-      <Pill tone="muted" title={detail}>
+      <ContextRing usage={usage} />
+      {(total != null || usage.outputTokens != null || usage.inputTokens != null) && <Pill tone="muted" title={detail}>
         {t("conversation.usage.pill", { value: cell(total ?? usage.outputTokens) })}
-      </Pill>
+      </Pill>}
       <span className="kaus-usage-pop" role="note">
         {detail}
       </span>
@@ -75,6 +86,7 @@ export function UsageBar({
       className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 py-1 text-[0.65rem] tabular-nums"
       style={{ color: cream(45), font: "0.65rem var(--theme-font-mono, monospace)" }}
     >
+      <ContextRing usage={usage} />
       {parts.map((part) => (
         <span key={part}>{part}</span>
       ))}

@@ -281,6 +281,13 @@ async def test_return_to_card_reconciles_history_into_one_event(tmp_path: Path) 
         with _client(harness) as client:
             conversation_id = harness.new_conversation(client)
             client.post(f"/api/conversations/{conversation_id}/surface/external")
+            # New terminal messages appear after the outbound checkpoint.
+            original = harness.driver.load_native_history
+            async def terminal_history(binding, native_session_id):
+                history = await original(binding, native_session_id)
+                return history.model_copy(update={"entries": history.entries + tuple(
+                    item.model_copy(update={"entry_id": item.entry_id + "-terminal"}) for item in history.entries)})
+            harness.driver.load_native_history = terminal_history
             response = client.post(
                 f"/api/conversations/{conversation_id}/surface/card?force=1"
             )
@@ -472,6 +479,29 @@ async def test_send_message_conflicts_while_external_active(tmp_path: Path) -> N
         await harness.aclose()
 
 
+async def test_delete_keeps_external_writer_identity_until_existing_handoff_finishes(tmp_path: Path) -> None:
+    harness = _harness(tmp_path)
+    await harness.seed()
+    try:
+        with _client(harness) as client:
+            conversation_id = harness.new_conversation(client)
+            response = client.post(f"/api/conversations/{conversation_id}/surface/external")
+            assert response.status_code == 200, response.text
+            launch_id = response.json()["launch"]["id"]
+            response = client.delete(f"/api/conversations/{conversation_id}")
+            assert response.status_code == 409, response.text
+            assert response.json()["error"]["code"] == "surface_external_active"
+            assert await harness.repositories.conversations.get(conversation_id) is not None
+            assert (await harness.host.leases.describe(conversation_id)).owner_id == launch_id
+            response = client.post(f"/api/conversations/{conversation_id}/surface/card?force=1")
+            assert response.status_code == 200, response.text
+            response = client.delete(f"/api/conversations/{conversation_id}")
+            assert response.status_code == 200, response.text
+            assert await harness.repositories.conversations.get(conversation_id) is None
+    finally:
+        await harness.aclose()
+
+
 async def test_external_cli_unsupported_driver(tmp_path: Path) -> None:
     """引擎不支持站外 CLI → 501 ``external_cli_unsupported``。"""
     harness = _harness(tmp_path)
@@ -575,7 +605,7 @@ async def test_mock_driver_end_to_end_handoff(tmp_path: Path) -> None:
             assert surface["launch"]["status"] == "exited"
 
             names = []
-            for _ in range(3):
+            for _ in range(4):
                 envelope = await asyncio.wait_for(subscription.__anext__(), timeout=5)
                 names.append(envelope.event.name)
             subscription.close()
@@ -732,5 +762,308 @@ async def test_terminal_is_stopped_before_replacement_writer_starts(tmp_path):
         harness.launcher.launch = launch_new
         await harness.coordinator.to_external(first.conversation, force=True)
         assert sequence == [("stopped", first.launch.id), ("launch", None)]
+    finally:
+        await harness.aclose()
+
+
+async def test_native_handoff_checkpoint_and_repeated_empty_returns_are_idempotent(tmp_path):
+    harness = _harness(tmp_path)
+    await harness.seed()
+    try:
+        with _client(harness) as client:
+            conversation_id = harness.new_conversation(client)
+            assert client.post(f'/api/conversations/{conversation_id}/surface/external').status_code == 200
+            original = harness.driver.load_native_history
+            async def terminal_history(binding, native_session_id):
+                history = await original(binding, native_session_id)
+                return history.model_copy(update={'entries': history.entries + tuple(
+                    item.model_copy(update={'entry_id': item.entry_id+'-terminal', 'text':'terminal '+item.role})
+                    for item in history.entries)})
+            harness.driver.load_native_history = terminal_history
+            first = client.post(f'/api/conversations/{conversation_id}/surface/card?force=1').json()
+            assert [entry['text'] for entry in first['entries']] == ['terminal user','terminal assistant']
+            for _ in range(3):
+                repeated = client.post(f'/api/conversations/{conversation_id}/surface/card').json()
+                assert repeated['entries'] == []
+            events = await harness.extension_events(conversation_id, HISTORY_RECONCILED_NAME)
+            assert sum(len(e.data['entries']) for e in events) == 2
+            assert all(e.data['lastEntryId'] == first['entries'][-1]['entryId'] for e in events)
+            # The cursor remains durable when the coordinator is recreated.
+            harness.coordinator = SurfaceCoordinator(session_host=harness.host, repositories=harness.repositories,
+                registry=harness.registry, launcher=harness.launcher)
+            conv = await harness.repositories.conversations.get(conversation_id)
+            assert (await harness.coordinator.to_card(conv)).entries == ()
+    finally:
+        await harness.aclose()
+
+
+async def test_failed_return_is_durable_and_recovered_before_next_checkpoint(tmp_path):
+    from drivers.base import NativeHistory, NativeHistoryEntry
+    from runtime.surface_handoff import HISTORY_CHECKPOINT_NAME, HISTORY_RETRY_NOTICE, SurfaceConflictError
+
+    harness = Harness(tmp_path)
+    await harness.seed()
+    entries = [NativeHistoryEntry(entry_id='baseline', role='user', text='card message')]
+    fail = False
+
+    async def history(binding, session_id):
+        if fail:
+            raise OSError('private native diagnostic must not be shown')
+        return NativeHistory(native_session_id=session_id, entries=tuple(entries))
+
+    try:
+        with _client(harness) as client:
+            cid = harness.new_conversation(client)
+        harness.driver.load_native_history = history
+        conv = await harness.repositories.conversations.get(cid)
+        first = await harness.coordinator.to_external(conv)
+        entries.append(NativeHistoryEntry(entry_id='terminal-message', role='assistant', text='terminal answer'))
+        fail = True
+        returned = await harness.coordinator.to_card(first.conversation, force=True)
+        assert not returned.complete and not returned.reconciled
+        assert returned.gaps == (HISTORY_RETRY_NOTICE,)
+        assert returned.last_entry_id == 'baseline'
+        assert await harness.host.leases.describe(cid) is None
+        recorded = await harness.extension_events(cid, HISTORY_RECONCILED_NAME)
+        assert recorded[-1].data['pending'] is True
+        assert recorded[-1].data['lastEntryId'] == 'baseline'
+        assert any(e.event.type == 'diagnostic.notice' and e.event.message == HISTORY_RETRY_NOTICE
+                   for e in await harness.events_of(cid))
+
+        # Close SQLite/SessionHost, then recover using only persisted events.
+        await harness.aclose()
+        harness = Harness(tmp_path)
+        harness.driver.load_native_history = history
+        conv = await harness.repositories.conversations.get(cid)
+        with pytest.raises(SurfaceConflictError) as error:
+            await harness.coordinator.to_external(conv)
+        assert error.value.code == 'history_sync_pending'
+        assert harness.opened == []
+        assert len(await harness.extension_events(cid, HISTORY_CHECKPOINT_NAME)) == 1
+
+        fail = False
+        second = await harness.coordinator.to_external(conv)
+        restored = await harness.extension_events(cid, HISTORY_RECONCILED_NAME)
+        assert [item['text'] for event in restored for item in event.data['entries']] == ['terminal answer']
+        assert restored[-1].data.get('pending') is not True
+        assert (await harness.coordinator.to_card(second.conversation, force=True)).entries == ()
+        assert (await harness.coordinator.to_card(second.conversation)).last_entry_id == 'terminal-message'
+    finally:
+        await harness.aclose()
+
+
+async def test_failed_outbound_baseline_never_launches_or_advances_checkpoint(tmp_path):
+    from runtime.surface_handoff import HISTORY_CHECKPOINT_NAME, SurfaceConflictError
+    harness = Harness(tmp_path)
+    await harness.seed()
+    try:
+        with _client(harness) as client:
+            cid = harness.new_conversation(client)
+        async def unavailable(*args):
+            raise OSError('temporary')
+        harness.driver.load_native_history = unavailable
+        conv = await harness.repositories.conversations.get(cid)
+        with pytest.raises(SurfaceConflictError) as error:
+            await harness.coordinator.to_external(conv)
+        assert error.value.code == 'history_sync_pending'
+        assert harness.opened == []
+        assert await harness.host.leases.describe(cid) is None
+        assert await harness.extension_events(cid, HISTORY_CHECKPOINT_NAME) == []
+    finally:
+        await harness.aclose()
+
+
+async def test_unsupported_history_is_not_recorded_as_retryable_failure(tmp_path):
+    from drivers.base import UnsupportedCapabilityError
+    harness = Harness(tmp_path)
+    await harness.seed()
+    try:
+        with _client(harness) as client:
+            cid = harness.new_conversation(client)
+        async def unsupported(*args):
+            raise UnsupportedCapabilityError('no native history interface')
+        harness.driver.load_native_history = unsupported
+        conv = await harness.repositories.conversations.get(cid)
+        first = await harness.coordinator.to_external(conv)
+        returned = await harness.coordinator.to_card(first.conversation, force=True)
+        assert not returned.reconciled and returned.gaps == ()
+        assert await harness.extension_events(cid, HISTORY_RECONCILED_NAME) == []
+        assert (await harness.coordinator.to_external(returned.conversation)).launched
+    finally:
+        await harness.aclose()
+
+
+@pytest.mark.parametrize('pending_dispatch', [False, True])
+async def test_repeated_return_cannot_release_or_rewrite_active_card(tmp_path, pending_dispatch):
+    harness = Harness(tmp_path)
+    await harness.seed()
+    try:
+        with _client(harness) as client:
+            cid = harness.new_conversation(client)
+        conv = await harness.repositories.conversations.get(cid)
+        await harness.host.start_runtime(conv)
+        harness.host._runtimes[cid].pending_dispatch = pending_dispatch
+        before = await harness.repositories.conversations.get(cid)
+        lease = await harness.host.leases.describe(cid)
+        events = await harness.events_of(cid)
+        async def forbidden_history(*args):
+            pytest.fail('An active Card return must not read native history')
+        harness.driver.load_native_history = forbidden_history
+        for force in (False, True):
+            result = await harness.coordinator.to_card(conv, force=force)
+            assert result.entries == ()
+            assert await harness.repositories.conversations.get(cid) == before
+            assert (await harness.host.leases.describe(cid)).owner_id == lease.owner_id
+            assert harness.host.is_active(cid)
+        assert await harness.events_of(cid) == events
+    finally:
+        await harness.aclose()
+
+
+async def test_return_serializes_with_card_startup(tmp_path):
+    harness = Harness(tmp_path)
+    await harness.seed()
+    entered, release = asyncio.Event(), asyncio.Event()
+    try:
+        with _client(harness) as client:
+            cid = harness.new_conversation(client)
+        conv = await harness.repositories.conversations.get(cid)
+        first = await harness.coordinator.to_external(conv)
+        original = harness.driver.load_native_history
+        async def paused_history(*args):
+            entered.set()
+            await release.wait()
+            return await original(*args)
+        harness.driver.load_native_history = paused_history
+        returning = asyncio.create_task(harness.coordinator.to_card(first.conversation, force=True))
+        await entered.wait()
+        starting = asyncio.create_task(harness.host.start_runtime(first.conversation))
+        await asyncio.sleep(0)
+        assert not starting.done()
+        release.set()
+        await returning
+        await starting
+        assert harness.host.is_active(cid)
+        assert (await harness.host.leases.describe(cid)).owner_type == 'card'
+    finally:
+        release.set()
+        await harness.aclose()
+
+
+async def test_history_scope_and_hidden_roles_do_not_cross_into_public_timeline(tmp_path):
+    from drivers.base import NativeHistoryEntry
+    harness = Harness(tmp_path)
+    await harness.seed()
+    try:
+        with _client(harness) as client:
+            cid = harness.new_conversation(client)
+        conv = await harness.repositories.conversations.get(cid)
+        first = await harness.coordinator.to_external(conv)
+        original = harness.driver.load_native_history
+        wrong_scope = True
+        async def history(binding, native_session_id):
+            result = await original(binding, native_session_id)
+            return result.model_copy(update={
+                'native_session_id': 'other-session' if wrong_scope else native_session_id,
+                'entries': result.entries + (
+                    NativeHistoryEntry(entry_id='public', role='assistant', text='public reply'),
+                    NativeHistoryEntry(entry_id='hidden-tail', role='system', text='PRIVATE INSTRUCTIONS'),
+                ),
+            })
+        harness.driver.load_native_history = history
+        mismatch = await harness.coordinator.to_card(first.conversation, force=True)
+        assert mismatch.entries == () and not mismatch.complete
+        wrong_scope = False
+        restored = await harness.coordinator.to_card(first.conversation)
+        assert [entry['text'] for entry in restored.entries] == ['public reply']
+        assert restored.last_entry_id == 'hidden-tail'
+        repeated = await harness.coordinator.to_card(first.conversation)
+        assert repeated.entries == () and repeated.last_entry_id == 'hidden-tail'
+        events = await harness.extension_events(cid, HISTORY_RECONCILED_NAME)
+        assert all('PRIVATE' not in str(e.data) for e in events)
+    finally:
+        await harness.aclose()
+
+
+async def test_long_terminal_history_is_fully_persisted_and_not_reimported_after_restart(tmp_path):
+    from drivers.base import NativeHistory, NativeHistoryEntry
+    harness = Harness(tmp_path)
+    await harness.seed()
+    entries = [NativeHistoryEntry(entry_id='baseline', role='user', text='card baseline')]
+    async def history(binding, native_session_id):
+        return NativeHistory(native_session_id=native_session_id, entries=tuple(entries))
+    try:
+        with _client(harness) as client:
+            cid = harness.new_conversation(client)
+        harness.driver.load_native_history = history
+        conv = await harness.repositories.conversations.get(cid)
+        first = await harness.coordinator.to_external(conv)
+        additions = tuple(NativeHistoryEntry(entry_id=f'terminal-{i}',
+            role='user' if i % 2 == 0 else 'assistant', text=f'full terminal message {i}') for i in range(642))
+        entries.extend(additions)
+        restored = await harness.coordinator.to_card(first.conversation, force=True)
+        assert restored.complete and restored.gaps == ()
+        assert [entry['entryId'] for entry in restored.entries] == [entry.entry_id for entry in additions]
+        assert restored.last_entry_id == 'terminal-641'
+
+        await harness.aclose()
+        harness = Harness(tmp_path)
+        harness.driver.load_native_history = history
+        conv = await harness.repositories.conversations.get(cid)
+        persisted = await harness.extension_events(cid, HISTORY_RECONCILED_NAME)
+        assert [entry['text'] for event in persisted for entry in event.data['entries']] == [entry.text for entry in additions]
+        for _ in range(2):
+            repeated = await harness.coordinator.to_card(conv)
+            assert repeated.entries == () and repeated.last_entry_id == 'terminal-641'
+        reopened = await harness.coordinator.to_external(conv)
+        assert (await harness.coordinator.to_card(reopened.conversation, force=True)).entries == ()
+        persisted = await harness.extension_events(cid, HISTORY_RECONCILED_NAME)
+        assert sum(len(event.data['entries']) for event in persisted) == 642
+    finally:
+        await harness.aclose()
+
+
+async def test_corrupt_native_transcript_is_retried_without_skipping_terminal_messages(tmp_path):
+    import json
+    import uuid
+    from drivers.acp.client import AcpAgentSpec
+    from drivers.skill_execution.pi import load_native_history
+    from runtime.surface_handoff import HISTORY_CHECKPOINT_NAME, SurfaceConflictError
+    harness = Harness(tmp_path)
+    await harness.seed()
+    ident = str(uuid.uuid4())
+    home = tmp_path / 'synthetic-home'
+    folder = home / '.pi/agent/sessions' / ('--' + str(tmp_path).lstrip('/').replace('/', '-') + '--')
+    folder.mkdir(parents=True)
+    transcript = folder / ('time_' + ident + '.jsonl')
+    rows = [{'type': 'session', 'version': 3, 'id': ident, 'cwd': str(tmp_path)},
+            {'type': 'message', 'id': 'base', 'parentId': None,
+             'message': {'role': 'user', 'content': 'card baseline'}}]
+    def write_transcript():
+        transcript.write_text('\n'.join(json.dumps(row) for row in rows))
+    write_transcript()
+    spec = AcpAgentSpec(command=('unused',), cwd=str(tmp_path), env={'HOME': str(home)}, inherit_env=False)
+    async def native_history(binding, native_session_id):
+        return await load_native_history(spec, binding, native_session_id)
+    try:
+        with _client(harness) as client:
+            cid = harness.new_conversation(client)
+        conv = await harness.repositories.conversations.get(cid)
+        conv = await harness.repositories.conversations.save(conv.evolve(native_session_id=ident))
+        harness.driver.load_native_history = native_history
+        first = await harness.coordinator.to_external(conv)
+        rows.append({'type': 'message', 'id': 'terminal', 'parentId': 'base',
+                     'message': {'role': 'assistant', 'content': 'terminal answer'}})
+        transcript.write_text('partially written native JSON')
+        failed = await harness.coordinator.to_card(first.conversation, force=True)
+        assert not failed.complete and not failed.reconciled and failed.last_entry_id == ident + ':base'
+        with pytest.raises(SurfaceConflictError, match='暂未同步'):
+            await harness.coordinator.to_external(failed.conversation)
+        assert len(await harness.extension_events(cid, HISTORY_CHECKPOINT_NAME)) == 1
+        write_transcript()
+        second = await harness.coordinator.to_external(failed.conversation)
+        restored = await harness.extension_events(cid, HISTORY_RECONCILED_NAME)
+        assert [entry['text'] for event in restored for entry in event.data['entries']] == ['terminal answer']
+        assert (await harness.coordinator.to_card(second.conversation, force=True)).entries == ()
     finally:
         await harness.aclose()

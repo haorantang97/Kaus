@@ -1,0 +1,83 @@
+diff --git a/crates/goose-cli/src/main.rs b/crates/goose-cli/src/main.rs
+index b5b3c19..decc6dc 100644
+--- a/crates/goose-cli/src/main.rs
++++ b/crates/goose-cli/src/main.rs
+@@ -32,6 +32,17 @@ async fn run() -> Result<()> {
+ }
+ 
+ fn main() -> Result<()> {
++    if std::env::args().any(|a| a == "--kaus-skill-scope-list") {
++        let cwd = std::env::current_dir()?;
++        let skills: Vec<_> = goose::skills::discover_skills(Some(&cwd)).into_iter()
++            .map(|skill| serde_json::json!({"name": skill.name, "path": skill.path})).collect();
++        println!("{}", serde_json::to_string(&skills)?);
++        return Ok(());
++    }
++    if std::env::args().any(|a| a == "--kaus-skill-scope-version") {
++        println!("{{\"schema\":1,\"upstreamVersion\":\"1.52.0\",\"patchVersion\":\"kaus-skills-1\"}}");
++        return Ok(());
++    }
+     #[cfg(windows)]
+     enable_windows_vt_processing();
+ 
+diff --git a/crates/goose/src/skills/mod.rs b/crates/goose/src/skills/mod.rs
+index 3e2a818..46e7227 100644
+--- a/crates/goose/src/skills/mod.rs
++++ b/crates/goose/src/skills/mod.rs
+@@ -254,6 +254,17 @@ fn resolve_discoverable_skill_dir_with_config(
+         return Err(Error::invalid_params().data("Source path must not be empty"));
+     }
+ 
++    if std::env::var_os("KAUS_GOOSE_SKILL_MANIFEST").is_some() {
++        let canonical_dir = Path::new(path).canonicalize()
++            .map_err(|_| Error::invalid_params().data("Kaus skill source unavailable"))?;
++        let selected = discover_skills_with_config(None, config).into_iter().any(|source|
++            Path::new(&source.path).canonicalize().ok().as_ref() == Some(&canonical_dir));
++        if !selected {
++            return Err(Error::invalid_params().data("Skill is outside the Kaus project selection"));
++        }
++        return Ok(canonical_dir);
++    }
++
+     if is_lexical_project_plugin_path(Path::new(path)) {
+         return Err(Error::invalid_params().data(format!("Source \"{}\" not found", path)));
+     }
+@@ -611,6 +622,38 @@ pub fn discover_skills(working_dir: Option<&Path>) -> Vec<SourceEntry> {
+ }
+ 
+ fn discover_skills_with_config(working_dir: Option<&Path>, config: &Config) -> Vec<SourceEntry> {
++    // Kaus scope v1: only the immutable per-session selection participates in
++    // discovery. Other plugin tools/configuration keep their native lifecycle.
++    if let Some(manifest) = std::env::var_os("KAUS_GOOSE_SKILL_MANIFEST") {
++        let document: serde_json::Value = serde_json::from_str(
++            &std::fs::read_to_string(manifest).expect("Kaus skill manifest unavailable"),
++        ).expect("Kaus skill manifest invalid");
++        assert_eq!(document["schema"].as_u64(), Some(1), "Kaus skill schema unsupported");
++        let files = document["paths"].as_array().expect("Kaus skill paths invalid");
++        let mut result = Vec::new();
++        let mut seen = HashSet::new();
++        for file in files {
++            let path = PathBuf::from(file.as_str().expect("Kaus skill path invalid"));
++            assert!(path.is_absolute() && path.file_name().and_then(|s| s.to_str()) == Some("SKILL.md"), "Kaus skill path invalid");
++            assert!(!std::fs::symlink_metadata(&path).expect("Kaus skill missing").file_type().is_symlink(), "Kaus skill link rejected");
++            let expected = path.canonicalize().expect("Kaus skill unavailable");
++            let dir = path.parent().expect("Kaus skill directory missing");
++            let found: Vec<_> = scan_skills_from_dir(dir, false, false, false, &mut seen)
++                .into_iter().filter(|source| Path::new(&source.path).join("SKILL.md").canonicalize().ok().as_ref() == Some(&expected)).collect();
++            assert_eq!(found.len(), 1, "Kaus selected skill not uniquely loadable");
++            let builtin_docs = document["builtinDocsPaths"].as_array()
++                .is_some_and(|paths| paths.iter().any(|item| item.as_str() == path.to_str()));
++            for mut source in found {
++                if builtin_docs {
++                    let docs_root = config.get_goose_docs_root().expect("Kaus builtin docs configuration invalid")
++                        .unwrap_or_else(|| DEFAULT_GOOSE_DOCS_ROOT.to_string());
++                    source.content = source.content.replace(GOOSE_DOCS_ROOT_PLACEHOLDER, &docs_root);
++                }
++                result.push(source);
++            }
++        }
++        return result;
++    }
+     let mut sources: Vec<SourceEntry> = Vec::new();
+     let mut seen = HashSet::new();
+ 

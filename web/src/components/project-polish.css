@@ -1,11 +1,12 @@
 .agent-browser .agent-browser-head h1 { font-family:var(--theme-font-sans); font-size:22px; font-weight:600; letter-spacing:-.02em; }
 .agent-browser .ag-ph2 { font-family:var(--theme-font-sans); font-size:27px; font-weight:600; line-height:1.25; letter-spacing:-.03em; overflow-wrap:anywhere; }
 .agent-browser .ag-ptag { font-size:11px; letter-spacing:.04em; }
+/* Preserve the original cutout project-entry shape; reveal its edge on interaction. */
 .ag-panel .ag-pactions { position:relative; display:block; height:94px; margin-top:24px; }
 .ag-panel .ag-pactions .kaus-project-primary { position:relative; z-index:1; justify-content:center; width:50%; height:42px; padding-inline:10px; }
 .ag-panel .ag-pactions .kaus-project-enter { position:absolute; inset:0; width:100%; height:100%; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
 .ag-panel .kaus-project-enter-shape { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
-.ag-panel .kaus-project-enter-shape > path { fill:var(--surface-raised); stroke:color-mix(in srgb, var(--midground-base) 24%, transparent); stroke-width:2; transition:fill 150ms ease, stroke 150ms ease; }
+.ag-panel .kaus-project-enter-shape > path { fill:var(--surface-raised); stroke:transparent; stroke-width:2; transition:fill 150ms ease, stroke 150ms ease; }
 .ag-panel .kaus-project-enter-icon { position:absolute; top:13px; right:17px; }
 .ag-panel .kaus-project-enter-label { position:absolute; bottom:13px; left:17px; }
 .ag-panel .kaus-project-enter:hover:not(:disabled), .ag-panel .kaus-project-enter:active:not(:disabled) { background:transparent; box-shadow:none; }

@@ -13,6 +13,7 @@ import urllib.request
 
 import webview
 from workspace_bridge import WorkspaceBridge
+from webview_compat import install_webview_compat
 
 URL = "http://127.0.0.1:8877/"
 HEALTH = "http://127.0.0.1:8877/api/health"
@@ -47,11 +48,10 @@ def ensure_backend() -> bool:
 
 
 def _brand_macos() -> None:
-    """脚本型 .app 会被 Dock 认成 Python——运行时把图标/菜单栏名改回 Hermes。
-       pywebview 依赖 pyobjc,这里直接用;失败不致命(只是图标不好看)。"""
+    """Apply the Kaus identity to the script-backed macOS application."""
     try:
         from AppKit import NSApplication, NSImage        # type: ignore
-        from Foundation import NSBundle                  # type: ignore
+        from Foundation import NSBundle, NSProcessInfo    # type: ignore
         from pathlib import Path
         icns = Path(__file__).parent / "AppIcon.icns"
         nsapp = NSApplication.sharedApplication()
@@ -61,13 +61,18 @@ def _brand_macos() -> None:
                 nsapp.setApplicationIconImage_(img)
         info = NSBundle.mainBundle().infoDictionary()
         if info is not None:
-            info["CFBundleName"] = "Hermes"
+            info["CFBundleName"] = "Kaus"
+            info["CFBundleDisplayName"] = "Kaus"
+        NSProcessInfo.processInfo().setProcessName_("Kaus")
     except Exception:
         pass
 
 
 def main() -> None:
     _brand_macos()
+    install_webview_compat()
+    # WKWebView presents its native save dialog for archive and artifact downloads.
+    webview.settings["ALLOW_DOWNLOADS"] = True
     ok = ensure_backend()
     target = URL if ok else (
         "data:text/html;charset=utf-8,"

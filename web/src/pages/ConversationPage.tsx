@@ -1,6 +1,12 @@
+import { AttachmentFilename } from "../components/AttachmentFilename";
+import { useComposerAutosize, useComposerInputGuard } from "../hooks/useComposerInput";
+import { useScrollInputCooldown } from "../hooks/useConversationPinning";
 import { ConversationJumpRail } from "../components/ConversationJumpRail";
+import { ContinuationDialog } from "../components/ContinuationDialog";
+import { readableContinuationDraft } from "../lib/continuations";
+import { FileReference } from "../components/cards/ArtifactPreview";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Ellipsis, Square, Terminal, FileText, X, LoaderCircle, Paperclip } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Ellipsis, Square, Terminal, FileText, X, LoaderCircle, Paperclip, GitBranch } from "lucide-react";
 import { useLocale } from "../i18n";
 import { confirmAsync, cream, toast } from "../components/ui";
 import {
@@ -35,6 +41,7 @@ import {
   fetchConversation,
   fetchEffectiveSettings,
   fetchEventsSnapshot,
+  fetchMessageReceipt,
   fetchLaunches,
   fetchModelCatalog,
   fetchSurface,
@@ -65,7 +72,7 @@ import {
   type RunStateSnapshot,
 } from "../lib/runState";
 import { HISTORY_REPLAY_GRACE_MS, resolveHistoryView } from "../lib/historyReplay";
-import { EventTransport, type TransportMode } from "../lib/eventTransport";
+import { EventTransport } from "../lib/eventTransport";
 import {
   consumeExternalHandoff,
   parseSurfaceEvent,
@@ -127,9 +134,11 @@ import {
 
 export interface ConversationPageProps {
   conversationId: string;
+  metadataRefreshToken?: number;
   /** 发消息成功后让侧栏刷新（会话可能刚从"没有"变成"运行中"）。 */
   onActivity?: () => void;
   onArchived?: (projectId: string) => void;
+  onContinue?: (conversationId: string) => void;
   /** 从 URL 带进来的重放起点：`?after=<sequence>`。 */
   after?: number | null;
   /** 草稿页的首句：会话是在那一刻建的，占位跟着跳转一起过来（AD-94）。 */
@@ -165,6 +174,7 @@ interface PageState {
 type PageAction =
   | { type: "event"; envelope: AgentEventEnvelope }
   | { type: "pending"; action: PendingAction }
+  | { type: "receipt"; clientRef: string; envelopes: AgentEventEnvelope[] }
   | { type: "reset"; conversationId: string; after: number | null; pending: PendingMessage[] };
 
 function initialPageState(
@@ -214,6 +224,26 @@ function pageReducer(state: PageState, action: PageAction): PageState {
   if (action.type === "pending") {
     const pending = pendingReducer(state.pending, action.action);
     return pending === state.pending ? state : { ...state, pending };
+  }
+  if (action.type === "receipt") {
+    let repaired = state;
+    for (const envelope of action.envelopes) {
+      const event = envelope.event as { type?: string; namespace?: string; name?: string; data?: { clientRef?: string } };
+      if (envelope.conversationId !== state.timeline.conversationId || event.type !== "extension.event"
+        || event.namespace !== "kaus" || !["user.message", "user.message.failed"].includes(event.name || "")
+        || event.data?.clientRef !== action.clientRef) continue;
+      // A rejection may have arrived before its missing user receipt. Reapply
+      // that small event now that its message exists, removing the orphan row.
+      if (event.name === "user.message.failed") {
+        const seen = new Set(repaired.timeline.seenEventIds);
+        seen.delete(envelope.eventId);
+        repaired = { ...repaired, timeline: { ...repaired.timeline, seenEventIds: seen,
+          items: repaired.timeline.items.filter(item => item.itemId !== `extension:${envelope.eventId}`) } };
+      }
+      repaired = pageReducer(repaired, { type: "event", envelope });
+    }
+    return { ...repaired, timeline: { ...repaired.timeline,
+      items: [...repaired.timeline.items].sort((left, right) => left.order - right.order) } };
   }
   /* 占位的撤销点：编号对上就撤，**不比文本**（连发两句一样的话时文本对不出谁是谁）。
      这一步在页面层做，reducer 依旧只认内核那 30 条事件。 */
@@ -309,7 +339,7 @@ function engineLabel(displayName: string | null): EngineLabel | undefined {
 export const STOP_CONFIRM_TIMEOUT_MS = 8_000;
 
 /** 自动跟随的判定门槛（G-9）：距底部 ≤ 120px 算"还在底部"。 */
-export const FOLLOW_THRESHOLD_PX = 120;
+export const FOLLOW_THRESHOLD_PX = 40;
 
 export function atBottom(el: { scrollHeight: number; scrollTop: number; clientHeight: number }): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD_PX;
@@ -351,17 +381,28 @@ export function groupRows(items: TimelineItem[]): Row[] {
 
 export function ConversationPage({
   conversationId,
+  metadataRefreshToken = 0,
   onActivity,
   onArchived,
+  onContinue,
   after = null,
   initialPending = null,
   renderTimelineItem,
 }: ConversationPageProps) {
   const { t, tDynamic } = useLocale();
   const [detail, setDetail] = useState<ConversationDetailWire | null>(null);
+  useEffect(() => {
+    if (!metadataRefreshToken) return;
+    let cancelled = false;
+    void fetchConversation(conversationId).then(next => {
+      if (!cancelled) setDetail(current => current ? { ...current, conversation: { ...current.conversation, title: next.conversation.title, archivedAt: next.conversation.archivedAt } } : current);
+    }).catch(() => { /* Keep the loaded conversation usable; its next refresh reconciles metadata. */ });
+    return () => { cancelled = true; };
+  }, [conversationId, metadataRefreshToken]);
   const archived = Boolean(detail?.conversation?.archivedAt);
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [continuationOpen, setContinuationOpen] = useState(false);
   const actionsRef = useRef<HTMLSpanElement | null>(null);
   /** batch52 第 5 件：正在就地改会话标题（null = 没在改）。 */
   // batch52
@@ -380,6 +421,16 @@ export function ConversationPage({
   const { draft, update: updateDraft, storageFailed } = useConversationDraft(conversationId);
   const text = draft.text;
   const setText = useCallback((value: string) => updateDraft({ text: value }), [updateDraft]);
+  const continuationSeeded = useRef<string | null>(null);
+  useEffect(() => {
+    if (!detail?.continuation?.draft || detail.conversation.id !== conversationId || continuationSeeded.current === conversationId) return;
+    continuationSeeded.current = conversationId;
+    if (!text) updateDraft({ text: detail.continuation.draft, attachments: detail.continuation.attachments || [] });
+    else {
+      const readable = readableContinuationDraft(text, detail.continuation.files);
+      if (readable !== text) updateDraft(current => ({ ...current, text: readable }));
+    }
+  }, [conversationId, detail, text, updateDraft]);
   const [uploading, setUploading] = useState<string[]>([]);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -388,6 +439,7 @@ export function ConversationPage({
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [sending, setSending] = useState(false);
   const [follow, setFollow] = useState(true);
+  const [showJump, setShowJump] = useState(false);
   /* 第 1 件：停止是一个**过程**。`stopping` = 已经发出中断、还在等引擎的事件；
      `stopUnconfirmed` = 等了 8 秒还没等到，把按钮放开并补一句中性提示。
      两者都**不**改 runState——那是内核镜像，本地不许冒充。 */
@@ -418,17 +470,13 @@ export function ConversationPage({
   /* batch30 第 1 件：这条会话现在靠什么在收事件。`polling` = SSE 到不了（隧道下
      真机 P1 的现象），已经改成 `GET /events/snapshot` 轮询——它是一个**中性**的
      事实，不是错误（★H），所以只在输入区上方一句小字，不上红、不加图标。 */
-  const [transportMode, setTransportMode] = useState<TransportMode>("sse");
   /* 切到轮询之后、第一次快照有结果之前：「历史没有随重放到达」那句话得先忍住。
      它只有在**两条路都失败**的时候才是实话。 */
   const [fallbackPending, setFallbackPending] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  useEffect(() => {
-    const input = composerRef.current;
-    if (!input) return;
-    input.style.height = "auto";
-    input.style.height = `${Math.min(240, Math.max(72, input.scrollHeight))}px`;
-  }, [text]);
+  useComposerAutosize(composerRef, text);
+  const composerInput = useComposerInputGuard();
+  const scrollInput = useScrollInputCooldown();
   /* ---- 双表面（Phase 4）。这一组状态**只住在页面层**：reducer 是内核镜像，
      "谁在写"不是时间线内容（见 lib/externalSurface.ts 顶部）。 ---- */
   const [surface, setSurface] = useState<SurfaceKind>("card");
@@ -469,7 +517,7 @@ export function ConversationPage({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const jumpIntent = useRef(false);
   const userScrollIntent = useRef(false);
-  const beginBookmarkJump = useCallback(() => { jumpIntent.current = true; setFollow(false); }, []);
+  const beginBookmarkJump = useCallback(() => { jumpIntent.current = true; setFollow(false); setShowJump(true); }, []);
   const engineName = binding ? backendDisplay(binding.backendId).displayName : null;
 
   useEffect(() => {
@@ -829,7 +877,6 @@ export function ConversationPage({
     // batch20：换会话 / 重新附着时这把尺子归零。
     setReplayEventCount(0);
     // batch30：换会话时模式也归零——上一条会话走轮询，不代表这一条也走。
-    setTransportMode("sse");
     setFallbackPending(false);
 
     /* 一条事件到手之后做什么，两条路（SSE / 轮询）完全一样——这正是这一件的
@@ -889,7 +936,6 @@ export function ConversationPage({
         sequenceOf: (envelope) => envelope.sequence,
         onDisconnected: setDisconnected,
         onMode: (mode) => {
-          setTransportMode(mode);
           // 切到轮询的那一刻答案还没回来：先别把「历史没到」摆出来。
           if (mode === "polling") setFallbackPending(true);
         },
@@ -924,26 +970,35 @@ export function ConversationPage({
     writePendingMessages(conversationId, page.pending);
   }, [conversationId, page.pending]);
 
+  const pinTimelineToEnd = useCallback(() => {
+    const pane = scrollRef.current;
+    if (!pane) return;
+    if (typeof pane.scrollTo === "function") pane.scrollTo({ top: pane.scrollHeight, behavior: "auto" });
+    else pane.scrollTop = pane.scrollHeight;
+  }, []);
+  useEffect(() => { if (follow) setShowJump(false); }, [follow]);
+
   /* 自动跟随（G-9）：在底部附近才跟；用户上翻后不打扰，只亮「回到最新 ↓」。 */
   const scrollToBottom = useCallback(() => {
     jumpIntent.current = false;
     userScrollIntent.current = false;
-    // jsdom / 老浏览器里没有 scrollIntoView，滚动锚定不该让整页崩。
-    bottomRef.current?.scrollIntoView?.({ block: "end" });
+    scrollInput.reset();
+    // Scroll only the timeline so its growing bottom buffer does not move the page.
+    pinTimelineToEnd();
     setFollow(true);
     setUnread(0);
   }, []);
 
   useEffect(() => {
-    if (!follow || jumpIntent.current) return;
-    bottomRef.current?.scrollIntoView?.({ block: "end" });
+    if (!follow || jumpIntent.current || !scrollInput.canFollow()) return;
+    pinTimelineToEnd();
   }, [follow, timeline.lastSequence, page.pending.length]);
 
   useEffect(() => {
     const flow = scrollRef.current?.firstElementChild;
     if (!follow || !flow || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
-      if (!jumpIntent.current) bottomRef.current?.scrollIntoView?.({ block: "end" });
+      if (!jumpIntent.current && scrollInput.canFollow()) pinTimelineToEnd();
     });
     observer.observe(flow);
     return () => observer.disconnect();
@@ -962,6 +1017,7 @@ export function ConversationPage({
     else if (userScrollIntent.current || jumpIntent.current) setFollow(false);
     jumpIntent.current = false;
     userScrollIntent.current = false;
+    setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 120);
     // 回到底部就把未读清零：那些消息现在正看着。
     if (bottom) setUnread(0);
   }, []);
@@ -969,6 +1025,27 @@ export function ConversationPage({
   /* 一次投递（首发与重发共用）。POST 成功不撤占位——撤占位的是**事件**：
      内核把这句话作为 `kaus` / `user.message` 落库并广播，带着同一个 clientRef，
      pageReducer 见到编号才把占位换成真身（AD-94）。 */
+  const continuationFirstSend = Boolean(detail?.continuation?.draft) && !timeline.items.some(
+    item => item.kind === "message" && item.role === "user" && item.deliveryStatus !== "failed",
+  );
+  const currentConversation = useRef(conversationId);
+  currentConversation.current = conversationId;
+  const [checkingDelivery, setCheckingDelivery] = useState<string | null>(null);
+  const checkDelivery = useCallback(async (clientRef: string) => {
+    setCheckingDelivery(clientRef);
+    try {
+      const receipt = await fetchMessageReceipt(conversationId, clientRef);
+      if (currentConversation.current !== conversationId) return;
+      if (receipt.conversationId === conversationId && receipt.clientRef === clientRef) {
+        dispatch({ type: "receipt", clientRef, envelopes: receipt.events as unknown as AgentEventEnvelope[] });
+        setError(null);
+      }
+    } catch (failure) {
+      if (currentConversation.current === conversationId) setError(describeFailure(failure));
+    } finally {
+      setCheckingDelivery(current => current === clientRef ? null : current);
+    }
+  }, [conversationId]);
   const submit = useCallback(
     async (clientRef: string, body: string, attachments: ConversationAttachment[] = []) => {
       try {
@@ -986,6 +1063,11 @@ export function ConversationPage({
           isConfirmedMessageRejection({ failureCode: failure.code }) || [401, 403, 404, 413, 415, 422].includes(failure.status)
         );
         dispatch({ type: "pending", action: { type: rejected ? "failed" : "unconfirmed", clientRef: failedRef } });
+        if (rejected && failedRef === clientRef && continuationFirstSend) {
+          updateDraft(current => !current.text && !current.attachments.length
+            ? { text: body, attachments }
+            : current);
+        }
         /* 第 4 件：409 `surface_external_active` = 写权在外部终端手里。直接切到
            外部态（以后端为准），那句话留在占位里不丢。 */
         if (failure instanceof SessionApiError && failure.code === "surface_external_active") {
@@ -994,7 +1076,7 @@ export function ConversationPage({
         setError(describeFailure(failure));
       }
     },
-    [applySurface, conversationId, onActivity],
+    [applySurface, conversationId, onActivity, continuationFirstSend, updateDraft],
   );
 
   const send = useCallback(async () => {
@@ -1320,7 +1402,7 @@ export function ConversationPage({
     (item: TimelineItem): MessageActions | null => {
       if (item.kind !== "message") return null;
       if (item.role === "user" && messageDeliveryStatus(item) === "failed" && !isConfirmedMessageRejection(item)) {
-        return { onCheckDelivery: () => setReloadKey(value => value + 1) };
+        return { onCheckDelivery: () => item.clientRef ? void checkDelivery(item.clientRef) : setReloadKey(value => value + 1) };
       }
       /* 外部态下写权在终端手里，一枚都不给（含「重发」）——这里再发一句只会打架。 */
       if (readOnly) return null;
@@ -1356,7 +1438,7 @@ export function ConversationPage({
       if (!previous || previous.kind !== "message") return {};
       return { onResendPrevious: () => void resendText(messageText(previous), previous.attachments?.filter((attachment): attachment is ConversationAttachment => attachment.kind === "file")) };
     },
-    [readOnly, items, resendText, running, settingsBusy, updateDraft],
+    [checkDelivery, readOnly, items, resendText, running, settingsBusy, updateDraft],
   );
 
   /* AD-126：已经到达的事件不受能力门控，连"合并成一组"这层版式也一样——
@@ -1390,7 +1472,8 @@ export function ConversationPage({
     replayEventCount,
     fallbackPending,
   });
-  const loading = historyView === "skeleton";
+  const nativeSourceUnavailable = detail?.conversation?.id === conversationId && detail.historyStorage?.status === "source_unavailable";
+  const loading = historyView === "skeleton" && !nativeSourceUnavailable;
   /* 工具栏的四项取值：端点还没来（或返回 404）时按"四项都没有"渲染，也就是一枚都不出。 */
   const baseBar = settings ?? emptyEffectiveSettings(binding?.id ?? "");
   const bar = {
@@ -1547,6 +1630,8 @@ export function ConversationPage({
                 <button type="button" className="kaus-chat-icon-action" title={t("conversation.actions")} aria-label={t("conversation.actions")}
                   aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen(value => !value)}><Ellipsis size={17} aria-hidden /></button>
                 {actionsOpen && <span className="kaus-bar-pop" role="menu" aria-label={t("conversation.actions")}>
+                  {onContinue && <button type="button" role="menuitem" className="kaus-bar-pop-item" disabled={running || sending || handoffBusy}
+                    onClick={() => { setActionsOpen(false); setContinuationOpen(true); }}><GitBranch size={14} aria-hidden />{t("continuation.title")}</button>}
                   <button type="button" role="menuitem" className="kaus-bar-pop-item" disabled={running || stopping || sending || handoffBusy || archiveBusy || external}
                     title={running || external ? t("surface.action.stopFirst") : undefined} onClick={() => void changeArchive(true)}>
                     <Archive size={14} aria-hidden />{t("conversation.archive")}
@@ -1557,6 +1642,17 @@ export function ConversationPage({
           </div>
         </div>
       </header>
+      {continuationOpen && detail && onContinue && <ContinuationDialog
+        source={{ kind: "conversation", id: conversationId, projectId: detail.conversation.projectId }}
+        onClose={() => setContinuationOpen(false)} onCreated={onContinue} />}
+      {detail?.continuation && <div className="kaus-thread flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 text-xs">
+        {detail.continuation.source?.kind === "conversation" && detail.continuation.sourceAvailable !== false && onContinue
+          ? <button className="flex min-w-0 items-center gap-1.5 opacity-60 transition-opacity hover:opacity-100" title={detail.continuation.sourceTitle}
+            onClick={() => onContinue(detail.continuation!.source.id)}><GitBranch size={13} aria-hidden /><span>{t("continuation.source")} {detail.continuation.sourceTitle}</span></button>
+          : <span className="opacity-60">{t("continuation.source")} {detail.continuation.sourceTitle}</span>}
+        {detail.continuation.files?.map(file => <FileReference key={file.ref} compact conversationId={conversationId}
+          source={{ uri: file.ref, title: file.name, mimeType: file.mimeType, sizeBytes: file.size }} />)}
+      </div>}
 
       {(disconnected || detail?.advisory?.message || error || notice || degraded) && (
         <div className="kaus-thread kaus-conversation-bars">
@@ -1579,10 +1675,10 @@ export function ConversationPage({
 
       <div className="kaus-timeline-shell">
       <div className="kaus-timeline" data-testid="timeline" ref={scrollRef} onScroll={onScroll}
-        onWheelCapture={() => { userScrollIntent.current = true; }}
-        onTouchStart={() => { userScrollIntent.current = true; }}
-        onPointerDown={event => { if (event.target === event.currentTarget) userScrollIntent.current = true; }}
-        onKeyDownCapture={event => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) userScrollIntent.current = true; }}>
+        onWheelCapture={() => { userScrollIntent.current = true; scrollInput.markInput(); }}
+        onTouchStart={() => { userScrollIntent.current = true; scrollInput.markInput(); }}
+        onPointerDown={event => { if (event.target === event.currentTarget) { userScrollIntent.current = true; scrollInput.markInput(); } }}
+        onKeyDownCapture={event => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) { userScrollIntent.current = true; scrollInput.markInput(); } }}>
         <div className="kaus-thread kaus-thread-flow">
           {loading && (
             <div data-testid="timeline-skeleton" aria-label={t("conversation.loading")}>
@@ -1591,14 +1687,14 @@ export function ConversationPage({
               <div className="kaus-skeleton-line" />
             </div>
           )}
-          {historyView === "empty" && (
+          {historyView === "empty" && !nativeSourceUnavailable && (
             <div className="px-1 py-3 text-xs" style={{ color: cream(45) }}>
               {t("conversation.empty")}
             </div>
           )}
           {/* batch18 第 1 件：后端说这条会话有条目，重放却一条都没来。中性一行，
               不是错误横幅——前端能说的只有"没到"，为什么没到在后端那半边。 */}
-          {historyView === "missing" && (
+          {historyView === "missing" && !nativeSourceUnavailable && (
             <div className="px-1 py-3 text-xs" data-testid="history-missing" style={{ color: cream(45) }}>
               {t("conversation.historyMissing")}
               <button type="button" className="kaus-inline-action" onClick={() => setReloadKey(key => key + 1)}>{t("conversation.history.retry")}</button>
@@ -1642,13 +1738,14 @@ export function ConversationPage({
                     onClick: () => void resend(item),
                   } : {
                     label: t("conversation.pending.check"),
-                    onClick: () => setReloadKey(value => value + 1),
+                    disabled: checkingDelivery === item.clientRef,
+                    onClick: () => void checkDelivery(item.clientRef),
                   }} />
               </div>}
             </div>
           ))}
           {/* 第 3 件：回站后折叠的历史组，接在消息流末尾。 */}
-          {history.groups.map((group) => (
+          {detailLoaded && detail?.conversation?.id === conversationId && !nativeSourceUnavailable && history.groups.map((group) => (
             <ExternalHistoryGroup key={group.id} group={group} />
           ))}
           {/* 第 2 件：外部态横幅 +「回到站内」，消息流的最后一条。 */}
@@ -1696,7 +1793,7 @@ export function ConversationPage({
       <div className="kaus-thread kaus-composer-wrap">
         {/* G-9：上翻之后才出现，点一下回到底。 */}
         {/* 第 7 件：上翻就出现，未读有数就把数报出来（走查里没找到这枚 Pill）。 */}
-        {!follow && (
+        {!follow && showJump && (
           <button
             type="button"
             className="kaus-jump-latest"
@@ -1708,14 +1805,6 @@ export function ConversationPage({
             <ArrowDown size={15} aria-hidden />
             {unread > 0 && <span>{unread}</span>}
           </button>
-        )}
-        {/* batch30 第 1 件：只在真的走轮询时出现的一行小字。中性（★H）——它说的是
-            「这条会话现在靠什么在收事件」，不是一个错误，所以不上红也没有图标。
-            SSE 一恢复它自己就消失，不需要用户做任何事。 */}
-        {transportMode === "polling" && (
-          <div className="kaus-transport-note" data-testid="transport-polling">
-            {t("transport.polling")}
-          </div>
         )}
         <div
           className={`kaus-composer is-stacked${dragging ? " is-dragging" : ""}`}
@@ -1796,7 +1885,7 @@ export function ConversationPage({
               {draft.attachments.map(file => (
                 <div className="kaus-attachment-chip" key={file.ref} title={file.name}>
                   <FileText size={17} aria-hidden />
-                  <span><strong>{attachmentName(file)}</strong><small>{typeof file.size === "number" ? fileSizeLabel(file.size) : t("conversation.attach.ready")}</small></span>
+                  <span><strong><AttachmentFilename name={attachmentName(file)} /></strong><small>{typeof file.size === "number" ? fileSizeLabel(file.size) : t("conversation.attach.ready")}</small></span>
                   <button type="button" onClick={() => updateDraft(current => ({ ...current, attachments: current.attachments.filter(candidate => candidate.ref !== file.ref) }))} aria-label={t("conversation.attach.remove", { name: attachmentName(file) })}><X size={14} /></button>
                 </div>
               ))}
@@ -1823,10 +1912,11 @@ export function ConversationPage({
               }}
               /* 第 4 件①：与草稿页同一套键位——Enter 发送、Shift+Enter 换行，
                  ⌘/Ctrl+Enter 继续可用；输入法组字期间的 Enter 是选词，不发送。 */
+              onCompositionStart={composerInput.onCompositionStart}
+              onCompositionEnd={composerInput.onCompositionEnd}
               onKeyDown={(event) => {
-                if (event.key !== "Enter") return;
-                if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
-                if (event.shiftKey) return;
+                if (composerInput.guardKeyDown(event)) return;
+                if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
                 event.preventDefault();
                 /* batch39 第 1 件：这里**不**再判一次运行态——规矩住在 `send()` 里，
                    按钮和 Enter 才不会各说各的。运行中它会原样退回并打开下面那句提示。 */

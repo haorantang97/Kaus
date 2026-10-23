@@ -59,6 +59,8 @@ async def test_group_accepts_engine_without_permission_selector_and_preserves_mo
         assert conv.execution_mode == 'debug' and conv.reasoning_mode == 'high'
         driver.register_binding(await built.repositories.bindings.get(conv.agent_binding_id))
         runtime = await driver.start_runtime(conv, 'card')
+        # The protocol fake must not reserve the developer's real desktop.
+        assert driver._state(runtime).runtime_metadata.get('_kausComputerUse', {}).get('resources', []) == []
         await driver.send_message(runtime, MessageInput(text='hello'))
         events = await collect_until_run_terminal(driver, runtime)
         assert events[-1].event.type == 'run.completed'

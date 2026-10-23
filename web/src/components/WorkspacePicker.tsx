@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Check, Eye, EyeOff, Folder, Home, LoaderCircle, X } from "lucide-react";
+import { ArrowUp, Check, Eye, EyeOff, Folder, Home, LoaderCircle, Pencil, X } from "lucide-react";
 import { fetchWorkspaceDirectories, type WorkspaceDirectories } from "../lib/workspaceApi";
 import { useLocale } from "../i18n";
-import { Modal } from "./ui";
+import { ErrorNotice, Modal } from "./ui";
 
 export function WorkspacePicker({ initialPath, onSelect, onClose }: {
   initialPath: string | null; onSelect: (path: string) => Promise<void>; onClose: () => void;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [location, setLocation] = useState(initialPath || "");
+  const [editingPath, setEditingPath] = useState(false);
   const [draft, setDraft] = useState(initialPath || "");
   const [revision, setRevision] = useState(0);
   const [hidden, setHidden] = useState(false);
@@ -43,7 +44,7 @@ export function WorkspacePicker({ initialPath, onSelect, onClose }: {
     catch (failure) { setError(String((failure as Error)?.message ?? failure)); }
     finally { setSaving(false); }
   }
-  function browse(path: string) { setDraft(path); setLocation(path); setRevision(value => value + 1); }
+  function browse(path: string) { setEditingPath(false); setDraft(path); setLocation(path); setRevision(value => value + 1); }
 
   return <Modal onClose={() => { if (!saving) onClose(); }} width={580}>
     <section className="kaus-workspace-picker" role="dialog" aria-modal="true" aria-label={t("bar.workspace.choose")}
@@ -59,7 +60,10 @@ export function WorkspacePicker({ initialPath, onSelect, onClose }: {
       <form className="kaus-workspace-path" onSubmit={event => { event.preventDefault(); browse(draft.trim()); }}>
         <button type="button" className="kaus-chat-icon-action" title={t("workspace.home")} aria-label={t("workspace.home")} disabled={saving} onClick={() => browse(data?.home ?? "")}><Home size={16} /></button>
         <button type="button" className="kaus-chat-icon-action" title={t("workspace.parent")} aria-label={t("workspace.parent")} disabled={!data?.parent || saving || loading} onClick={() => browse(data!.parent!)}><ArrowUp size={16} /></button>
-        <input autoFocus ref={pathRef} aria-label={t("bar.workspace")} value={draft} disabled={saving} onChange={event => setDraft(event.target.value)} />
+        {editingPath ? <input autoFocus ref={pathRef} aria-label={t("bar.workspace")} value={draft} disabled={saving} onChange={event => setDraft(event.target.value)} /> :
+          <button type="button" className="flex min-w-0 flex-1 items-center gap-2 truncate text-left" disabled={saving} aria-label={locale === "zh" ? "输入文件夹位置" : "Enter folder location"} onClick={() => setEditingPath(true)}>
+            <span className="min-w-0 flex-1 truncate">{(data?.path || initialPath || "").replace(/\\/g, "/").split("/").filter(Boolean).at(-1) || t("workspace.home")}</span><Pencil size={13} />
+          </button>}
         <button type="button" className="kaus-chat-icon-action" aria-label={t("workspace.hidden")} title={t("workspace.hidden")} aria-pressed={hidden} disabled={saving} onClick={() => setHidden(value => !value)}>{hidden ? <Eye size={16} /> : <EyeOff size={16} />}</button>
       </form>
       <div className="kaus-workspace-folders" aria-busy={loading}>
@@ -67,7 +71,7 @@ export function WorkspacePicker({ initialPath, onSelect, onClose }: {
           <button key={directory.path} disabled={saving} onClick={() => browse(directory.path)}><Folder size={17} /><span>{directory.name}</span></button>)}
         {!loading && data?.directories.length === 0 && <span className="kaus-workspace-empty">{t("workspace.empty")}</span>}
       </div>
-      {error && <p role="alert">{error}</p>}
+      {error && <ErrorNotice error={error} />}
       {data?.truncated && <p role="status">{t("workspace.truncated")}</p>}
       <footer><button className="kaus-workspace-cancel" disabled={saving} onClick={onClose}>{t("common.cancel")}</button>
         <button className="kaus-workspace-select" disabled={!data || loading || saving || draft.trim() !== data.path} onClick={() => void save()}>{saving ? <LoaderCircle size={15} className="kaus-ui-spin" /> : <Check size={15} />}{t("workspace.select")}</button>

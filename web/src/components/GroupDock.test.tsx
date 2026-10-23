@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { GroupDock } from "./GroupDock";
@@ -296,6 +296,22 @@ describe("Group 浮窗：添加成员两条路", () => {
     expect(api.addGroupMember).toHaveBeenCalledWith("collaboration:1", {
       conversationId: "conversation:9",
     });
+  });
+
+  it("加入已有会话的选择器排除下架引擎，不影响原会话", async () => {
+    const user = userEvent.setup();
+    seed([g], { 'collaboration:1':[] });
+    session.fetchConnectedBackends.mockResolvedValue({ backends:[
+      { id:'backend:mock', preset:{catalogStatus:'legacy'} },
+    ] });
+    renderDock();
+    await openAndExpand(user, '重构评审组');
+    await user.click(await screen.findByTestId('group-add-member'));
+    await user.click(screen.getByRole('menuitem', {name:'选择已有会话'}));
+    await waitFor(() => expect(session.fetchConnectedBackends).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', {name:'选择已有会话'}));
+    expect(screen.queryByRole('option', {name:'接口层重构 · Mock · X'})).toBeNull();
+    expect(api.addGroupMember).not.toHaveBeenCalled();
   });
 
   it("那一行缺了引擎就只剩「标题 · 项目」：不写「未知引擎」（AD-71）", async () => {
@@ -1077,6 +1093,65 @@ const conversationDrag = (id: string, title = "") =>
 describe("拖拽入组（★J-4）", () => {
   const g = group("collaboration:1", "重构评审组", 1);
 
+  it.each(["group-pane-timeline", "group-composer-input"])("默认对话页的 %s 接收会话，保留草稿且只加入一次", async (targetId) => {
+    const user = userEvent.setup();
+    seed([g], { [g.id]: [member("m1")] });
+    api.addGroupMember.mockResolvedValue(detail(g, [member("m1"), member("m2")]));
+    renderDock();
+    await openAndExpand(user, g.title);
+    const input = await screen.findByTestId("group-composer-input");
+    fireEvent.change(input, { target: { value: "保留这段草稿" } });
+    const event = createEvent.drop(screen.getByTestId(targetId), { dataTransfer: transfer({
+      "application/x-kaus-conversation": "conversation:9",
+      "application/x-kaus-label": targetId,
+    }) });
+    fireEvent(screen.getByTestId(targetId), event);
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(api.addGroupMember).toHaveBeenCalledExactlyOnceWith(g.id, { conversationId: "conversation:9" }));
+    expect(input).toHaveValue("保留这段草稿");
+    expect(api.broadcastGroup).not.toHaveBeenCalled();
+    expect(await screen.findByText(`已加入 ${targetId}`)).toBeInTheDocument();
+  });
+
+  it("拖到收起的具体组时只加入该组", async () => {
+    const user = userEvent.setup();
+    const second = group("collaboration:2", "第二组");
+    seed([g, second]);
+    api.addGroupMember.mockResolvedValue(detail(second, [member("m2")]));
+    renderDock();
+    await user.click(await screen.findByTestId("group-dock-pill"));
+    fireEvent.drop(await screen.findByText(second.title), { dataTransfer: conversationDrag("conversation:9") });
+    await waitFor(() => expect(api.addGroupMember).toHaveBeenCalledExactlyOnceWith(second.id, { conversationId: "conversation:9" }));
+  });
+
+  it("外部文本仍由输入框处理，不触发入组", async () => {
+    const user = userEvent.setup();
+    seed([g], { [g.id]: [member("m1")] });
+    renderDock();
+    await openAndExpand(user, g.title);
+    const input = await screen.findByTestId("group-composer-input");
+    const event = createEvent.drop(input, { dataTransfer: transfer({ "text/plain": "普通文本" }) });
+    fireEvent(input, event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(api.addGroupMember).not.toHaveBeenCalled();
+  });
+
+  it("拖动进入组内子元素时保留反馈，取消拖动后清除", async () => {
+    const user = userEvent.setup();
+    seed([g], { [g.id]: [member("m1")] });
+    renderDock();
+    await openAndExpand(user, g.title);
+    const item = screen.getByTestId(`group-item-${g.id}`);
+    const input = await screen.findByTestId("group-composer-input");
+    fireEvent.dragOver(item, { dataTransfer: conversationDrag("conversation:9") });
+    const leave = createEvent.dragLeave(item);
+    Object.defineProperty(leave, "relatedTarget", { value: input });
+    fireEvent(item, leave);
+    expect(item).toHaveClass("is-drop-target");
+    fireEvent.dragEnd(window);
+    expect(item).not.toHaveClass("is-drop-target");
+  });
+
   it("拖到展开态成员区松手：调的是「选择已有会话」那条加入接口，参数是那条会话", async () => {
     const user = userEvent.setup();
     seed([g], { "collaboration:1": [member("m1")] });
@@ -1094,6 +1169,7 @@ describe("拖拽入组（★J-4）", () => {
     );
     // 回执点名那条会话（拖源顺手带了标题）。
     expect(await screen.findByText("已加入 接口层重构")).toBeInTheDocument();
+    expect(api.addGroupMember).toHaveBeenCalledTimes(1);
   });
 
   it("dragover 时成员区带 is-drop-target，dragleave 之后去掉", async () => {
@@ -1105,7 +1181,9 @@ describe("拖拽入组（★J-4）", () => {
     const pane = await screen.findByTestId("group-pane-members");
     expect(pane.className).not.toMatch(/is-drop-target/);
 
-    fireEvent.dragOver(pane, { dataTransfer: conversationDrag("conversation:9") });
+    const dataTransfer = conversationDrag("conversation:9");
+    fireEvent.dragOver(pane, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("copy");
     await waitFor(() => expect(pane.className).toMatch(/is-drop-target/));
 
     fireEvent.dragLeave(pane, { dataTransfer: conversationDrag("conversation:9") });
@@ -1290,19 +1368,22 @@ describe("拖项目进组 = 启动新成员（★J-4，batch43）", () => {
     await waitFor(() => expect(screen.getAllByText(/当前有 2 个组/).length).toBeGreaterThan(0));
   });
 
-  it("项目没有默认引擎：按 code 翻人话，不静默", async () => {
+  it.each(["binding_required", "engine_not_selectable"])("项目默认引擎不可用时进入选择流程：%s", async (code) => {
     const user = userEvent.setup();
     seed([g], { "collaboration:1": [member("m1")] });
     api.spawnGroupMember.mockRejectedValueOnce(
-      new SessionApiError(409, "binding_required", "no default binding"),
+      new SessionApiError(409, code, "choose an engine"),
     );
     renderDock();
 
     await openAndExpand(user, "重构评审组");
     const pane = await screen.findByTestId("group-pane-members");
+    const previousSuccessNotices = screen.queryAllByText("已从 X 启动一名成员").length;
     fireEvent.drop(pane, { dataTransfer: projectDrag("project:default", "X") });
 
-    expect(await screen.findByText(/项目未接入引擎/)).toBeInTheDocument();
+    expect(await screen.findByTestId("group-spawn-form")).toBeInTheDocument();
+    expect(screen.queryByText("choose an engine")).toBeNull();
+    expect(screen.queryAllByText("已从 X 启动一名成员")).toHaveLength(previousSuccessNotices);
   });
 
   it("两种 MIME 互不误触发：会话只走加入，项目只走 spawn", async () => {

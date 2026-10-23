@@ -111,6 +111,7 @@ async def _run_one_turn(world: _World, conversation: Conversation) -> None:
                 "run.failed",
                 "run.interrupted",
             ):
+                assert envelope.event.type == 'run.completed'
                 break
             if asyncio.get_running_loop().time() > deadline:  # pragma: no cover
                 pytest.fail("这一轮没有在超时内收敛")
@@ -141,6 +142,7 @@ async def test_acp_content_survives_eight_days() -> None:
         await _run_one_turn(world, conversation)
         before = await world.event_store.replay(conversation.id)
         assert before, "这一轮本来就该有事件"
+        assert any(e.event.type == 'message.delta' for e in before), '假 Agent 必须实际返回正文'
 
         world.clock.advance(EIGHT_DAYS)
         await world.host.purge_expired_events()
@@ -178,6 +180,16 @@ async def test_acp_content_survives_eight_days() -> None:
         await world.host.aclose()
 
 
+async def test_retention_fake_agent_has_no_host_computer_resources() -> None:
+    world = _World(_acp_driver(), slug='acpretisolated')
+    conversation = await world.seed()
+    try:
+        await world.host.ensure_runtime(conversation)
+        assert not world.driver._computer_use_plans.get(conversation.id, {}).get('resources')
+    finally:
+        await world.host.aclose()
+
+
 async def test_acp_diagnostics_still_expire() -> None:
     """这条规则不是「什么都不删了」：诊断照旧按诊断期走。"""
     world = _World(_acp_driver(), slug="acpdiag")
@@ -203,25 +215,25 @@ async def test_acp_diagnostics_still_expire() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# 能回放原生历史的引擎不受影响
+# 原生历史能力不影响本地保留
 # --------------------------------------------------------------------------- #
 
 
-async def test_a_backend_with_native_history_keeps_the_old_ttl() -> None:
-    """Mock（``sessions.history = supported``，Hermes 同）照旧七天清掉——
-    它有第二份账本，站内这份就是缓存。"""
+async def test_a_backend_with_native_history_keeps_local_history() -> None:
+    """可回放原生历史的引擎也必须保留本地消息与原事件ID。"""
     driver = MockDriver(backend_key="withhistory")
     world = _World(driver, slug="withhistory")
     conversation = await world.seed()
     driver.set_script(conversation.id, text_stream_script())
     try:
         await _run_one_turn(world, conversation)
-        assert await world.event_store.replay(conversation.id)
+        before = await world.event_store.replay(conversation.id)
+        assert before
 
         world.clock.advance(EIGHT_DAYS)
         purged = await world.host.purge_expired_events()
-        assert purged > 0
-        assert await world.event_store.replay(conversation.id) == ()
+        assert purged == 0
+        assert await world.event_store.replay(conversation.id) == before
     finally:
         await world.host.aclose()
 
@@ -231,7 +243,7 @@ async def test_a_backend_with_native_history_keeps_the_old_ttl() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_retention_is_a_function_of_namespace_and_capability() -> None:
+def test_content_classification_depends_on_event_not_capability() -> None:
     """正文类的判据只有事件类别，不含任何引擎名字。"""
     assert is_content_event("message.delta")
     assert is_content_event("tool.started")
@@ -247,7 +259,7 @@ def test_retention_is_a_function_of_namespace_and_capability() -> None:
         "extension.event", namespace="somebackend", name="whatever"
     )
     assert not is_content_event("diagnostic.notice")
-    assert not is_content_event("usage.updated")
+    assert is_content_event("usage.updated")
 
 
 def test_the_sentinel_is_far_enough_away_to_mean_until_deleted() -> None:

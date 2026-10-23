@@ -47,8 +47,8 @@ Driver 不读它做任何分支；它出现在两个地方：目录探测撞上�
 确定这家 CLI 的登录命令**，那时界面只说「先在终端把这台引擎登录好」，不给一条
 猜出来的命令让用户吃报错（与 ``resume_argv_template`` 同一条纪律，AD-71）。
 
-**仪表盘永远不代跑它。** 这一列是给用户看的文本，不是给我们执行的 argv：ACP 的
-``authenticate`` 我们一次都不调（AD-93 own-auth），登录发生在用户自己的终端里。
+用户点击登录入口后，Kaus 可在用户选择的终端打开这条受控命令。ACP 的
+``authenticate`` 不由宿主调用；凭据仍由原生 CLI 接收和保存。
 
 ``env_keys_hint``
 -----------------
@@ -287,10 +287,17 @@ class AcpPreset:
     label: str
     #: 怎么把它以 ACP 模式拉起来（argv，不做 shell 拼接）。
     command: tuple[str, ...]
+    # Retired presets remain decodable for existing connections and histories.
+    catalog_status: Literal["active", "legacy"] = "active"
     #: 安装提示与静态检测元数据；不由 Driver 执行安装命令。
     install_command: str | None = None
+    adapter_install_command: str | None = None
     setup_url: str | None = None
     executable: str | None = None
+    native_executable_env: str | None = None
+    native_cli_flag: str | None = None
+    native_executable: str | None = None
+    native_cli_selectable: bool = True
     #: 已核实的扩展方法名；通用驱动按语义键处理，不按产品名分支。
     client_methods: Mapping[str, str] = field(default_factory=dict)
     elicitation_forms: bool = False
@@ -308,6 +315,17 @@ class AcpPreset:
     #: 「在 CLI 里打开」的续接命令模板；``None`` = 不确定，不显示这个入口。
     resume_argv_template: tuple[str, ...] | None = None
     group_isolation_adapter: str | None = None
+    restricted_execution_adapter: str | None = None
+    skill_projection_adapter: str | None = None
+    # Runtime/MCP hooks can exist independently of a verified Skill scope.
+    runtime_adapter: str | None = None
+    # Optional account-level quota reader; conversation token usage is separate.
+    account_quota_adapter: str | None = None
+    quota_provider_adapter: str | None = None
+    # The adapter may project MCP through a native extension/configuration even
+    # when the engine does not execute ACP's mcpServers field.
+    project_mcp_via_runtime: bool = False
+    skill_scope_key: str | None = None
     # Shared by ordinary conversations and coordinator executions. Only file
     # metadata is watched; credentials remain owned by the engine.
     config_root_env: str | None = None
@@ -322,6 +340,7 @@ class AcpPreset:
     auth_method_ids: tuple[str, ...] = ()
     #: 「先在终端运行这一句」。``None`` = 不确定这家 CLI 怎么登录（AD-157）。
     login_command: str | None = None
+    login_uses_native: bool = False
     quirks: AgentQuirks = field(default_factory=AgentQuirks)
     #: 它在**工作目录**里读哪些文件（批次四十四）。缺省全是 ``None`` = 不知道。
     workspace: WorkspaceConventions = field(default_factory=WorkspaceConventions)
@@ -393,6 +412,8 @@ class AcpPreset:
             "authModel": self.auth_model,
             "supportsExternalCli": self.supports_external_cli,
         }
+        if self.catalog_status != "active":
+            payload["catalogStatus"] = self.catalog_status
         if self.env_keys_hint:
             payload["envKeysHint"] = list(self.env_keys_hint)
         if self.auth_method_ids:
@@ -401,6 +422,8 @@ class AcpPreset:
             payload["loginCommand"] = self.login_command
         if self.install_command:
             payload["installCommand"] = self.install_command
+        if self.adapter_install_command:
+            payload["adapterInstallCommand"] = self.adapter_install_command
         if self.setup_url:
             payload["setupUrl"] = self.setup_url
         if self.executable:
@@ -429,14 +452,19 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="claude-code",
+                restricted_execution_adapter="drivers.workbench_execution.claude",
                 executable="claude",
                 setup_url="https://github.com/agentclientprotocol/claude-agent-acp",
                 group_isolation_adapter="drivers.group_execution.claude",
+                skill_projection_adapter="drivers.skill_execution.claude",
+                account_quota_adapter="drivers.claude_code.quota",
                 config_root_env="CLAUDE_CONFIG_DIR",
                 config_root_default="~/.claude",
                 config_watch_files=("settings.json", "settings.local.json"),
                 label="Claude Code",
-                command=("npx", "@agentclientprotocol/claude-agent-acp@latest"),
+                command=("npx", "--offline", "--no-install", "@agentclientprotocol/claude-agent-acp@0.90.0"),
+                native_executable_env="CLAUDE_CODE_EXECUTABLE",
+                adapter_install_command="npm exec --yes --package=@agentclientprotocol/claude-agent-acp@0.90.0 -- node --version",
                 resume_argv_template=("claude", "--resume", SESSION_ID_PLACEHOLDER),
                 # 它没有子命令式的登录入口：直接跑 `claude` 走交互式登录。
                 login_command="claude",
@@ -492,8 +520,12 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 config_root_default="~/.codex",
                 config_watch_files=("config.toml", "auth.json"),
                 group_isolation_adapter="drivers.group_execution.codex",
+                skill_projection_adapter="drivers.skill_execution.codex",
+                account_quota_adapter="drivers.codex.quota",
                 label="Codex",
-                command=("npx", "@agentclientprotocol/codex-acp@latest"),
+                command=("npx", "--offline", "--no-install", "@agentclientprotocol/codex-acp@1.10.0"),
+                native_executable_env="CODEX_PATH",
+                adapter_install_command="npm exec --yes --package=@agentclientprotocol/codex-acp@1.10.0 -- node --version",
                 resume_argv_template=("codex", "resume", SESSION_ID_PLACEHOLDER),
                 login_command="codex login",
                 env_keys_hint=("OPENAI_API_KEY", "CODEX_API_KEY"),
@@ -528,6 +560,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="opencode",
+                skill_projection_adapter="drivers.skill_execution.opencode",
                 host_approval=True,
                 process_env={"NODE_USE_SYSTEM_CA": "1"},
                 executable="opencode",
@@ -538,7 +571,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 workspace_config_dir=".",
                 config_watch_files=("opencode.json", "opencode.jsonc"),
                 label="OpenCode",
-                command=("npx", "opencode-ai@latest", "acp"),
+                command=("opencode", "acp"),
                 resume_argv_template=("opencode", "-s", SESSION_ID_PLACEHOLDER),
                 # authMethods 的说明原话就是这一句（AD-156 取证）。
                 login_command="opencode auth login",
@@ -575,14 +608,16 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="gemini",
+                account_quota_adapter="drivers.gemini.quota",
+                skill_projection_adapter="drivers.skill_execution.gemini",
                 executable="gemini",
                 setup_url="https://github.com/google-gemini/gemini-cli",
                 install_command="npm install -g @google/gemini-cli",
                 config_root_default="~/.gemini",
                 config_watch_files=("settings.json",),
                 label="Gemini CLI",
-                command=("npx", "@google/gemini-cli@latest", "--experimental-acp"),
-                resume_argv_template=None,
+                command=("gemini", "--experimental-acp"),
+                resume_argv_template=("gemini", "--resume", SESSION_ID_PLACEHOLDER),
                 env_keys_hint=("GEMINI_API_KEY",),
                 # 交互式登录：直接跑它本体，按提示选一种 authMethod。
                 login_command="gemini",
@@ -605,7 +640,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                     "ACP 面带 --experimental 前缀，形状可能随版本变。",
                     "2026-09-28 核对 0.61.0 发布包：session/set_mode 支持 default/autoEdit/yolo"
                     "及启用时的 plan；按会话实际上报的选项开放，尚未做原生调用验收。",
-                    "续接命令未实测，因此不提供「在 CLI 里打开」入口。",
+                    "原生终端按同 ID 续接，沿用当前项目技能、MCP、模型与审批模式。",
                     "取证 0.58.0（AD-156）：agentCapabilities **整个没有 sessionCapabilities**"
                     "（只有 loadSession=true）。这一位此前填 True 是没有依据的猜测，"
                     "而 initialize 没说的位由预设兜底、不会被自动纠正，故按 AD-151 的"
@@ -619,7 +654,10 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="antigravity",
+                account_quota_adapter="drivers.antigravity.quota",
+                skill_projection_adapter="drivers.skill_execution.antigravity",
                 executable="agy_acp_server.par",
+                native_cli_selectable=False,
                 setup_url="https://github.com/agentclientprotocol/registry/tree/main/antigravity-acp",
                 label="Google Antigravity",
                 # 官方清单登记的是一个**平台二进制**，不是 npm 包：解压出来的那个
@@ -719,17 +757,17 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="qwen",
+                skill_projection_adapter="drivers.skill_execution.qwen",
                 executable="qwen",
                 setup_url="https://github.com/QwenLM/qwen-code",
                 install_command="npm install -g @qwen-code/qwen-code",
                 label="Qwen Code",
                 command=(
-                    "npx",
-                    "@qwen-code/qwen-code@latest",
+                    "qwen",
                     "--acp",
                     "--experimental-skills",
                 ),
-                resume_argv_template=None,
+                resume_argv_template=("qwen", "--resume", SESSION_ID_PLACEHOLDER),
                 env_keys_hint=("OPENAI_API_KEY",),
                 # 同上：交互式登录，没有独立的登录子命令。
                 login_command="qwen",
@@ -755,6 +793,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                     }
                 ),
                 notes=(
+                    "2026-10-16 隔离原生进程 + loopback 实测 ACP→TUI→ACP 同 ID 历史与技能范围；终端显式传递可映射配置；不支持的运行模式在启动前提示。",
                     "工作目录指令文件按它的**公开约定**填 QWEN.md（未经真机取证）。",
                     "续接命令未实测，不提供「在 CLI 里打开」入口。",
                     "取证 0.23.0（AD-156）：未登录时 session/new 回 -32000 «Authentication "
@@ -770,6 +809,8 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="openclaw",
+                project_mcp_via_runtime=True,
+                skill_projection_adapter="drivers.openclaw.skill_adapter",
                 executable="openclaw",
                 login_command="openclaw onboard",
                 session_creation_proves_auth=False,
@@ -778,8 +819,8 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 config_watch_files=("openclaw.json", "agents/*/agent/models.json"),
                 setup_url="https://docs.openclaw.ai/cli/acp",
                 label="OpenClaw",
-                command=("npx", "openclaw", "acp"),
-                resume_argv_template=None,
+                command=("openclaw", "acp"),
+                resume_argv_template=("openclaw", "tui", "--session", "{native_session_id}"),
                 auth_method_ids=(),
                 quirks=AgentQuirks(
                     # 真机上第一个**发增量**的引擎（AD-158）：一次 tool_call + 两条
@@ -804,7 +845,8 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                     "登录走它自己的 CLI。",
                     "Kaus 使用原生接口补齐会话级模型选择；"
                     "仅修改当前会话，已配置的自定义厂家一并读取。",
-                    "2026-09-27 本机 2026.9.6 隔离验收：非空 mcpServers 被拒绝；"
+                    "原生 ACP 不接受非空 mcpServers；2026-10-17 项目 MCP 已通过原生会话覆盖接入，"
+                    "stdio/HTTP/SSE、冷恢复和双会话隔离已验；"
                     "跨进程恢复 ACP sessionId 要用 session/load，session/resume 不接受该 UUID。",
                     "取证 2026.6.34（AD-156）：`openclaw acp` **不是自带模型的适配器，"
                     "是一座桥**——它连本机 openclaw 服务端的 WebSocket（默认 "
@@ -822,7 +864,12 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="pi",
+                account_quota_adapter="drivers.pi.quota",
+                project_mcp_via_runtime=True,
+                skill_projection_adapter="drivers.skill_execution.pi",
                 executable="pi-acp",
+                native_executable="pi",
+                native_executable_env="PI_ACP_PI_COMMAND",
                 setup_url="https://github.com/svkozak/pi-acp",
                 install_command="npm install -g @earendil-works/pi-coding-agent pi-acp",
                 config_root_default="~/.pi/agent",
@@ -830,7 +877,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 config_watch_files=("settings.json", "models.json"),
                 label="Pi",
                 command=("pi-acp",),
-                resume_argv_template=None,
+                resume_argv_template=("pi", "--session", SESSION_ID_PLACEHOLDER),
                 quirks=AgentQuirks(
                     supports_session_resume=False,
                     supports_session_load=True,
@@ -851,8 +898,10 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 ),
                 notes=(
                     "社区适配器，装了才有；未装时 probe 会如实报 unavailable。",
-                    "2026-09-27 上游 README 明确 session/new 的 mcpServers 只保存、"
-                    "不接入 Pi；项目 MCP 投射关闭，原生扩展仍由 Pi 管理。",
+                    "2026-10-16 Pi 0.73.1 / pi-acp 0.0.34：Kaus 进程内补齐 RPC 思考查询与回合完成事件；"
+                    "原生终端用 --session 精确续接，模型与思考档位显式保留。",
+                    "原生 ACP 不执行 mcpServers；2026-10-17 项目 MCP 已经原生 extension 接入，"
+                    "stdio/HTTP/SSE、同会话冷恢复和终端往返已验。",
                     "取证 0.0.33（AD-156）：适配器本身在 npm 上（`pi-acp`），但它只是壳——"
                     "session/new 会去 exec `pi`，没装时回 -32603 «Could not start pi: "
                     "executable not found»（data.code=ENOENT），提示装 "
@@ -870,6 +919,11 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="hermes-acp",
+                restricted_execution_adapter="drivers.hermes.workbench_execution",
+                quota_provider_adapter="drivers.hermes.quota_sources",
+                account_quota_adapter="drivers.hermes.quota",
+                skill_scope_key="hermes",
+                skill_projection_adapter="drivers.hermes.skill_adapter",
                 host_approval=True,
                 executable="hermes",
                 setup_url="https://github.com/NousResearch/hermes-agent",
@@ -879,7 +933,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 group_isolation_adapter="drivers.hermes.group_execution",
                 label="Hermes",
                 command=("hermes", "acp"),
-                resume_argv_template=None,
+                resume_argv_template=("hermes", "chat", "--resume", SESSION_ID_PLACEHOLDER),
                 quirks=AgentQuirks(
                     supports_session_resume=True,
                     supports_set_mode=True,
@@ -910,6 +964,8 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="dsh",
+                account_quota_adapter="drivers.dsh.quota",
+                skill_projection_adapter="drivers.skill_execution.dsh",
                 host_approval=True,
                 executable="dsh",
                 setup_url="https://github.com/deepseek-ai/DeepSeek-Harness",
@@ -961,12 +1017,14 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="deepseek-acp",
+                account_quota_adapter="drivers.dsh.quota",
+                skill_projection_adapter="drivers.skill_execution.deepseek",
                 session_creation_proves_auth=False,
                 executable="deepseek-acp",
                 setup_url="https://www.npmjs.com/package/deepseek-acp",
                 install_command="npm install -g deepseek-acp",
                 label="DeepSeek Harness",
-                command=("npx", "-y", "deepseek-acp"),
+                command=("deepseek-acp",),
                 resume_argv_template=None,
                 login_command="deepseek-acp --setup",
                 config_root_env="DSH_HOME",
@@ -1027,6 +1085,8 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="kilo",
+                account_quota_adapter="drivers.kilo.quota",
+                skill_projection_adapter="drivers.skill_execution.kilo",
                 host_approval=True,
                 process_env={"NODE_USE_SYSTEM_CA": "1"},
                 executable="kilo",
@@ -1038,7 +1098,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 config_watch_files=("kilo.json", "kilo.jsonc"),
                 label="Kilo",
                 command=("kilo", "acp"),
-                resume_argv_template=None,
+                resume_argv_template=("kilo", "-s", SESSION_ID_PLACEHOLDER),
                 login_command=None,
                 env_keys_hint=("DEEPSEEK_API_KEY",),
                 auth_method_ids=(),
@@ -1078,6 +1138,8 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="goose",
+                account_quota_adapter="drivers.goose.quota",
+                skill_projection_adapter="drivers.skill_execution.goose",
                 label="Goose",
                 command=("goose", "acp"),
                 executable="goose",
@@ -1097,9 +1159,11 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                     mode_semantics="approval",
                     model_switch="config_option",
                 ),
+                resume_argv_template=("goose", "session", "--resume", "--session-id", SESSION_ID_PLACEHOLDER),
                 notes=(
+                    "2026-10-16 隔离原生进程 + loopback 实测 ACP→TUI→ACP 同 ID 历史与技能范围；终端显式传递可映射配置；不支持的运行模式在启动前提示。",
                     "2026-09-27 官方 ACP 目录 1.52.0：goose acp；源码 "
-                    "04ed836c 提供 load、mode/model/thinking 配置；未做本机推理验收。",
+                    "04ed836c 提供 load、mode/model/thinking 配置；真实账号模型任务未验收。",
                     "项目规则使用 .goosehints，需要启用原生 Developer 扩展。",
                     "原生 auto 允许全部工具，仅对应完整权限；smart_approve 无法等同"
                     "仅自动编辑，chat 禁用全部工具，均不冒充通用权限档。",
@@ -1109,12 +1173,15 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="cursor",
+                account_quota_adapter="drivers.cursor.quota",
+                skill_projection_adapter="drivers.skill_execution.cursor",
                 host_approval=True,
                 label="Cursor CLI",
                 command=("cursor-agent", "acp"),
                 executable="cursor-agent",
                 setup_url="https://cursor.com/docs/cli/acp",
                 login_command="agent login",
+                login_uses_native=True,
                 config_root_env="CURSOR_CONFIG_DIR",
                 config_root_default="~/.cursor",
                 workspace_config_dir=".cursor",
@@ -1149,6 +1216,8 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="copilot",
+                account_quota_adapter="drivers.copilot.quota",
+                skill_projection_adapter="drivers.skill_execution.copilot",
                 host_approval=True,
                 label="GitHub Copilot CLI",
                 command=("copilot", "--acp", "--stdio"),
@@ -1170,9 +1239,11 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                     model_switch="config_option",
                     thought_chunks=False,
                 ),
+                resume_argv_template=("copilot", "--resume", SESSION_ID_PLACEHOLDER),
                 notes=(
+                    "2026-10-16 隔离原生进程 + loopback 实测 ACP→TUI→ACP 同 ID 历史与技能范围；终端显式传递可映射配置；不支持的运行模式在启动前提示。",
                     "2026-09-27 官方 ACP 目录 1.0.88 与官方文档确认 --acp --stdio；"
-                    "未做本机推理验收。",
+                    "真实账号模型任务未验收。",
                     "ACP session/new 不携带工具过滤或初始推理强度；"
                     "只暴露会话实际返回的可变配置，不将启动参数伪装成热切换。",
                     "模型与 BYOK 路由由原生 CLI 和 providers.json 管理；"
@@ -1183,6 +1254,8 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="devin",
+                catalog_status="legacy",
+                runtime_adapter="drivers.skill_execution.devin_runtime",
                 label="Devin",
                 command=("devin", "acp"),
                 executable="devin",
@@ -1212,6 +1285,8 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="omp",
+                account_quota_adapter="drivers.oh_my_pi.quota",
+                skill_projection_adapter="drivers.skill_execution.omp",
                 session_creation_proves_auth=False,
                 label="omp (oh-my-pi)",
                 command=("omp", "acp"),
@@ -1233,7 +1308,9 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                     model_switch="config_option",
                     needs_client_fs=True,
                 ),
+                resume_argv_template=("omp", "--resume", SESSION_ID_PLACEHOLDER),
                 notes=(
+                    "2026-10-16 隔离原生进程 + loopback 实测 ACP→TUI→ACP 同 ID 历史与技能范围；终端显式传递可映射配置；不支持的运行模式在启动前提示。",
                     "2026-09-27 官方源码 baf63aa1：omp acp；"
                     "model/thinking/mode 分列 configOptions，模型 id 是 provider/model。",
                     "default/plan 是运行模式；写入和执行走 ACP 审批，"
@@ -1244,6 +1321,8 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="grok",
+                account_quota_adapter="drivers.grok.quota",
+                skill_projection_adapter="drivers.skill_execution.grok",
                 host_approval=True,
                 label="Grok Build",
                 command=("grok", "--no-auto-update", "agent", "stdio"),
@@ -1258,16 +1337,21 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 auth_method_ids=("xai.api_key", "cached_token"),
                 workspace=WorkspaceConventions(instructions_file="AGENTS.md"),
                 quirks=AgentQuirks(
-                    supports_session_resume=False,
-                    supports_session_load=False,
+                    supports_session_resume=True,
+                    supports_session_load=True,
                     supports_set_mode=False,
                     mode_semantics="none",
                     model_switch="config_option",
                     thought_chunks=False,
                 ),
+                verified_bits=frozenset({"supports_session_load", "supports_session_resume"}),
+                resume_argv_template=("grok", "--no-auto-update", "--resume", SESSION_ID_PLACEHOLDER),
                 notes=(
-                    "2026-09-27 官方 ACP 目录 1.0.41 与 headless 文档："
-                    "grok --no-auto-update agent stdio；未做本机推理验收。",
+                    "2026-10-16 原生 ACP→TUI→ACP 同 ID 历史及 selected/empty 技能范围已用 loopback 验收；不自动扩大终端权限。",
+                    "2026-10-16 本机 1.0.41：initialize 声明 load/resume 与 HTTP/SSE MCP；"
+                    "隔离原生进程 new→关闭→load/resume 同 ID，stdio MCP A→B→空通过。"
+                    "坏 MCP 已通过同会话状态接口拦截；"
+                    "远端 MCP 鉴权与真实账号模型任务未验收。",
                     "仅复用 CLI 的本地登录或显式传入的 XAI_API_KEY；"
                     "官方 ACP 流程需先选择其提供的非交互认证方法。",
                 ),
@@ -1276,6 +1360,9 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="crush",
+                skill_projection_adapter="drivers.skill_execution.crush",
+                resume_argv_template=("crush", "--session", SESSION_ID_PLACEHOLDER),
+                native_cli_flag="--crush-command",
                 session_creation_proves_auth=False,
                 label="Crush",
                 command=(
@@ -1315,6 +1402,9 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="commandcode",
+                project_mcp_via_runtime=True,
+                skill_projection_adapter="drivers.skill_execution.commandcode",
+                native_cli_flag="--command",
                 session_creation_proves_auth=False,
                 label="Command Code",
                 command=(
@@ -1331,6 +1421,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 env_keys_hint=("COMMAND_CODE_API_KEY",),
                 approval_mode_ids={"plan": "plan", "bypass": "yolo"},
                 workspace=WorkspaceConventions(instructions_file="AGENTS.md"),
+                resume_argv_template=("command-code", "--resume", SESSION_ID_PLACEHOLDER),
                 quirks=AgentQuirks(
                     supports_session_resume=True,
                     supports_session_load=True,
@@ -1343,14 +1434,19 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                     "2026-09-27 原生 1.66.0：通过 Kaus 自写桥读取官方 headless NDJSON；"
                     "会话按原生 sessionId 精确恢复，load 仅回放桥保存的记录，不发送提示词。",
                     "默认 plan；只有用户明确选完整权限才使用 yolo。原生 headless 没有"
-                    "审批/问答回传，不暴露 ask/auto；项目 MCP 投影明确不支持。",
+                    "审批/问答回传，不暴露 ask/auto；项目 MCP 通过原生 mod 挂载，Plan 保持原生工具限制。",
                     "原生包为 UNLICENSED，桥不复制原生实现；登录仍由用户的 CLI 管理。",
+                    "2026-10-16：终端从桥记录映射原生会话 ID，校验工作目录后 --resume；"
+                    "模型、思考与审批沿用会话设置，已验证 ACP/终端/冷恢复往返。",
                 ),
             )
         ),
         _preset(
             AcpPreset(
                 id="alma",
+                catalog_status="legacy",
+                runtime_adapter="drivers.alma_bridge.runtime",
+                resume_argv_template=("alma", "tui", SESSION_ID_PLACEHOLDER),
                 session_creation_proves_auth=False,
                 label="Alma",
                 command=(
@@ -1384,6 +1480,10 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="zcode",
+                account_quota_adapter="drivers.zcode.quota",
+                skill_projection_adapter="drivers.skill_execution.zcode",
+                resume_argv_template=("zcode", "--resume", SESSION_ID_PLACEHOLDER),
+                native_cli_flag="--command",
                 label="ZCode",
                 command=(
                     sys.executable,

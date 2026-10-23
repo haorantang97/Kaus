@@ -15,8 +15,8 @@ describe("message media and phase replay", () => {
     expect(state.droppedDuplicates).toBe(1);
   });
 
-  it("consumes workspace metadata without adding a visible item", () => {
-    const state = reduceEvents(initialTimelineState("c1"), [event(1, { type: "extension.event", namespace: "kaus", name: "runtime.workspace", data: { workspaceRoot: "/tmp/project" } })]);
+  it.each(["runtime.workspace", "history.checkpoint"])("consumes %s metadata without adding a visible item", (name) => {
+    const state = reduceEvents(initialTimelineState("c1"), [event(1, { type: "extension.event", namespace: "kaus", name, data: { workspaceRoot: "/tmp/project", lastEntryId: "native:1" } })]);
     expect(state.items).toHaveLength(0);
     expect(state.lastSequence).toBe(1);
   });

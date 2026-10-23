@@ -85,7 +85,7 @@ describe("会话鉴权接入", () => {
     expect(always401.mock.calls.filter(([url]) => url === "/api/session-auth/bootstrap")).toHaveLength(2);
   });
 
-  it("flag 关闭时 bootstrap 404 → SessionUnavailableError（界面据此保持旧样子）", async () => {
+  it("bootstrap 404 reports an unavailable session connection", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ detail: "Not Found" }, 404)));
     await expect(bootstrapSessionAuth()).rejects.toBeInstanceOf(SessionUnavailableError);
   });
@@ -138,14 +138,14 @@ describe("auth_required 的行内报错", () => {
     setLocalePref("zh");
   });
 
-  it("`message` 后面接上后端给的那条终端命令", () => {
+  it("keeps login diagnostics off the public status line", () => {
     const failure = new SessionApiError(400, "auth_required", "Codex 还没有登录", {
       detail: { cause: "auth_required", hint: "在终端运行 `codex login`，然后重试" },
       authMethods: ["chatgpt"],
     });
-    // 只写「还没有登录」等于让用户自己去猜命令——修法必须和现象在同一行。
+    // The typed error retains its login hint for an explicit details/recovery view.
     expect(describeFailure(failure)).toBe(
-      "Codex 还没有登录 在终端运行 `codex login`，然后重试",
+      "请登录此 Agent 后重试",
     );
   });
 
@@ -153,6 +153,6 @@ describe("auth_required 的行内报错", () => {
     const failure = new SessionApiError(400, "auth_required", "这台引擎还没有登录", {
       detail: { cause: "auth_required" },
     });
-    expect(describeFailure(failure)).toBe("这台引擎还没有登录");
+    expect(describeFailure(failure)).toBe("请登录此 Agent 后重试");
   });
 });

@@ -86,3 +86,22 @@ def test_native_selection_does_not_leak_after_navigation(monkeypatch, tmp_path):
     window.create_file_dialog = dialog
     with pytest.raises(PermissionError):
         bridge.choose_directory()
+
+
+def test_native_executable_picker_preserves_selected_link_and_cancel(monkeypatch, tmp_path):
+    executable = tmp_path / 'engine'
+    executable.write_text('#!/bin/sh\nexit 0\n')
+    executable.chmod(0o700)
+    link = tmp_path / 'cli'
+    link.symlink_to(executable)
+    bridge, calls, _ = native_bridge(monkeypatch, (str(link),))
+    sys.modules['webview'].FileDialog.OPEN = 10
+    assert bridge.choose_executable(str(link)) == str(link)
+    assert calls == [(10, {'directory': str(tmp_path), 'allow_multiple': False})]
+    bridge, _, _ = native_bridge(monkeypatch, None)
+    sys.modules['webview'].FileDialog.OPEN = 10
+    assert bridge.choose_executable() is None
+    bridge, calls, _ = native_bridge(monkeypatch, (str(link),), 'https://example.com')
+    with pytest.raises(PermissionError):
+        bridge.choose_executable()
+    assert calls == []

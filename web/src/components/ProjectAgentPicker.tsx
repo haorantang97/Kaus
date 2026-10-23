@@ -1,3 +1,4 @@
+import { engineAcceptsNewWork } from "../lib/engineAvailability";
 import { useEffect, useRef, useState } from "react";
 import { BarMenu } from "./ComposerBar";
 import { EngineIcon } from "./EngineIcon";
@@ -7,9 +8,9 @@ import { describeFailure, ensureProjectBinding, fetchConnectedBackends, fetchPro
   type BackendWire, type BindingWire } from "../lib/sessionApi";
 import { useLocale } from "../i18n";
 
-export function ProjectAgentPicker({ projectId, value, onChange, allowedBackendIds, disabled = false }: {
+export function ProjectAgentPicker({ projectId, value, onChange, allowedBackendIds, retainedBinding, disabled = false }: {
   projectId: string; value?: string | null; onChange: (binding: BindingWire | null) => void;
-  allowedBackendIds?: string[]; disabled?: boolean;
+  allowedBackendIds?: string[]; retainedBinding?: BindingWire; disabled?: boolean;
 }) {
   const { t } = useLocale();
   const [bindings, setBindings] = useState<BindingWire[]>([]);
@@ -18,6 +19,7 @@ export function ProjectAgentPicker({ projectId, value, onChange, allowedBackendI
   const [error, setError] = useState("");
   const epoch = useRef(0);
   const changed = useRef(onChange); changed.current = onChange;
+  const retained = useRef(retainedBinding); retained.current = retainedBinding;
   const currentValue = useRef(value); currentValue.current = value;
   const allowedKey = allowedBackendIds?.join("\0");
   useEffect(() => {
@@ -29,8 +31,9 @@ export function ProjectAgentPicker({ projectId, value, onChange, allowedBackendI
       .then(([global, local]) => {
         if (generation !== epoch.current) return;
         setConnections(global.backends); setBindings(local.bindings);
-        const usable = local.bindings.filter(b => b.enabled && (!allowedBackendIds || allowedBackendIds.includes(b.backendId)));
+        const usable = local.bindings.filter(b => b.enabled && engineAcceptsNewWork(b) && engineAcceptsNewWork(global.backends.find(c => c.id === b.backendId)) && (!allowedBackendIds || allowedBackendIds.includes(b.backendId)));
         const selected = usable.find(b => b.id === currentValue.current) ?? usable.find(b => b.isDefault) ?? usable[0];
+        if (retained.current?.id === currentValue.current && retained.current?.projectId === projectId) return;
         if ((selected?.id ?? null) !== (currentValue.current ?? null)) changed.current(selected ?? null);
       }).catch(e => { if (!controller.signal.aborted) setError(describeFailure(e)); })
       .finally(() => { if (generation === epoch.current) setLoading(false); });
@@ -52,7 +55,7 @@ export function ProjectAgentPicker({ projectId, value, onChange, allowedBackendI
   const choices = engineSelectionChoices(
     bindings.filter(b => !allowedBackendIds || allowedBackendIds.includes(b.backendId)),
     connections.filter(c => !allowedBackendIds || allowedBackendIds.includes(c.id)), value);
-  const selected = choices.find(c => c.value === value);
+  const selected = choices.find(c => c.value === value) ?? (retainedBinding && retainedBinding.id === value && retainedBinding.projectId === projectId ? { backendId:retainedBinding.backendId, productId:retainedBinding.backendId } : undefined);
   const label = (id: string) => {
     const connection = connections.find(c => c.id === id);
     return engineBrand(connection?.productId ?? id)?.name ?? connection?.productName ?? backendDisplay(id).displayName;

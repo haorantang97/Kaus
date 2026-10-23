@@ -1,0 +1,17 @@
+{
+  "id": "workflow-studio",
+  "name": "自动化工作流",
+  "version": "1.0.0",
+  "description": "编辑有序步骤，交给已配置的 Agent 执行。",
+  "icon": "workflow",
+  "entry": "module.html",
+  "capabilities": [
+    "workflow"
+  ],
+  "executionPolicy": "project",
+  "permissions": [
+    "agent:run",
+    "data:read",
+    "data:write"
+  ]
+}

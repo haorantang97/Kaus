@@ -121,6 +121,36 @@ def test_process_identity_mismatch_never_signals_unrelated_process(tmp_path):
         process.wait(timeout=5)
 
 
+@pytest.mark.parametrize('child_delay,timeout,expected', [(0.3, 2, True), (20, 0.05, False)])
+def test_exited_native_leader_allows_bounded_child_cleanup_without_signals(tmp_path, monkeypatch, child_delay, timeout, expected):
+    source = ('import os,subprocess,sys\n'
+        'sys.stdin.readline()\n'
+        f'subprocess.Popen([sys.executable,"-c","import time;time.sleep({child_delay})"],stdin=subprocess.DEVNULL)\n')
+    process = subprocess.Popen([sys.executable, '-c', source], stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    real_killpg = os.killpg
+    try:
+        identity = managed_process.process_identity(process.pid)
+        assert identity is not None
+        (tmp_path / 'process.json').write_text(json.dumps(identity))
+        process.stdin.write(b'go\n'); process.stdin.flush()
+        process.wait(timeout=5)
+        assert managed_process._group_active(process.pid)
+        signals = []
+        monkeypatch.setattr(managed_process.os, 'killpg', lambda *args: signals.append(args))
+        assert managed_process.stop(tmp_path, str(process.pid), timeout=timeout)[0] is expected
+        assert not signals
+        monkeypatch.setattr(managed_process.os, 'killpg', real_killpg)
+    finally:
+        if process.stdin is not None:
+            process.stdin.close()
+        try:
+            real_killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait(timeout=5)
+
+
 def test_revoke_before_delayed_launch_prevents_native_execution(tmp_path):
     output = tmp_path / "ran"
     native = executable(tmp_path / "agent", f"open({str(output)!r},'w').write('bad')\n")

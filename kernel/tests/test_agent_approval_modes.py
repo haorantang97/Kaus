@@ -1,5 +1,6 @@
 """Cross-engine permission contracts, without invoking any vendor runtime."""
 from copy import deepcopy
+from dataclasses import replace
 
 import pytest
 
@@ -29,7 +30,8 @@ CASES = [
 
 
 def fixture_driver(key, native_modes, option_id):
-    preset = get_preset(key)
+    # The Python fixture speaks ACP but has no vendor-native loader or MCP RPC.
+    preset = replace(get_preset(key), skill_projection_adapter=None)
     dress = {"modes": native_modes}
     if option_id:
         dress.update(configOptions=True, configOptionDefinitions=[{
@@ -54,7 +56,7 @@ async def test_every_advertised_permission_reaches_exact_session_rpc_and_survive
 
     async def capture(self, method, params, **kwargs):
         if method in ("session/set_mode", "session/set_config_option"):
-            calls.append((params["sessionId"], method, params.get("optionId"), params.get("value", params.get("modeId"))))
+            calls.append((params["sessionId"], method, params.get("configId"), params.get("value", params.get("modeId"))))
         return await original(self, method, params, **kwargs)
 
     monkeypatch.setattr(AcpConnection, "call", capture)

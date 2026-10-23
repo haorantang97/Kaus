@@ -79,6 +79,21 @@ def facets_from_driver(driver: Any) -> dict[str, Any] | None:
     return payload
 
 
+def accepts_new_work(driver: Any = None, *, backend_id: str | None = None) -> bool:
+    """Catalog retirement affects new selections, never existing session reads."""
+    preset = getattr(driver, "preset", None)
+    status = getattr(preset, "catalog_status", None)
+    if status is None and backend_id:
+        status = (backend_facets(backend_id).get("preset") or {}).get("catalogStatus")
+    return status != "legacy"
+
+
+def require_new_work(driver: Any = None, *, backend_id: str | None = None) -> None:
+    if not accepts_new_work(driver, backend_id=backend_id):
+        from app.api.api_errors import ApiError
+        raise ApiError(409, "engine_not_selectable", "请选择其他 Agent")
+
+
 __all__ = [
     "FacetProvider",
     "backend_facets",

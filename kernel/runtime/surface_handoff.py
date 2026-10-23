@@ -45,8 +45,9 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Sequence
 from uuid import uuid4
 
@@ -74,15 +75,12 @@ KAUS_NAMESPACE = USER_MESSAGE_NAMESPACE
 
 SURFACE_CHANGED_NAME = "surface.changed"
 HISTORY_RECONCILED_NAME = "history.reconciled"
+HISTORY_CHECKPOINT_NAME = "history.checkpoint"
 LEASE_TAKEN_OVER_NAME = "lease.taken_over"
 
 #: ``complete=False`` 时那句诚实话（任务书原文）。
 INCOMPLETE_NOTICE = "外部终端期间的结构化轨迹无法完整恢复"
-
-#: 一条 ``history.reconciled`` 最多折进多少条原生条目。原生历史本身已经是尾部
-#: 窗口（C-2），这里再兜一次底：事件是要入库和广播的，不该被一次超长回灌撑爆。
-MAX_RECONCILED_ENTRIES = 200
-
+HISTORY_RETRY_NOTICE = "终端记录暂未同步，请稍后重试"
 
 def _utcnow() -> datetime:
     return datetime.now(tz=timezone.utc)
@@ -138,6 +136,7 @@ class CardHandoff:
     complete: bool
     gaps: tuple[str, ...]
     reconciled: bool
+    last_entry_id: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -164,6 +163,11 @@ class SurfaceCoordinator:
         self._clock = clock
         self._handoff_locks: dict[str, asyncio.Lock] = {}
 
+    async def aclose(self) -> None:
+        close = getattr(self._launcher, "aclose", None)
+        if callable(close):
+            await close()
+
     # --- 开终端 --------------------------------------------------------- #
 
     async def to_external(
@@ -186,7 +190,12 @@ class SurfaceCoordinator:
         conversation = await self._release_card(conversation)
         binding, driver = await self._driver_for(conversation)
 
+        previous_external = await self._host.leases.describe(conversation.id) if force else None
         await self._precheck_external_lease(conversation, force=force)
+        if await self._history_pending(conversation):
+            recovered = await self._reconcile_history(conversation)
+            if not recovered.reconciled:
+                raise SurfaceConflictError("history_sync_pending", HISTORY_RETRY_NOTICE)
         await self._host.prepare_external_session(conversation, binding, driver)
 
         # v1.0 §8.7：先有确定的 native_session_id，再去开窗。
@@ -204,23 +213,59 @@ class SurfaceCoordinator:
 
         launch_uuid = uuid4().hex
         reserved_id = terminal_launch_id(launch_uuid)
+        computer_hook = getattr(driver, "external_computer_use", None)
+        computer = computer_hook(conversation) if computer_hook is not None else {}
+        resources = tuple(computer.get("resources", ()))
+        if resources:
+            import os
+            from drivers.terminals.managed_process import process_identity
+            computer = {**computer, "owner": process_identity(os.getpid())}
+        computer_metadata = {"computerUse": computer} if resources else {}
         acquisition = await self._host.leases.try_acquire_external_cli(
             conversation.id, owner_id=reserved_id,
-            metadata={"launchId": reserved_id, "backendId": binding.backend_id},
+            metadata={"launchId": reserved_id, "backendId": binding.backend_id, **computer_metadata},
             at=self._clock(), force=force,
         )
         if not acquisition.granted:
             raise SurfaceConflictError("lease_held", "这条会话正在被另一个窗口使用",
                                        detail=_lease_detail(acquisition.conflict))
+        pending_launch = None
         try:
+            try:
+                baseline = await self._load_history(conversation)
+            except Exception as exc:
+                raise SurfaceConflictError("history_sync_pending", HISTORY_RETRY_NOTICE) from exc
+            if baseline is not None and baseline.entries:
+                await self._host.emit_conversation_event(conversation, ExtensionEvent(
+                    namespace=KAUS_NAMESPACE, name=HISTORY_CHECKPOINT_NAME,
+                    data={"lastEntryId": baseline.entries[-1].entry_id,
+                          "nativeSessionId": baseline.native_session_id},
+                ))
+            if resources:
+                pending_launch = TerminalLaunch.create(
+                    conversation_id=conversation.id, launcher=self._launcher.selected_app(),
+                    command_summary="Native Agent", correlation_id=reserved_id,
+                    metadata=computer_metadata, launch_uuid=launch_uuid, launched_at=self._clock(),
+                )
+                # Recovery can find this launch even if the backend exits while
+                # the terminal is opening. Only resource IDs are persisted here.
+                await self._repositories.terminal_launches.save(pending_launch)
+                await self._reserve_computer_resources(pending_launch)
             result: LaunchResult = await self._launcher.launch(
                 spec, conversation_id=conversation.id, launch_uuid=launch_uuid,
             )
-            launch = await self._repositories.terminal_launches.save(result.launch)
+            launch = await self._repositories.terminal_launches.save(result.launch.evolve(
+                metadata={**result.launch.metadata, **computer_metadata}))
         except BaseException:
-            await self._host.leases.release(conversation.id, expected_owner_id=reserved_id)
+            stopped = True
+            if pending_launch is not None:
+                stopped = await self._stop_computer_launch(pending_launch, conversation, driver)
+            if stopped:
+                await self._host.leases.release(conversation.id, expected_owner_id=reserved_id)
             raise
         if not result.launched:
+            if resources and not await self._stop_computer_launch(launch, conversation, driver):
+                raise SurfaceConflictError("external_stop_failed", "终端任务尚未结束，请稍后重试")
             await self._host.leases.release(conversation.id, expected_owner_id=reserved_id)
             conversation = await self._save_conversation(conversation, state="idle", preferred_surface="card")
             return ExternalHandoff(conversation=conversation, launch=launch, lease=None,
@@ -229,9 +274,13 @@ class SurfaceCoordinator:
         # only after launch and retain the same owner throughout.
         await self._host.leases.try_acquire_external_cli(
             conversation.id, owner_id=reserved_id, backend_process_id=launch.external_process_ref,
-            metadata={"launchId": reserved_id, "launcher": launch.launcher, "backendId": binding.backend_id},
+            metadata={"launchId": reserved_id, "launcher": launch.launcher, "backendId": binding.backend_id,
+                      **computer_metadata},
             at=self._clock(),
         )
+        if previous_external is not None and previous_external.owner_type == "external-cli" and acquisition.previous is None:
+            acquisition = replace(acquisition, previous=previous_external,
+                                  stale_recovered=previous_external.is_stale, reason="external writer replaced")
         await self._announce_takeover(conversation, acquisition)
 
         conversation = await self._save_conversation(
@@ -274,15 +323,21 @@ class SurfaceCoordinator:
     ) -> Conversation:
         if conversation.native_session_id:
             return conversation
+        projection = self._host.session_projection(conversation.id)
+        options = (projection.options if projection else CreateSessionOptions()).model_copy(
+            update={
+                "title": conversation.title,
+                "model_id": conversation.model_id,
+                "provider_id": conversation.provider_id,
+                "reasoning_mode": conversation.reasoning_mode,
+            }
+        )
         try:
-            session = await driver.create_native_session(
-                binding,
-                CreateSessionOptions(
-                    title=conversation.title,
-                    model_id=conversation.model_id,
-                    provider_id=conversation.provider_id,
-                    reasoning_mode=conversation.reasoning_mode,
-                ),
+            precreate = getattr(driver, "create_external_native_session", None)
+            session = (
+                await precreate(conversation, options)
+                if precreate is not None
+                else await driver.create_native_session(binding, options)
             )
         except UnsupportedCapabilityError as exc:
             raise SurfaceUnsupportedError(
@@ -303,7 +358,9 @@ class SurfaceCoordinator:
         if description.owner_type != "external-cli":
             return
         if force:
-            await self._stop_external_writer(description)
+            # Fold the previous terminal's messages before taking a fresh
+            # outbound baseline, including a forced replacement of that writer.
+            await self._to_card(conversation, force=True)
             return
         raise SurfaceConflictError(
             "lease_held",
@@ -315,11 +372,68 @@ class SurfaceCoordinator:
         launch = await self._repositories.terminal_launches.get(description.owner_id)
         if launch is None:
             raise SurfaceConflictError("external_stop_failed", "无法确认终端进程，请先退出终端中的 Agent")
-        stopped, reason = await self._launcher.stop(launch)
+        computer = launch.metadata.get("computerUse", {})
+        if computer.get("resources"):
+            conversation = await self._repositories.conversations.get(description.conversation_id)
+            if conversation is None:
+                raise SurfaceConflictError("external_stop_failed", "终端会话尚未恢复，请先退出终端中的 Agent")
+            _, driver = await self._driver_for(conversation)
+            stopped = await self._stop_computer_launch(launch, conversation, driver)
+            reason = "终端工具仍在运行，请先结束任务"
+        else:
+            stopped, reason = await self._launcher.stop(launch)
         if not stopped:
             raise SurfaceConflictError("external_stop_failed", reason or "终端尚未结束，请稍后重试")
         if launch.status not in ("exited", "failed"):
             await self._repositories.terminal_launches.save(launch.mark_exited(exit_code=-1, at=self._clock()))
+
+    async def _reserve_computer_resources(self, launch: TerminalLaunch) -> None:
+        from drivers.computer_use.lease import ResourceLease, ResourceBusyError
+        from drivers.computer_use.integration import reconcile_resources
+        await reconcile_resources()
+        computer = launch.metadata["computerUse"]
+        directory = Path(self._launcher.root) / launch.id
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        held = []
+        try:
+            for resource in sorted(set(computer["resources"])):
+                lease = ResourceLease(resource, timeout=0)
+                await lease.acquire()
+                held.append(lease)
+            for lease in held:
+                lease.reserve_external(launch.id, directory, remote=computer.get("remote") is True)
+        except ResourceBusyError as exc:
+            raise SurfaceConflictError("computer_in_use", "电脑工具正在使用中，请稍后打开终端") from exc
+        finally:
+            for lease in reversed(held):
+                lease.release()
+
+    async def _stop_computer_launch(self, launch, conversation, driver) -> bool:
+        """Use the native process-group guard, then confirm any remote work."""
+        from drivers.computer_use.lease import ResourceLease
+        directory = Path(self._launcher.root) / launch.id
+        computer = launch.metadata.get("computerUse", {})
+        try:
+            if not (directory / "native.json").exists():
+                # This reserved launch never reached the native entrypoint.
+                directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+                (directory / "revoked").touch(mode=0o600)
+                stopped = True
+            else:
+                stopped, _ = await self._launcher.stop(launch)
+            if not stopped:
+                return False
+            # A revoked entrypoint that never exec'd the CLI cannot own a
+            # remote operation. Failed opens must not strand a writer lease.
+            if computer.get("remote") and (directory / "process.json").exists():
+                confirm = getattr(driver, "stop_external_computer_use", None)
+                if confirm is None or not await confirm(conversation):
+                    return False
+            for resource in computer.get("resources", ()):
+                await ResourceLease(resource).clear_external(launch.id)
+            return True
+        except Exception:
+            return False
 
     # --- 回站 ----------------------------------------------------------- #
 
@@ -329,10 +443,23 @@ class SurfaceCoordinator:
         """外部终端 → 站内卡片：校准 → 释放 lease → 置回 idle/card。"""
         lock = self._handoff_locks.setdefault(conversation.id, asyncio.Lock())
         async with lock:
-            return await self._to_card(conversation, force=force)
+            try:
+                async with self._host.conversation_control(conversation.id):
+                    current = await self._repositories.conversations.get(conversation.id)
+                    return await self._to_card(current or conversation, force=force)
+            except TurnAlreadyRunningError as exc:
+                owner = await self._host.leases.describe(conversation.id)
+                if self._host.is_active(conversation.id) and (owner is None or owner.owner_type == "card"):
+                    current = await self._repositories.conversations.get(conversation.id)
+                    return await self._already_card(current or conversation)
+                raise SurfaceConflictError("card_running", "请等待当前回复结束") from exc
 
     async def _to_card(self, conversation: Conversation, *, force: bool) -> CardHandoff:
         description = await self._host.leases.describe(conversation.id)
+        if (description is not None and description.owner_type == "card") or (
+            self._host.is_active(conversation.id) and description is None
+        ):
+            return await self._already_card(conversation)
         if (
             not force
             and description is not None
@@ -345,31 +472,8 @@ class SurfaceCoordinator:
             )
         if description is not None and description.owner_type == "external-cli":
             await self._stop_external_writer(description)
-        history = await self._load_history(conversation)
-        entries, complete, gaps = _diff_history(
-            history, seen=await self._last_reconciled_entry_id(conversation)
-        )
-        if history is not None:
-            await self._host.emit_conversation_event(
-                conversation,
-                ExtensionEvent(
-                    namespace=KAUS_NAMESPACE,
-                    name=HISTORY_RECONCILED_NAME,
-                    data={
-                        "entries": list(entries),
-                        "complete": complete,
-                        "gaps": list(gaps),
-                        "lastEntryId": entries[-1]["entryId"] if entries else None,
-                        "nativeSessionId": history.native_session_id,
-                    },
-                ),
-            )
-            if not complete:
-                await self._host.emit_conversation_event(
-                    conversation,
-                    DiagnosticNotice(level="warn", message=INCOMPLETE_NOTICE),
-                )
-        if description is not None:
+        reconciliation = await self._reconcile_history(conversation)
+        if description is not None and description.owner_type == "external-cli":
             await self._host.leases.release(
                 conversation.id, expected_owner_id=description.owner_id
             )
@@ -384,12 +488,70 @@ class SurfaceCoordinator:
                 data={"surface": "card"},
             ),
         )
+        return replace(reconciliation, conversation=conversation)
+
+    async def _already_card(self, conversation: Conversation) -> CardHandoff:
+        pending = await self._history_pending(conversation)
+        return CardHandoff(conversation=conversation, entries=(), complete=not pending,
+            gaps=(HISTORY_RETRY_NOTICE,) if pending else (), reconciled=False,
+            last_entry_id=await self._last_reconciled_entry_id(conversation))
+
+    async def _reconcile_history(self, conversation: Conversation) -> CardHandoff:
+        if conversation.origin == "standard":
+            # New inbound text may use native references. The watermark protects
+            # every event that predates this reconciliation, including old imports.
+            await self._host.event_store.native_storage.begin(conversation.id, conversation.native_session_id)
+        seen = await self._last_reconciled_entry_id(conversation)
+        pending = await self._history_pending(conversation)
+        try:
+            history = await self._load_history(conversation)
+            failed = history is None and pending
+        except Exception:
+            history, failed = None, True
+        if failed:
+            # Use the durable history event: a later process must retry this
+            # inbound window before writing a new outbound checkpoint.
+            await self._host.emit_conversation_event(conversation, ExtensionEvent(
+                namespace=KAUS_NAMESPACE, name=HISTORY_RECONCILED_NAME,
+                data={"entries": [], "complete": False, "gaps": [HISTORY_RETRY_NOTICE],
+                      "lastEntryId": seen, "nativeSessionId": conversation.native_session_id,
+                      "pending": True},
+            ))
+            await self._host.emit_conversation_event(conversation,
+                DiagnosticNotice(level="warn", message=HISTORY_RETRY_NOTICE))
+            return CardHandoff(conversation=conversation, entries=(), complete=False,
+                gaps=(HISTORY_RETRY_NOTICE,), reconciled=False, last_entry_id=seen)
+        known = await self._reconciled_entry_ids(conversation)
+        entries, complete, gaps = _diff_history(history, seen=seen, known=known)
+        last_entry_id = history.entries[-1].entry_id if history is not None and history.entries else seen
+        if history is not None:
+            await self._host.emit_conversation_event(
+                conversation,
+                ExtensionEvent(
+                    namespace=KAUS_NAMESPACE,
+                    name=HISTORY_RECONCILED_NAME,
+                    data={
+                        "entries": list(entries),
+                        "complete": complete,
+                        "gaps": list(gaps),
+                        "lastEntryId": last_entry_id,
+                        "nativeSessionId": history.native_session_id,
+                    },
+                ),
+            )
+            await self._host.compact_native_text(conversation)
+            if not complete:
+                await self._host.emit_conversation_event(
+                    conversation,
+                    DiagnosticNotice(level="warn", message=INCOMPLETE_NOTICE),
+                )
         return CardHandoff(
             conversation=conversation,
             entries=entries,
             complete=complete,
             gaps=gaps,
             reconciled=history is not None,
+            last_entry_id=last_entry_id,
         )
 
     async def on_external_exit(self, signal: ExitSignal) -> None:
@@ -403,22 +565,35 @@ class SurfaceCoordinator:
             if conversation is None:
                 await self._host.leases.release(signal.conversation_id, expected_owner_id=signal.launch.id)
                 return
-            await self._to_card(conversation, force=True)
+            try:
+                async with self._host.conversation_control(signal.conversation_id):
+                    await self._to_card(conversation, force=True)
+            except TurnAlreadyRunningError:
+                return  # A concurrent Card turn retains its own writer lease.
 
     async def _load_history(self, conversation: Conversation) -> NativeHistory | None:
-        """读原生历史（尾部窗口，C-2）。读不到不是错误——校准就少这一段。"""
+        """Unsupported histories are optional; failed reads must remain retryable."""
         if not conversation.native_session_id:
             return None
+        binding, driver = await self._driver_for(conversation)
         try:
-            binding, driver = await self._driver_for(conversation)
-        except Exception:  # noqa: BLE001 - Driver 摘掉了不该让回站失败
-            return None
-        try:
-            return await driver.load_native_history(
+            history = await driver.load_native_history(
                 binding, conversation.native_session_id
             )
-        except Exception:  # noqa: BLE001 - 同上：校准是尽力而为
+        except UnsupportedCapabilityError:
             return None
+        if history.native_session_id != conversation.native_session_id:
+            raise SurfaceError("native_history_scope_mismatch", "原生记录与当前会话不匹配")
+        return await self._host.normalize_native_history(conversation.id, history)
+
+    async def _history_pending(self, conversation: Conversation) -> bool:
+        for envelope in reversed(await self._host.event_store.replay(conversation.id)):
+            event = envelope.event
+            if (event.type == "extension.event" and event.namespace == KAUS_NAMESPACE
+                    and event.name == HISTORY_RECONCILED_NAME and isinstance(event.data, dict)
+                    and event.data.get("nativeSessionId") in (None, conversation.native_session_id)):
+                return event.data.get("pending") is True
+        return False
 
     async def _last_reconciled_entry_id(self, conversation: Conversation) -> str | None:
         """上一次校准折到哪条为止。没有就从窗口头开始。"""
@@ -427,12 +602,27 @@ class SurfaceCoordinator:
             if (
                 event.type == "extension.event"
                 and event.namespace == KAUS_NAMESPACE
-                and event.name == HISTORY_RECONCILED_NAME
+                and event.name in (HISTORY_RECONCILED_NAME, HISTORY_CHECKPOINT_NAME)
             ):
                 data = event.data if isinstance(event.data, dict) else {}
+                if data.get("nativeSessionId") not in (None, conversation.native_session_id):
+                    continue
                 marker = data.get("lastEntryId")
-                return str(marker) if marker else None
+                if marker:
+                    return str(marker)
         return None
+
+    async def _reconciled_entry_ids(self, conversation: Conversation) -> frozenset[str]:
+        known = set()
+        for envelope in await self._host.event_store.replay(conversation.id):
+            event = envelope.event
+            if (event.type == "extension.event" and event.namespace == KAUS_NAMESPACE
+                    and event.name == HISTORY_RECONCILED_NAME and isinstance(event.data, dict)
+                    and event.data.get("nativeSessionId") in (None, conversation.native_session_id)):
+                for entry in event.data.get("entries", []):
+                    if isinstance(entry, dict) and isinstance(entry.get("entryId"), str):
+                        known.add(entry["entryId"])
+        return frozenset(known)
 
     # --- 只读视图 ------------------------------------------------------- #
 
@@ -597,7 +787,7 @@ def launch_to_wire(launch: TerminalLaunch | None) -> dict[str, Any] | None:
 
 
 def _diff_history(
-    history: NativeHistory | None, *, seen: str | None
+    history: NativeHistory | None, *, seen: str | None, known: frozenset[str] = frozenset()
 ) -> tuple[tuple[dict[str, Any], ...], bool, tuple[str, ...]]:
     """把原生历史里**新增**的那一段折成可入事件的条目列表。
 
@@ -618,12 +808,9 @@ def _diff_history(
         )
         if index is not None:
             entries = entries[index + 1 :]
-    trimmed = entries[-MAX_RECONCILED_ENTRIES:]
+    entries = [entry for entry in entries
+               if entry.entry_id not in known and entry.role in ("user", "assistant", "tool")]
     gaps = list(history.missing)
-    if len(trimmed) < len(entries):
-        gaps.append(
-            f"只折入了最近 {MAX_RECONCILED_ENTRIES} 条，更早的请到原生历史里看"
-        )
     folded = tuple(
         {
             "entryId": entry.entry_id,
@@ -634,7 +821,7 @@ def _diff_history(
                 entry.occurred_at.isoformat() if entry.occurred_at else None
             ),
         }
-        for entry in trimmed
+        for entry in entries
     )
     return folded, bool(history.complete) and not gaps, tuple(gaps)
 
@@ -646,7 +833,6 @@ __all__ = [
     "INCOMPLETE_NOTICE",
     "KAUS_NAMESPACE",
     "LEASE_TAKEN_OVER_NAME",
-    "MAX_RECONCILED_ENTRIES",
     "OWNER_LABELS",
     "SURFACE_CHANGED_NAME",
     "SurfaceConflictError",

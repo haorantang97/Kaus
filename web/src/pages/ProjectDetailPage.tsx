@@ -1,3 +1,4 @@
+import { failureSummary } from "../lib/userFacingErrors";
 /* 项目详情页（IA §2.3 / §3，替代 ProfileDrawer 的借位）。
  *
  * 分区顺序：
@@ -18,13 +19,17 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { ArrowUpRight, ChevronRight, Maximize2, MessageSquare, MoreHorizontal, Plus, Settings, Sparkles, Terminal, X } from "lucide-react";
 
 import { useLocale } from "../i18n";
+import { AddExistingConversationsDialog } from "../components/AddExistingConversationsDialog";
+import { ProjectHistoryMenu } from "../components/ProjectHistoryMenu";
+import { ProjectHistoryViewer } from "../components/ProjectHistoryViewer";
+import { useProjectHistory } from "../lib/projectHistory";
+import type { ArchiveItem } from "../lib/nativeArchivesApi";
 import { ConstitutionEditor } from "../components/ConstitutionEditor";
 import { ProjectConfigurationApply } from "../components/ProjectConfigurationApply";
 import {
   BackupsSection,
   ImpactSection,
   PersonaSection,
-  SkillsSection,
   SubtasksSection,
 } from "../components/ProfileDrawer";
 import { Sidebar } from "../components/Sidebar";
@@ -97,6 +102,7 @@ export interface ProjectDetailPageProps {
   onFocusProject?: (name: string) => void;
   /** 第 3 件：页头 kicker 的「← 轮盘」文字链接（AD-98 允许文字链接，不是返回箭头）。 */
   onBackToWheel?: () => void;
+  onArrangeSkills?: (projectSlug: string) => void;
   refreshKey?: number;
 }
 
@@ -110,6 +116,7 @@ export function ProjectDetailPage({
   onChanged,
   onFocusProject,
   onBackToWheel,
+  onArrangeSkills,
   refreshKey = 0,
 }: ProjectDetailPageProps) {
   const { t, tDynamic } = useLocale();
@@ -117,12 +124,16 @@ export function ProjectDetailPage({
   const [capabilities, setCapabilities] = useState<EffectiveCapabilitiesWire | null>(null);
   const [conversations, setConversations] = useState<ConversationIndexEntryWire[] | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [addingHistory, setAddingHistory] = useState(false);
+  const [viewHistory, setViewHistory] = useState<ArchiveItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openingTerminal, setOpeningTerminal] = useState(false);
 
   const projectId = useMemo(() => matchProjectId(projects, projectRef), [projects, projectRef]);
   const project = useMemo(() => findProject(projects, projectRef), [projects, projectRef]);
   const legacyName = project?.slug ?? projectRef;
+  const history = useProjectHistory(projectId || "__pending__");
+  const historyItems = history.items.filter(item => item.projectIds.includes(projectId));
 
   useEffect(() => {
     let cancelled = false;
@@ -296,6 +307,7 @@ export function ProjectDetailPage({
               </Pill>
             )}
             <span className="ml-auto flex flex-wrap items-center gap-2">
+              {project && <ProjectHistoryMenu projectName={project.displayName || project.slug} onAdd={() => setAddingHistory(true)} />}
               <Button variant="primary" className="kaus-project-primary" onClick={() => onNewConversation(projectId)}>
                 <span className="inline-flex items-center gap-1">
                   <Plus className="size-4" /> {t("project.action.newConversation")}
@@ -314,7 +326,7 @@ export function ProjectDetailPage({
           </div>
           {error && (
             <div className="text-xs" style={{ color: "var(--danger)" }}>
-              {t("project.error", { error })}
+              {failureSummary(error)}
             </div>
           )}
         </header>
@@ -323,13 +335,13 @@ export function ProjectDetailPage({
         <Card
           title={t("project.conversations.title")}
           icon={MessageSquare}
-          right={<Pill tone="muted">{conversations?.length ?? 0}</Pill>}
+          right={<Pill tone="muted">{(conversations?.length ?? 0) + historyItems.length}</Pill>}
         >
           {conversations === null ? (
             <div className="py-2 text-xs" style={{ color: cream(45) }}>
               {t("project.conversations.loading")}
             </div>
-          ) : conversations.length === 0 ? (
+          ) : conversations.length === 0 && historyItems.length === 0 ? (
             <p className="py-2 text-xs" style={{ color: cream(55) }}>
               {t("project.conversations.empty")}
             </p>
@@ -350,9 +362,18 @@ export function ProjectDetailPage({
                   <ArrowUpRight size={17} className="kaus-project-conversation-arrow" aria-hidden="true" />
                 </button>
               ))}
+              {historyItems.map(item => <button key={item.id} type="button" className="kaus-project-conversation" onClick={() => setViewHistory(item)}>
+                <span className="kaus-project-conversation-icon"><MessageSquare size={17} /></span><span className="min-w-0 flex-1 truncate">{item.title}</span><ArrowUpRight size={17} className="kaus-project-conversation-arrow" aria-hidden="true" />
+              </button>)}
             </div>
           )}
         </Card>
+
+        {onArrangeSkills && <Card title={t("skillTree.title")} icon={Sparkles}>
+          <button type="button" className="kaus-project-conversation" onClick={() => onArrangeSkills(legacyName)}>
+            <span className="flex-1 text-left">{t("skillTree.arrange")}</span><ArrowUpRight size={17} aria-hidden="true" />
+          </button>
+        </Card>}
 
         {/* ④ 能力 */}
         <CapabilitiesSection
@@ -376,7 +397,6 @@ export function ProjectDetailPage({
               <Section title={t("project.instructions.title")}>
                 <ConstitutionEditor name={project.slug} onSaved={onChanged} />
               </Section>
-              <SkillsSection name={project.slug} onChanged={onChanged} refreshKey={refreshKey} />
               <ImpactSection name={project.slug} refreshKey={refreshKey} />
               <BackupsSection name={project.slug} refreshKey={refreshKey} />
               <SubtasksSection name={project.slug} refreshKey={refreshKey} />
@@ -384,6 +404,8 @@ export function ProjectDetailPage({
           )}
         </details>
       </div>
+      {addingHistory && project && <AddExistingConversationsDialog projectId={project.id} projectName={project.displayName || project.slug} onClose={() => setAddingHistory(false)} />}
+      {viewHistory && <ProjectHistoryViewer item={viewHistory} projectId={projectId} onClose={() => setViewHistory(null)} onOpenConversation={onOpenConversation} />}
     </div>
   );
 }

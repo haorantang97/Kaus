@@ -73,6 +73,7 @@ from pydantic.alias_generators import to_camel
 
 from app.api.api_errors import ApiError, json_error_endpoint
 from app.api.binding_status import read_binding_status
+from app.api.backend_facets import require_new_work
 from app.api.views import (
     binding_to_wire,
     normalize_backend_key_id,
@@ -396,6 +397,7 @@ def build_binding_write_router(
         binding = await _load(binding_id)
         if binding.is_default:
             return {**binding_to_wire(binding), "changed": False}
+        require_new_work(backend_id=binding.backend_id)
         previous = await repositories.bindings.get_default_for_project(
             binding.project_id
         )
@@ -430,6 +432,7 @@ def build_binding_write_router(
             raise ApiError(
                 404, "backend_not_found", f"未知 Backend：{body.backend_id}"
             )
+        require_new_work(registry.try_get(backend_id) if registry else None, backend_id=backend_id)
         try:
             new_id = make_binding_id(project.slug, backend.key, body.discriminator)
         except InvalidIdentifierError as exc:
@@ -470,6 +473,7 @@ def build_binding_write_router(
             driver = registry.try_get(backend_id) if registry is not None else None
             if backend is None or driver is None or driver.driver_kind == "mock":
                 raise ApiError(409, "engine_not_connected", "请先接入这个引擎")
+            require_new_work(driver, backend_id=backend_id)
             ordinary = [
                 item for item in await repositories.bindings.list_for_backend(normalized, backend_id)
                 if not item.runtime_config.get("group_execution")

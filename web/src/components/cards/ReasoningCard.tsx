@@ -9,10 +9,11 @@
  * 页面按信封时间自己算（拿不到就只写"思考"）。
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { useLocale } from "../../i18n";
+import "../composer-interactions.css";
 
 export function ReasoningCard({
   text,
@@ -31,7 +32,9 @@ export function ReasoningCard({
   defaultCollapsed?: boolean;
 }) {
   const { t } = useLocale();
-  const [open, setOpen] = useState(!defaultCollapsed);
+  const [userExpanded, setUserExpanded] = useState(!defaultCollapsed);
+  const open = running || userExpanded;
+  const bodyId = useId();
   const Chevron = open ? ChevronDown : ChevronRight;
   const label = running
     ? t("card.reasoning.running")
@@ -46,22 +49,26 @@ export function ReasoningCard({
         type="button"
         className="kaus-tool-head"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        aria-controls={hasBody ? bodyId : undefined}
+        aria-disabled={running || !hasBody}
+        onClick={() => { if (!running && hasBody) setUserExpanded(value => !value); }}
       >
         {running ? (
-          <span className="kaus-run-dot" />
+          <span className="kaus-thinking-dots" aria-hidden="true"><span /><span /><span /></span>
         ) : (
           <Chevron className="size-3 kaus-tool-chevron" />
         )}
-        <span className="kaus-tool-name">{label}</span>
+        <span key={running ? "running" : "settled"} className="kaus-tool-name kaus-reasoning-status">{label}</span>
         {/* batch40（DESIGN ★L 第 5 条）：折起来又已经想完的那一行，行尾那个 `thinking`
             是废字——「思考了 4s」已经把这件事说完了。展开后照旧显示。 */}
         {status && !running && open && <span className="kaus-tool-tail">{status}</span>}
       </button>
-      {open && hasBody && (
-        <div className="kaus-reasoning-body">
-          {summary && <p className="kaus-reasoning-summary">{summary}</p>}
-          {text && <p className="kaus-reasoning-text">{text}</p>}
+      {hasBody && (
+        <div id={bodyId} className="kaus-reasoning-expand" data-open={open} aria-hidden={!open} inert={!open}>
+          <div><div className="kaus-reasoning-body">
+            {summary && <p className="kaus-reasoning-summary">{summary}</p>}
+            {text && <p className="kaus-reasoning-text">{text}</p>}
+          </div></div>
         </div>
       )}
     </div>

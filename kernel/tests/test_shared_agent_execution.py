@@ -88,7 +88,7 @@ async def test_native_binding_reuses_acp_lifecycle_and_retains_identity(tmp_path
     owner = HermesDriver(hermes_root=tmp_path)
     owner.register_binding(binding)
     created = []
-    def factory(_, selected):
+    def factory(_, selected, *, skill_scope=None, native_conversation=None):
         preset = AcpPreset(id="sample", label="Sample", command=("fake",),
             quirks=AgentQuirks(supports_set_model=True, model_switch="set_model"))
         d = AcpDriver(fake_agent_spec("text-stream", cwd=str(tmp_path), dress=dress_from_quirks(preset.quirks)),
@@ -119,6 +119,8 @@ async def test_native_binding_reuses_acp_lifecycle_and_retains_identity(tmp_path
 
 
 async def test_delegated_execution_mounts_project_tools_and_routes_permissions(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+    monkeypatch.setattr("drivers.computer_use.probe.probe_fallbacks", AsyncMock(return_value=()))
     from drivers.hermes import isolated_runtime
     from drivers.acp.tests.test_batch43_mcp_session_new import _effective
     from drivers.base import InteractionResponse
@@ -128,7 +130,7 @@ async def test_delegated_execution_mounts_project_tools_and_routes_permissions(t
     binding = AgentBinding.create(project="project:batch43", backend="hermes",
         runtime_config={"workspace_root": str(tmp_path), "group_execution": "planning"})
     owner.register_binding(binding)
-    def factory(_, binding):
+    def factory(_, binding, *, skill_scope=None, native_conversation=None):
         driver = AcpDriver(fake_agent_spec("mcp-ping-permission", cwd=str(tmp_path)), backend_key="hermes")
         driver.register_binding(binding)
         return driver
@@ -136,6 +138,7 @@ async def test_delegated_execution_mounts_project_tools_and_routes_permissions(t
     conv = Conversation.create(title="Tool check", project_id=binding.project_id, agent_binding_id=binding.id)
     projection = await owner.session_options_for(conv, _effective("shared-tool-nonce"))
     assert projection and projection.summary == {"mcpServers": ["kaus-probe"]}
+    assert not projection.warnings, "A mounted MCP must not also be reported as unsupported"
     handle = await owner.start_runtime(conv, "card", session_options=projection.options)
     async def approve(envelope):
         await owner.resolve_interaction(handle, envelope.event.request.request_id,

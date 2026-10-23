@@ -227,6 +227,12 @@ def spawn_failed(
     所以它原样出现；``cause`` 与 ``stderr`` 都已经或即将过脱敏。
     """
     executable = command[0] if command else "(空命令)"
+    if re.search(r"\bECONNREFUSED\b|\bconnection refused\b", stderr or "", re.IGNORECASE):
+        return FailureHint(
+            code="agent_service_unavailable",
+            message="引擎服务连接失败",
+            hint="检查服务状态与连接地址后重试",
+        )
     excerpt = stderr_excerpt(stderr, environ=environ)
     detail = f"{cause}；stderr: {excerpt}" if excerpt else cause
     return FailureHint(

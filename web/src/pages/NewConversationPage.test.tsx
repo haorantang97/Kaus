@@ -110,6 +110,19 @@ describe("全局引擎在项目中选用", () => {
   const connected = { id: "backend:codex", displayName: "Codex", key: "codex" };
   const linked = { ...binding, id: "binding:pronto:codex", backendId: connected.id, displayName: "codex", isDefault: false, nativeScopeRef: null };
 
+  it("旧默认引擎下架后新草稿选择仍可用的关联", async () => {
+    mocked.fetchProjectBindings.mockResolvedValue({ bindings:[{ ...binding, catalogStatus:'legacy' }, linked] });
+    mocked.fetchConnectedBackends.mockResolvedValue({ backends:[
+      {id:binding.backendId,displayName:'Retired',preset:{catalogStatus:'legacy'}}, connected,
+    ] });
+    mocked.fetchEffectiveSettings.mockImplementation(async () => toolbarBundle(linked, 'Active model'));
+    render(<NewConversationPage initialProjectId="pronto" initialBindingId={binding.id} onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton('引擎')).toHaveTextContent('Codex'));
+    await userEvent.click(barButton('引擎'));
+    expect(screen.queryByRole('option', {name:'Retired'})).toBeNull();
+    expect(mocked.createConversation).not.toHaveBeenCalled();
+  });
+
   it("同产品只选一次，后台推荐的自定义 HTTP 关联后继续保留其真实标识", async () => {
     const native = { id: "backend:custom-http", productId: "hermes", productName: "Hermes", probeState: "available", preferred: true };
     const nativeBinding = { ...binding, id: "binding:pronto:http", backendId: native.id, displayName: "Hermes HTTP", isDefault: false };
@@ -426,7 +439,7 @@ describe("新会话草稿页", () => {
     await waitFor(() => expect(barButton("引擎")).toHaveTextContent("Alternate"));
     expect(mocked.fetchProjectBindings).toHaveBeenCalledWith("project:pronto", undefined, { includeStatus: false });
     expect(mocked.fetchProjectBindings).toHaveBeenCalledTimes(1);
-    expect(mocked.fetchModelCatalog).toHaveBeenCalledWith("backend:alternate", selected.id);
+    await waitFor(() => expect(mocked.fetchModelCatalog).toHaveBeenCalledWith("backend:alternate", selected.id));
     expect(mocked.createConversation).not.toHaveBeenCalled();
     await user.type(screen.getByLabelText("消息"), "开始吧");
     await user.click(screen.getByRole("button", { name: "发送" }));
@@ -684,7 +697,7 @@ describe("first-message attachments and delivery boundaries", () => {
     const { input, onCreated } = await ready();
     const file = new File(["a,b\n1,2"], "table.csv", { type: "text/csv" });
     await user.upload(input, file);
-    expect(screen.getByText("table.csv")).toBeInTheDocument();
+    expect(screen.getByTitle("table.csv")).toBeInTheDocument();
     expect(mocked.createConversation).not.toHaveBeenCalled();
     expect(uploadConversationAttachment).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "发送" }));
@@ -708,8 +721,8 @@ describe("first-message attachments and delivery boundaries", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("upload interrupted")).toBeInTheDocument();
     expect(screen.getByLabelText("消息")).toHaveValue("请比较这两个文件");
-    expect(screen.getByText("first.txt")).toBeInTheDocument();
-    expect(screen.getByText("second.txt")).toBeInTheDocument();
+    expect(screen.getByTitle("first.txt")).toBeInTheDocument();
+    expect(screen.getByTitle("second.txt")).toBeInTheDocument();
     expect(mocked.sendConversationMessage).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "发送" }));
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
@@ -725,11 +738,11 @@ describe("first-message attachments and delivery boundaries", () => {
     const dropped = new File(["notes"], "drop.txt", { type: "text/plain" });
     fireEvent.paste(screen.getByLabelText("消息"), { clipboardData: { files: [pasted] } });
     fireEvent.drop(container.querySelector(".kaus-composer")!, { dataTransfer: { files: [dropped], types: ["Files"] } });
-    expect(screen.getByText("paste.png")).toBeInTheDocument();
-    expect(screen.getByText("drop.txt")).toBeInTheDocument();
+    expect(screen.getByTitle("paste.png")).toBeInTheDocument();
+    expect(screen.getByTitle("drop.txt")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "移除 paste.png" }));
     expect(screen.queryByText("paste.png")).toBeNull();
-    expect(screen.getByText("drop.txt")).toBeInTheDocument();
+    expect(screen.getByTitle("drop.txt")).toBeInTheDocument();
   });
 
   it("enforces count and byte limits before creating or uploading", async () => {
@@ -783,7 +796,11 @@ describe("first-message attachments and delivery boundaries", () => {
     const box = screen.getByLabelText("消息");
     Object.defineProperty(box, "scrollHeight", { value: 500, configurable: true });
     fireEvent.change(box, { target: { value: "长段落\n第二行" } });
-    expect(box).toHaveStyle({ height: "240px", overflowY: "auto" });
+    const limit = Math.min(384, (window.visualViewport?.height ?? window.innerHeight) * .4);
+    expect(Number.parseFloat(box.style.maxHeight)).toBeCloseTo(limit);
+    expect(box).toHaveStyle({ overflowY: "auto" });
+    if (CSS.supports("field-sizing", "content")) expect(box.style.height).toBe("auto");
+    else expect(Number.parseFloat(box.style.height)).toBeCloseTo(limit);
   });
 
   it("keeps the model read-only when per-conversation model switching is unsupported", async () => {

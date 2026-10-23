@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { WorkspacePill } from "./ComposerBar";
 import { Archive, X } from "lucide-react";
 import { apiGet, apiPost, fetchNetwork, type NetworkResp } from "../lib/api";
 import { AsyncState, Button, confirmAsync, cream, dname, HAIR, inputStyle, Modal, ModalSub, ModalTitle, Overlay, Pill, toast } from "./ui";
@@ -321,7 +322,7 @@ export function KanbanOverlay({ onClose, onGoProfile, refreshKey = 0 }: { onClos
         <option value="dir">dir:</option>
         <option value="worktree">worktree:</option>
       </select>
-      {workspaceKind !== "scratch" && <input value={workspacePath} onChange={(e) => setWorkspacePath(e.target.value)} placeholder="/absolute/path" style={{ ...inputStyle(), width: 210 }} />}
+      {workspaceKind !== "scratch" && <WorkspacePill setting={{ value: workspacePath || null, source: "binding" }} onSave={async path => { setWorkspacePath(path); }} />}
       <input value={maxRuntime} onChange={(e) => setMaxRuntime(e.target.value)} placeholder="max runtime 如 2h" style={{ ...inputStyle(), width: 130 }} />
       <input value={idempotencyKey} onChange={(e) => setIdempotencyKey(e.target.value)} placeholder="幂等 key" style={{ ...inputStyle(), width: 150 }} />
       <label className="flex items-center gap-1.5 text-[0.66rem]" style={{ color: cream(55) }}><input type="checkbox" checked={triage} onChange={(e) => setTriage(e.target.checked)} />先进 triage</label>
@@ -389,7 +390,7 @@ export function KanbanOverlay({ onClose, onGoProfile, refreshKey = 0 }: { onClos
               </span>
               <Button onClick={() => dispatch(true)}>试运行</Button>
               <Button variant="primary" onClick={() => dispatch(false)}>触发调度器</Button>
-              {out && <span className="text-[0.66rem]" style={{ color: cream(50) }}>{out}</span>}
+              {out && <details className="text-[0.66rem]" style={{ color: cream(50) }}><summary>{out.split(/[：:]/, 1)[0]}</summary><pre className="max-h-40 overflow-auto whitespace-pre-wrap">{out}</pre></details>}
               <span className="ml-auto flex items-center gap-2.5">
                 <select value={statusF} onChange={(e) => setStatusF(e.target.value)} style={{ ...inputStyle(), width: 110, padding: "5px 8px" }}>
                   <option value="">全部状态</option>

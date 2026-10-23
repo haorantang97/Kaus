@@ -95,6 +95,67 @@ describe("safe rich Markdown", () => {
 });
 
 describe("artifact viewer", () => {
+  it("navigates images from the same Markdown message and Escape restores the original trigger", async () => {
+    URL.createObjectURL = vi.fn(() => "blob:gallery"); URL.revokeObjectURL = vi.fn();
+    const user = userEvent.setup();
+    render(<MarkdownContent text="![First](data:image/png;base64,aA==)\n\n![Second](data:image/png;base64,aQ==)" />);
+    const trigger = screen.getByRole("button", { name: "First" });
+    await user.click(trigger);
+    expect(within(screen.getByRole("dialog")).getByRole("img", { name: "First" })).toBeInTheDocument();
+    const runway = document.querySelector(".kaus-image-gallery");
+    const originalDialog = screen.getByRole("dialog");
+    await user.keyboard("{ArrowRight}");
+    expect(document.querySelector(".kaus-image-gallery")).toBe(runway);
+    expect(screen.getByRole("dialog")).toBe(originalDialog);
+    expect(within(screen.getByRole("dialog")).getByRole("img", { name: "Second" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一张图片" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull(); expect(trigger).toHaveFocus();
+  });
+
+  it("closes only the artifact above a Modal and restores focus within the parent", async () => {
+    URL.createObjectURL = vi.fn(() => "blob:modal-image"); URL.revokeObjectURL = vi.fn();
+    const closeParent = vi.fn(); const user = userEvent.setup();
+    render(<ui.Modal onClose={closeParent}><h2>Parent</h2><FileReference source={{ uri: "data:image/png;base64,aA==", title: "Child image" }} /></ui.Modal>);
+    const trigger = screen.getByRole("button", { name: "Child image" });
+    await user.click(trigger);
+    const child = screen.getByRole("dialog", { name: "Child image" });
+    const close = within(child).getByRole("button", { name: "关闭预览" });
+    expect(close).toHaveFocus();
+    expect(document.body.style.overflow).toBe("hidden");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Child image" })).toBeNull();
+    expect(closeParent).not.toHaveBeenCalled(); expect(trigger).toHaveFocus();
+    expect(document.body.style.overflow).toBe("hidden");
+    await user.keyboard("{Escape}"); expect(closeParent).toHaveBeenCalledOnce();
+  });
+
+  it("requires new consent when navigating to another remote image", async () => {
+    const user = userEvent.setup();
+    render(<MarkdownContent text="![First](https://remote.test/one.png)\n\n![Second](https://remote.test/two.png)" />);
+    await user.click(screen.getByRole("button", { name: "First" }));
+    await user.click(screen.getByRole("button", { name: "加载远程图片" }));
+    expect(within(screen.getByRole("dialog")).getByRole("img", { name: "First" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "下一张图片" }));
+    expect(within(screen.getByRole("dialog")).queryByRole("img")).toBeNull();
+    expect(screen.getByRole("button", { name: "加载远程图片" })).toBeInTheDocument();
+    expect(fetchArtifact).not.toHaveBeenCalled();
+  });
+
+  it("opens a real source/preview split and retains the opaque HTML sandbox", async () => {
+    vi.mocked(fetchArtifact).mockResolvedValue({ size: 80, type: "text/html", text: async () => "<h1>Actual report</h1>" } as Blob);
+    const user = userEvent.setup();
+    render(<FileReference source={{ uri: "/tmp/split.html" }} conversationId="c1" />);
+    await user.click(screen.getByRole("button", { name: "split.html" }));
+    await user.click(await screen.findByRole("button", { name: "并排查看源码与预览" }));
+    expect(screen.getByText("<h1>Actual report</h1>")).toBeInTheDocument();
+    expect(screen.getByTitle("split.html")).toHaveAttribute("sandbox", "");
+    expect(screen.getByRole("separator", { name: "调整源码与预览宽度" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "源文件" }));
+    expect(screen.queryByTitle("split.html")).toBeNull();
+    expect(screen.queryByRole("separator")).toBeNull();
+  });
+
   it("loads an authenticated local image thumbnail inline and revokes its URL on unmount", async () => {
     URL.createObjectURL = vi.fn(() => "blob:thumbnail-test");
     URL.revokeObjectURL = vi.fn();
@@ -113,7 +174,8 @@ describe("artifact viewer", () => {
     vi.mocked(fetchArtifact).mockRejectedValueOnce(new Error("temporary read error")).mockResolvedValue(new Blob(["png"], { type: "image/png" }));
     const user = userEvent.setup();
     render(<FileReference source={{ uri: "/workspace/generated.png" }} conversationId="c1" />);
-    expect(await screen.findByText("缩略图加载失败，点击打开文件")).toBeInTheDocument();
+    await waitFor(() => expect(fetchArtifact).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("缩略图加载失败，点击打开文件")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "generated.png" }));
     const dialog = screen.getByRole("dialog");
     expect(await within(dialog).findByRole("img", { name: "generated.png" })).toHaveAttribute("src", "blob:preview-retry");

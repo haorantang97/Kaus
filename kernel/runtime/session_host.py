@@ -7,7 +7,7 @@
 - 转发 ``send_message`` / ``interrupt`` / ``resolve_interaction``；
 - 把 Driver 产出的 :class:`~runtime.event_envelope.AgentEventEnvelope` 交给
   **Event Store** 与 **Reducer**；
-- 维护短期重放缓冲与渲染缓存（**不是**持久对话账本，D-16）；
+- 保存本地会话记录并维护运行时渲染状态；
 - 向前端提供 ``?after=<sequence>`` 续传的订阅（:meth:`SessionHost.subscribe`）；
 - 维护 Runtime Lease（AD-11，信息性）与带外检测的接入点（AD-20）；
 - 处理取消、错误与恢复：Driver 崩溃 → 合成 ``run.failed`` 并收敛状态。
@@ -42,11 +42,13 @@ import asyncio
 from contextlib import asynccontextmanager
 import inspect
 import logging
+from pathlib import Path
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Mapping, Protocol, runtime_checkable
 
+from app.capabilities.models import EffectiveCapabilities
 from app.conversations.models import Conversation
 from app.conversations.repository import ConversationRepository
 from app.errors import DomainError
@@ -366,11 +368,13 @@ class _ConversationRuntime:
     #: ``stopping-unconfirmed`` 就是它）。进终态或下一轮开始时清掉。
     interrupt_requested_at: datetime | None = None
     #: AD-162：这条会话背后的引擎有没有可回放的原生历史（``sessions.history``）。
-    #: ``None`` = 问不出来，按老口径走 TTL。
+    #: 保留兼容元数据；本地可见记录不再依据此字段决定保留期。
     history_recoverable: bool | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     control_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     pending_dispatch: bool = False
+    computer_use_enabled: bool | None = None
+    computer_use_revision: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -415,9 +419,14 @@ class SessionHost:
         capability_projector: "CapabilityProjector | None" = None,
     ) -> None:
         self._capability_projector = capability_projector
+        # Trusted host policy, resolved from durable module ownership on every
+        # start, including a direct conversation reopen after service restart.
+        self.execution_policy_resolver = None
+        self.workspace_override_resolver = None
         self._registry = registry
         self._bindings = bindings
         self._event_store = event_store
+        self._event_store.native_storage.loader = self._load_local_native_history
         self._leases = lease_manager
         self._conversations = conversations
         self.idle_timeout = idle_timeout
@@ -438,6 +447,15 @@ class SessionHost:
         self._session_projections: dict[str, SessionProjection] = {}
         #: 批次四十五 a：**每一条落库事件**的旁观者（:meth:`add_event_observer`）。
         self._event_observers: list[Any] = []
+        from drivers.computer_use.durable import register_resolver
+        register_resolver(self._recover_computer_resource)
+
+    async def _recover_computer_resource(self, reference) -> bool:
+        driver = self._registry.try_get(reference.get("backendId"))
+        recover = getattr(driver, "recover_computer_use", None)
+        # Look up the current configured connection every time. Conversation
+        # deletion and driver replacement must not erase or misroute ownership.
+        return await recover(reference) is True if recover is not None else False
 
     # ------------------------------------------------------------------ #
     # 查询
@@ -587,6 +605,9 @@ class SessionHost:
                 "这条会话正由外部终端持有；先在终端里结束，或强制接管后再在站内发送",
                 lease=conflict,
             )
+        from drivers.computer_use.settings import is_enabled, runtime_revision
+        computer_use_enabled = is_enabled()
+        computer_use_revision = runtime_revision()
         try:
             projection = await self._session_projection(conversation, binding, driver)
             if projection is None:
@@ -607,6 +628,8 @@ class SessionHost:
         # runtime 拆干净——Driver 侧那条也要停。否则 Host 手上什么都没有、
         # Driver 手上留着一条没人认领的实例，下一次启动就成了第二条引擎进程。
         try:
+            if conversation.origin == "standard":
+                await self._event_store.native_storage.begin(conversation.id, conversation.native_session_id)
             state = TimelineState.initial(conversation.id)
             for envelope in await self._event_store.replay(conversation.id):
                 state = reduce_event(state, envelope)
@@ -620,6 +643,8 @@ class SessionHost:
                 next_sequence=await self._event_store.next_sequence(conversation.id),
                 last_activity=now,
                 history_recoverable=await self._history_recoverable(driver),
+                computer_use_enabled=computer_use_enabled,
+                computer_use_revision=computer_use_revision,
             )
             self._runtimes[conversation.id] = runtime
 
@@ -667,6 +692,28 @@ class SessionHost:
         必需的项目配置失败时中止启动；可选的会话扩展失败时记录诊断。
         """
         self._session_projections.pop(conversation.id, None)
+        policy = self.execution_policy_resolver(conversation.id) if self.execution_policy_resolver else None
+        if policy:
+            hook = getattr(driver, "restricted_session_projection", None)
+            if hook is None:
+                raise UnsupportedCapabilityError("当前 Agent 尚未适配此模块的执行范围。")
+            projection = await hook(conversation, **policy)
+            self._session_projections[conversation.id] = projection
+            return projection
+        workspace = self.workspace_override_resolver(conversation.id) if self.workspace_override_resolver else None
+        if workspace:
+            support = getattr(driver, "supports_workspace_override", None)
+            hook = getattr(driver, "workspace_session_projection", None)
+            root = Path(workspace)
+            if not support or not support() or not hook or not root.is_absolute() or not root.is_dir():
+                raise UnsupportedCapabilityError("当前 Agent 无法在适配副本中运行。")
+            effective = (await self._capability_projector(binding) if self._capability_projector
+                         else EffectiveCapabilities(project_id=binding.project_id))
+            projection = await hook(conversation, effective, workspace_root=str(root.resolve()))
+            if projection is None or projection.options.workspace_root != str(root.resolve()):
+                raise UnsupportedCapabilityError("适配工作目录未生效。")
+            self._session_projections[conversation.id] = projection
+            return projection
         if self._capability_projector is None:
             return None
         hook = getattr(driver, "session_options_for", None)
@@ -693,9 +740,22 @@ class SessionHost:
     async def prepare_external_session(self, conversation: Conversation, binding: AgentBinding,
                                        driver: BackendDriver) -> None:
         """Apply required project configuration before native terminal creation."""
+        resolver = getattr(self, "execution_policy_resolver", None)
+        if resolver and resolver(conversation.id):
+            raise UnsupportedCapabilityError("此模块任务请在工作台中继续。")
+        resolver = getattr(self, "workspace_override_resolver", None)
+        if resolver and resolver(conversation.id):
+            raise UnsupportedCapabilityError("适配任务请在工作台中继续。")
         required = getattr(driver, "requires_project_projection", None)
-        if required is not None and required(binding):
-            await self._session_projection(conversation, binding, driver)
+        if (required is not None and required(binding)) or hasattr(driver, "computer_use_status"):
+            if self._capability_projector is not None:
+                await self._session_projection(conversation, binding, driver)
+            elif (hook := getattr(driver, "session_options_for", None)) is not None:
+                # A cold terminal launch still applies the latest opt-in ceiling.
+                await hook(conversation, EffectiveCapabilities(project_id=conversation.project_id))
+        validate = getattr(driver, "validate_external_session", None)
+        if validate is not None:
+            validate(conversation)
 
     def session_projection(self, conversation_id: str) -> SessionProjection | None:
         """这条会话最近一次**送进引擎**的项目能力（批次四十三）。
@@ -707,20 +767,11 @@ class SessionHost:
         return self._session_projections.get(conversation_id)
 
     async def _history_recoverable(self, driver: BackendDriver) -> bool | None:
-        """这台引擎能不能把原生历史交回来（AD-162）。
-
-        判据是能力矩阵的 ``sessions.history`` 那一格，不是 Driver 的类名——加一台
-        新引擎不该让保留期这条规则重写一遍。``unknown`` 与 ``unsupported`` 一样算
-        「没有」：这是能力矩阵自己的口径（``bool(state)`` 只有 ``supported`` 为
-        真），而在保留期这件事上，两种错误的代价并不对等——多留一段能删的事件，
-        比删掉一段没有第二份的历史轻得多。
-
-        探测抛错返回 ``None``：不知道就不改既有口径（N §13.1）。
-        """
+        """原生历史接口的能力快照；任何结果都不会缩短本地记录保留期。"""
         try:
             capabilities = await driver.get_capabilities()
         except Exception:  # noqa: BLE001 - 探不出来不该拦住会话起来
-            LOGGER.warning("读取引擎能力失败，按未知处理历史保留期", exc_info=True)
+            LOGGER.warning("读取原生历史能力失败", exc_info=True)
             return None
         return bool(capabilities.sessions.history)
 
@@ -785,21 +836,74 @@ class SessionHost:
         后来者在锁上等到的是**同一条**，而不是自己再开一条。
         """
         existing = self._runtimes.get(conversation.id)
-        if existing is not None:
+        if existing is not None and self._runtime_reusable(existing):
             return existing.handle
         lock = self._start_lock(conversation.id)
         try:
             async with lock:
                 existing = self._runtimes.get(conversation.id)
-                if existing is not None:
+                if existing is not None and self._runtime_reusable(existing):
                     return existing.handle
+                if existing is not None:
+                    await self.stop_runtime(conversation.id)
                 return await self._start_runtime_locked(conversation)
         finally:
             self._discard_start_lock(conversation.id, lock)
 
+    @staticmethod
+    def _runtime_reusable(runtime: _ConversationRuntime) -> bool:
+        if runtime.pending_dispatch or runtime.state.run_state == "running":
+            return True  # Let the current turn publish its terminal event first.
+        from drivers.computer_use.settings import runtime_revision
+        if runtime.computer_use_revision is not None and runtime.computer_use_revision != runtime_revision():
+            return False
+        check = getattr(runtime.driver, "runtime_reusable", None)
+        return check is None or check(runtime.handle) is not False
+
     # ------------------------------------------------------------------ #
     # 运行态自愈（AD-136 / 批次十七第 1 件）
     # ------------------------------------------------------------------ #
+
+    async def _load_local_native_history(self, conversation_id: str, native_session_id: str) -> NativeHistory:
+        runtime = self._runtimes.get(conversation_id)
+        conversation = runtime.conversation if runtime else (
+            await self._conversations.get(conversation_id) if self._conversations else None
+        )
+        if conversation is None:
+            raise UnsupportedCapabilityError("local_native_history_unavailable")
+        binding = await self._bindings.get(conversation.agent_binding_id)
+        driver = self._registry.try_get(binding.backend_id) if binding else None
+        loader = getattr(driver, "load_local_native_history", None)
+        if loader is None:
+            raise UnsupportedCapabilityError("local_native_history_unsupported")
+        return await self.normalize_native_history(conversation_id, await loader(binding, native_session_id))
+
+    async def normalize_native_history(self, conversation_id: str, history: NativeHistory) -> NativeHistory:
+        from runtime.context_references import normalize_history
+        # Raw rows avoid recursive hydration. Projection hashes survive text
+        # compaction, so restart and terminal reconciliation use the same view.
+        rows = await self._event_store.native_storage.repository.list_after(conversation_id)
+        return normalize_history(history, rows)
+
+    async def native_storage_status(self, conversation: Conversation) -> dict:
+        # Idle runtimes retain a renderer in memory. Recheck the authoritative
+        # source on reopen even when that renderer would bypass store replay.
+        state = await self._event_store.native_storage.status(conversation.id)
+        runtime = self._runtimes.get(conversation.id)
+        if state.get("mode") == "native_text" and (
+            runtime is None or (runtime.state.is_run_terminal and not runtime.pending_dispatch)
+        ):
+            await self._event_store.replay(conversation.id)
+        return await self._event_store.native_storage.status(conversation.id)
+
+    async def compact_native_text(self, conversation: Conversation) -> int:
+        if conversation.origin != "standard":
+            return 0
+        try:
+            return await self._event_store.native_storage.compact(conversation.id, conversation.native_session_id)
+        except Exception:
+            LOGGER.warning("Native text verification failed for %s; retained local data", conversation.id, exc_info=True)
+            return 0
 
     async def timeline_from_store(self, conversation_id: str) -> TimelineState | None:
         """没有活跃 runtime 时，从 Event Store 重算一遍渲染态。
@@ -809,8 +913,12 @@ class SessionHost:
         Reducer，否则两边会各算各的。
         """
         live = self.timeline(conversation_id)
-        if live is not None:
+        storage = await self._event_store.native_storage.status(conversation_id)
+        if live is not None and storage.get("mode") != "native_text":
             return live
+        # A retained runtime renderer may predate native cleanup. Public reads
+        # (including continuation context) must rehydrate references; ownership,
+        # pending dispatch and live control state remain on the runtime itself.
         envelopes = await self._event_store.replay(conversation_id)
         if not envelopes:
             return None
@@ -924,31 +1032,12 @@ class SessionHost:
         return True
 
     async def restore_from_native_history(self, conversation: Conversation) -> int:
-        """缓冲是空的就从**原生历史**重建一份时间线（AD-143 / v1.0 §11.3）。
+        """本地记录完全为空时，从可用的原生历史补一份时间线。
 
-        真机现象（`docs/quality/verify-next.md` ②③）：跑完或运行中重新打开页面，
-        消息内容为空——而同一条会话的原生历史里，用户那句话、工具调用与工具输出
-        都在。之所以会这样，是因为**页面唯一的内容来源是 Event Store**，而
-        Event Store 按定义是一块可以随时被清空的短期缓冲（D-16 / §8.5）：保留期
-        到了、``DELETE`` 清过、上一个进程没来得及落库、事件流从头到尾没接上……
-        任何一条都会让重开变成一张白纸。v1.0 §11.3 早就写明它整表可删、
-        「删完重开卡片从原生历史重建」——**重建这一半此前没有实现**。
-
-        所以这里不再去逐条堵「谁清了缓冲」，而是把重开这条路本身修成不依赖缓冲：
-
-        - 只在**确实没有**任何缓冲事件时才做（``latest_sequence is None``）——
-          有一条都不碰，重建绝不覆盖真实事件流；
-        - 只在没有活跃 runtime 时做——正在跑的那一轮自己会往缓冲里写；
-        - 只在这条会话已经绑了原生 Session、且它的 Driver 支持读历史时做；
-          读不到（不支持 / 报错 / 空历史）就**什么都不发**，维持现状而不是编内容
-          （N §13.1）。
-
-        重建出来的事件走 :meth:`emit_conversation_event` 正常入库，因此
-        ``?after=`` 重放、``timeline`` 摘要、``runState`` 全都自动一致。整段挂在
-        一个合成的 ``run.*`` 上并以 ``run.completed`` 收尾——重建出来的是**已经
-        发生过**的历史，不该让页面以为还有一轮在跑。
-
-        返回补出来的事件条数（0 表示没做）。
+        Existing events are never overwritten by the history projection. New
+        restored text may use local native references only after complete-source
+        and exact-text verification. Partial/unavailable sources retain fallback.
+        Returns the number of newly restored events.
         """
         conversation_id = conversation.id
         if self.is_active(conversation_id):
@@ -957,6 +1046,7 @@ class SessionHost:
         if not native_session_id:
             return 0
         if await self._event_store.latest_sequence(conversation_id) is not None:
+            await self.compact_native_text(conversation)
             return 0
         binding = await self._bindings.get(conversation.agent_binding_id)
         if binding is None:
@@ -971,11 +1061,15 @@ class SessionHost:
         except Exception:  # noqa: BLE001 - 读不到历史不该让「打开会话」失败
             LOGGER.warning("会话 %s 的原生历史读取失败，不重建时间线", conversation_id, exc_info=True)
             return 0
+        history = await self.normalize_native_history(conversation_id, history)
         events = _events_from_native_history(history, run_id=_restored_run_id(conversation_id))
         if not events:
             return 0
+        if conversation.origin == "standard":
+            await self._event_store.native_storage.begin(conversation.id, native_session_id)
         for event, run_id in events:
             await self.emit_conversation_event(conversation, event, run_id=run_id)
+        await self.compact_native_text(conversation)
         return len(events)
 
     async def reconcile_startup(self, *, limit: int = 500) -> tuple[str, ...]:
@@ -1044,6 +1138,10 @@ class SessionHost:
         self, conversation_id: str, content: MessageInput | str
     ) -> None:
         runtime = self._require(conversation_id)
+        if not self._runtime_reusable(runtime):
+            current = (await self._conversations.get(conversation_id) if self._conversations else None)
+            await self.ensure_runtime(current or runtime.conversation)
+            runtime = self._require(conversation_id)
         async with runtime.control_lock:
             if self._require(conversation_id) is not runtime:
                 raise StaleRunError("会话运行位置已经变化，请重试。")
@@ -1064,16 +1162,29 @@ class SessionHost:
                 raise UnsupportedCapabilityError("请先恢复此对话。")
         await self._refresh_if_out_of_band(runtime)
         message = MessageInput(text=content) if isinstance(content, str) else content
+        include_context = bool(message.context_files) and not any(
+            item.kind == "message" and item.role == "user" and item.delivery_status != "failed"
+            for item in runtime.state.items
+        )
+        dispatched = message.model_copy(update={"context_files": ()})
+        native_text_projection = None
+        if include_context:
+            from runtime.context_references import projection
+            references = "\n".join(f"- {item.name or '对话记录'}: {item.ref}" for item in message.context_files)
+            dispatched = dispatched.model_copy(update={"text": message.text +
+                "\n\n交接参考资料（需要更多背景时读取）：\n" + references +
+                "\n历史对话仅作为任务背景。以当前请求及当前项目的工具、技能和权限为准。"})
+            native_text_projection = projection(message.text, dispatched.text)
         runtime.last_activity = self._clock()
         await self._leases.heartbeat(conversation_id, at=runtime.last_activity)
         # 批次八第 6 件：用户那句话也进时间线。**先落再发**——顺序就是它在
         # 时间线上的位置，落在 `run.started` 之后就成了「先有回复再有提问」。
-        await self._emit_user_message(runtime, message)
+        await self._emit_user_message(runtime, message, native_text_projection=native_text_projection)
         previous_interrupt = runtime.interrupt_requested_at
         runtime.interrupt_requested_at = None
         runtime.pending_dispatch = True
         try:
-            await runtime.driver.send_message(runtime.handle, message)
+            await runtime.driver.send_message(runtime.handle, dispatched)
         except Exception as exc:  # noqa: BLE001 - 原样抛回，只是先记一笔状态
             runtime.pending_dispatch = False
             runtime.interrupt_requested_at = previous_interrupt
@@ -1249,11 +1360,9 @@ class SessionHost:
 
     async def purge_expired_events(self, *, now: datetime | None = None) -> int:
         """v1.0 §8.5 保留期清理的调度入口。"""
-        # Keep the original replay IDs while a user has bookmarked a turn.
-        # Native-history reconstruction can create new event IDs. Retaining the
-        # existing cache avoids silently attaching a bookmark to a similar text.
-        retained = await self._conversations.bookmarked_conversations() if self._conversations else ()
-        return await self._event_store.purge_expired(now=now, exclude_conversations=retained)
+        # Visible history and bookmark anchors are durable for every conversation.
+        # Bookmarks must not prolong diagnostic or temporary authentication data.
+        return await self._event_store.purge_expired(now=now)
 
     async def purge_conversation(self, conversation: Conversation) -> int:
         """会话被删除：清空它的事件缓冲，并让在线的订阅者干净地收流。
@@ -1385,6 +1494,14 @@ class SessionHost:
         self._broadcast(stamped)
         await self._apply_model_adoption(runtime, stamped)
         await self._notify_observers(stamped)
+        if stamped.parent_run_id is None and stamped.event.type in ("run.completed", "run.failed", "run.interrupted"):
+            await self.compact_native_text(runtime.conversation)
+            if not self._runtime_reusable(runtime) and self._runtimes.get(runtime.conversation.id) is runtime:
+                # The Driver already emitted the terminal event. Retire its
+                # closed transport without synthesizing a second failed turn;
+                # the next request resumes the same native session normally.
+                await self.stop_runtime(runtime.conversation.id,
+                    state="error" if stamped.event.type == "run.failed" else "idle")
 
     async def _apply_model_adoption(
         self, runtime: _ConversationRuntime, envelope: AgentEventEnvelope
@@ -1489,7 +1606,7 @@ class SessionHost:
         await self._ingest(runtime, envelope)
 
     async def _emit_user_message(
-        self, runtime: _ConversationRuntime, message: MessageInput
+        self, runtime: _ConversationRuntime, message: MessageInput, *, native_text_projection: dict | None = None
     ) -> None:
         """把用户发的这句话作为一条事件落进 Event Store（批次八第 6 件）。
 
@@ -1510,6 +1627,8 @@ class SessionHost:
             "role": "user",
             "attachmentCount": len(message.attachments),
         }
+        if native_text_projection:
+            data["nativeTextProjection"] = native_text_projection
         if message.attachments:
             # Only authenticated, scoped references are retained. Prepared content
             # is excluded by AttachmentRef so base64/text cannot bloat the ledger.
@@ -1707,7 +1826,7 @@ class SessionHost:
             )
         except UnsupportedCapabilityError:
             return
-        self._histories[runtime.conversation.id] = history
+        self._histories[runtime.conversation.id] = await self.normalize_native_history(runtime.conversation.id, history)
 
     # ------------------------------------------------------------------ #
     # 杂项

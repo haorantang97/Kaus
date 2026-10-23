@@ -378,7 +378,8 @@ describe("输入区工具栏（★ I）", () => {
     await user.click(screen.getByRole("button", { name: "选择此文件夹" }));
     await waitFor(() => expect(mocked.patchProject).toHaveBeenCalledWith("project:x", { workspaceRoot: "/work" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("目录暂不可用");
-    expect(screen.getByRole("textbox", { name: "工作目录" })).toHaveValue("/work");
+    expect(screen.getByRole("button", { name: "输入文件夹位置" })).toHaveTextContent("work");
+    expect(screen.queryByRole("textbox", { name: "工作目录" })).not.toBeInTheDocument();
   });
 });
 

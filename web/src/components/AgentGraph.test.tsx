@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 
 import { AgentGraph } from "./AgentGraph";
 import type { NetworkResp, OrgNode } from "../lib/api";
+import { fetchSkillTree } from "../lib/skillTreeApi";
 
 /* batch43 第 2 件（★J-4 追加）：轮盘上的项目节点多了一个去处。
  *
@@ -20,6 +21,11 @@ vi.mock("../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/api")>();
   return { ...actual, ...api };
 });
+
+vi.mock("../lib/skillTreeApi", async importOriginal => ({
+  ...await importOriginal<typeof import("../lib/skillTreeApi")>(),
+  fetchSkillTree: vi.fn(),
+}));
 
 const node = (name: string, overrides: Partial<OrgNode> = {}): OrgNode => ({
   name,
@@ -64,6 +70,17 @@ function renderGraph() {
   );
 }
 
+async function waitForGovernanceTree() {
+  const tree = screen.getByTestId("project-skill-tree");
+  // Catalogue loading and focus expansion are separate React commits. Wait for
+  // their visible result, allowing concurrent suites to share a loaded machine.
+  await waitFor(() => {
+    expect(within(tree).getByRole("button", { name: "X" })).toHaveAttribute("aria-expanded", "true");
+    expect(within(tree).getByRole("button", { name: "Pronto" })).toBeVisible();
+  }, { timeout: 5000 });
+  return within(tree).getByRole("button", { name: "Pronto" });
+}
+
 /** jsdom 不造 `dataTransfer`，手工给一个能记下写了什么的最小件。 */
 function recorder() {
   const written: Record<string, string> = {};
@@ -85,9 +102,55 @@ beforeEach(() => {
   api.apiPost.mockReset();
   api.fetchNetwork.mockReset();
   api.fetchNetwork.mockResolvedValue(net);
+  vi.mocked(fetchSkillTree).mockReset();
+  vi.mocked(fetchSkillTree).mockResolvedValue({
+    revision: "test", assignments: [], entries: [], skills: [],
+    projects: [
+      { id: "root", slug: "default", displayName: "X", parentProjectId: null },
+      { id: "pronto", slug: "pronto", displayName: "Pronto", parentProjectId: "root" },
+    ],
+  });
 });
 
 describe("轮盘项目节点的两种拖拽（★J-4，batch43）", () => {
+  it("治理树切回对话后重新绑定滚轮和画布拖拽，往返后仍可操作", async () => {
+    const props = { net, embedded: true, onClose: vi.fn(), onChanged: vi.fn(), onGoProfile: vi.fn(), onDetail: vi.fn(), onOpenMenu: vi.fn() };
+    const { rerender } = render(<AgentGraph {...props} mode="governance" />);
+    await waitForGovernanceTree();
+    expect(document.querySelector(".ag-canvas")).toBeNull();
+    for (let turn = 0; turn < 2; turn++) {
+      rerender(<AgentGraph {...props} mode="chat" />);
+      const canvas = document.querySelector<HTMLElement>(".ag-canvas")!;
+      expect(canvas).not.toBeNull();
+      fireEvent.wheel(canvas, { deltaX: 40, deltaY: 1 });
+      expect(canvas.scrollLeft).toBe(40);
+      fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
+      fireEvent.mouseMove(window, { clientX: 75, clientY: 90 });
+      fireEvent.mouseUp(window);
+      expect(canvas.scrollLeft).toBe(65);
+      expect(canvas.scrollTop).toBe(10);
+      rerender(<AgentGraph {...props} mode="governance" />);
+      await waitForGovernanceTree();
+      // Detached canvases must not retain the previous listener.
+      fireEvent.wheel(canvas, { deltaX: 40, deltaY: 1 });
+      expect(canvas.scrollLeft).toBe(65);
+    }
+  }, 15000);
+
+  it("治理树选中项目后，对话轮盘按同一项目路径展开子层级", async () => {
+    const nestedNet: NetworkResp = { ...net, nodes: {
+      ...net.nodes,
+      pronto: node("pronto", { label: "Pronto", parent: "default", children: ["poster"] }),
+      poster: node("poster", { label: "Poster", parent: "pronto" }),
+    } };
+    const props = { net: nestedNet, embedded: true, onClose: vi.fn(), onChanged: vi.fn(), onGoProfile: vi.fn(), onDetail: vi.fn(), onOpenMenu: vi.fn() };
+    const { rerender } = render(<AgentGraph {...props} mode="governance" />);
+    fireEvent.click(await waitForGovernanceTree());
+    rerender(<AgentGraph {...props} mode="chat" />);
+    expect(screen.getByRole("button", { name: "Pronto" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Poster" })).toBeVisible();
+  }, 10000);
+
   it("选中项目只更新面板，新建对话和进入项目各自有明确入口", () => {
     const onNewConversation = vi.fn();
     const onGoProfile = vi.fn();
@@ -123,7 +186,8 @@ describe("轮盘项目节点的两种拖拽（★J-4，batch43）", () => {
     fireEvent.dragStart(projectNode, { dataTransfer: transfer });
 
     expect(written["application/x-kaus-project"]).toBe("pronto");
-    expect(written["text/plain"]).toBe("Pronto");
+    expect(written["application/x-kaus-label"]).toBe("Pronto");
+    expect(written["text/plain"]).toBeUndefined();
     // 会话那个 MIME 一个字都不写：组那头据此分流，写了就成了"加入已有会话"。
     expect(written["application/x-kaus-conversation"]).toBeUndefined();
   });

@@ -138,7 +138,7 @@ async def test_turn_timeout_terminates_process(setup):
 
 async def test_mcp_and_cross_directory_restore_are_not_silently_accepted(setup):
     bridge, _, root, ident = await new(setup)
-    with pytest.raises(BridgeError, match="MCP projection"):
+    with pytest.raises(BridgeError, match="MCP extension"):
         await bridge.dispatch("session/new", {"cwd": str(root), "mcpServers": [{"name": "m", "command": "noop"}]})
     with pytest.raises(BridgeError, match="another working directory"):
         await bridge.dispatch("session/load", {"sessionId": ident, "cwd": str(root.parent)})
@@ -177,7 +177,7 @@ async def test_own_session_file_is_private_and_native_config_is_not_written(setu
     assert not (root / ".commandcode").exists()
     capabilities = (await bridge.dispatch("initialize", {}))["agentCapabilities"]
     assert capabilities["promptCapabilities"]["image"] is False
-    assert capabilities["mcpCapabilities"] == {"http": False, "sse": False}
+    assert capabilities["mcpCapabilities"] == {"http": True, "sse": True}
 
 
 async def test_shared_driver_applies_model_effort_and_only_offers_real_permissions(setup):
@@ -226,3 +226,30 @@ async def test_shared_driver_applies_model_effort_and_only_offers_real_permissio
         assert (root / "a.txt").read_text() == "only explicit bypass"
     finally:
         await driver.stop_runtime(runtime)
+
+
+async def test_mcp_catalog_title_is_display_only_and_rebuilt_on_resume(setup, monkeypatch):
+    from copy import deepcopy
+    from unittest.mock import AsyncMock
+    from drivers.session_mcp import broker as module
+    bridge, frames, root=setup
+    name='mcp__fixture__ping_123456789a'
+    servers=[{'name':'fixture','command':'unused'}]
+    class Catalog:
+        catalog=[{'name':name,'title':'Check connection'}]
+        def __init__(self,config): pass
+        open=AsyncMock()
+        close=AsyncMock()
+    monkeypatch.setattr(module,'Broker',Catalog)
+    monkeypatch.setattr(module,'read_config',lambda path:{'schema':1,'servers':servers})
+    monkeypatch.setenv('KAUS_SESSION_MCP_CONFIG','synthetic-config')
+    result=await bridge.dispatch('session/new',{'cwd':str(root),'mcpServers':servers})
+    session=bridge.sessions[result['sessionId']]
+    event={'type':'tool_queued','toolCallId':'native-call','toolName':name,'input':{'nativeName':name}}
+    original=deepcopy(event)
+    session.event(event,{'tools':set()})
+    update=frames[-1]['params']['update']
+    assert update['title']=='Check connection' and update['rawInput']=={'nativeName':name}
+    assert event==original
+    await bridge.dispatch('session/resume',{'sessionId':session.ident,'cwd':str(root),'mcpServers':[]})
+    assert session.mcp_titles=={}

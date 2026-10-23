@@ -35,15 +35,15 @@ Driver 因此维护自己的账本 :attr:`AcpDriver.session_ledger`：
 
 历史
 ----
-``load_native_history`` 一律抛 :class:`UnsupportedCapabilityError`：ACP 没有
-「读取历史条目」的方法（理由见 :mod:`drivers.acp.capabilities`）。返回一份
-「看起来完整、实则缺工具结果与权限决策」的历史会直接把 R-02 的判断带偏。
+原生适配器可通过 ``load_native_history`` 提供稳定 ID 的公开历史；没有经过
+验证的读取入口时显式报告不支持。缺失的工具、附件等记录由完整性字段标明。
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import uuid
 from dataclasses import dataclass, field, replace
@@ -55,6 +55,7 @@ from app.capabilities.models import EffectiveCapabilities
 from app.conversations.models import Conversation
 from app.conversations.configuration import validate_config_values
 from drivers.approval import host_approval_options, is_host_approval, allow_once_option
+from drivers.error_text import safe_error_text, safe_exception_message
 from app.ids import normalize_backend_id
 from app.projects.models import AgentBinding, Project
 from drivers.acp.capabilities import (
@@ -272,12 +273,19 @@ class _RuntimeState:
     available_modes: tuple[Any, ...] = ()
     session_result: dict[str, Any] = field(default_factory=dict)
     config_revision: int = 0
+    skill_plan: Any = None
+    runtime_spec: AcpAgentSpec | None = None
+    runtime_metadata: dict[str, Any] = field(default_factory=dict)
     #: request_id -> 待审批的写请求。
     fs_writes: dict[str, _PendingFsWrite] = field(default_factory=dict)
     queue: "asyncio.Queue[Any]" = field(default_factory=asyncio.Queue)
     prompt_task: "asyncio.Task[None] | None" = None
+    computer_waiting: bool = False
+    computer_use_enabled: bool | None = None
+    computer_use_revision: str | None = None
     interrupt_requested: bool = False
     client_interactions: Any = None
+    transport_retired: bool = False
     closed: bool = False
 
 
@@ -331,6 +339,9 @@ class AcpDriver:
         self._backend_version: str | None = None
         self._backend_name: str | None = None
         self._probe_message: str | None = None
+        self._inventory_refresh_task: asyncio.Task | None = None
+        self._inventory_refresh_error = False
+        self._inventory_closed = False
         self._installed: bool | None = None
 
         #: binding_id -> {native_session_id -> NativeSession}。见模块 docstring。
@@ -342,6 +353,12 @@ class AcpDriver:
         self._catalog: dict[str, _CatalogSnapshot] = {}
         self._catalog_config_stamps: dict[str, tuple] = {}
         self._runtimes: dict[str, _RuntimeState] = {}
+        self._skill_plans: dict[str, Any] = {}
+        self._computer_use_plans: dict[str, dict] = {}
+        self._computer_use_contexts: dict[str, tuple[Any, dict]] = {}
+        self._computer_use_effective: dict[str, Any] = {}
+        self._binding_skill_plans: dict[str, Any] = {}
+        self._skill_projection_verification = None
         self._runtime_counter = 0
 
     # ------------------------------------------------------------------ #
@@ -357,22 +374,30 @@ class AcpDriver:
         （AD-152）。管理类的短命连接（probe / list）不给它，因为那些连接不跑
         回合，也就没有替 agent 读写文件这回事。
         """
-        connection = await AcpConnection.spawn(agent_spec or self.agent_spec)
+        actual_spec = agent_spec or self.agent_spec
+        adapter = self._runtime_adapter()
+        policy_factory = getattr(adapter, "session_start_retry_policy", None)
+        retry_policy = await policy_factory(actual_spec) if policy_factory is not None else None
+        connection = await AcpConnection.spawn(actual_spec)
+        connection.session_start_retry_policy = retry_policy
+        connection.graceful_shutdown_timeout = getattr(adapter, "GRACEFUL_SHUTDOWN_TIMEOUT", None)
         try:
-            result = await connection.call(
-                "initialize",
-                initialize_params(self.quirks, workspace_root=workspace_root),
-                timeout=self._call_timeout,
-            )
-        except AcpTransportError as exc:
-            spawn_failure = await self._handshake_failure(connection, exc)
-            await connection.aclose()
-            raise spawn_failure or exc from exc
-        except Exception:
+            try:
+                result = await connection.call(
+                    "initialize",
+                    initialize_params(self.quirks, workspace_root=workspace_root),
+                    timeout=self._call_timeout,
+                )
+            except AcpTransportError as exc:
+                spawn_failure = await self._handshake_failure(connection, exc)
+                raise spawn_failure or exc from exc
+            self._absorb_initialize(result)
+            return connection, result
+        except BaseException:
+            # Includes cancellation during initialize or failure diagnosis,
+            # before a runtime owns the native process.
             await connection.aclose()
             raise
-        self._absorb_initialize(result)
-        return connection, result
 
     async def _handshake_failure(
         self, connection: AcpConnection, exc: AcpTransportError
@@ -413,9 +438,22 @@ class AcpDriver:
         if self.preset is not None:
             self.quirks = effective_quirks(self.preset.quirks, result, self.preset)
         self._capabilities = capabilities_from_initialize(result, self.preset)
+        if callable(getattr(self._runtime_adapter(), "load_native_history", None)):
+            from runtime.capability_matrix import CapabilityState
+            self._capabilities = self._capabilities.model_copy(update={
+                "sessions": self._capabilities.sessions.model_copy(update={
+                    "history": CapabilityState(value="supported", verification="declared",
+                        note="原生公开历史；完整度由每次读取结果报告"),
+                }),
+            })
         self._backend_version = agent_version(result)
+        self._protocol_version = result.get("protocolVersion") if isinstance(result, Mapping) else None
         self._backend_name = agent_name(result)
         self._installed = True
+        if self._skill_projection_verification == self._skill_projection_key():
+            self._mark_skill_capability()
+        else:
+            self._skill_projection_verification = None
 
     # ------------------------------------------------------------------ #
     # Binding 快照（AD-58）
@@ -535,13 +573,20 @@ class AcpDriver:
                 if isinstance(failure, FailureHint)
                 else str(exc)
             )
-            self._installed = False
+            # A present native engine can fail its ACP handshake because a
+            # companion service is stopped. Keep installation and readiness
+            # separate; do not offer reinstallation for a connection failure.
+            from drivers.acp.native_cli import native_path
+            import os
+            executable = native_path(self)
+            self._installed = bool(executable and Path(executable).is_file()
+                                   and os.access(executable, os.X_OK))
             self._probe_message = message
             return BackendProbeResult(
                 backend_id=self.backend_id,
                 driver_kind=self.driver_kind,
                 state="unavailable",
-                installed=False,
+                installed=self._installed,
                 driver_version=DRIVER_VERSION,
                 message=message,
                 capabilities=self._capabilities or BackendCapabilities(),
@@ -570,6 +615,12 @@ class AcpDriver:
             message = f"agent 在 stdout 上写了 {len(noise)} 条非 JSON-RPC 内容"
         elif self._backend_version is None:
             message = f"agent 未报版本（agentInfo.version 缺失）；name={self._backend_name!r}"
+        inventory_refresh = getattr(self._skill_adapter(), "refresh_inventory", None)
+        if callable(inventory_refresh) and not self._inventory_closed:
+            if self._inventory_refresh_error:
+                notice = "技能来源刷新失败，可重试"
+                message = f"{message}；{notice}" if message else notice
+            self.start_skill_inventory_refresh()
         self._probe_message = message
         assert self._capabilities is not None  # noqa: S101
         return BackendProbeResult(
@@ -583,6 +634,41 @@ class AcpDriver:
             capabilities=self._capabilities,
             probed_at=_now(),
         )
+
+    def start_skill_inventory_refresh(self) -> None:
+        """Read native Skill inventory without initializing an Agent session."""
+        refresh = getattr(self._skill_adapter(), "refresh_inventory", None)
+        if not callable(refresh) or self._inventory_closed:
+            return
+        if self._inventory_refresh_task is None or self._inventory_refresh_task.done():
+            # The same bounded, driver-owned job serves first connection and probe.
+            self._inventory_refresh_task = asyncio.create_task(
+                self._refresh_skill_inventory(refresh, self.agent_spec))
+
+    async def _refresh_skill_inventory(self, refresh, spec):
+        try:
+            await asyncio.wait_for(refresh(spec), timeout=35)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self._inventory_refresh_error = True
+        else:
+            self._inventory_refresh_error = False
+
+    def skill_inventory_pending(self) -> bool:
+        """Host onboarding waits for any already-running inventory refresh."""
+        task = self._inventory_refresh_task
+        return task is not None and not task.done()
+
+    async def aclose(self) -> None:
+        """Release driver-owned discovery work; SessionHost owns live sessions."""
+        self._inventory_closed = True
+        task = self._inventory_refresh_task
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._inventory_refresh_task = None
 
     async def get_capabilities(self) -> BackendCapabilities:
         if self._capabilities is None:
@@ -969,21 +1055,34 @@ class AcpDriver:
         dry_run: bool = True,
         adopt: bool = False,
     ) -> ProjectionResult:
-        """ACP 有两个投射面，形状完全不同（批次四十四把第二个接上）。
+        """Project MCP uses ACP metadata or a verified native runtime adapter.
 
-        1. ``session/new`` 的 ``mcpServers``——**每会话一次性**的协议参数，不落盘、
-           读不回来、因此也没有漂移可言；
-        2. **工作目录里的一个文件**——项目指令没有协议通道，只能写进引擎在工作
-           目录里读的那份文件的受管块（AD-165/166）。这一面会落盘，也会漂移。
-
-        ``adopt`` 对本 Driver 无意义：文件投影从不覆盖块外的内容，也就没有
-        「接管别人的键」这回事（AD-59 那条针对的是配置文件里的键）。
+        Native adapters own their private settings and connection receipts.
+        Workspace instructions use a managed file block; adopt never authorizes
+        replacing content outside that block.
         """
         self._assert_binding(binding)
         capabilities = await self.get_capabilities()
         applied: list[ProjectionEntry] = []
         unsupported: list[ProjectionEntry] = []
         warnings: list[str] = list(effective_capabilities.warnings)
+        from drivers.skill_execution.common import selection_of, is_skill_entry
+        skill_adapter = self._skill_adapter()
+        skill_plan = None
+        if selection_of(effective_capabilities) is None and not dry_run:
+            self._binding_skill_plans.pop(binding.id, None)
+        if skill_adapter is None and selection_of(effective_capabilities) is not None and not dry_run:
+            raise UnsupportedCapabilityError("当前引擎尚未提供项目技能范围控制；可使用原生技能模式")
+        if skill_adapter is not None and selection_of(effective_capabilities) is not None:
+            skill_plan = await skill_adapter.project(self.agent_spec, binding, effective_capabilities,
+                self._workspace_of(project, binding), dry_run=dry_run,
+                runtime_info=(self._backend_name, self._backend_version))
+            applied.extend(skill_plan.report.applied)
+            unsupported.extend(skill_plan.report.unsupported)
+            warnings.extend(skill_plan.report.warnings)
+            if not dry_run:
+                self._binding_skill_plans[binding.id] = skill_plan
+                self._remember_skill_projection(skill_plan)
 
         instructions = materialize_block(
             rows=self._instruction_rows(effective_capabilities),
@@ -1014,6 +1113,8 @@ class AcpDriver:
         }
 
         for entry in effective_capabilities.entries:
+            if skill_plan is not None and is_skill_entry(entry):
+                continue
             if (entry.capability_type, entry.capability_id) in instruction_coords:
                 continue  # 文件投影那一面已经给它出过一行了
             (verdict,) = evaluate_support([entry.capability_type], capabilities)
@@ -1022,7 +1123,7 @@ class AcpDriver:
                 capability_id=entry.capability_id,
                 level=verdict.level,
                 target_ref=(
-                    f"acp://{binding.id}/session-new/mcpServers/{entry.capability_id}"
+                    f"acp://{binding.id}/{'runtime' if self.preset and self.preset.project_mcp_via_runtime else 'session-new'}/mcpServers/{entry.capability_id}"
                     if verdict.projectable
                     else None
                 ),
@@ -1030,10 +1131,8 @@ class AcpDriver:
                 reason=None if verdict.projectable else "not_mapped",
             )
             (applied if verdict.projectable else unsupported).append(projection)
-        warnings.append(
-            f"project={project.id}：MCP 那一面只在建会话时随 mcpServers 传入，"
-            "不写入 agent 的持久配置"
-        )
+        if any(entry.capability_type == "mcp" for entry in effective_capabilities.entries):
+            warnings.append("项目 MCP 在会话启动或恢复时应用")
         return ProjectionResult(
             binding_id=binding.id,
             applied=tuple(applied),
@@ -1049,11 +1148,10 @@ class AcpDriver:
         binding: AgentBinding,
         effective_capabilities: EffectiveCapabilities | None = None,
     ) -> DriftReport:
-        """只有**落了盘**的那一面有漂移可言（批次四十四）。
+        """Inspect managed workspace instructions.
 
-        MCP 那一面是每会话传一次的协议参数，读不回来，所以它在这里一条都不出现
-        （不出现 = 没有可对账的目标，不是 in_sync）。文件投影那一面走与
-        ``config.yaml`` 同名的四态。
+        MCP configuration is verified by each runtime adapter. It does not
+        participate in this shared file-drift report.
         """
         self._assert_binding(binding)
         if effective_capabilities is None:
@@ -1078,11 +1176,21 @@ class AcpDriver:
     # Native Session
     # ------------------------------------------------------------------ #
 
+    async def create_external_native_session(
+        self, conversation: Conversation, options: CreateSessionOptions
+    ) -> NativeSession:
+        from drivers.external_session import precreate_external_session
+        options = options.model_copy(update={"metadata": {**options.metadata, "_kausExternalPrecreate": True}})
+        return await precreate_external_session(self, conversation, options)
+
     async def create_native_session(
         self, binding: AgentBinding, options: CreateSessionOptions
     ) -> NativeSession:
         self._assert_binding(binding)
-        connection, _init = await self._connect()
+        plan = self._binding_skill_plans.get(binding.id)
+        connection, _init = await self._connect(agent_spec=plan.spec if plan else None)
+        if plan and plan.metadata:
+            options = options.model_copy(update={"metadata": {**options.metadata, "_meta": plan.metadata}})
         try:
             result, _params = await self._new_session(connection, options)
         except AcpRpcError as exc:
@@ -1153,11 +1261,24 @@ class AcpDriver:
         except (UnsupportedCapabilityError, AcpTransportError, AcpRpcError):
             return None
 
+    async def load_local_native_history(
+        self, binding: AgentBinding, native_session_id: str
+    ) -> NativeHistory:
+        """Explicit filesystem-only hook; a general history API is not proof."""
+        self._assert_binding(binding)
+        loader = getattr(self._runtime_adapter(), "load_local_native_history", None)
+        if not callable(loader):
+            raise UnsupportedCapabilityError("local_native_history_unsupported")
+        return await loader(self.agent_spec, binding, native_session_id)
+
     async def load_native_history(
         self, binding: AgentBinding, native_session_id: str
     ) -> NativeHistory:
-        """**显式不支持**：ACP 没有读取历史条目的方法。"""
+        """Use a verified native reader when the adapter provides one."""
         self._assert_binding(binding)
+        loader = getattr(self._runtime_adapter(), "load_native_history", None)
+        if loader is not None:
+            return await loader(self.agent_spec, binding, native_session_id)
         raise UnsupportedCapabilityError(
             "ACP 没有『读取会话历史』的方法：session/load 的语义是把会话装回来并"
             "重放 session/update，不是返回历史条目，且实测存在 agent 拒绝该方法的"
@@ -1176,18 +1297,49 @@ class AcpDriver:
             {"cwd": cwd, "mcpServers": mcp_servers},
             {"cwd": cwd},
         ]
-        return await call_with_param_shapes(
-            connection, "session/new", shapes, timeout=self._call_timeout
-        )
+        if mcp_servers:
+            shapes = shapes[:1]
+        if options.metadata.get("_meta"):
+            for shape in shapes:
+                shape["_meta"] = options.metadata["_meta"]
+        retry_policy = getattr(connection, "session_start_retry_policy", None)
+        attempt = 0
+        while True:
+            checkpoint = connection.stderr_checkpoint() if retry_policy else None
+            try:
+                return await call_with_param_shapes(
+                    connection, "session/new", shapes, timeout=self._call_timeout
+                )
+            except AcpRpcError as exc:
+                if retry_policy is None:
+                    raise
+                # stdout and stderr are independent pipes. Allow the error's
+                # trailing diagnostic to arrive, never reuse a previous call's.
+                await asyncio.sleep(0.05)
+                delay = retry_policy(exc, connection.stderr_since(checkpoint), attempt)
+                if delay is None:
+                    raise
+                attempt += 1
+                logging.getLogger(__name__).info(
+                    "Retrying pre-session transport failure (%s), attempt %s",
+                    self.backend_id, attempt,
+                )
+                await asyncio.sleep(delay)
 
     async def _resume_session(
-        self, connection: AcpConnection, session_id: str, cwd: str
+        self, connection: AcpConnection, session_id: str, cwd: str, *, metadata: Mapping[str, Any] | None = None
     ) -> Any:
         """续接。首选 ``session/resume``，只有它不存在时才试 ``session/load``。"""
         shapes: list[dict[str, Any]] = [
-            {"sessionId": session_id, "cwd": cwd, "mcpServers": []},
+            {"sessionId": session_id, "cwd": cwd, "mcpServers": _mcp_servers(metadata or {})},
             {"sessionId": session_id, "cwd": cwd},
         ]
+        # A nonempty requested server set must not disappear during shape negotiation.
+        if _mcp_servers(metadata or {}):
+            shapes = shapes[:1]
+        if metadata and metadata.get("_meta"):
+            for shape in shapes:
+                shape["_meta"] = metadata["_meta"]
         if getattr(self.quirks, "prefer_session_load", False) and self.quirks.supports_session_load:
             result, _params = await call_with_param_shapes(
                 connection, "session/load", shapes, timeout=self._call_timeout
@@ -1305,41 +1457,142 @@ class AcpDriver:
     # ------------------------------------------------------------------ #
 
     async def session_options_for(
-        self, conversation: Conversation, effective: EffectiveCapabilities
+        self, conversation: Conversation, effective: EffectiveCapabilities, *, workspace_root: str | None = None
     ) -> SessionProjection | None:
-        """有效能力 → ``session/new`` 的 ``mcpServers``（批次四十三）。
+        """Build configuration for the next runtime without changing active sessions.
 
-        ACP 唯一的运行时投射面就是这一个参数，而它**只在建新会话时**送得进去：
-        续接（``session/resume`` / ``session/load``）的形状里 ``mcpServers`` 只能
-        是空列表（见 :meth:`_resume_session`）——协议不允许在续接时换挂载。
-        所以这条路对**已经有 native_session_id 的会话不生效**，这里如实回
-        ``None``，而不是算一份送不出去的清单再让界面显示「已投射」。
-
-        翻译规则在 :mod:`drivers.acp.mcp_projection`（纯函数，受单测）；
-        怪癖位 ``mcp_via_session_new`` 为假时一个字都不送——那一位的含义正是
-        「这一版收下了也不会挂」，塞进去只会换来一句假话。
+        MCP uses session/new or the preset's native runtime projection. Skill adapters carry
+        their verified selection through new and resume metadata, with a separate
+        process spec for each conversation. A required projection failure aborts
+        startup rather than silently falling back to ambient native Skills.
         """
-        if conversation.native_session_id:
-            return None
-        if not self.quirks.mcp_via_session_new:
-            self._warn(
-                "mcp_via_session_new=false：本引擎（按怪癖表）不会真的挂载随 "
-                "session/new 传入的 MCP，本次不传"
-            )
-            return None
-        projection = project_mcp_servers(effective)
-        for warning in projection.warnings:
+        from drivers.skill_execution.common import selection_of
+        metadata: dict[str, Any] = {}
+        summary: dict[str, Any] = {}
+        warnings: list[str] = []
+        mcp_projection = project_mcp_servers(effective)
+        if mcp_projection.servers and not (self.quirks.mcp_via_session_new or
+                (self.preset and self.preset.project_mcp_via_runtime)):
+            raise UnsupportedCapabilityError("当前引擎不支持项目 MCP；请在项目中停用对应服务后重试")
+        warnings.extend(mcp_projection.warnings)
+        binding = self._binding_snapshot(conversation.agent_binding_id)
+        adapter = self._skill_adapter()
+        if selection_of(effective) is None:
+            self._skill_plans.pop(conversation.id, None)
+        if selection_of(effective) is not None and (adapter is None or binding is None):
+            raise UnsupportedCapabilityError("当前引擎尚未提供项目技能范围控制；可使用原生技能模式")
+        if adapter is not None and binding is not None and selection_of(effective) is not None:
+            await self.get_capabilities()
+            project = getattr(adapter, "project_session", adapter.project)
+            session_args = {"conversation": conversation} if hasattr(adapter, "project_session") else {}
+            plan = await project(self.agent_spec, binding, effective,
+                workspace_root or self._workspace_root_for(binding.id), dry_run=False,
+                runtime_info=(self._backend_name, self._backend_version), **session_args)
+            self._skill_plans[conversation.id] = plan
+            self._remember_skill_projection(plan)
+            if plan.metadata:
+                metadata["_meta"] = plan.metadata
+                summary["skills"] = list(plan.names)
+            warnings.extend(plan.report.warnings)
+            warnings.extend(item.detail or "项目技能未应用" for item in plan.report.unsupported)
+        if mcp_projection.servers:
+            metadata["mcpServers"] = [dict(s) for s in mcp_projection.servers]
+            summary["mcpServers"] = list(mcp_projection.names)
+        from drivers.computer_use.integration import prepare_projection
+        prepared = self._skill_plans.get(conversation.id)
+        metadata = await prepare_projection(
+            prepared.spec if prepared is not None and prepared.spec is not None else self.agent_spec,
+            self._runtime_adapter(), binding, conversation, effective, metadata,
+            supports_mcp=bool(self.quirks.mcp_via_session_new or
+                              (self.preset and self.preset.project_mcp_via_runtime)),
+        )
+        self._computer_use_effective[conversation.id] = effective
+        self._computer_use_plans[conversation.id] = dict(metadata.get("_kausComputerUse", {}))
+        self._computer_use_contexts[conversation.id] = (
+            prepared.spec if prepared is not None and prepared.spec is not None else self.agent_spec,
+            metadata,
+        )
+        if "mcpServers" in metadata:
+            summary["mcpServers"] = [server["name"] for server in metadata["mcpServers"]]
+        remember_options = getattr(self._runtime_adapter(), "remember_session_options", None)
+        if remember_options is not None:
+            # Cold terminal launches can bypass runtime preparation. Retain the
+            # latest projection, including an explicitly empty MCP set.
+            prepared = self._skill_plans.get(conversation.id)
+            remember_options(prepared.spec if prepared is not None and prepared.spec is not None
+                             else self.agent_spec, conversation, metadata)
+        for warning in warnings:
             self._warn(warning)
-        if not projection.servers:
+        if not metadata:
             return None
         return SessionProjection(
             options=CreateSessionOptions(
                 title=conversation.title,
-                metadata={"mcpServers": [dict(s) for s in projection.servers]},
+                metadata=metadata,
             ),
-            summary={"mcpServers": list(projection.names)},
-            warnings=projection.warnings,
+            summary=summary,
+            warnings=tuple(warnings),
         )
+
+    def supports_workspace_override(self) -> bool:
+        return True
+
+    async def workspace_session_projection(self, conversation, effective, *, workspace_root):
+        projection = await self.session_options_for(conversation, effective, workspace_root=workspace_root)
+        projection = projection or SessionProjection(options=CreateSessionOptions(title=conversation.title))
+        return projection.model_copy(update={"options": projection.options.model_copy(
+            update={"workspace_root": workspace_root})})
+
+    def _skill_adapter(self):
+        from drivers.skill_execution import adapter_for
+        return adapter_for(self.preset.skill_projection_adapter if self.preset else None)
+
+    def _runtime_adapter(self):
+        from importlib import import_module
+        module = self.preset.runtime_adapter if self.preset else None
+        return import_module(module) if module else self._skill_adapter()
+
+    async def computer_use_status(self, binding=None):
+        from drivers.computer_use.integration import ambient_mcp, native_status
+        adapter = self._runtime_adapter()
+        result = dict(await native_status(adapter, self.agent_spec, binding, force=True))
+        for candidate in ambient_mcp(self.agent_spec, adapter):
+            if result.get(candidate.capability, {}).get("status") != "ready":
+                result[candidate.capability] = candidate.to_dict()
+        return result
+
+    async def recover_computer_use(self, reference):
+        recover = getattr(self._runtime_adapter(), "recover_computer_use", None)
+        return await recover(self.agent_spec, reference) is True if recover is not None else False
+
+    def skill_inventory_roots(self, projects, bindings):
+        adapter = self._skill_adapter()
+        if adapter is None:
+            return ()
+        provider = getattr(adapter, "inventory_roots", None)
+        if callable(provider):
+            return provider(self.agent_spec, projects, bindings)
+        from drivers.skill_execution.inventory import driver_roots
+        return driver_roots(self.agent_spec, adapter.__name__.rsplit(".", 1)[-1], projects, bindings)
+
+    def _remember_skill_projection(self, plan):
+        if plan.root is not None and self._capabilities is not None:
+            self._skill_projection_verification = self._skill_projection_key()
+            self._mark_skill_capability()
+
+    def _skill_projection_key(self):
+        import hashlib
+        return (self._backend_name, self._backend_version,
+                hashlib.sha256(self.agent_spec.model_dump_json().encode()).hexdigest())
+
+    def _mark_skill_capability(self):
+        if self._capabilities is not None:
+            levels = dict(self._capabilities.capability_projection)
+            levels.update(skills=SupportLevel.ADAPTED)
+            self._capabilities = self._capabilities.model_copy(update={"capability_projection": levels})
+
+    def requires_project_projection(self, binding: AgentBinding) -> bool:
+        return self._skill_adapter() is not None
 
     def coordinator_selection(self, model_id: str, reasoning_mode: str | None) -> str:
         if reasoning_mode and self.quirks.model_id_format == 'effort_suffix':
@@ -1354,6 +1607,16 @@ class AcpDriver:
         # implementation of the engine or a whitelist of coordinator products.
         return adapter is None or adapter.supported(self.agent_spec)
 
+    def supports_execution_policy(self, policy: str) -> bool:
+        return policy == "project" or (policy == "context-only" and bool(
+            getattr(self.preset, "restricted_execution_adapter", None)))
+
+    async def restricted_session_projection(self, conversation, *, policy, workspace_root):
+        if policy != "context-only" or not self.supports_execution_policy(policy):
+            raise UnsupportedCapabilityError("当前 Agent 尚未适配此模块的执行范围。")
+        return SessionProjection(options=CreateSessionOptions(workspace_root=workspace_root,
+            metadata={"_kausExecutionPolicy": policy}), summary={"executionPolicy": [policy]})
+
     async def start_runtime(
         self,
         conversation: Conversation,
@@ -1365,24 +1628,78 @@ class AcpDriver:
             raise UnsupportedCapabilityError(
                 "Driver 只负责 Card Surface；ACP 不提供站外 CLI 的启动信息"
             )
-        workspace_root = self._workspace_root_for(conversation.agent_binding_id)
+        from drivers.computer_use.settings import is_enabled, runtime_revision
+        computer_use_enabled = is_enabled()
+        computer_use_revision = runtime_revision()
+        workspace_root = (session_options.workspace_root if session_options and session_options.workspace_root
+                          else self._workspace_root_for(conversation.agent_binding_id))
         approval_mode = conversation.approval_mode or self._approval_mode_for(conversation.agent_binding_id)
         binding = self._binding_snapshot(conversation.agent_binding_id)
         role = binding.runtime_config.get('group_execution') if binding else None
+        skill_plan = self._skill_plans.get(conversation.id)
+        spec = skill_plan.spec if skill_plan and skill_plan.spec is not None else self.agent_spec
+        runtime_adapter = self._runtime_adapter()
+        runtime_metadata = dict(session_options.metadata if session_options else {"_meta": skill_plan.metadata} if skill_plan else {})
+        restricted = runtime_metadata.get("_kausExecutionPolicy") == "context-only"
+        if restricted:
+            from drivers.workbench_execution import adapter_for
+            adapter = adapter_for(getattr(self.preset, "restricted_execution_adapter", None))
+            if adapter is None or not session_options or not session_options.workspace_root:
+                raise UnsupportedCapabilityError("当前 Agent 尚未适配此模块的执行范围。")
+            await self.get_capabilities()
+            workspace_root = session_options.workspace_root
+            spec, runtime_metadata = await adapter.prepare(self.agent_spec.model_copy(update={"cwd": workspace_root}),
+                runtime_metadata, (self._backend_name, self._backend_version))
+            runtime_metadata.pop("_kausComputerUse", None)
+            skill_plan, runtime_adapter, role = None, None, None
+        runtime_metadata["_kausWorkspaceRoot"] = self._resolve_cwd(workspace_root)
         if role:
             from drivers.group_execution import adapter_for
             adapter = adapter_for(self.preset.group_isolation_adapter if self.preset else None)
             if adapter is not None and not adapter.supported(self.agent_spec):
                 raise UnsupportedCapabilityError("该引擎不支持组长上下文隔离")
-            spec = adapter.prepare(self.agent_spec, role) if adapter else self.agent_spec
-            connection, _init = await self._connect(workspace_root=workspace_root, agent_spec=spec)
-        else:
-            connection, _init = await self._connect(workspace_root=workspace_root)
+            spec = adapter.prepare(spec, role) if adapter else spec
+        old_computer_plan = runtime_metadata.get("_kausComputerUse", {})
+        if not restricted and (not old_computer_plan or
+                old_computer_plan.get("revision") != computer_use_revision):
+            from drivers.computer_use.integration import server_fingerprint
+            old_auto = {row["name"]: row["fingerprint"] for row in old_computer_plan.get("autoInjectedServers", [])}
+            if old_auto:
+                runtime_metadata["mcpServers"] = [server for server in runtime_metadata.get("mcpServers", [])
+                    if old_auto.get(server.get("name")) != server_fingerprint(server)]
+            from drivers.computer_use.integration import prepare_projection
+            runtime_metadata = await prepare_projection(
+                spec, runtime_adapter, binding, conversation,
+                self._computer_use_effective.get(conversation.id) or EffectiveCapabilities(project_id=conversation.project_id),
+                runtime_metadata, supports_mcp=bool(self.quirks.mcp_via_session_new or
+                    (self.preset and self.preset.project_mcp_via_runtime)),
+            )
+        prepare = getattr(runtime_adapter, "prepare_runtime_spec", None)
+        if prepare is not None:
+            spec = await prepare(spec, conversation, runtime_metadata)
+            if skill_plan is not None:
+                skill_plan.spec = spec
+        from drivers.computer_use.native_policy import prepare_spec as prepare_computer_policy
+        spec = prepare_computer_policy(spec, runtime_adapter, runtime_metadata)
+        if skill_plan is not None:
+            skill_plan.spec = spec
+        if session_options and session_options.workspace_root:
+            spec = spec.model_copy(update={"cwd": self._resolve_cwd(workspace_root)})
+        connection, _init = await self._connect(workspace_root=None if restricted else workspace_root, agent_spec=spec)
         try:
+            if skill_plan is not None:
+                self._remember_skill_projection(skill_plan)
             cwd = self._resolve_cwd(workspace_root)
+            before_session = getattr(runtime_adapter, "before_runtime_session", None)
+            if before_session is not None:
+                runtime_metadata = await before_session(connection, spec, conversation, runtime_metadata)
+            self._computer_use_plans[conversation.id] = dict(runtime_metadata.get("_kausComputerUse", {}))
+            self._computer_use_contexts[conversation.id] = (spec, runtime_metadata)
+            session_options = (session_options or CreateSessionOptions(title=conversation.title)).model_copy(update={"metadata": runtime_metadata})
             if conversation.native_session_id:
                 result = await self._resume_session(
-                    connection, conversation.native_session_id, cwd
+                    connection, conversation.native_session_id, cwd,
+                    metadata=session_options.metadata if session_options else {"_meta": skill_plan.metadata} if skill_plan else None,
                 )
                 session_id = conversation.native_session_id
                 resumed = True
@@ -1391,7 +1708,8 @@ class AcpDriver:
                 # 已经翻好的 ``mcpServers``（见 :meth:`session_options_for`）；
                 # 没装就与本批之前一模一样，只带标题。
                 options = session_options or CreateSessionOptions(
-                    title=conversation.title
+                    title=conversation.title,
+                    metadata={"_meta": skill_plan.metadata} if skill_plan else {},
                 )
                 if options.workspace_root is None and workspace_root is not None:
                     # AD-175：``_new_session`` 自己按 ``options.workspace_root``
@@ -1405,6 +1723,9 @@ class AcpDriver:
                 result, _params = await self._new_session(connection, options)
                 session_id = _require_session_id(result)
                 resumed = False
+            after_session = getattr(runtime_adapter, "after_runtime_session", None)
+            if after_session is not None:
+                await after_session(connection, spec, conversation, runtime_metadata, session_id)
             mode_id = None
             # Cache the engine's defaults before applying this conversation's overrides.
             self._remember_models(conversation.agent_binding_id, result)
@@ -1441,11 +1762,18 @@ class AcpDriver:
             # 认得出来就换成带修法的类型化异常，接入层据此回 400 `auth_required`
             # 并在时间线上留一条 run.failed；认不出来照旧原样上抛。
             await connection.aclose()
+            # Keep the native cause in local diagnostics, not in the message UI.
+            # Shutdown drains trailing stderr before this bounded, redacted log.
+            logging.getLogger(__name__).warning(
+                "ACP runtime initialization failed (%s): %s; stderr: %s",
+                self.backend_id, safe_exception_message(exc, environ=spec.build_env()),
+                safe_error_text(connection.stderr_text(), environ=spec.build_env(), limit=12000),
+            )
             auth_error = self._auth_error(conversation.agent_binding_id, exc)
             if auth_error is not None:
                 raise auth_error from exc
             raise
-        except Exception:
+        except BaseException:
             await connection.aclose()
             raise
 
@@ -1479,6 +1807,7 @@ class AcpDriver:
                 "clientFs": bool(
                     self.quirks.needs_client_fs and workspace_root is not None
                 ),
+                "computerUse": runtime_metadata.get("_kausComputerUse", {}),
             },
         )
         translator = AcpTranslator(
@@ -1514,6 +1843,11 @@ class AcpDriver:
             approval_mode=approval_mode,
             available_modes=self._available_modes(result),
             session_result=dict(result),
+            skill_plan=skill_plan,
+            runtime_spec=spec,
+            runtime_metadata=runtime_metadata,
+            computer_use_enabled=computer_use_enabled,
+            computer_use_revision=computer_use_revision,
             prompt_capabilities=dict(
                 (_init.get("agentCapabilities") or {}).get("promptCapabilities") or {}
             ) if isinstance(_init, Mapping) and isinstance(_init.get("agentCapabilities"), Mapping) else {},
@@ -1843,11 +2177,11 @@ class AcpDriver:
         return conversation.evolve(config_options={key: current[key] for key in conversation.config_options if key in current})
 
     async def _call_config_option(self, connection: AcpConnection, session_id: str, option_id: str, value: str | bool) -> Any:
-        # 字段名各家不一定同名，沿用 session/new 那条形状协商的做法（只在
-        # -32602 时换下一种，别的错误原样上抛）。**但报错要报第一条**，见下。
+        # ACP 正式字段 configId 优先；仅 -32602 协商旧字段，
+        # 其他错误原样上抛，避免重复执行可能已经生效的变更。
         shapes: list[dict[str, Any]] = [
-            {"sessionId": session_id, "optionId": option_id, "value": value},
             {"sessionId": session_id, "configId": option_id, "value": value},
+            {"sessionId": session_id, "optionId": option_id, "value": value},
             {
                 "sessionId": session_id,
                 "configOptionId": option_id,
@@ -1928,9 +2262,179 @@ class AcpDriver:
                 "上一轮尚未结束；先 interrupt 或等待终态",
                 failure=turn_already_running_hint(),
             )
+        adapter = self._skill_adapter()
+        validate = getattr(adapter, "validate_turn", None)
+        if validate is not None and state.skill_plan is not None:
+            await validate(state.skill_plan, self._resolve_cwd(getattr(state.handle, "metadata", {}).get("workspaceRoot") or self._workspace_root_for(runtime.binding_id)))
         state.interrupt_requested = False
         self._push(state, state.translator.begin_run())
         state.prompt_task = asyncio.create_task(self._prompt(state, content))
+
+    async def _guarded_prompt(self, state: _RuntimeState, params):
+        adapter = self._skill_adapter()
+        validate_prompt = getattr(adapter, "validate_prompt", None)
+        if validate_prompt is not None and state.skill_plan is not None:
+            await validate_prompt(state.skill_plan, params.get("prompt", []),
+                self._resolve_cwd(getattr(state.handle, "metadata", {}).get("workspaceRoot") or self._workspace_root_for(state.handle.binding_id)))
+        watch = getattr(adapter, "watch", None)
+        if watch is None or state.skill_plan is None:
+            return await state.connection.call("session/prompt", params, timeout=self._prompt_timeout)
+        request = asyncio.create_task(state.connection.call("session/prompt", params, timeout=self._prompt_timeout))
+        guard = asyncio.create_task(watch(state.skill_plan,
+            self._resolve_cwd(getattr(state.handle, "metadata", {}).get("workspaceRoot") or self._workspace_root_for(state.handle.binding_id))))
+        try:
+            done, _ = await asyncio.wait((request, guard), return_when=asyncio.FIRST_COMPLETED)
+            if guard in done:
+                try:
+                    state.connection.notify("session/cancel", {"sessionId": state.session_id})
+                    await asyncio.wait_for(asyncio.shield(request), 2)
+                except (AcpRpcError, AcpTransportError, asyncio.TimeoutError):
+                    await state.connection.aclose()
+                guard.result()
+            return await request
+        finally:
+            for task in (request, guard):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(request, guard, return_exceptions=True)
+
+    async def _computer_prompt(self, state: _RuntimeState, invoke):
+        """Serialize shared targets before entering the native tool loop."""
+        from drivers.computer_use.lease import ResourceLease
+        from drivers.computer_use.integration import reconcile_resources
+        plan = state.runtime_metadata.get("_kausComputerUse", {})
+        resources = plan.get("resources", ()) if isinstance(plan, Mapping) else ()
+        leases = []
+        started = False
+        async def retire_and_confirm():
+            nonlocal leases
+            state.transport_retired = True
+            # Transfer ownership before awaiting shutdown: a second cancel
+            # must not hand the desktop to another still-running turn.
+            from drivers.computer_use.integration import quarantine, release_quarantine
+            held = tuple(leases)
+            confirm_native = getattr(self._runtime_adapter(), "stop_computer_use", None)
+            transport_closed = False
+
+            async def stop_owned_runtime():
+                nonlocal transport_closed
+                try:
+                    await state.connection.aclose()
+                    transport_closed = getattr(state.connection, "close_confirmed", True) is True
+                except Exception:
+                    # aclose marks its connection closed before terminating
+                    # children. A failed close is not proof of termination.
+                    pass
+                stopped = True
+                if confirm_native is not None:
+                    try:
+                        stopped = await asyncio.wait_for(confirm_native(
+                            state.runtime_spec, state.session_id, state.runtime_metadata), timeout=10)
+                    except Exception:
+                        stopped = False
+                return transport_closed and stopped
+
+            cleanup = asyncio.create_task(stop_owned_runtime())
+
+            async def confirm_stopped(*_):
+                if not cleanup.done():
+                    return await asyncio.shield(cleanup)
+                if cleanup.cancelled():
+                    return False
+                try:
+                    stopped = cleanup.result()
+                except Exception:
+                    stopped = False
+                if not transport_closed:
+                    # AcpConnection shares and retries its owned shutdown
+                    # task; a transient close failure must not wedge forever.
+                    return await stop_owned_runtime()
+                if stopped or confirm_native is None:
+                    return stopped
+                # A remote service can acknowledge its earlier cancellation
+                # later; retry its check without trusting a closed transport.
+                return await confirm_native(
+                    state.runtime_spec, state.session_id, state.runtime_metadata)
+
+            def cleanup_finished(task):
+                if not task.cancelled():
+                    try:
+                        stopped = task.result()
+                    except Exception:
+                        stopped = False
+                    if stopped:
+                        release_quarantine(held)
+
+            quarantine(held, confirm_stopped, state.runtime_spec, state.session_id, state.runtime_metadata,
+                       monitor=True)
+            leases = []
+            cleanup.add_done_callback(cleanup_finished)
+            await asyncio.shield(cleanup)
+
+        try:
+            if resources:
+                state.computer_waiting = True
+                await reconcile_resources()
+            for resource in sorted(set(resources)):
+                lease = ResourceLease(resource)
+                state.computer_waiting = True
+                await lease.acquire()
+                leases.append(lease)
+            state.computer_waiting = False
+            if state.interrupt_requested:
+                return {"stopReason": "cancelled"}, None
+            reference_hook = getattr(self._runtime_adapter(), "computer_use_reference", None)
+            if leases and reference_hook is not None:
+                from drivers.terminals.managed_process import process_identity
+                reference = await reference_hook(state.runtime_spec, state.session_id, state.runtime_metadata)
+                if state.interrupt_requested:
+                    return {"stopReason": "cancelled"}, None
+                reference = {**reference, "backendId": state.handle.backend_id,
+                             "bindingId": state.handle.binding_id,
+                             "conversationId": state.handle.conversation_id}
+                pid = getattr(state.connection, "owned_process_id", None)
+                transport = process_identity(pid) if pid is not None else None
+                if pid is not None and transport is None:
+                    raise RuntimeError("Cannot establish remote transport ownership")
+                owner_id = "card:" + uuid.uuid4().hex
+                for lease in leases:
+                    lease.reserve_card(owner_id, reference, transport=transport)
+                for lease in leases:
+                    lease.mark_card_dispatched()
+            started = True
+            outcome = await invoke()
+            result = outcome[0] if isinstance(outcome, tuple) and outcome else outcome
+            cancelled = isinstance(result, Mapping) and result.get("stopReason") == "cancelled"
+            if leases and (state.interrupt_requested or cancelled):
+                # Some bridges resolve cancelled before their remote abort has
+                # completed. The prompt receipt alone cannot release control.
+                await retire_and_confirm()
+            elif leases:
+                # Remote engines may finish the parent reply while descendants
+                # continue. Observe that execution tree without cancelling it.
+                confirm = getattr(self._runtime_adapter(), "confirm_computer_use_complete", None)
+                if confirm is not None:
+                    try:
+                        completed = await asyncio.wait_for(confirm(
+                            state.runtime_spec, state.session_id, state.runtime_metadata), timeout=8)
+                    except Exception:
+                        completed = False
+                    if state.interrupt_requested:
+                        await retire_and_confirm()
+                    elif completed is not True:
+                        from drivers.computer_use.integration import quarantine
+                        quarantine(leases, confirm, state.runtime_spec, state.session_id,
+                                   state.runtime_metadata, monitor=True)
+                        leases = []
+            return outcome
+        except BaseException:
+            if started and leases:
+                await retire_and_confirm()
+            raise
+        finally:
+            state.computer_waiting = False
+            for lease in reversed(leases):
+                lease.release()
 
     async def _prompt(self, state: _RuntimeState, content: MessageInput) -> None:
         if state.interrupt_requested:
@@ -1944,10 +2448,27 @@ class AcpDriver:
             "prompt": _prompt_blocks(content, state.prompt_capabilities),
         }
         try:
-            result = await state.connection.call(
-                "session/prompt", params, timeout=self._prompt_timeout
-            )
+            adapter = self._runtime_adapter()
+            before = getattr(adapter, "before_runtime_prompt", None)
+            after = getattr(adapter, "after_runtime_prompt", None)
+            hook_args = (
+                state.connection, state.runtime_spec, state.conversation,
+                state.runtime_metadata, state.session_id, params,
+            ) if before is not None or after is not None else ()
+            async def invoke():
+                token = await before(*hook_args) if before is not None else None
+                if state.interrupt_requested:
+                    return {"stopReason": "cancelled"}, None
+                result = await self._guarded_prompt(state, params)
+                completion = await after(*hook_args, result, token) if after is not None else None
+                return result, completion
+            result, completion_policy = await self._computer_prompt(state, invoke)
+        except UnsupportedCapabilityError as exc:
+            self._push(state, state.translator.on_error("skills.scope_changed", str(exc)))
+            return
         except asyncio.CancelledError:  # pragma: no cover - stop_runtime 路径
+            if state.interrupt_requested and not state.closed:
+                self._push(state, state.translator.on_stop_reason("cancelled", interrupted=True))
             raise
         except AcpRpcError as exc:
             self._cancel_pending_interactions(state)
@@ -1958,12 +2479,21 @@ class AcpDriver:
             self._cancel_pending_interactions(state)
             self._push(state, state.translator.on_error("acp.transport", str(exc)))
             return
+        except Exception:
+            # Adapter or native response errors must finish the turn too. Raw
+            # diagnostics may contain local paths, headers or credentials.
+            self._cancel_pending_interactions(state)
+            self._push(state, state.translator.on_error("agent.runtime_failed", "回复中断，请重试"))
+            return
         finally:
             self._cancel_pending_interactions(state)
         stop_reason = result.get("stopReason") if isinstance(result, Mapping) else None
         if stop_reason == "end_turn" and not state.interrupt_requested:
+            auth_state = completion_policy.get("auth_state") if isinstance(completion_policy, Mapping) else None
+            if auth_state not in ("signed_in", "signed_out", "unknown"):
+                auth_state = "signed_in"
             self._catalog[state.handle.binding_id] = replace(
-                self._snapshot_from_session(state.session_result), auth_state="signed_in")
+                self._snapshot_from_session(state.session_result), auth_state=auth_state)
         self._push(
             state,
             state.translator.on_stop_reason(
@@ -2014,6 +2544,11 @@ class AcpDriver:
             raise UnsupportedCapabilityError("该 agent 未声明中断能力")
         state.interrupt_requested = True
         self._cancel_pending_interactions(state)
+        if state.computer_waiting and state.prompt_task is not None:
+            state.prompt_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await state.prompt_task
+            return
         # ACP 的 cancel 是**通知**，没有回执：终态只会以 session/prompt 的
         # stopReason 形式回来（实测）。
         with contextlib.suppress(AcpTransportError):
@@ -2088,6 +2623,12 @@ class AcpDriver:
                 return
             yield item
 
+    def runtime_reusable(self, runtime: RuntimeHandle) -> bool:
+        state = self._runtimes.get(runtime.runtime_id)
+        from drivers.computer_use.settings import runtime_revision
+        return bool(state is not None and not state.closed and not state.transport_retired and (
+            state.computer_use_revision is None or state.computer_use_revision == runtime_revision()))
+
     async def stop_runtime(self, runtime: RuntimeHandle) -> None:
         state = self._runtimes.pop(runtime.runtime_id, None)
         if state is None:
@@ -2106,6 +2647,56 @@ class AcpDriver:
     # 站外 CLI
     # ------------------------------------------------------------------ #
 
+    def validate_external_session(self, conversation: Conversation) -> None:
+        for state in self._runtimes.values():
+            if (state.handle.conversation_id == conversation.id and
+                    state.prompt_task is not None and not state.prompt_task.done()):
+                raise TurnAlreadyRunningError("请等待当前回复结束，再打开终端",
+                                              failure=turn_already_running_hint())
+        plan = self._skill_plans.get(conversation.id)
+        adapter = self._skill_adapter()
+        if adapter is not None and plan is not None:
+            adapter.cli_command(plan, ())
+
+    def external_computer_use(self, conversation: Conversation) -> dict:
+        """Pass resource ownership to the existing terminal handoff lifecycle."""
+        plan = self._computer_use_plans.get(conversation.id, {})
+        resources = set(plan.get("resources", ()))
+        adapter = self._runtime_adapter()
+        # These native entrypoints do not forward ACP session/new MCP options.
+        # A server merely installed/injected for the card is not a TUI tool.
+        native_only = getattr(adapter, "COMPUTER_USE_TERMINAL_MCP", True) is False
+        known, carried = set(), set()
+        for capability in ("browser", "desktop"):
+            candidate = plan.get(capability, {})
+            resource = candidate.get("resource")
+            if not resource:
+                continue
+            known.add(resource)
+            card_only = candidate.get("source") in {"project", "fallback"} and native_only
+            card_only = card_only or (adapter is None and candidate.get("source") == "fallback")
+            if not card_only:
+                carried.add(resource)
+        if "browser:shared" in known:
+            known.add("desktop:local")
+        if "browser:shared" in carried:
+            carried.add("desktop:local")
+        # Mixed-purpose or unknown adapters retain their existing conservative
+        # ownership; this filtering only removes confirmed card-only providers.
+        resources = tuple(sorted((resources - known) | (resources & carried)))
+        return {"resources": resources, "remote": bool(resources and
+            getattr(adapter, "stop_computer_use", None) is not None)}
+
+    async def stop_external_computer_use(self, conversation: Conversation) -> bool:
+        stop = getattr(self._runtime_adapter(), "stop_computer_use", None)
+        if stop is None:
+            return True
+        spec, metadata = self._computer_use_contexts.get(conversation.id, (self.agent_spec, {}))
+        try:
+            return await asyncio.wait_for(stop(spec, conversation.native_session_id, metadata), timeout=10) is True
+        except Exception:
+            return False
+
     async def build_external_cli_launch(
         self, conversation: Conversation
     ) -> CliLaunchSpec:
@@ -2116,28 +2707,47 @@ class AcpDriver:
         我们不知道这个 CLI 怎么续接 → 显式不支持，界面上直接没有这个入口
         （AD-71），而不是给一条猜出来的命令让用户在终端里吃报错。
         """
+        self.validate_external_session(conversation)
         preset = self.preset
         if preset is None or preset.resume_argv_template is None:
             raise UnsupportedCapabilityError(
-                "这条 Backend 没有续接命令模板：ACP 只规定 stdio 上的 JSON-RPC，"
-                "不规定 `--resume` 这类命令行开关。要 Open in CLI 就得在预设目录里"
-                "补一条实测过的 resume_argv_template。"
+                "此引擎暂不支持终端续接"
             )
         session_id = conversation.native_session_id
         if not session_id:
             raise UnsupportedCapabilityError(
-                "这条会话还没有原生会话 id，续接命令拼不出来（先在站内发一轮）"
+                "会话尚未就绪，请先在 Kaus 中开始对话"
             )
         command = preset.resume_argv(session_id)
         assert command is not None  # noqa: S101 - 上面已判 template 非 None
         import os
-        import shutil
+        from drivers.acp.native_cli import native_path
         search_path = self.agent_spec.build_env().get("PATH", os.defpath)
-        executable = shutil.which(command[0], path=search_path)
-        if not executable:
+        executable = native_path(self)
+        if not executable or not Path(executable).is_file() or not os.access(executable, os.X_OK):
             raise UnsupportedCapabilityError("原生终端命令尚未安装，当前会话可继续在界面中使用")
+        native_command = (executable, *command[1:])
+        plan = self._skill_plans.get(conversation.id)
+        adapter = self._runtime_adapter()
+        from drivers.computer_use.native_policy import prepare_spec as prepare_computer_policy
+        metadata = self._computer_use_contexts.get(conversation.id, (None, {}))[1]
+        if plan is not None and getattr(plan, "spec", None) is not None:
+            plan.spec = prepare_computer_policy(plan.spec, adapter, metadata)
+        else:
+            prepare_computer_policy(self.agent_spec, adapter, metadata)
+        external_command = getattr(adapter, "external_cli_command", None)
+        if external_command is not None:
+            native_command = external_command(plan, native_command, conversation=conversation,
+                binding=self._bindings.get(conversation.agent_binding_id), spec=self.agent_spec)
+        elif plan is not None and adapter is not None:
+            native_command = adapter.cli_command(plan, native_command)
+        from drivers.computer_use.native_policy import external_command as computer_external_command
+        metadata = self._computer_use_contexts.get(conversation.id, (None, {}))[1]
+        native_command = computer_external_command(native_command, adapter, metadata, scoped=plan is not None)
+        from drivers.terminals.environment import selected_environment
         return CliLaunchSpec(
-            command=(executable, *command[1:]),
+            command=native_command,
+            private_env=selected_environment(self.agent_spec, preset.env_keys_hint),
             terminal_integration=preset.id,
             config_directory=(
                 (preset.config_root_env, str(Path(self.agent_spec.build_env().get(
@@ -2164,7 +2774,7 @@ class AcpDriver:
             artifact_uri = artifact_mime = None
             if method == getattr(self.preset, "client_methods", {}).get("image"):
                 raw_path = params.get("filePath")
-                root = state.handle.metadata.get("workspaceRoot")
+                root = getattr(state.handle, "metadata", {}).get("workspaceRoot")
                 if isinstance(raw_path, str) and root:
                     import mimetypes
                     from pathlib import Path
@@ -2180,6 +2790,18 @@ class AcpDriver:
                 return
         if method == "session/update":
             update = params.get("update")
+            display_title = getattr(self._runtime_adapter(), 'filter_tool_title', None)
+            if (display_title is not None and params.get('sessionId') == state.session_id
+                    and isinstance(update, Mapping) and update.get('sessionUpdate') in ('tool_call', 'tool_call_update')
+                    and isinstance(update.get('title'), str)):
+                update = {**update, 'title': display_title(state.runtime_spec, update['title'])}
+                params = {**params, 'update': update}
+            filter_update = getattr(self._skill_adapter(), "filter_session_update", None)
+            if (filter_update is not None and state.skill_plan is not None
+                    and params.get("sessionId") == state.session_id and isinstance(update, Mapping)
+                    and update.get("sessionUpdate") == "available_commands_update"):
+                update = filter_update(state.skill_plan, update)
+                params = {**params, "update": update}
             if (params.get("sessionId") == state.session_id and isinstance(update, Mapping)
                     and update.get("sessionUpdate") == "config_option_update"
                     and isinstance(update.get("configOptions"), list)):
@@ -2194,9 +2816,21 @@ class AcpDriver:
     ) -> None:
         if self._reject_stopped_request(state, rpc_id, method):
             return
+        if getattr(state, "runtime_metadata", {}).get("_kausExecutionPolicy") == "context-only":
+            if method == "session/request_permission":
+                state.connection.respond(rpc_id, result={"outcome": {"outcome": "cancelled"}})
+            else:
+                state.connection.respond(rpc_id, error={"code": -32601, "message": "Tool access is disabled"})
+            return
         if state.client_interactions and state.client_interactions.request(rpc_id, method, params):
             return
         if method == "session/request_permission":
+            display_title = getattr(self._runtime_adapter(), 'filter_tool_title', None)
+            tool_call = params.get('toolCall')
+            if (display_title is not None and params.get('sessionId') == state.session_id
+                    and isinstance(tool_call, Mapping) and isinstance(tool_call.get('title'), str)):
+                params = {**params, 'toolCall': {**tool_call,
+                    'title': display_title(state.runtime_spec, tool_call['title'])}}
             envelopes = state.translator.on_permission_request(rpc_id, params)
             if not envelopes:
                 # 会话不匹配：不能替别的会话做决定，回一个明确错误。

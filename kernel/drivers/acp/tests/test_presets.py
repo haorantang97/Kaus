@@ -24,7 +24,7 @@
 from __future__ import annotations
 
 from drivers.acp.capabilities import effective_quirks, resolve_mode_id
-from drivers.acp.presets import PRESETS, QUIRK_BITS, get_preset
+from drivers.acp.presets import PRESETS, QUIRK_BITS, SESSION_ID_PLACEHOLDER, get_preset
 
 
 NEW_NATIVE_ACP_IDS = {"goose", "cursor", "copilot", "devin", "omp", "grok"}
@@ -45,9 +45,15 @@ def test_native_acp_commands_match_official_entrypoints() -> None:
 def test_new_catalog_rows_do_not_mislabel_source_review_as_live() -> None:
     for id in NEW_NATIVE_ACP_IDS:
         preset = get_preset(id)
-        assert not preset.verified_bits
-        assert "verifiedBits" not in preset.to_wire()
-        assert preset.resume_argv_template is None
+        if id == "grok":
+            assert preset.verified_bits == frozenset({"supports_session_load", "supports_session_resume"})
+        else:
+            assert not preset.verified_bits
+            assert "verifiedBits" not in preset.to_wire()
+        if id in {"goose", "copilot", "omp", "grok"}:
+            assert preset.resume_argv_template is not None
+        else:
+            assert preset.resume_argv_template is None
 
 
 def test_task_modes_do_not_become_permission_modes() -> None:
@@ -204,15 +210,17 @@ def test_the_three_new_rows_from_the_relay_run() -> None:
     assert dsh.env_keys_hint == ("DSH_HOME", "DEEPSEEK_API_KEY")
 
     deepseek = get_preset("deepseek-acp")
-    assert deepseek.command == ("npx", "-y", "deepseek-acp")
+    assert deepseek.command == ("deepseek-acp",)
     assert deepseek.env_keys_hint == ("DEEPSEEK_API_KEY",)
 
     kilo = get_preset("kilo")
     assert kilo.command == ("kilo", "acp")
 
-    # 三行都没有实测过的续接命令 → 「在 CLI 里打开」这个入口一律不显示（AD-71）。
-    for preset in (dsh, deepseek, kilo):
+    # Kilo uses its native same-session attach TUI through the guarded adapter.
+    assert kilo.resume_argv("ses_fixture") == ("kilo", "-s", "ses_fixture")
+    for preset in (dsh, deepseek):
         assert preset.resume_argv_template is None
+    for preset in (dsh, deepseek, kilo):
         assert preset.auth_method_ids == (), "authMethods 实测是空数组（靠 env）"
 
 
@@ -224,7 +232,9 @@ def test_codex_points_at_the_maintained_package() -> None:
     """
     assert get_preset("codex").command == (
         "npx",
-        "@agentclientprotocol/codex-acp@latest",
+        "--offline",
+        "--no-install",
+        "@agentclientprotocol/codex-acp@1.10.0",
     )
 
 
@@ -732,3 +742,45 @@ def test_headless_bridge_exposes_only_supported_permission_policies() -> None:
     assert resolve_conversation_mode_id("plan", modes, mapping) == "plan"
     for policy in ("ask", "auto", "read_only"):
         assert resolve_conversation_mode_id(policy, modes, mapping) is None
+
+
+def test_default_launches_do_not_fetch_or_float_native_versions():
+    for preset in PRESETS.values():
+        assert not any("@latest" in part for part in preset.command)
+        if preset.command[0] == "npx":
+            assert "--offline" in preset.command
+            assert "--no-install" in preset.command
+            package = preset.command[-1]
+            assert package.rsplit("@", 1)[-1][0].isdigit()
+    assert get_preset("claude-code").native_executable_env == "CLAUDE_CODE_EXECUTABLE"
+    assert get_preset("codex").native_executable_env == "CODEX_PATH"
+
+
+def test_fixed_bridge_install_instructions_match_launch_versions():
+    for key in ('claude-code', 'codex'):
+        preset = get_preset(key)
+        assert preset.command[-1] in preset.adapter_install_command
+        assert preset.to_wire()['adapterInstallCommand'] == preset.adapter_install_command
+
+
+def test_grok_native_restore_and_mcp_capabilities_are_recorded():
+    preset = get_preset("grok")
+    assert preset.quirks.supports_session_load is True
+    assert preset.quirks.supports_session_resume is True
+    assert preset.quirks.mcp_via_session_new is True
+    assert "supports_session_load" in preset.verified_bits
+    assert "HTTP/SSE" in "".join(preset.notes)
+    assert preset.resume_argv_template == ("grok", "--no-auto-update", "--resume", SESSION_ID_PLACEHOLDER)
+
+
+def test_native_terminal_templates_keep_verified_native_ids():
+    expected={
+        'qwen':('qwen','--resume','native id'),
+        'omp':('omp','--resume','native id'),
+        'copilot':('copilot','--resume','native id'),
+        'goose':('goose','session','--resume','--session-id','native id'),
+        'grok':('grok','--no-auto-update','--resume','native id'),
+    }
+    for key,command in expected.items():
+        assert get_preset(key).resume_argv('native id')==command
+        assert not any(flag in command for flag in ('--yolo','--allow-all-tools','--auto-approve'))

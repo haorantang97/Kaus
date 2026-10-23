@@ -40,6 +40,9 @@ class FakeNative:
         key = self.env['ZCODE_SESSION_DB_PATH']
         if method == 'runtime/capabilities':
             return {'independentPlanState': True}
+        if method == 'mcp/list':
+            return {'statuses': {server['name']: {'status': getattr(self, 'mcp_status', 'connected')}
+                                 for server in params['mcpServers']}}
         if method == 'session/create':
             self.snapshot = snapshot(str(uuid.uuid4()), self.cwd)
             self.database[key] = self.snapshot
@@ -194,10 +197,42 @@ class Contract(unittest.IsolatedAsyncioTestCase):
             await session.mode('auto')
 
     async def test_mcp_injected_with_session_isolation(self):
-        _, session = await self.create(mcpServers=[{'name': 'tool', 'command': '/a/b', 'args': ['--x'], 'env': []}])
+        ident, session = await self.create(mcpServers=[{'name': 'tool', 'command': '/a/b', 'args': ['--x'], 'env': []}])
         create = next(p for m, p in session.native.calls if m == 'session/create')
         self.assertEqual(create['mcpServers'][0]['isolation'], 'session')
         self.assertNotIn('type', create['mcpServers'][0])
+        probes = [p for m, p in session.native.calls if m == 'mcp/list']
+        self.assertEqual(probes[0]['mcpServers'], create['mcpServers'])
+        self.assertEqual(probes[1]['mcpServers'], [])
+        native_id = session.native_id
+        await self.bridge.dispatch('session/close', {'sessionId': ident})
+        await self.bridge.dispatch('session/load', {'sessionId': ident, 'cwd': str(self.root),
+            'mcpServers': [{'name': 'tool', 'command': '/a/b', 'args': ['--updated'], 'env': []}]})
+        resumed = self.bridge.sessions[ident]
+        self.assertEqual(resumed.native_id, native_id)
+        load = next(p for m, p in resumed.native.calls if m == 'session/resume')
+        probes = [p for m, p in resumed.native.calls if m == 'mcp/list']
+        self.assertEqual(load['mcpServers'][0]['args'], ['--updated'])
+        self.assertEqual(probes[0]['mcpServers'], load['mcpServers'])
+        self.assertEqual(probes[1]['mcpServers'], [])
+
+    async def test_failed_project_mcp_prevents_new_or_resume_and_releases_probe(self):
+        ident, _ = await self.create()
+        await self.bridge.dispatch('session/close', {'sessionId': ident})
+        def factory(*args, **kwargs):
+            native = FakeNative(*args, **kwargs)
+            native.mcp_status = 'failed'
+            return native
+        self.bridge.native_factory = factory
+        for method in ('session/new', 'session/load'):
+            with self.subTest(method=method):
+                with self.assertRaisesRegex(BridgeError, 'projected MCP server broken'):
+                    await self.bridge.dispatch(method, {'sessionId': ident, 'cwd': str(self.root),
+                        'mcpServers': [{'name': 'broken', 'command': '/missing', 'args': [], 'env': []}]})
+                native = FakeNative.instances[-1]
+                self.assertFalse(any(m in ('session/create', 'session/resume') for m, _ in native.calls))
+                self.assertEqual([p for m, p in native.calls if m == 'mcp/list'][-1]['mcpServers'], [])
+                self.assertTrue(native.closed)
 
     async def interaction(self, session, method, params, result):
         before = len(self.frames)

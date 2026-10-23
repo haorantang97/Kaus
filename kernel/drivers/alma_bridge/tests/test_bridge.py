@@ -231,6 +231,28 @@ async def test_active_native_generation_and_missing_records_never_create_replace
         await bridge.close()
 
 
+async def test_open_card_rejects_new_prompt_while_native_terminal_is_still_generating(setup):
+    bridge, harness, _, _, result = await new(setup)
+    session = bridge.sessions[result['sessionId']]
+    try:
+        await session.sockets['threads'].queue.put(json.dumps({'type': 'thread_generating',
+            'data': {'id': session.native_id, 'isGenerating': True}}))
+        await asyncio.sleep(.01)
+        before = list(harness.sent)
+        with pytest.raises(BridgeError, match='another client'):
+            await bridge.dispatch('session/prompt', {'sessionId': session.ident,
+                'prompt': [{'type': 'text', 'text': 'do not race the terminal'}]})
+        assert harness.sent == before
+        await session.sockets['threads'].queue.put(json.dumps({'type': 'thread_generating',
+            'data': {'id': session.native_id, 'isGenerating': False}}))
+        await asyncio.sleep(.01)
+        answer = await bridge.dispatch('session/prompt', {'sessionId': session.ident,
+            'prompt': [{'type': 'text', 'text': 'continue after confirmed stop'}]})
+        assert answer['stopReason'] == 'end_turn'
+    finally:
+        await bridge.close()
+
+
 async def test_question_and_approval_replies_are_filtered_and_cancelled_safely(setup):
     bridge, harness, frames, _, result = await new(setup)
     harness.complete = False

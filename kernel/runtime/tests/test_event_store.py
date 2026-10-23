@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.events.repository import InMemoryEventStoreRepository
+from app.events.models import RETAIN_UNTIL_CONVERSATION_GONE
 from runtime.event_envelope import (
     AgentEventEnvelope,
     DiagnosticNotice,
@@ -91,13 +92,13 @@ async def test_next_sequence_continues_after_the_buffer() -> None:
     assert await store.next_sequence(conversation) == 2
 
 
-async def test_retention_is_configurable_and_defaults_to_7d() -> None:
-    """保留期可配；默认 7 天（AD-39），诊断类不会比普通事件留得更久（v1.0 §8.5）。"""
+async def test_temporary_retention_is_configurable_and_content_is_durable() -> None:
+    """临时数据期限可配，正文不随该期限过期。"""
     assert DEFAULT_RETENTION == timedelta(days=7)
 
     store = make_store()
     outcome = await store.append(envelope(0))
-    assert outcome.stored.expires_at == NOW + timedelta(days=7)
+    assert outcome.stored.expires_at == RETAIN_UNTIL_CONVERSATION_GONE
 
     diagnostic = await store.append(envelope(1, diagnostic=True))
     assert diagnostic.stored.expires_at <= outcome.stored.expires_at
@@ -116,8 +117,8 @@ async def test_retention_must_be_positive() -> None:
 async def test_purge_expired_drops_only_expired_rows() -> None:
     store = make_store(retention=timedelta(hours=1))
     conversation = envelope(0).conversation_id
-    await store.append(envelope(0), now=NOW - timedelta(hours=2))
-    await store.append(envelope(1), now=NOW)
+    await store.append(envelope(0, diagnostic=True), now=NOW - timedelta(hours=2))
+    await store.append(envelope(1, diagnostic=True), now=NOW)
 
     removed = await store.purge_expired(now=NOW)
     assert removed == 1
@@ -125,7 +126,7 @@ async def test_purge_expired_drops_only_expired_rows() -> None:
 
 
 async def test_purge_conversation_empties_the_buffer() -> None:
-    """v1.0 §11.3：整段缓冲可丢弃，内容的可恢复性不依赖它。"""
+    """明确删除会话会删除其记录。"""
     store = make_store()
     conversation = envelope(0).conversation_id
     await store.append(envelope(0))
