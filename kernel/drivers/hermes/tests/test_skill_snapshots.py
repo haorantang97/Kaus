@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -60,7 +61,8 @@ def test_generation_tampering_and_wrong_project_scope_rejected(tmp_path):
         skill_snapshots.capture(home)
 
 
-async def test_managed_native_managed_transition_uses_current_intent_and_resume(tmp_path):
+async def test_managed_native_managed_transition_uses_current_intent_and_resume(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_ACP_PYTHON", sys.executable)
     root, binding, home, first, second = setup(tmp_path)
     owner = HermesDriver(hermes_root=root)
     owner._capabilities = BackendCapabilities()

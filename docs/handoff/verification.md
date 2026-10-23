@@ -9,7 +9,8 @@
 | 检查 | 命令/路径 | 结果 |
 | --- | --- | --- |
 | 前端完整检查 | `cd web && npm run check` | 115 个测试文件、1,046 项通过；边界检查、类型检查和构建通过 |
-| 内核初始完整回归（10 月 23 日） | `.venv/bin/python -m pytest -q kernel` | 4,118 项通过，125 项跳过，2 个子测试通过；6 项 warning |
+| 内核完整回归（10 月 24 日，含 OAuth 修复） | `.venv/bin/python -m pytest -q kernel` | 4,126 项通过，125 项跳过，2 个子测试通过；6 项 warning |
+| CI 环境依赖修复 | 电脑操作安装、Hermes 项目范围/技能快照、接入目录 4 个测试模块 | 44 项通过；显式模拟 macOS 接口与测试解释器，保留全部原有断言 |
 | 宿主与备份恢复 | `.venv/bin/python -m pytest -q tests scripts/ops/tests` | 525 项通过；2 项 warning |
 | 独立工作流示例 | `cd examples/workflow-module && npm ci && npm run check` | 7 项通过，类型检查与生产构建通过 |
 | 全新启动 | 独立 Mock 配置、临时数据目录与回环端口；真实 Chromium 打开 `/new` | 健康检查、认证、项目/对话/组 API、生产静态资源及输入框通过；无页面异常；未调用模型 |
@@ -19,7 +20,7 @@
 
 跳过项包括预设未声明的能力、Mock 契约分支以及显式选择本机原生安装才运行的测试；不能把跳过当作真实 Agent 验收。warning 保留在本地日志，没有用隐藏 warning 的方式取得通过。
 
-10 月 24 日的 OAuth 修复新增 8 项测试；当前提交的完整跨环境检查请查阅 [GitHub Check 工作流](https://github.com/haorantang97/Kaus/actions/workflows/check.yml)，核对对应提交，不沿用上一版通过数。
+10 月 24 日的 OAuth 修复新增 8 项测试，已纳入上表完整回归。首次 Linux CI 暴露 6 项合成测试隐含依赖开发机的 macOS 平台和 Hermes 安装；测试现已显式提供模拟平台及测试解释器，没有放宽生产检查或跳过断言。当前提交的完整跨环境检查请查阅 [GitHub Check 工作流](https://github.com/haorantang97/Kaus/actions/workflows/check.yml)，核对对应提交，不沿用上一版通过数。
 
 额外顶层检查最初发现备份脚本变量紧接中文标点，macOS Bash 将部分字节误判为变量名而失败；修复变量边界后完整重跑通过。此检查现已加入 CI。发布整理还补回缺失的构建清单、图标、字体许可和组件样式。当前源码与正在运行的产品源码逐项核对，开发文档与示例单独发布。
 

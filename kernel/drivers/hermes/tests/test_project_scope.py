@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -43,6 +44,7 @@ def test_first_use_allocates_no_files_and_keeps_credentials_out_of_binding(tmp_p
 
 
 async def test_two_projects_project_into_private_homes_and_cli_uses_same_scope(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_ACP_PYTHON", sys.executable)
     root, driver = seeded(tmp_path, monkeypatch)
     (root / "bin").mkdir()
     browser = root / "bin/browser-use"

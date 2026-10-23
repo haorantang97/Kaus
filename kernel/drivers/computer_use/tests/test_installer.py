@@ -219,6 +219,7 @@ def test_runtime_launch_uses_exact_bundle_no_permission_gate(monkeypatch, privat
 
 
 def test_permission_request_targets_exact_bundle_and_no_capture(monkeypatch, private_state):
+    monkeypatch.setattr(installer, "sys", SimpleNamespace(platform="darwin"))
     fake_install(monkeypatch)
     settings.save_enabled(True)
     installer.install(reuse_existing=False)
@@ -246,6 +247,7 @@ def test_permission_request_targets_exact_bundle_and_no_capture(monkeypatch, pri
 
 @pytest.mark.parametrize('exit_code, receipt, succeeds', [(1, True, True), (0, False, False)])
 def test_permission_receipt_is_authoritative_over_launchservices_exit(monkeypatch, exit_code, receipt, succeeds):
+    monkeypatch.setattr(installer, "sys", SimpleNamespace(platform="darwin"))
     fake_install(monkeypatch)
     settings.save_enabled(True)
     installer.install(reuse_existing=False)

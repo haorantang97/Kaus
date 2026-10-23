@@ -4,6 +4,7 @@ All roots and Gateway state are synthetic. Hermes uses a real ACP fixture
 subprocess; this verifies directory routing, not an operating-system sandbox.
 """
 import copy
+import sys
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ from runtime.capability_matrix import BackendCapabilities
 async def test_hermes_override_preserves_settings_and_uses_acp_not_http(
     tmp_path, monkeypatch, project_scoped
 ):
+    monkeypatch.setenv("HERMES_ACP_PYTHON", sys.executable)
     native = tmp_path / "native"
     original = tmp_path / "original"
     staging = tmp_path / "staging"
