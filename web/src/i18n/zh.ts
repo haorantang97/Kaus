@@ -63,6 +63,7 @@ export const zh = {
   "workbench.grant.data:read": "读取模块数据",
   "workbench.grant.data:write": "保存模块数据",
   "workbench.grant.backend:run": "运行模块服务",
+  "workbench.grant.editor:chatcut": "使用 ChatCut 剪辑区",
   "workbench.configure": "设置项目与 Agent",
   "workbench.noEngine": "暂无已接入的 Agent",
   "workbench.settingsChanged": "先保存配置再运行",

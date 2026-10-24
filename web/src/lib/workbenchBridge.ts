@@ -9,6 +9,7 @@ const paramsObject = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 export interface ModuleUiActions {
+  chatcut?: (message: Record<string, unknown>) => Promise<unknown>;
   configure?: () => void;
   confirm: (message: string) => Promise<boolean>;
   copy: (text: string) => Promise<void>;
@@ -38,7 +39,13 @@ export async function dispatchModuleRequest(moduleId: string, request: BridgeReq
     }
     case "context.get": {
       const module = await fetchWorkbenchModule(moduleId);
-      return {theme: document.body.classList.contains("dark") ? "dark" : "light", locale: currentLocale(), moduleId: module.id, name: module.name, grants: module.grants, projectId: module.projectId, bindingId: module.bindingId, modelId: module.modelId, providerId: module.providerId ?? null};
+      return {theme: document.body.classList.contains("dark") ? "dark" : "light", locale: currentLocale(), moduleId: module.id, name: module.name, grants: module.grants, projectId: module.projectId, bindingId: module.bindingId, modelId: module.modelId, providerId: module.providerId ?? null, ...(ui?.chatcut ? {surfaces:{chatcut:module.enabled && module.permissions.includes("editor:chatcut") && module.grants.includes("editor:chatcut")}} : {})};
+    }
+    case "editor.chatcut": {
+      if (!ui?.chatcut) throw new Error("method_not_allowed");
+      const module = await fetchWorkbenchModule(moduleId);
+      if (!module.enabled || !module.permissions.includes("editor:chatcut") || !module.grants.includes("editor:chatcut")) throw new Error("scope_denied");
+      return ui.chatcut(p);
     }
     case "jobs.list": return fetchModuleJobs(moduleId);
     case "jobs.get": return fetchModuleJob(moduleId, text(p.jobId, 200));

@@ -121,7 +121,7 @@ def _settings(client: TestClient, binding_id: str) -> dict:
     return response.json()
 
 
-def test_toolbar_bundle_reads_catalog_once_and_reuses_backend_capabilities(rig):
+def test_toolbar_bundle_reads_catalog_once_and_refreshes_stale_backend_capabilities(rig):
     harness, client = rig
     catalog_reader = harness.driver.get_model_catalog
     calls = []
@@ -141,7 +141,9 @@ def test_toolbar_bundle_reads_catalog_once_and_reuses_backend_capabilities(rig):
     assert body["modelCatalog"]["bindingId"] == harness.binding.id
     assert body["model"]["value"] == body["modelCatalog"]["defaultModelId"]
     backend = client.get(f"/api/backends/{harness.binding.backend_id}").json()
-    assert body["uiCapabilities"] == backend["capabilities"]["ui"]
+    assert backend["capabilities"]["ui"]["card"]["streaming"] == "unknown"
+    assert body["uiCapabilities"]["card"]["streaming"] == "supported"
+    assert body["uiCapabilities"]["models"]["conversationScoped"] == "supported"
     default = _settings(client, harness.binding.id)
     assert "modelCatalog" not in default
     assert "uiCapabilities" not in default

@@ -10,6 +10,7 @@
 - Preserve event sequencing, replay, permission handling, run ownership and terminal leases when changing conversation behavior.
 - Never commit credentials, local configuration, databases, transcripts, runtime installations, backups or screenshots containing user data. Keep examples synthetic.
 - Do not start real model calls as part of ordinary tests. Use temporary directories and protocol fakes; run live probes only when the task calls for them.
+- Real model/catalog tests must isolate native Agent history as well as the Kaus database. Use `kernel/drivers/discovery_scope.py` and its declared native storage layouts, keeping the scope alive until the owned processes exit. A temporary Project or workspace alone does not isolate native transcripts. Gateway tests need a separate test service; normal user conversations retain native history interoperability.
 - For sequential live probes, wait for the submitted run's terminal event before sending again. Use one probe owner per conversation; a busy response must not trigger an automatic interrupt and retry.
 - Frontend checks: `cd web && npm run check`. Backend checks: install `requirements-dev.txt`, then run `cd kernel && ../.venv/bin/python -m pytest -q`.
 - The local backend serves `web/dist`; a source edit needs a new frontend build to appear on port 8877. The development frontend uses port 5174.

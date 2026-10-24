@@ -281,10 +281,11 @@ export function emptyEffectiveSettings(bindingId: string): EffectiveSettingsWire
 }
 
 /** Binding 的有效设置：一次获取会话配置及可选的模型目录。 */
-export function fetchEffectiveSettings(bindingId: string, signal?: AbortSignal, options?: { includeCatalog?: boolean; conversationId?: string }): Promise<EffectiveSettingsWire> {
+export function fetchEffectiveSettings(bindingId: string, signal?: AbortSignal, options?: { includeCatalog?: boolean; conversationId?: string; modelId?: string }): Promise<EffectiveSettingsWire> {
   const query = new URLSearchParams();
   if (options?.includeCatalog) query.set("includeCatalog", "true");
   if (options?.conversationId) query.set("conversationId", options.conversationId);
+  if (options?.modelId) query.set("modelId", options.modelId);
   return request<EffectiveSettingsWire>(
     `/api/bindings/${encodeURIComponent(bindingId)}/effective-settings${query.size ? `?${query}` : ""}`,
     { signal },

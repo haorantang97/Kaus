@@ -66,6 +66,7 @@ export const en: Record<keyof typeof zh, string> = {
   "workbench.grant.data:read": "Read module data",
   "workbench.grant.data:write": "Save module data",
   "workbench.grant.backend:run": "Run module service",
+  "workbench.grant.editor:chatcut": "Use ChatCut editor",
   "workbench.configure": "Set up Project and Agent",
   "workbench.noEngine": "No connected Agent",
   "workbench.settingsChanged": "Save configuration before running",

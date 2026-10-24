@@ -199,7 +199,7 @@ def test_unquoted_off_is_yaml_11_boolean_false(tmp_path: Path) -> None:
         )
 
 
-async def test_catalog_filters_by_the_providers_the_engine_declares(
+async def test_catalog_does_not_expand_provider_names_into_static_choices(
     tmp_path: Path,
 ) -> None:
     """批次十三第 2 件的端到端：动态目录不可用 → 静态 ∩ 配置里声明的 provider。
@@ -228,7 +228,7 @@ async def test_catalog_filters_by_the_providers_the_engine_declares(
         native_scope_ref="media",
     )
     catalog = await driver.get_model_catalog(binding)
-    assert [m.model_id for m in catalog.models] == ["deepseek-v4-flash"]
+    assert not catalog.models
     assert catalog.degraded is True
     assert catalog.diagnostics, "退化了就必须说得出为什么"
 
@@ -262,7 +262,7 @@ async def test_catalog_still_lists_the_engine_model_without_any_providers_sectio
     # 没接的 provider 仍然不该混进来。
     assert "copilot-x" not in {m.model_id for m in catalog.models}
     assert catalog.degraded is True
-    assert any("未经引擎确认" in line for line in catalog.diagnostics)
+    assert any("当前配置" in line for line in catalog.diagnostics)
 
 
 # --------------------------------------------------------------------------- #
@@ -419,7 +419,7 @@ async def test_catalog_matches_providers_case_and_separator_insensitively(
     catalog = await driver.get_model_catalog(binding)
     ids = [m.model_id for m in catalog.models]
     assert ids[0] == "gpt-5.5", "引擎当前配置的模型一定在列，且排在最前"
-    assert set(ids) == {"gpt-5.5", "gpt-5.6-terra", "openclaw-mini"}
+    assert ids == ["gpt-5.5"], "目录获取失败时，厂家名称不能扩展为静态模型列表"
     assert "copilot-x" not in ids, "没接的 provider 不该出现"
     assert catalog.degraded is True
     # 档位兜底：静态目录一条 reasoning_levels 都没写，仍要有档位可选。

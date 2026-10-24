@@ -1,13 +1,14 @@
 """Conversation overrides reach native terminals without widening host approval."""
 import json
+import os
 from pathlib import Path
 import subprocess
-from types import SimpleNamespace
+import sys
 
 import pytest
 from app.conversations.models import Conversation
 from drivers.base import UnsupportedCapabilityError
-from drivers.skill_execution import copilot, qwen, omp, goose, grok
+from drivers.skill_execution import copilot, qwen, omp, goose, grok, claude
 from drivers.skill_execution import terminal_settings as shared
 from test_selection import setup
 
@@ -25,7 +26,7 @@ def launch(adapter, tmp_path, **updates):
     return result, spec, conversation
 
 
-@pytest.mark.parametrize('adapter', [copilot, qwen, omp, goose, grok])
+@pytest.mark.parametrize('adapter', [copilot, qwen, omp, goose, grok, claude])
 def test_host_auto_is_not_native_bypass(adapter, tmp_path):
     with pytest.raises(UnsupportedCapabilityError, match='自动审批'):
         launch(adapter, tmp_path, approval_mode='host:auto')
@@ -83,6 +84,36 @@ def test_grok_modes_and_effort_are_explicit(tmp_path):
     result, *_ = launch(grok,tmp_path,model_id='grok-fixture',reasoning_mode='low',approval_mode='host:ask')
     assert result[-6:] == ('--model','grok-fixture','--reasoning-effort','low','--permission-mode','default')
     assert launch(grok,tmp_path,approval_mode='native:auto')[0][-1] == 'auto'
+
+
+def test_claude_native_terminal_carries_settings_and_keeps_resume(tmp_path):
+    result, *_ = launch(claude, tmp_path, model_id='custom-model', reasoning_mode='high', approval_mode='auto')
+    assert result == ('/native cli', '--resume', 'id with spaces', '--model', 'custom-model',
+                      '--effort', 'high', '--permission-mode', 'acceptEdits')
+    assert launch(claude, tmp_path, approval_mode='native:auto')[0][-1] == 'auto'
+    spec, binding, conv = config(tmp_path)
+    with pytest.raises(UnsupportedCapabilityError, match='项目技能白名单'):
+        claude.external_cli_command(object(), ('/native', '--resume', 'same'),
+                                    conversation=conv, binding=binding, spec=spec)
+
+
+def test_claude_mcp_uses_anonymous_file_and_does_not_change_native_config(tmp_path):
+    from drivers.skill_execution.claude_terminal import MCP_ENV
+    spec, binding, conv = config(tmp_path)
+    native = tmp_path / 'native.py'
+    native.write_text('import json,os,sys\np=json.load(open(sys.argv[-1]))\n'
+                      'assert "KAUS_CLAUDE_TERMINAL_MCP" not in os.environ\n'
+                      'assert p["mcpServers"]["fixture"]["env"] == {"TOKEN":"synthetic-secret"}\n'
+                      'assert sys.argv[1:3] == ["--resume", "same"]\nprint("verified")\n')
+    metadata = {'mcpServers': [{'name': 'fixture', 'command': 'fixture', 'args': [],
+                                'env': [{'name': 'TOKEN', 'value': 'synthetic-secret'}]}]}
+    command, prepared = claude.external_cli_context((sys.executable, str(native), '--resume', 'same'), spec, metadata)
+    assert MCP_ENV not in spec.env and 'synthetic-secret' not in ' '.join(command)
+    completed = subprocess.run(command, env={**os.environ, **prepared.env}, capture_output=True, text=True, timeout=5)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == 'verified'
+    assert not list(tmp_path.rglob('*.json'))
+    assert claude.external_cli_context(('/native',), spec, {}) == (('/native',), spec)
 
 
 def test_environment_handles_spaces_and_rejects_modified_wrapper(tmp_path):

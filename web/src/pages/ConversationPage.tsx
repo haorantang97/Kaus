@@ -30,20 +30,18 @@ import { ToolGroup } from "../components/cards/ToolCard";
 import { UsagePill } from "../components/cards/UsageBar";
 import { hasCapability, type UiCapabilities } from "../components/cards/capabilities";
 import type { EngineLabel } from "../components/cards/CardShell";
+import { composerReasoning, observeComposerSettings, readComposerSettings } from "../lib/composerSettings";
 import { backendDisplay } from "../lib/backend-display";
 import {
   conversationEventsUrl,
   archiveConversation,
   emptyEffectiveSettings,
-  fetchBackendUiCapabilities,
   fetchBinding,
   fetchBindingStatus,
   fetchConversation,
-  fetchEffectiveSettings,
   fetchEventsSnapshot,
   fetchMessageReceipt,
   fetchLaunches,
-  fetchModelCatalog,
   fetchSurface,
   interruptConversation,
   openExternalSurface,
@@ -84,7 +82,7 @@ import {
   type SurfaceKind,
 } from "../lib/externalSurface";
 import { parseGroupChange } from "../lib/groupsApi";
-import { catalogForBinding, hasModelCatalog, modelOptionsFor, modelEffort, modelSelection, modelValue } from "../lib/modelCatalogView";
+import { catalogForBinding, hasModelCatalog, modelOptionsFor, modelSelection, modelValue } from "../lib/modelCatalogView";
 import { refreshGroups } from "../lib/groupStore";
 import type { MessageActions } from "../components/cards/TextCard";
 import {
@@ -409,8 +407,7 @@ export function ConversationPage({
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [binding, setBinding] = useState<BindingWire | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalogWire | null>(null);
-  /* 工具栏四项的取值真源（DESIGN ★ I）：后端一次解析好 Binding → 引擎配置 → 目录默认。
-     读取失败时按"四项都没有"渲染，工具栏四枚都不出，而不是显示一句错误。 */
+  /* Defaults, live choices and capability flags come from the same settings snapshot. */
   const [settings, setSettings] = useState<EffectiveSettingsWire | null>(null);
   const [caps, setCaps] = useState<UiCapabilities | null>(null);
   /* 第 6 件：引擎的探测态。页头状态多一档「引擎离线」（中性），发送按钮照旧可用——
@@ -556,14 +553,10 @@ export function ConversationPage({
           const found = await fetchBinding(next.conversation.agentBindingId);
           if (cancelled) return;
           setBinding(found);
-          // 能力只取 ui 层：入口渲不渲染由它说了算（AD-71；到达的事件不受它管，AD-126）。
-          const ui = await fetchBackendUiCapabilities(found.backendId);
-          if (!cancelled) setCaps(ui);
-          // 页头的「引擎离线」读 `GET /api/bindings/{id}/status`（同时带探测态与登录态）。
-          const status = await fetchBindingStatus(found.id);
-          if (!cancelled) {
-            setProbe({ probeState: status.probeState ?? "unknown", message: status.probeMessage ?? null });
-          }
+          // Status is secondary: failure must not discard the binding or its controls.
+          void fetchBindingStatus(found.id).then(status => {
+            if (!cancelled) setProbe({ probeState: status.probeState ?? "unknown", message: status.probeMessage ?? null });
+          }).catch(() => { if (!cancelled) setProbe(null); });
         } catch {
           if (!cancelled) setBinding(null);
         }
@@ -580,51 +573,26 @@ export function ConversationPage({
     };
   }, [conversationId, reloadKey]);
 
-  /* 有效设置（DESIGN ★ I）：换 Binding 就重取一次。 */
   const reloadSettings = useCallback(async (bindingId: string) => {
-    const next = await fetchEffectiveSettings(bindingId, undefined, { conversationId }).catch(() => emptyEffectiveSettings(bindingId));
-    setSettings(next);
-    return next;
-  }, [conversationId]);
-
-  useEffect(() => {
-    if (!binding) {
-      setSettings(null);
-      return;
-    }
-    let cancelled = false;
-    void fetchEffectiveSettings(binding.id, undefined, { conversationId })
-      .catch(() => emptyEffectiveSettings(binding.id))
-      .then((next) => {
-        if (!cancelled) setSettings(next);
-      });
-    return () => {
-      cancelled = true;
-    };
+    if (!binding || binding.id !== bindingId) return;
+    const next = await readComposerSettings(binding, conversationId);
+    setSettings(next.settings);
+    setCatalog(next.catalog);
+    setCaps(next.caps);
+    return next.settings;
   }, [binding, conversationId]);
 
-  /* 模型目录（后端已按 Binding 过滤过）。`degraded` 时 `models` 可以是空的——
-     那是合法状态，下拉照旧不渲染，但 `diagnostics[0]` 仍会在有下拉时垫在底部。
-     拿不到目录 = 这个引擎没有可选模型，整枚不渲染（AD-71）。 */
   useEffect(() => {
-    /* batch27 第 5 件（真机 D4）：**先把上一份目录扔掉**。换会话常常也换引擎，
-       旧目录留在 state 里，新目录回来之前那一段下拉列的就是上一台引擎的模型；
-       `mode === "fixed"` 那一支干脆不发请求，旧目录会一直挂着。所以清空放在
-       每一支之前，不只是失败分支里。 */
+    setSettings(null);
     setCatalog(null);
-    if (!binding || !caps || caps.models.mode === "fixed") return;
-    let cancelled = false;
-    fetchModelCatalog(binding.backendId, binding.id, undefined, conversationId)
-      .then((next) => {
-        if (!cancelled) setCatalog(next);
-      })
-      .catch(() => {
-        if (!cancelled) setCatalog(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [binding, caps, conversationId]);
+    setCaps(null);
+    if (!binding) return;
+    return observeComposerSettings(binding, next => {
+      setSettings(next.settings);
+      setCatalog(next.catalog);
+      setCaps(next.caps);
+    }, { conversationId });
+  }, [binding, conversationId]);
 
   /* ------------------------------------------------------------------ *
    * 双表面：状态、事件、两条交接路径（任务书第 1—4 件）
@@ -1197,8 +1165,7 @@ export function ConversationPage({
       try {
         const result = await patchConversation(conversationId, { ...selection, providerId: selection.providerId ?? selected?.providerId ?? undefined });
         setDetail(current => current ? { ...current, conversation: result.conversation } : current);
-        const [nextCatalog] = await Promise.all([fetchModelCatalog(binding.backendId, binding.id, undefined, conversationId), reloadSettings(binding.id)]);
-        setCatalog(nextCatalog);
+        await reloadSettings(binding.id);
       } catch (failure) {
         /* batch26：引擎自己把这个模型顶回来了（400 `model_rejected`）。**快照没写**，
            所以这里一个字都不改本地状态——下拉显示的一直是服务端那份有效设置，
@@ -1223,8 +1190,7 @@ export function ConversationPage({
     try {
       const result = await patchConversation(conversationId, patch);
       setDetail(current => current ? { ...current, conversation: result.conversation } : current);
-      const [nextCatalog] = await Promise.all([fetchModelCatalog(binding.backendId, binding.id, undefined, conversationId), reloadSettings(binding.id)]);
-      setCatalog(nextCatalog);
+      await reloadSettings(binding.id);
     } catch (failure) {
       setError(describeFailure(failure));
     } finally {
@@ -1385,15 +1351,23 @@ export function ConversationPage({
   const canOpenExternal = hasCapability(effectiveCaps.externalCli.supported) && !readOnly;
   const canInterrupt = hasCapability(effectiveCaps.card.interrupt);
   const canAttach = hasCapability(effectiveCaps.card.attachments);
+  const settingsRunRef = useRef(false);
   useEffect(() => {
-    if (!binding || !running) return;
+    const wasRunning = settingsRunRef.current;
+    settingsRunRef.current = running;
+    if (!binding || (!running && !wasRunning)) return;
     let cancelled = false;
-    // A runtime may discover attachments only after its first initialization.
-    void fetchBackendUiCapabilities(binding.backendId).then(next => {
-      if (!cancelled) setCaps(next);
+    // Initialization and a completed turn can both change the session's options.
+    // Keep session discoveries together instead of replacing them with the
+    // installation's older capability snapshot.
+    void readComposerSettings(binding, conversationId).then(next => {
+      if (cancelled) return;
+      setSettings(next.settings);
+      setCatalog(next.catalog);
+      setCaps(next.caps);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [binding, running]);
+  }, [binding, conversationId, running]);
   const lastItemId = items.length > 0 ? items[items.length - 1].itemId : null;
   /* 第 4 件（走查 F4）：助手消息给「复制 / 重发上一条」，用户消息给「复制 / 编辑
      重发」。运行中与外部态下一枚都不给——那两种状态下再发一句只会打架。
@@ -1483,13 +1457,7 @@ export function ConversationPage({
   };
   const selectedModel = catalogForBinding(catalog, binding)?.models.find(model => model.modelId === bar.model.value && (!detail?.conversation?.providerId || model.providerId === detail.conversation.providerId));
   const conversationControls = settings?.conversationControls;
-  const reasoning = {
-    ...bar.reasoningEffort,
-    ...(conversationControls?.reasoningDefault ? { value: conversationControls.reasoningDefault, source: "catalog" as const } : {}),
-    ...(selectedModel ? { levels: selectedModel.reasoningLevels } : {}),
-    ...(modelEffort(selectedModel) ? { value: modelEffort(selectedModel), source: "catalog" as const } : {}),
-    ...(detail?.conversation?.reasoningMode ? { value: detail.conversation.reasoningMode, source: "engine" as const } : {}),
-  };
+  const reasoning = composerReasoning(bar, selectedModel, detail?.conversation?.reasoningMode);
   const approval = {
     ...bar.approvalMode,
     ...(conversationControls?.approvalDefault ? { value: conversationControls.approvalDefault, source: "catalog" as const } : {}),

@@ -88,7 +88,7 @@
 .kaus-preview-notice, .kaus-remote-image-consent { padding: 18px 0; color: color-mix(in srgb, var(--midground-base) 70%, transparent); }
 .kaus-preview-notice button, .kaus-remote-image-consent button { border: 1px solid color-mix(in srgb, var(--midground-base) 22%, transparent); border-radius: 7px; padding: 7px 12px; margin-top: 10px; cursor: pointer; color: var(--midground-base); }
 .kaus-preview-notice[role="alert"] { color: var(--danger); }
-:is(.kaus-msg-footer, .kaus-code-header, .kaus-artifact-preview, .kaus-markdown-content, .kaus-artifact-row) :is(button,a):focus-visible, .kaus-markdown-table:focus-visible { outline: 2px solid color-mix(in srgb, var(--midground-base) 65%, transparent); outline-offset: 3px; }
+:is(.kaus-msg-footer, .kaus-code-header, .kaus-artifact-preview, .kaus-markdown-content, .kaus-artifact-row) :is(button,a):focus-visible, .kaus-markdown-table:focus-visible { outline: none; }
 @media (max-width: 680px) {
   .kaus-msg.kaus-content-message.is-user { max-width: 90%; }
   .kaus-content-message .kaus-msg-footer { gap: 5px; }

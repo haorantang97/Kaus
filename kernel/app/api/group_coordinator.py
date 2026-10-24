@@ -91,6 +91,15 @@ class GroupCoordinator:
             except ValueError as exc:
                 raise ApiError(400, 'model_not_available', str(exc)) from exc
             model_id, provider_id = selected.model_id, selected.provider_id
+            preview = getattr(driver, 'preview_model_settings', None)
+            if preview:
+                catalog, controls = await preview(binding, model_id)
+                if catalog.degraded:
+                    raise ApiError(400, 'model_catalog_unavailable', '暂时无法读取所选模型的配置')
+                try:
+                    selected = select_model(catalog, model_id, provider_id)
+                except ValueError as exc:
+                    raise ApiError(400, 'model_not_available', str(exc)) from exc
             reasoning_levels = selected.reasoning_levels
         if config.reasoning_mode and config.reasoning_mode not in reasoning_levels:
             raise ApiError(400, 'reasoning_not_supported', '该模型不支持所选推理强度')

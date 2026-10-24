@@ -9,7 +9,7 @@ import re
 from drivers.base import UnsupportedCapabilityError
 from .common import materialize, unsupported
 
-COMPUTER_USE_TERMINAL_MCP = False
+COMPUTER_USE_TERMINAL_MCP = True
 
 
 def _version(value):
@@ -57,6 +57,43 @@ def cli_command(plan, command):
     # The interactive CLI currently has no equivalent of SDK initialize.skills.
     # --disable-slash-commands would also break the allowed set.
     raise UnsupportedCapabilityError("当前原生终端不支持项目技能白名单，请在对话页面继续")
+
+
+def external_cli_command(plan, command, *, conversation, binding, spec):
+    if plan is not None:
+        return cli_command(plan, command)
+    from .terminal_settings import approval, arguments, choice, selected
+    mode = choice(approval(conversation), {
+        'ask': 'default', 'host:ask': 'default', 'default': 'default',
+        'auto': 'acceptEdits', 'acceptEdits': 'acceptEdits',
+        'native:auto': 'auto', 'bypass': 'bypassPermissions',
+        'bypassPermissions': 'bypassPermissions', 'read_only': 'plan',
+        'plan': 'plan', 'dontAsk': 'dontAsk',
+    }, '审批方式')
+    return arguments(command,
+        ('--model', selected(conversation, 'model_id', 'model')),
+        ('--effort', selected(conversation, 'reasoning_mode', 'effort', 'reasoning_effort')),
+        ('--permission-mode', mode))
+
+
+def external_cli_context(command, spec, metadata):
+    """Carry session MCP into the native CLI without changing global files."""
+    import json
+    from pathlib import Path
+    import sys
+    from .claude_terminal import MCP_ENV
+    servers = {}
+    for server in metadata.get('mcpServers', []):
+        row = {key: value for key, value in server.items() if key != 'name'}
+        if isinstance(row.get('env'), list):
+            row['env'] = {item['name']: item['value'] for item in row['env']}
+        if isinstance(row.get('headers'), list):
+            row['headers'] = {item['name']: item['value'] for item in row['headers']}
+        servers[server['name']] = row
+    if not servers:
+        return tuple(command), spec
+    return ((sys.executable, str(Path(__file__).with_name('claude_terminal.py')), *command),
+            spec.with_env(**{MCP_ENV: json.dumps({'mcpServers': servers})}))
 
 
 async def load_native_history(spec, binding, native_session_id):

@@ -17,10 +17,11 @@ Driver 接到真的 ``hermes acp`` 上跑一轮，把
 
 安全护栏（照 ``scripts/probe/probelib/sandbox.py`` 的口径）
 --------------------------------------------------------
-1. 默认 ``--home-mode isolated``：``HERMES_HOME`` 指向 ``$TMPDIR`` 下一个全新目录，
-   并断言它**不等于也不位于**真实 home 之内；
-2. 除了 ``--seed-config`` 明确点名的那一个文件，脚本不读真实 home 下的任何文件；
-3. ``.env``（凭据）永不复制；``--seed-config`` 的内容做一次机密扫描，命中即拒绝；
+1. 默认 ``--home-mode isolated``：按 ``--preset`` 创建临时原生状态目录，
+   重定向 HOME/XDG 与引擎专有的历史目录，退出前回收进程；
+2. 共用隔离层只复制选中连接所需的配置/凭据文件，副本随临时目录清理；
+   原生历史与数据库不复制。macOS Keychain 身份通过原生入口保留；
+3. Hermes 的 ``--seed-config`` 继续扫描机密，命中即拒绝；
 4. 想在真实 home 上跑必须同时给 ``--home-mode real`` 与 ``--allow-real-home``，
    脚本会先打印「这会在你的真实 state.db 里建一个会话」再执行；
 5. 只清理自己在临时目录下创建的东西；``--keep`` 保留现场。
@@ -58,6 +59,7 @@ from app.conversations.models import Conversation  # noqa: E402
 from app.projects.models import AgentBinding, Project  # noqa: E402
 from drivers.acp.client import AcpAgentSpec  # noqa: E402
 from drivers.acp.driver import AcpDriver  # noqa: E402
+from drivers.discovery_scope import isolated_agent_spec, prepare_discovery_credentials  # noqa: E402
 from drivers.base import (  # noqa: E402
     CreateSessionOptions,
     InteractionResponse,
@@ -254,10 +256,21 @@ async def run_smoke(args: argparse.Namespace, sandbox: Sandbox, printer: Printer
         env=sandbox.env(),
         inherit_env=True,
     )
+    if sandbox.mode == "isolated":
+        preset = args.preset or ("hermes-acp" if args.agent_command == DEFAULT_AGENT_COMMAND else None)
+        if preset in {"openclaw", "alma"}:
+            raise SmokeError("Gateway 实测请使用独立测试服务和对应探针")
+        with isolated_agent_spec(spec, preset_id=preset) as scoped:
+            await prepare_discovery_credentials(scoped, spec.build_env(), preset_id=preset)
+            return await _run_smoke_with_spec(args, sandbox, printer, scoped)
+    return await _run_smoke_with_spec(args, sandbox, printer, spec)
+
+
+async def _run_smoke_with_spec(args, sandbox, printer, spec) -> int:
     driver = AcpDriver(
         spec,
         backend_key=args.backend_key,
-        default_cwd=str(sandbox.workdir),
+        default_cwd=spec.cwd,
         call_timeout=args.call_timeout,
         prompt_timeout=args.prompt_timeout,
     )
@@ -439,7 +452,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--home-mode",
         choices=("isolated", "real"),
         default="isolated",
-        help="isolated（默认）= 临时目录里的全新 HERMES_HOME；real = 用你当前环境的 home",
+        help="isolated（默认）= 临时原生状态；real = 使用当前原生数据目录",
     )
     parser.add_argument(
         "--allow-real-home",
@@ -458,6 +471,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="收到 session/request_permission 时怎么答（默认 deny）",
     )
     parser.add_argument("--project-slug", default="acp-smoke")
+    parser.add_argument("--preset", default=None, help="对应 Agent 预设；隔离测试复用其连接配置")
     parser.add_argument("--backend-key", default="acp")
     parser.add_argument("--call-timeout", type=float, default=60.0)
     parser.add_argument("--prompt-timeout", type=float, default=180.0)

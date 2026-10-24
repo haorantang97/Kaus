@@ -1,5 +1,7 @@
 # 外部终端与 cmux 集成
 
+最新逐引擎验收与限制见[同一原生会话往返](product/terminal-roundtrip-acceptance-20261024.md)。正常会话保留原生目录与桌面历史互通；探测和测试使用独立数据目录。
+
 ## 启动路径
 
 Driver 提供选定的原生 CLI、会话编号、工作目录和配置目录。TerminalLauncher

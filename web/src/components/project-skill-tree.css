@@ -29,7 +29,7 @@ body:not(.dark) .skill-tree { --tree-accent: var(--accent-text); }
 .skill-tree-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 28px; height: 28px; border: 0; background: transparent; border-radius: 6px; color: inherit; cursor: pointer; transition: background-color 140ms ease, color 140ms ease; }
 .skill-tree-icon:hover:not(:disabled) { background: color-mix(in srgb, var(--midground-base) 9%, transparent); }
 .skill-tree-icon:disabled { opacity: .28; cursor: default; }
-.skill-tree-icon:focus-visible, .skill-tree-expand:focus-visible, .skill-tree-group:focus-visible, .skill-tree-dialog button:focus-visible { outline: 2px solid var(--tree-accent); outline-offset: 2px; }
+.skill-tree-icon:focus-visible, .skill-tree-expand:focus-visible, .skill-tree-group:focus-visible, .skill-tree-dialog button:focus-visible { outline: none; }
 body:not(.dark) :is(.skill-tree-icon, .skill-tree-expand, .skill-tree-group, .skill-tree-dialog button):focus-visible { outline-color: var(--control-focus, var(--tree-accent)); }
 .skill-tree-more { opacity: 0; }
 .skill-tree-row:hover .skill-tree-more, .skill-tree-row:focus-within .skill-tree-more, .skill-tree-more:focus-visible { opacity: 1; }
@@ -55,7 +55,7 @@ body:not(.dark) :is(.skill-tree-icon, .skill-tree-expand, .skill-tree-group, .sk
 .skill-tree-menu { position: fixed; width: 210px; border-radius: 10px; padding: 6px; background: var(--panel); color: var(--midground-base); border: 1px solid color-mix(in srgb, var(--midground-base) 8%, transparent); box-shadow: var(--shadow-lg); }
 .skill-tree-menu button { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 9px 10px; border: 0; border-radius: 6px; font: inherit; font-size: 12px; background: transparent; color: inherit; cursor: pointer; }
 .skill-tree-menu button:hover:not(:disabled) { background: var(--control-hover); }
-.skill-tree-menu button:focus-visible { background: var(--control-hover); outline: 2px solid var(--control-focus, var(--accent-text)); outline-offset: -2px; }
+.skill-tree-menu button:focus-visible { background: var(--control-hover); outline: none; }
 .skill-tree-menu button:disabled { opacity: .3; cursor: default; }
 .skill-tree-menu hr { margin: 4px 5px; border: 0; border-top: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent); }
 .skill-tree-dialog { color: var(--midground-base); font-size: 13px; }

@@ -339,16 +339,13 @@ describe("工具栏 chip 只显示值（★L 第 5、7 条）", () => {
 });
 
 describe("unverified model choices", () => {
-  it("hides guesses by default, allows an explicit choice, and resets on reopen", async () => {
+  it("does not offer unconfigured candidates or a technical disclosure toggle", async () => {
     const user = userEvent.setup();
     const pick = renderMenu([{ value: "current", label: "Current" }, { value: "guess", label: "Candidate", uncertain: true }]);
     await user.click(screen.getByRole("button", { name: "模型" }));
     expect(screen.queryByRole("option", { name: /Candidate/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /待确认/ }));
-    await user.click(screen.getByRole("option", { name: /Candidate/ }));
-    expect(pick).toHaveBeenCalledWith("guess");
-    await user.click(screen.getByRole("button", { name: "模型" }));
-    expect(screen.queryByRole("option", { name: /Candidate/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /待确认/ })).not.toBeInTheDocument();
+    expect(pick).not.toHaveBeenCalled();
   });
   it("keeps a selected unverified model visible without expanding candidates", async () => {
     const user = userEvent.setup();

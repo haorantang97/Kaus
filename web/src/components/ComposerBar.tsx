@@ -7,7 +7,7 @@ import { chooseNativeWorkspace } from "../lib/workspaceApi";
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, CircleHelp, Folder, LoaderCircle, Plus, Settings2, Shield, ShieldAlert } from "lucide-react";
+import { Check, ChevronDown, Folder, LoaderCircle, Plus, Settings2, Shield, ShieldAlert } from "lucide-react";
 import "../styles/conversation-polish.css";
 import "./composer-interactions.css";
 
@@ -160,7 +160,6 @@ export function BarMenu({
   /* 第 5 件：项数多时顶部一个过滤框。查询只活在"这次打开"里——关掉就清空，
      下次打开是整份清单，不会出现"上次筛过、这次看着像少了几条"。 */
   const [query, setQuery] = useState("");
-  const [showUncertain, setShowUncertain] = useState(false);
   /* batch30 / ★I-3：手动展开过哪些组。null = 还没动过，用默认那一档。
      **什么都不持久化**：关掉菜单就忘，下次打开又是"当前那家展开、别家折着"。 */
   const [expandedGroups, setExpandedGroups] = useState<string[] | null>(null);
@@ -197,7 +196,7 @@ export function BarMenu({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open, floating, options, query, showUncertain, expandedGroups]);
+  }, [open, floating, options, query, expandedGroups]);
   useLayoutEffect(() => {
     if (!open) { focusedOnOpen.current = false; return; }
     if (focusedOnOpen.current || (floating && floatingStyle.visibility === "hidden")) return;
@@ -213,8 +212,7 @@ export function BarMenu({
      用户会以为自己筛掉的是"另一个东西"。一个 provider 的引擎照旧一列到底。 */
   const showGroups = new Set(options.map((option) => option.group ?? "")).size > 1;
   const needle = query.trim().toLowerCase();
-  const uncertainCount = options.filter(option => option.uncertain && option.value !== value).length;
-  const visibleOptions = options.filter(option => !option.uncertain || option.value === value || showUncertain);
+  const visibleOptions = options.filter(option => !option.uncertain || option.value === value);
   const shown = needle
     ? visibleOptions.filter(
         (option) =>
@@ -240,7 +238,6 @@ export function BarMenu({
       setQuery("");
       // batch30：折叠状态也不跨"这次打开"（★I-3：不持久化任何东西）。
       setExpandedGroups(null);
-      setShowUncertain(false);
       return;
     }
     const onDocDown = (event: MouseEvent) => {
@@ -386,17 +383,11 @@ export function BarMenu({
                 >
                   {option.icon}<span>{option.label}</span>
                   {option.value === value && <Check size={13} className="kaus-bar-selected-check" aria-hidden="true" />}
-                  {option.uncertain && <CircleHelp size={12} className="kaus-model-uncertain-icon" aria-label={t("bar.model.unverified")} />}
                 </button>
               ))}
             </span>
             );
           })}
-          {uncertainCount > 0 && <button type="button" className="kaus-bar-pop-head is-button kaus-model-uncertain-toggle"
-            aria-expanded={showUncertain} onClick={() => setShowUncertain(current => !current)}>
-            <CircleHelp size={12} aria-hidden />{t("bar.model.unverified")}<span className="kaus-bar-pop-count">{uncertainCount}</span>
-            <ChevronDown size={12} aria-hidden style={{ transform: showUncertain ? "rotate(180deg)" : undefined }} />
-          </button>}
           {/* 目录降级时的一行小字：说明这份列表是怎么来的，不阻断选择。 */}
           {footnote && (
             <details className="kaus-bar-pop-note" data-testid="model-diagnostic">
@@ -638,16 +629,14 @@ export function ComposerBar({
         {executionOptions.find(option => option.value === executionMode)?.label ?? executionMode}
       </BarPill>)}
       {configOptions.length > 0 && <EngineConfigMenu key={contextKey} options={configOptions} values={configValues} onChange={onChangeConfig} />}
-      <span className="kaus-bar-spacer" />
-      {/* 第 5 件：**能写就有 `▾`**。目录只有一条、甚至一条都没有，菜单照旧点得开——
-          "为什么切不了模型"这句话由菜单里的 diagnostics 回答，不是让 Pill 变哑。
-          压根没有取值（`source === "none"`）时仍旧整枚不渲染（AD-71）。 */}
-      {model.source !== "none" && model.value !== null && (
+      <div className="kaus-composer-tail">
+      {/* Reported choices remain selectable even when the engine omits its default. */}
+      {((model.source !== "none" && model.value !== null) || (onChangeModel && modelOptions.length > 0)) && (
         onChangeModel ? (
           <BarMenu
             label={t("bar.model")}
             value={model.value}
-            display={modelLabel || t("bar.model.none")}
+            display={modelLabel || t("bar.model")}
             options={modelOptions}
             title={[sourceHint(model.source, t), modelDegraded ? modelDiagnostic : null]
               .filter(Boolean)
@@ -666,12 +655,12 @@ export function ComposerBar({
       )}
 
       {/* 推理强度只在当前模型真有档位时出现（DESIGN ★ I）。 */}
-      {reasoning.levels.length > 0 && reasoning.source !== "none" && (
+      {reasoning.levels.length > 0 && (reasoning.value !== null || onChangeReasoning) && (
         onChangeReasoning ? (
           <BarMenu
             label={t("bar.reasoning")}
             value={reasoning.value}
-            display={settingDisplay(reasoning.value ?? reasoning.levels[0])}
+            display={settingDisplay(reasoning.value ?? t("bar.defaults.prefix"))}
             options={reasoning.levels.map((level) => ({ value: level, label: level }))}
             title={sourceHint(reasoning.source, t)}
             onSelect={onChangeReasoning}
@@ -684,6 +673,7 @@ export function ComposerBar({
       )}
 
       {actions}
+      </div>
       </div>
     </div>
   );

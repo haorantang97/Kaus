@@ -32,7 +32,7 @@
   transition: background .15s ease;
 }
 .kaus-computer-use-permission-link:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
-.kaus-computer-use-permission-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.kaus-computer-use-permission-link:focus-visible { outline: none; }
 .kaus-computer-use-permission-link:disabled { opacity: .5; cursor: default; }
 .kaus-computer-use-permission-panel {
   margin-top: 16px;
@@ -61,7 +61,7 @@
 .kaus-computer-use-switch[aria-checked=true]{background:var(--accent-text,currentColor)}
 .kaus-computer-use-switch[aria-checked=true]>span{transform:translateX(14px)}
 .kaus-computer-use-switch:disabled{opacity:.4;cursor:default}
-.kaus-computer-use-switch:focus-visible{outline:2px solid var(--accent-text,currentColor);outline-offset:3px}
+.kaus-computer-use-switch:focus-visible{outline: none;}
 .kaus-computer-use-caption{font-size:12px;opacity:.55;margin:6px 0 16px}
 .kaus-computer-use-setup{display:flex;align-items:center;gap:10px;font-size:13px;padding:10px 0}
 .kaus-computer-use-setup>span:first-child{font-weight:550;margin-right:auto}

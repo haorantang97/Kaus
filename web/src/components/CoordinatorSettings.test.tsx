@@ -18,6 +18,16 @@ beforeEach(() => {
   api.fetchEventsSnapshot.mockResolvedValue({ events: [], lastSequence: 0, truncated: false });
 });
 describe("独立组长", () => {
+  it("未确认的目录项不能成为可保存的组长模型", async () => {
+    api.fetchModelCatalog.mockResolvedValue({ bindingId: "b1", models: [
+      { modelId: "candidate", displayName: "未接入模型", availability: "unknown", reasoningLevels: [] },
+    ] });
+    render(<CoordinatorSettings group={group} />);
+    fireEvent.click(screen.getByRole("button", { name: "组长配置" }));
+    await waitFor(() => expect(api.fetchModelCatalog).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    expect(screen.queryByText("未接入模型")).toBeNull();
+  });
   it("已有下架组长保留当前配置，不成为新增选项或默认目标", async () => {
     const retained = { id:'b1', projectId:'p1', projectName:'项目', backendId:'backend:retired', displayName:'Retired', enabled:true, catalogStatus:'legacy' };
     api.sessionRequest.mockImplementation((path: string) => Promise.resolve(path.endsWith('/options')
@@ -95,6 +105,7 @@ describe("独立组长", () => {
     fireEvent.click(screen.getByRole("button", { name: "模型" }));
     fireEvent.click(screen.getByText("vendor-b"));
     fireEvent.click(await screen.findByText("vendor-b 模型"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(api.sessionRequest).toHaveBeenCalledWith("/api/groups/g1/coordinator", expect.objectContaining({ method: "PUT", body: expect.objectContaining({ expectedRevision: 2, config: expect.objectContaining({ modelId: "same", providerId: "vendor-b" }) }) })));
   });
@@ -126,4 +137,25 @@ it("组长保存同一套原生扩展配置", async () => {
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await waitFor(() => expect(api.sessionRequest).toHaveBeenCalledWith("/api/groups/g1/coordinator", expect.objectContaining({
     method: "PUT", body: expect.objectContaining({ config: expect.objectContaining({ configOptions: { network: true } }) }) })));
+});
+
+it("组长按选定模型读取原生 effort 配置", async () => {
+  const catalog = { bindingId: "b1", models: [
+    { modelId: "same", providerId: "vendor-a", displayName: "原模型", reasoningLevels: ["low", "high"] },
+    { modelId: "other", providerId: "vendor-a", displayName: "新模型", reasoningLevels: [] },
+  ] };
+  api.fetchEffectiveSettings.mockImplementation(async (_binding, _signal, options) => ({
+    modelCatalog: options?.modelId === "other" ? { ...catalog, models: catalog.models.map(m => ({ ...m, reasoningLevels: ["medium"] })) } : catalog,
+    reasoningEffort: { levels: [] }, workspaceRoot: { value: "/tmp" },
+    conversationControls: { reasoning: true, reasoningLevels: options?.modelId === "other" ? ["medium"] : ["low", "high"], approvalModes: [] },
+  }));
+  render(<CoordinatorSettings group={group} />);
+  fireEvent.click(screen.getByRole("button", { name: "组长配置" }));
+  await screen.findByText("原模型");
+  fireEvent.click(screen.getByRole("button", { name: "模型" }));
+  fireEvent.click(await screen.findByText("新模型"));
+  await waitFor(() => expect(api.fetchEffectiveSettings).toHaveBeenCalledWith("b1", undefined, { includeCatalog: true, modelId: "other" }));
+  fireEvent.click(await screen.findByRole("button", { name: "推理强度" }));
+  expect(screen.getByText("medium")).toBeInTheDocument();
+  expect(screen.queryByText("high")).toBeNull();
 });

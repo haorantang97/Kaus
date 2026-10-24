@@ -113,3 +113,38 @@ async def test_terminal_adapter_receives_session_configuration_and_selected_inst
         legacy.assert_called_once_with(plan, ())  # Existing preflight scope check.
     else:
         legacy.assert_not_called()
+
+
+async def test_terminal_keeps_prepared_loader_and_native_home(tmp_path, monkeypatch):
+    native = executable(tmp_path, 'fixture-native')
+    driver = driver_for(tmp_path, config_root_env='FIXTURE_HOME', config_root_default='~/.fixture')
+    driver.agent_spec = driver.agent_spec.with_env(FIXTURE_HOME=str(tmp_path / 'native-history'))
+    prepared = driver.agent_spec.with_env(KAUS_FIXTURE_SCOPE=str(tmp_path / 'selected-skills'),
+                                          NODE_OPTIONS='--require=/selected-loader.cjs')
+    conversation = Conversation.create(project_id='project:test', agent_binding_id='binding:test:fixture',
+        title='Synthetic').evolve(native_session_id='native-id')
+    driver._skill_plans[conversation.id] = SimpleNamespace(spec=prepared)
+    monkeypatch.setattr(driver, '_skill_adapter', lambda: SimpleNamespace(cli_command=lambda plan, command: command))
+    launch = await driver.build_external_cli_launch(conversation)
+    assert launch.command == (native, 'resume', 'native-id')
+    assert launch.config_directory == ('FIXTURE_HOME', str(tmp_path / 'native-history'))
+    assert launch.private_env['NODE_OPTIONS'] == '--require=/selected-loader.cjs'
+    assert launch.private_env['KAUS_FIXTURE_SCOPE'] == str(tmp_path / 'selected-skills')
+    assert driver.agent_spec.env.get('NODE_OPTIONS') is None
+
+
+async def test_terminal_adapter_can_prepare_shared_store_and_private_config(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+    native = executable(tmp_path, 'fixture-native')
+    driver = driver_for(tmp_path)
+    conversation = Conversation.create(project_id='project:test',agent_binding_id='binding:test:fixture',
+        title='Synthetic').evolve(native_session_id='native-id')
+    prepared = driver.agent_spec.with_env(KAUS_FIXTURE_TOKEN='synthetic-secret')
+    hook = AsyncMock(return_value=((native,'resume','native-id','--project'),prepared))
+    monkeypatch.setattr(driver,'_skill_adapter',lambda: SimpleNamespace(prepare_terminal_launch=hook))
+    launch = await driver.build_external_cli_launch(conversation)
+    hook.assert_awaited_once_with((native,'resume','native-id'),driver.agent_spec,{},conversation=conversation,binding=None)
+    assert launch.command[-1] == '--project'
+    assert launch.private_env['KAUS_FIXTURE_TOKEN'] == 'synthetic-secret'
+    assert 'synthetic-secret' not in ' '.join(launch.command)
+    assert 'KAUS_FIXTURE_TOKEN' not in driver.agent_spec.env

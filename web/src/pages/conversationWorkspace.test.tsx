@@ -276,8 +276,9 @@ describe("输入区工具栏（★ I）", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("设置未生效");
   });
   it("没有有效设置时保留首次选择工作位置的入口，其他空值隐藏", async () => {
+    mocked.fetchModelCatalog.mockResolvedValue({ ...catalog, models: [], defaultModelId: null });
     render(<ConversationPage conversationId="conversation:1" />);
-    await waitFor(() => expect(mocked.fetchEffectiveSettings).toHaveBeenCalledWith("binding:1", undefined, { conversationId: "conversation:1" }));
+    await waitFor(() => expect(mocked.fetchEffectiveSettings).toHaveBeenCalledWith("binding:1", undefined, { conversationId: "conversation:1", includeCatalog: true }));
     const bar = await screen.findByTestId("composer-bar");
     expect(within(bar).getByRole("button", { name: "工作目录" })).toHaveTextContent("选择工作位置");
     for (const label of ["模型", "推理强度", "审批模式"]) {
@@ -305,6 +306,7 @@ describe("输入区工具栏（★ I）", () => {
   it("推理强度只在当前模型报了 levels 时出现", async () => {
     mocked.fetchEffectiveSettings.mockResolvedValue({
       ...noSettings,
+      model: { value: "mock-large", source: "engine" },
       reasoningEffort: { value: "low", source: "binding", levels: ["low", "high"] },
     });
     render(<ConversationPage conversationId="conversation:1" />);
@@ -388,6 +390,47 @@ describe("输入区工具栏（★ I）", () => {
  * ------------------------------------------------------------------ */
 
 describe("模型下拉可解释（第 5 件）", () => {
+  it("keeps discovered session controls when a run starts and refreshes them when it ends", async () => {
+    mocked.fetchBackendUiCapabilities.mockResolvedValue({ ...caps, models: { ...caps.models, conversationScoped: "unsupported" } });
+    mocked.fetchEffectiveSettings.mockResolvedValue({ ...noSettings,
+      model: { value: "mock-large", source: "catalog" }, modelCatalog: catalog, uiCapabilities: caps,
+      conversationControls: { reasoning: true, reasoningDefault: "low", reasoningLevels: ["low", "high"], approvalModes: [] },
+    });
+    render(<ConversationPage conversationId="conversation:1" />);
+    await waitFor(() => expect(barButton("推理强度")).toHaveTextContent("low"));
+    await attached();
+    const reads = mocked.fetchEffectiveSettings.mock.calls.length;
+    push(envelope(1, { type: "run.started", runId: "run:dynamic" }));
+    await waitFor(() => expect(mocked.fetchEffectiveSettings.mock.calls.length).toBeGreaterThan(reads));
+    mocked.fetchEffectiveSettings.mockResolvedValue({ ...noSettings,
+      model: { value: "mock-large", source: "catalog" }, modelCatalog: catalog, uiCapabilities: caps,
+      conversationControls: { reasoning: true, reasoningDefault: "high", reasoningLevels: ["low", "high"], approvalModes: [] },
+    });
+    push(envelope(2, { type: "run.completed", runId: "run:dynamic", finishReason: "stop" }));
+    await waitFor(() => expect(barButton("推理强度")).toHaveTextContent("high"));
+    expect(barButton("模型")).toBeEnabled();
+    expect(mocked.fetchBackendUiCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("a failed engine status query does not remove model or effort controls", async () => {
+    mocked.fetchBindingStatus.mockRejectedValue(new Error("status timeout"));
+    mocked.fetchEffectiveSettings.mockResolvedValue({ ...noSettings,
+      model: { value: "mock-large", source: "catalog" }, modelCatalog: catalog, uiCapabilities: caps,
+      conversationControls: { reasoning: true, reasoningDefault: "low", reasoningLevels: ["low", "high"], approvalModes: [] },
+    });
+    mocked.patchConversation.mockResolvedValue({ conversation: { ...detail.conversation, modelId: "mock-large", reasoningMode: "high" }, appliedToRuntime: true });
+    const user = userEvent.setup();
+    render(<ConversationPage conversationId="conversation:1" />);
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("Mock Large"));
+    expect(barButton("推理强度")).toHaveTextContent("low");
+    await user.click(barButton("推理强度"));
+    await user.click(screen.getByRole("option", { name: "high" }));
+    await waitFor(() => expect(barButton("推理强度")).toHaveTextContent("high"));
+    expect(mocked.patchConversation).toHaveBeenCalledWith("conversation:1", { reasoningMode: "high" });
+    expect(mocked.fetchModelCatalog).not.toHaveBeenCalled();
+    expect(mocked.patchBinding).not.toHaveBeenCalled();
+  });
+
   it("目录只有一条时仍带 ▾、点得开，菜单里列这一条并在底部显示 diagnostics[0]", async () => {
     mocked.fetchModelCatalog.mockResolvedValue({
       ...catalog,

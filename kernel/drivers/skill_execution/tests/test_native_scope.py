@@ -213,3 +213,19 @@ async def test_commandcode_keeps_bridge_and_selected_native_executable(tmp_path)
     import subprocess
     result = subprocess.run([plan.spec.command[3], '-p'], capture_output=True, text=True, check=True)
     assert result.stdout.splitlines() == ['--no-skills', '--skill', str(plan.paths[0].parent), '-p']
+
+
+async def test_open_native_inspection_preserves_large_permission_inventory(tmp_path):
+    import json
+    import sys
+    spec, binding = setup(tmp_path, 'opencode')
+    executable = tmp_path / 'native-debug'
+    executable.write_text(f'#!{sys.executable}\nimport json,os,stat\n'
+        'payload=json.dumps({"permission":[{"permission":"skill","pattern":"*","action":"deny"}]*3000}).encode()\n'
+        'if stat.S_ISFIFO(os.fstat(1).st_mode): payload=payload[:65536]\n'
+        'while payload:\n n=os.write(1,payload);payload=payload[n:]\n'
+        'os._exit(0)\n')
+    executable.chmod(0o700)
+    result = await opencode.inspect(str(executable), spec, str(tmp_path), 'agent', 'build')
+    assert len(result['permission']) == 3000
+    assert opencode.scope_matches(result['permission'], set())

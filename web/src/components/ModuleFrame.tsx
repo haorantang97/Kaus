@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { RotateCw } from "lucide-react";
 import { connectModuleFrame } from "../lib/workbenchBridge";
+import { connectChatCutSurface } from "../lib/chatcutSurface";
 import type { WorkbenchModule } from "../lib/workbenchApi";
 import { confirmAsync } from "./ui";
 import { copyText } from "./cards/clipboard";
@@ -8,13 +9,16 @@ import { useLocale } from "../i18n";
 export function ModuleFrame({module, onConversation, onConfigure}: {module: WorkbenchModule; onConversation: (id:string)=>void; onConfigure?:()=>void}) {
   const {t,locale} = useLocale();
   const ref = useRef<HTMLIFrameElement>(null), callback = useRef(onConversation), configure = useRef(onConfigure);
+  const currentModule=useRef(module);currentModule.current=module;
   callback.current = onConversation; configure.current = onConfigure;
   const [key,setKey] = useState(0), [failure,setFailure] = useState<"load"|"revoked"|null>(null);
   const loaded = useRef(false);
   useLayoutEffect(()=> {
     const frame=ref.current; if(!frame)return;
     loaded.current=false;setFailure(null);
-    const disconnect=connectModuleFrame({frame,moduleId:module.id,onReady:()=>setFailure(previous=>previous==="load"?null:previous),onRevoked:()=>setFailure("revoked"),onConversation:id=>callback.current(id),ui:{
+    const editor=connectChatCutSurface(frame,module.id,()=>Boolean(currentModule.current.enabled && currentModule.current.grants?.includes("editor:chatcut")));
+    const disconnect=connectModuleFrame({frame,moduleId:module.id,onReady:()=>setFailure(previous=>previous==="load"?null:previous),onRevoked:()=>{editor?.dispose();setFailure("revoked");},onConversation:id=>callback.current(id),ui:{
+      chatcut:editor?.request,
       configure: ()=>configure.current?.(),
       confirm: message=>confirmAsync(`${module.name} · ${message}`),
       copy: content=>copyText(content),
@@ -28,7 +32,7 @@ export function ModuleFrame({module, onConversation, onConfigure}: {module: Work
     const onError=()=>setFailure("load");
     frame.addEventListener("error",onError);
     const timer=window.setTimeout(()=>{if(!loaded.current)setFailure(previous=>previous??"load");},10_000);
-    return ()=> {disconnect();frame.removeEventListener("error",onError);window.clearTimeout(timer);};
+    return ()=> {editor?.dispose();disconnect();frame.removeEventListener("error",onError);window.clearTimeout(timer);};
   },[module.id,module.assetUrl,key,locale,module.name]);
   const asset = module.assetUrl && /^\/api\/workbench\/assets\/[^/]+\//.test(module.assetUrl) ? module.assetUrl : null;
   return <div className="workbench-frame-wrap">

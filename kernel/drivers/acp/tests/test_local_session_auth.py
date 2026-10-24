@@ -56,10 +56,10 @@ async def test_static_catalog_cannot_clear_sign_out_but_successful_prompt_can(er
         assert (await driver.read_auth_state(binding)).state == "signed_out"
         driver._remember_models(binding.id, state.session_result)
         assert (await driver.read_auth_state(binding)).state == "signed_out"
-        # A stale-catalog refresh can still return a static list without login.
+        # Native public catalogs cannot reappear while the connection is signed out.
         driver._catalog[binding.id] = replace(driver._catalog[binding.id],
             fetched_at=driver._catalog[binding.id].fetched_at - timedelta(hours=1))
-        assert len((await driver.get_model_catalog(binding)).models) == 2
+        assert (await driver.get_model_catalog(binding)).models == ()
         assert (await driver.read_auth_state(binding)).state == "signed_out"
         other = harness.make_binding(project, driver, discriminator="independent")
         assert (await driver.read_auth_state(other)).state == "unknown"

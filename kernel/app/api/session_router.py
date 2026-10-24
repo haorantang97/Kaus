@@ -1008,11 +1008,6 @@ def build_session_router(
             )
 
         capabilities = await driver.get_capabilities()
-        if (model_id or reasoning_mode) and not capabilities.models.conversation_scoped.is_supported:
-            raise _unsupported_model_switch(
-                capabilities.models.conversation_scoped.value
-            )
-
         provider_id: str | None = None
         live_handle = host.handle_for(conversation.id)
         scoped_catalog = getattr(driver, "runtime_model_catalog", None)
@@ -1026,6 +1021,12 @@ def build_session_router(
         live_handle = host.handle_for(conversation.id)
         if live_handle is not None and callable(scoped_controls):
             controls = scoped_controls(live_handle, binding)
+        preview = getattr(driver, "preview_model_settings", None)
+        preview_valid = not model_id or not catalog or not catalog.models or any(item.model_id == model_id for item in catalog.models)
+        if live_handle is None and callable(preview) and (model_id or conversation.model_id) and preview_valid:
+            catalog, controls = await preview(binding, model_id or conversation.model_id)
+        if model_id and not controls.get("model", capabilities.models.conversation_scoped.is_supported):
+            raise _unsupported_model_switch(capabilities.models.conversation_scoped.value)
         try:
             validate_config_values(config_options, controls.get("configOptions", []))
         except ValueError as exc:
@@ -1892,6 +1893,7 @@ def build_session_router(
     async def get_effective_settings(
         binding_id: str, include_catalog: bool = Query(False, alias="includeCatalog"),
         conversation_id: str | None = Query(None, alias="conversationId"),
+        model_id: str | None = Query(None, alias="modelId"),
     ) -> Any:
         """``GET /bindings/{id}/effective-settings``：工具栏那四栏显示什么、谁定的。
 
@@ -1939,12 +1941,31 @@ def build_session_router(
         scoped_controls = getattr(driver, "runtime_conversation_controls", None)
         if handle is not None and callable(scoped_controls):
             payload["conversationControls"] = scoped_controls(handle, binding)
+        preview = getattr(driver, "preview_model_settings", None)
+        requested_model = model_id or (conversation.model_id if conversation else None)
+        if handle is None and callable(preview) and requested_model:
+            catalog, controls = await preview(binding, requested_model)
+            payload = {**payload, **effective_settings_to_wire(binding=binding, project=project, engine=engine, catalog=catalog),
+                       "conversationControls": controls}
         if include_catalog:
             # The toolbar uses the same catalog already read to resolve its defaults.
-            # Keep the capability projection identical to GET /backends/{id}.
+            # Session discovery is fresher than the persisted installation probe.
             backend = await repositories.backends.get(binding.backend_id)
             payload["modelCatalog"] = model_catalog_to_wire(catalog) if catalog is not None else None
             payload["uiCapabilities"] = backend_to_wire(backend)["capabilities"]["ui"] if backend is not None else None
+            if driver is not None:
+                from runtime.capability_matrix import capabilities_to_wire
+                try:
+                    payload["uiCapabilities"] = capabilities_to_wire(await driver.get_capabilities())["ui"]
+                except Exception:  # Keep the installation snapshot during a reconnect.
+                    pass
+            if payload["uiCapabilities"] is not None:
+                model_caps = payload["uiCapabilities"]["models"]
+                controls = payload["conversationControls"]
+                if "model" in controls:
+                    model_caps["conversationScoped"] = "supported" if controls["model"] else "unsupported"
+                if "reasoning" in controls:
+                    model_caps["reasoning"] = "supported" if controls["reasoning"] else "unsupported"
         return payload
 
     # --- 取证（只在 DASH_DEBUG=1 时挂载） ------------------------------------ #

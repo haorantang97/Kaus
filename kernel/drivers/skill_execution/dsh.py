@@ -93,7 +93,20 @@ async def project(spec, binding, effective, workspace_root, *, dry_run=False, ru
 
 
 def cli_command(plan, command):
-    raise UnsupportedCapabilityError('当前引擎尚未提供原生终端续接入口')
+    return tuple(command)
+
+
+async def prepare_terminal_launch(command, spec, metadata, *, conversation, binding):
+    from .dsh_terminal import prepare_terminal_launch as prepare
+    return await prepare(command, spec, metadata, conversation=conversation, binding=binding)
+
+
+async def load_native_history(spec, binding, native_session_id):
+    from .dsh_terminal import load_native_history as load
+    return await load(spec, binding, native_session_id)
+
+
+load_local_native_history = load_native_history
 
 
 def inventory_roots_for_package(spec, projects, bindings, package_name, agent_key='dsh', label='DeepSeek Harness'):

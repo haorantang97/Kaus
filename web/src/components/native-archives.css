@@ -12,7 +12,7 @@
 .archive-icon:hover:not(:disabled), .archive-tabs button:hover:not(:disabled) { background:var(--control-hover); }
 .archive-icon[aria-pressed=true]:hover { background:var(--control-pressed); }
 .archive-icon:disabled { opacity:.3; cursor:default; }
-.archive-icon:focus-visible, .archive-tabs button:focus-visible, .archive-row-title:focus-visible, .archive-assets button:focus-visible { outline:2px solid var(--control-focus, var(--accent-text)); outline-offset:3px; }
+.archive-icon:focus-visible, .archive-tabs button:focus-visible, .archive-row-title:focus-visible, .archive-assets button:focus-visible { outline: none; }
 .archive-row { padding:17px 2px; }
 .archive-row-title { border:0; padding:0; color:inherit; background:transparent; text-align:left; font-size:15px; font-weight:600; cursor:pointer; }
 .archive-row-main { min-width:0; flex:1; }
@@ -29,7 +29,7 @@
 .archive-candidate { display:flex; gap:12px; align-items:center; padding:12px 8px; cursor:pointer; border-radius:7px; }
 .archive-candidate:hover { background:var(--control-hover); }
 .archive-candidate:has(input:checked) { background:var(--control-pressed); }
-.archive-candidate:focus-within { outline:2px solid var(--control-focus, var(--accent-text)); outline-offset:-2px; }
+.archive-candidate:focus-within { outline: none;  background: var(--control-hover); }
 .archive-candidate input { accent-color:var(--accent-text); flex-shrink:0; }
 .archive-candidate span { min-width:0; }
 .archive-candidate strong { display:block; font-size:13px; font-weight:500; overflow-wrap:anywhere; }

@@ -12,7 +12,7 @@ import { fetchModelCatalog, fetchEffectiveSettings, sessionRequest,
   type BindingWire, type ModelCatalogWire, type EffectiveSettingsWire } from "../lib/sessionApi";
 import { refreshGroups } from "../lib/groupStore";
 import type { GroupWire } from "../lib/groupsApi";
-import { modelOptionsFor, modelSelection } from "../lib/modelCatalogView";
+import { isSelectableModel, modelOptionsFor, modelSelection } from "../lib/modelCatalogView";
 
 export interface CoordinatorConfig {
   bindingId: string; modelId?: string | null; providerId?: string | null;
@@ -46,6 +46,7 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [settingsPending, setSettingsPending] = useState(false);
   const [more, setMore] = useState(false);
   const groupConfig = group?.settings?.coordinator as CoordinatorConfig | undefined;
   const running = group?.thread?.status === "running" || group?.thread?.status === "closing";
@@ -81,18 +82,23 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
     setCatalog(null); setEffective(null);
     if (!open || !binding) return;
     let cancelled = false;
-    Promise.all([fetchModelCatalog(binding.backendId, binding.id), fetchEffectiveSettings(binding.id)])
-      .then(([models, settings]) => { if (!cancelled) { setCatalog(models); setEffective(settings); } })
-      .catch(e => { if (!cancelled) setError(e.message); });
+    setSettingsPending(true);
+    fetchEffectiveSettings(binding.id, undefined, { includeCatalog: true, ...(draft.modelId ? { modelId: draft.modelId } : {}) })
+      .then(async settings => {
+        const models = settings.modelCatalog ?? await fetchModelCatalog(binding.backendId, binding.id);
+        if (!cancelled) { setCatalog(models); setEffective(settings); setError(""); }
+      })
+      .catch(e => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setSettingsPending(false); });
     return () => { cancelled = true; };
-  }, [open, selectedBinding?.id, selectedBinding?.backendId]);
-  const models = catalog?.models.filter(model => model.availability !== "unavailable") ?? [];
+  }, [open, selectedBinding?.id, selectedBinding?.backendId, draft.modelId, draft.providerId]);
+  const models = catalog?.models.filter(isSelectableModel) ?? [];
   const engineDefault = models.length === 0 && catalog?.engineDefaultAvailable === true && catalog.degraded !== true;
-  const catalogReady = !!catalog && (models.length > 0 || engineDefault);
+  const catalogReady = !settingsPending && !!catalog && (models.length > 0 || engineDefault);
   const catalogError = catalog && !catalogReady ? catalog.diagnostics?.[0] ?? "引擎未提供可用模型" : "";
   const modelOptions = modelOptionsFor(catalog, selectedBinding, draft.modelId ?? undefined);
   const selected = models.find(m => m.modelId === draft.modelId && (!draft.providerId || m.providerId === draft.providerId));
-  const reasoning = selected?.reasoningLevels ?? (engineDefault ? effective?.conversationControls?.reasoningLevels : undefined) ?? effective?.reasoningEffort.levels ?? [];
+  const reasoning = selected?.reasoningLevels?.length ? selected.reasoningLevels : effective?.conversationControls?.reasoningLevels ?? effective?.reasoningEffort.levels ?? [];
   const approval = effective?.conversationControls?.approvalModes ?? [];
   const execution = effective?.conversationControls?.executionModes ?? [];
   const set = (change: Partial<CoordinatorConfig>) => setDraft(current => ({ ...current, ...change }));
@@ -138,8 +144,8 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
           emptyNote={catalogError || "读取模型…"}
           onSelect={value => {
             if (value === engineDefaultKey) { set({ modelId: null, providerId: null }); return; }
-            const [providerId, modelId] = JSON.parse(value); const next = models.find(m => modelKey(m.modelId, m.providerId) === value);
-            set({ modelId, providerId, reasoningMode: next?.reasoningLevels.includes(draft.reasoningMode ?? "") ? draft.reasoningMode : null });
+            const [providerId, modelId] = JSON.parse(value);
+            set({ modelId, providerId, reasoningMode: null });
           }} /></CoordinatorField>
         {effective?.conversationControls?.reasoning && reasoning.length > 0 && <CoordinatorField label="推理强度"><BarMenu floating label="推理强度" value={draft.reasoningMode ?? null}
           display={draft.reasoningMode ?? "默认推理强度"} options={[{ value: "", label: "默认" }, ...reasoning.map(value => ({ value, label: value }))]}

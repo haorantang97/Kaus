@@ -1,89 +1,9 @@
-"""模型目录：R-14 的动静合并（规格 §2.3 / AD-25）。
+"""Models offered by the configured Hermes connection.
 
-关键实测事实：**``/v1/models`` 不是模型目录**。它只返回一条
-``{"id":"hermes-agent", ...}``，而那就是 ``API_SERVER_MODEL_NAME``——OpenAI 客户端
-要的**路由名**，不是可选模型。0.21.0 上真实使用的是 ``deepseek-v4-flash``
-（见 ``sessions.model``），与它完全无关。所以本模块**绝不**把 ``/v1/models``
-退化成目录（规格 §2.3 合并规则第 4 条的括注）。
-
-合并规则（规格 §2.3）
----------------------
-- 模型 ID 集合 = 动态目录（``GET /api/model/options``；响应体形状**已取证**，见下面
-  「批次二十九」一节，解析器仍对别的形状保留容错）；
-- ``context_window`` / ``reasoning_levels`` / ``fast_mode`` = **静态覆盖动态**；
-- 静态独有的 ID 不进 catalog，只进 diagnostics（不给用户一个后端不认的模型）；
-- 动态不可用 → 见下面「批次十三第 2 件」。
-
-批次十三第 2 件：动态不可用时**不再返回静态全集**
---------------------------------------------------
-规格 §2.3 原规则 4 是「动态不可用 → catalog = 静态全集 + degraded」。真机上
-这条规则的后果是：模型下拉列出静态目录全部 48 个模型，包含这台引擎根本没接的
-provider（GitHub Copilot 之类），用户选中即失败，而 ``degraded`` 当时还没上 wire，
-界面连一句提示都没有。于是批次十三改判成「静态 ∩ 引擎声明的 providers」。
-
-批次十四：AD-117 修订——「∩ providers」在真机上是**空集**
----------------------------------------------------------
-2026-09-03 复现：Media 的下拉仍然是空的。原因是 ``config.yaml`` 的 ``providers``
-段**只列自定义 provider**（这台机器上是 ``openclaw``），内置 provider
-（``openai-codex`` / ``anthropic`` …）根本不出现在那一段里。于是
-「静态全集 ∩ {openclaw}」= 空集，用户一个模型都选不了——而他明明正在用
-``gpt-5.5``。修订后的规则 4：
-
-1. 动态目录可用 → 照旧（规则 1~3）；
-2. 动态不可用 → 可选模型 =
-   ① **引擎当前配置的模型**（一定在列，``provider_id`` 取配置里的 provider，
-   静态目录没有它时 ``display_name`` 就用 id 本身）
-   ∪ ② 静态目录里 provider ∈（``providers`` 段键名 ∪ 引擎模型的 provider）的条目；
-3. 两者都没有 → **空目录** + 一条 diagnostics「引擎未报告可用模型」。
-
-provider 名比较一律做归一化（:func:`normalize_provider`：小写，``-``/``_``/空格
-等价），因为静态目录写 ``OpenAI Codex`` 而引擎配置写 ``openai-codex``，字面比不上。
-这一支仍然 ``degraded=true``，diagnostics 写清「目录来自引擎配置 + 本地静态目录，
-未经引擎确认」——列出来的东西没有一条被引擎点过头，用户有权知道。
-
-宁可给一条真实的，也不给一份「大部分选了会失败」的清单——N §13.1：
-不知道就说不知道；但**知道的那一条必须说**。
-
-推理档位兜底（批次十四第 3 件）
---------------------------------
-静态目录说不出某个模型的 ``reasoning_levels`` 时，用 Hermes 的通用档位
-:data:`~drivers.hermes.engine_settings.HERMES_REASONING_LEVELS`
-（``none|minimal|low|medium|high|xhigh``，取证见那个常量的注释）。理由是
-推理强度在 Hermes 里是 **agent 级**配置（``agent.reasoning_effort``），不是模型
-条目的属性；静态目录没写不等于这台引擎没有这些档位。此前返回空列表，
-``effective-settings.reasoningEffort.levels`` 因此为空，前端按 AD-71 干脆不渲染
-下拉——用户就「没有推理强度可选」了。
-
-批次二十九：AD-117 定案——动态目录的真实形状与「只列能用的」
-------------------------------------------------------------
-2026-09-05 真机抓到了 ``GET /api/model/options`` 的原始响应
-（``docs/forensics/hermes-model-options-2026-09-05.json``，不含任何密钥）。
-形状**定案**：顶层只有 ``providers[]``，没有 ``models`` / ``data`` / ``options``
-块；每个 provider 是::
-
-    {"slug": "anthropic", "name": "Anthropic", "is_current": false,
-     "models": ["claude-fable-5", …],           # 字符串数组，不是对象数组
-     "authenticated": true, "auth_type": "api_key", "key_env": "…",
-     "capabilities": {"claude-fable-5": {"fast": false, "reasoning": true}}}
-
-由此改三件事：
-
-1. **未登录的 provider 整条丢掉。** ``authenticated == false`` 的 provider
-   ``models`` 本来就是空数组，但要**显式**丢——不然它们哪天开始带 models，
-   下拉里就会冒出一堆选中即失败的模型。``authenticated`` 键**缺席**时不判否
-   （别的形状没有这个键，AD-71：缺的键不是否定证据）。
-2. **``is_current`` / ``name`` / ``capabilities`` 不再被忽略。** ``name`` 是给人
-   看的 provider 名（``providerLabel``），``is_current`` 标出引擎此刻在用的那个
-   provider（真机是 ``openai-codex``），``capabilities[model].fast`` 并进
-   AD-25 的 backend-scoped ``fast_mode``（**仍然不扩公共 ``ModelDescriptor``**），
-   ``reasoning`` 同样只留在 Driver 内部。
-3. **排序 = 当前 provider 在前，其余按 label 字母序；provider 内部保持引擎给的
-   顺序。** 真机 D4：下拉一次列 47 个模型（anthropic 11 / openai-codex 约 15 /
-   gemini / deepseek / moa…）平铺在一起，用户读成「混列」。分组是解法，
-   而分组要有序才叫分组。
-
-AD-25：``fast_mode`` **不扩公共 ``ModelDescriptor``**，由本模块内部持有，
-经 backend-scoped 能力项 ``hermes:fast_mode`` 对 UI 表达。
+Native model options are authoritative choices, not per-model billing probes.
+Exclude signed-out/disabled routes. Local metadata can enrich a returned model,
+but never add a public catalog merely because a provider name is configured.
+When discovery fails, retain only the explicit native/binding selection.
 """
 
 from __future__ import annotations
@@ -200,6 +120,7 @@ class ModelOptions(list):
     """
 
     diagnostics: tuple[str, ...] = ()
+    unavailable_providers: frozenset[str] = frozenset()
 
 
 def parse_model_options(payload: Any) -> ModelOptions:
@@ -223,7 +144,7 @@ def parse_model_options(payload: Any) -> ModelOptions:
         provider_label: str | None = None,
         is_current: bool = False,
         capabilities: Mapping[str, Any] | None = None,
-        availability: str = "unknown",
+        availability: str = "available",
     ) -> None:
         model_id = (
             entry.get("id")
@@ -260,12 +181,14 @@ def parse_model_options(payload: Any) -> ModelOptions:
         if isinstance(providers, list):
             seen = 0
             authenticated = 0
+            unavailable_providers: set[str] = set()
             for provider in providers:
                 if not isinstance(provider, Mapping):
                     continue
                 seen += 1
                 # `authenticated` 缺席时不判否：别的形状没有这个键（AD-71）。
-                if "authenticated" in provider and not provider.get("authenticated"):
+                if provider.get("authenticated") is False or provider.get("enabled") is False:
+                    unavailable_providers.add(normalize_provider(provider.get("slug") or provider.get("id") or provider.get("name")))
                     continue
                 authenticated += 1
                 slug = _str_or_none(
@@ -275,9 +198,9 @@ def parse_model_options(payload: Any) -> ModelOptions:
                 is_current = bool(provider.get("is_current"))
                 caps = provider.get("capabilities")
                 caps = caps if isinstance(caps, Mapping) else None
-                # Credentials alone do not attest to a model entitlement. Hermes
-                # also reports curated, virtual and public product catalogs here.
-                availability = "available" if provider.get("models_verified") is True else "unknown"
+                # These are choices offered by a configured native connection.
+                # No paid generation probe or nonstandard models_verified flag.
+                availability = "available"
                 denied = {item for item in (provider.get("unavailable_models") or ()) if isinstance(item, str)}
                 for entry in provider.get("models") or ():
                     if isinstance(entry, Mapping):
@@ -292,6 +215,7 @@ def parse_model_options(payload: Any) -> ModelOptions:
                     elif isinstance(entry, str) and entry:
                         out.append(_dynamic(entry, slug, None, label, is_current, caps,
                                             "unavailable" if entry in denied else availability))
+            out.unavailable_providers = frozenset(unavailable_providers)
             if seen and not authenticated:
                 out.diagnostics = ("引擎没有任何已登录的 provider",)
     elif isinstance(payload, list):
@@ -415,7 +339,7 @@ def merge_catalog(
     dynamic_fast: set[str] = set()
     reasoning_ids: set[str] = set()
 
-    if dynamic:
+    if dynamic is not None:
         entries = [
             item if isinstance(item, DynamicModel) else DynamicModel(*item) for item in dynamic
         ]
@@ -445,66 +369,24 @@ def merge_catalog(
                 + ("…" if len(extra) > 8 else "")
             )
     else:
-        # 规格 §2.3 规则 4（批次十四 / AD-117 修订）：动态不可用 →
-        # ① 引擎当前配置的模型 ∪ ② 静态目录里 provider 命中的条目。
-        # **不要**退化到 /v1/models 的伪模型，也**不要**退化成静态全集
-        # （那会列出这台引擎根本没接的 provider）。
-        providers = {}
-        displays = {}
-        degraded = True
-        ids = []
-
+        # A provider name does not authorize its entire public model catalog.
+        providers, displays = {}, {}
+        degraded, ids = True, []
         if engine_model_id:
             ids.append(engine_model_id)
-            if engine_provider_id:
-                providers[engine_model_id] = engine_provider_id
-            # 静态目录没有这一条时，显示名就用 id 本身——不编一个好看的名字。
+            providers[engine_model_id] = engine_provider_id
             displays[engine_model_id] = engine_model_id
-
-        # provider 名的比较口径：归一化后比。静态目录写 `OpenAI Codex`，
-        # 引擎配置写 `openai-codex`，字面比会漏掉整整一个 provider 的模型。
-        declared = tuple(dict.fromkeys(p for p in (provider_ids or ()) if p))
-        wanted_raw = tuple(
-            dict.fromkeys([*declared, *( (engine_provider_id,) if engine_provider_id else () )])
-        )
-        wanted = {normalize_provider(p) for p in wanted_raw}
-        wanted.discard("")
-        static_hits = 0
-        if wanted:
-            for model_id, entry in static.items():
-                if model_id in ids or not entry.provider_id:
-                    continue
-                if normalize_provider(entry.provider_id) in wanted:
-                    ids.append(model_id)
-                    static_hits += 1
-
-        if ids:
-            diagnostics.append(
-                "模型列表来自引擎配置 + 本地静态目录，未经引擎确认"
-                f"（后端动态目录不可用；provider：{'、'.join(wanted_raw) or '未声明'}）"
-            )
-            if engine_model_id:
-                diagnostics.append(
-                    f"引擎配置当前使用的模型是 {engine_model_id}，已置于可选列表中"
-                )
-            if wanted and static_hits == 0:
-                diagnostics.append(
-                    "本地静态目录里没有这些 provider 的模型，可选模型仅有引擎当前配置的那一条"
-                )
-        elif wanted:
-            diagnostics.append(
-                "本地静态目录里没有这些 provider 的模型，可选模型为空"
-            )
-        else:
-            diagnostics.append("引擎未报告可用模型")
+        diagnostics.append("暂未取得模型列表" if not ids else "显示当前配置的模型")
 
     models: list[ModelDescriptor] = []
     fast: set[str] = set(dynamic_fast)
-    choices = entries if dynamic else [DynamicModel(model_id, providers.get(model_id), displays.get(model_id), availability="unknown") for model_id in ids]
+    choices = entries if dynamic is not None else [DynamicModel(model_id, providers.get(model_id), displays.get(model_id), availability="unknown") for model_id in ids]
     # Configured custom endpoints may not appear in a gateway's global catalog.
     # Preserve the selection, but never promote it to an entitlement guarantee.
     configured_id = default_model_id or engine_model_id
     configured_provider = default_provider_id or engine_provider_id
+    if normalize_provider(configured_provider) in getattr(dynamic, "unavailable_providers", ()):
+        configured_id = None
     if configured_id and not any(item.model_id == configured_id and
                                  (not configured_provider or normalize_provider(item.provider_id) == normalize_provider(configured_provider)) for item in choices):
         choices = [DynamicModel(configured_id, configured_provider, availability="configured"), *choices]
@@ -542,7 +424,7 @@ def merge_catalog(
                 provider_label=choice.provider_label,
                 is_current_provider=choice.is_current_provider,
                 # 规格 §2.3 映射表：display/provider 以静态覆盖动态，与现有 UI 一致。
-                display_name=(entry.display_name if entry else None) or choice.display_name,
+                display_name=choice.display_name or (entry.display_name if entry else None),
                 provider_id=provider_id,
                 availability=availability,
                 # R-14 的两个消费者字段一律取静态。

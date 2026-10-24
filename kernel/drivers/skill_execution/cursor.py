@@ -81,8 +81,32 @@ async def project(spec, binding, effective, workspace_root, *, dry_run=False, ru
 
 
 def cli_command(plan, command):
-    # No native terminal session mapping is asserted by this adapter.
-    raise UnsupportedCapabilityError('当前引擎尚未验证受管终端续接')
+    return tuple(command)
+
+
+def external_cli_command(plan, command, *, conversation, binding, spec):
+    from .terminal_settings import approval, arguments, choice, selected
+    mode = choice(selected(conversation,'execution_mode'), {'agent':None,'plan':'plan','ask':'ask'},'运行模式')
+    permission = approval(conversation)
+    if permission not in (None,'host:ask','bypass'):
+        raise UnsupportedCapabilityError('Cursor 终端尚未适配当前审批模式')
+    if selected(conversation,'reasoning_mode'):
+        raise UnsupportedCapabilityError('Cursor 原生终端未提供独立思考强度参数')
+    result = arguments(command, ('--model',selected(conversation,'model_id','model')),('--mode',mode))
+    return (*result,'--force') if permission=='bypass' else result
+
+
+async def prepare_terminal_launch(command, spec, metadata, *, conversation, binding):
+    from .cursor_terminal import prepare_terminal_launch as prepare
+    return await prepare(command,spec,metadata,conversation=conversation,binding=binding)
+
+
+async def load_native_history(spec,binding,native_session_id):
+    from .cursor_terminal import load_native_history as load
+    return await load(spec,binding,native_session_id)
+
+
+load_local_native_history = load_native_history
 
 
 async def refresh_inventory(spec):

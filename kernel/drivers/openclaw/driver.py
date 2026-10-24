@@ -14,6 +14,7 @@ import json
 import re
 import uuid
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -201,7 +202,7 @@ class OpenClawAcpDriver(AcpDriver):
         root = Path(env["OPENCLAW_STATE_DIR"]).expanduser() if env.get("OPENCLAW_STATE_DIR") else home / ".openclaw"
         paths = [Path(env["OPENCLAW_CONFIG_PATH"]).expanduser() if env.get("OPENCLAW_CONFIG_PATH") else root / "openclaw.json"]
         paths.extend(root.glob("agents/*/agent/models.json"))
-        stamps = []
+        stamps = list(super()._config_stamp(binding))
         for path in paths:
             try:
                 stat = path.stat()
@@ -445,8 +446,10 @@ class OpenClawAcpDriver(AcpDriver):
             if conversation.reasoning_mode:
                 command += ("--thinking", conversation.reasoning_mode)
             search_path = env.get("PATH", os.defpath)
+            native_home = Path(env.get("OPENCLAW_HOME") or env.get("HOME") or "~").expanduser()
+            state_root = Path(env["OPENCLAW_STATE_DIR"]).expanduser() if env.get("OPENCLAW_STATE_DIR") else native_home / ".openclaw"
             return CliLaunchSpec(command=command, private_env=private,
-                config_directory=("OPENCLAW_STATE_DIR", str(Path(env.get("OPENCLAW_STATE_DIR") or Path(env.get("OPENCLAW_HOME") or env.get("HOME") or "~").expanduser() / ".openclaw").resolve())),
+                config_directory=("OPENCLAW_STATE_DIR", str(state_root.resolve())),
                 path_prefix=tuple(p for p in search_path.split(os.pathsep) if os.path.isabs(p)),
                 env_passthrough=self.preset.env_keys_hint, terminal_integration="openclaw",
                 cwd=self._workspace_root_for(conversation.agent_binding_id) or self._default_cwd,
@@ -467,6 +470,56 @@ class OpenClawAcpDriver(AcpDriver):
     def _gateway_for(self, session_id: str):
         return self._session_gateways.get(session_id, self.gateway)
 
+    async def _probe_catalog(self, binding, *, model_id=None):
+        """The shared Gateway owns persistence; read its catalog without a session."""
+        try:
+            payload = await self.gateway.call("models.list", {"includeDetails": True, "view": "configured"})
+            if not isinstance(payload.get("models"), list):
+                raise AcpTransportError("OpenClaw Gateway 未提供模型目录")
+            rows = self._configured_model_rows(payload["models"])
+            current = model_id or binding.default_model_id or self._configured_default_model(binding)
+            models = tuple(ModelDescriptor(**{**row, "reasoning_levels": row["reasoning_levels"] or ()}) for row in rows)
+            selected = next((row for row in models if row.model_id == current), None)
+            return _CatalogSnapshot(fetched_at=datetime.now(timezone.utc), models=models,
+                current_model_id=current, model_option_id=_MODEL_OPTION if models else None,
+                thought_levels=selected.reasoning_levels if selected else (),
+                engine_default_available=True, auth_state="unknown")
+        except (AcpRpcError, AcpTransportError, asyncio.TimeoutError) as exc:
+            return _CatalogSnapshot(fetched_at=datetime.now(timezone.utc), degraded=True,
+                diagnostics=(str(exc),))
+
+    def _configured_default_model(self, binding):
+        from .skill_inventory import _locations, _config
+        from .computer_use import source_agent_id
+        _env, _home, _state, path = _locations(self.agent_spec)
+        config = _config(self.agent_spec, path) or {}
+        agents = config.get("agents") or {}
+        entry = (agents.get("entries") or {}).get(source_agent_id(config, self.agent_spec, binding)) or {}
+        model = entry.get("model", (agents.get("defaults") or {}).get("model"))
+        value = model.get("primary") if isinstance(model, dict) else model
+        return value if isinstance(value, str) and value else None
+
+    @staticmethod
+    def _configured_model_rows(raw_models):
+        models: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in raw_models:
+            if not isinstance(row, dict) or row.get("manualSelectionAllowed") is False:
+                continue
+            provider, model = row.get("provider"), row.get("id")
+            if not isinstance(provider, str) or not provider or not isinstance(model, str) or not model:
+                continue
+            model_id = f"{provider}/{model}"
+            if model_id in seen:
+                continue
+            seen.add(model_id)
+            models.append({"model_id": model_id, "display_name": row.get("alias") or row.get("name") or model,
+                           "availability": "unavailable" if row.get("available") is False else "available" if row.get("available") is True else "configured",
+                           "provider_id": provider, "provider_label": provider,
+                           "reasoning_levels": tuple(level["id"] for level in row["thinkingLevels"] if isinstance(level, dict) and isinstance(level.get("id"), str)) if isinstance(row.get("thinkingLevels"), list) else None,
+                           "context_window": row.get("contextWindow") if isinstance(row.get("contextWindow"), int) and row["contextWindow"] > 0 else None})
+        return models
+
     async def _augment_models(self, result: Any, session_id: str) -> None:
         gateway = self._gateway_for(session_id)
         if gateway is None or not isinstance(result, dict) or not session_id:
@@ -480,23 +533,7 @@ class OpenClawAcpDriver(AcpDriver):
             raw_models = catalog.get("models")
             if not isinstance(raw_models, list):
                 raise AcpTransportError("OpenClaw Gateway 未提供模型目录")
-            models: list[dict[str, Any]] = []
-            seen: set[str] = set()
-            for row in raw_models:
-                if not isinstance(row, dict) or row.get("manualSelectionAllowed") is False:
-                    continue
-                provider, model = row.get("provider"), row.get("id")
-                if not isinstance(provider, str) or not provider or not isinstance(model, str) or not model:
-                    continue
-                model_id = f"{provider}/{model}"
-                if model_id in seen:
-                    continue
-                seen.add(model_id)
-                models.append({"model_id": model_id, "display_name": row.get("alias") or row.get("name") or model,
-                               "availability": "unavailable" if row.get("available") is False else "available" if row.get("available") is True else "configured",
-                               "provider_id": provider, "provider_label": provider,
-                               "reasoning_levels": tuple(level["id"] for level in row["thinkingLevels"] if isinstance(level, dict) and isinstance(level.get("id"), str)) if isinstance(row.get("thinkingLevels"), list) else None,
-                               "context_window": row.get("contextWindow") if isinstance(row.get("contextWindow"), int) and row["contextWindow"] > 0 else None})
+            models = self._configured_model_rows(raw_models)
             current = _current_model(description.get("session"))
             row = description.get("session")
             result[_PRIVATE_SNAPSHOT] = {"models": models, "current": current, "key": key, "exists": isinstance(row, dict),
@@ -545,14 +582,24 @@ class OpenClawAcpDriver(AcpDriver):
         super()._accept_config_update(state, result)
 
     async def _set_model_config_option(self, state: _RuntimeState, model_id: str) -> None:
-        gateway = self._gateway_for(state.session_id)
-        if gateway is None:
+        if self._gateway_for(state.session_id) is None:
             return await super()._set_model_config_option(state, model_id)
-        native = state.session_result.get(_PRIVATE_SNAPSHOT, {})
+        await self._patch_gateway_model(state.connection, state.session_id, state.session_result, model_id,
+                                        resumed=bool(state.handle.metadata.get("resumed")))
+        self._accept_config_update(state, state.session_result)
+
+    async def _select_probe_model(self, connection: Any, result: dict, model_id: str) -> dict:
+        if self._gateway_for(result["sessionId"]) is None:
+            return await super()._select_probe_model(connection, result, model_id)
+        await self._patch_gateway_model(connection, result["sessionId"], result, model_id)
+        return result
+
+    async def _patch_gateway_model(self, connection: Any, session_id: str, result: dict, model_id: str, *, resumed: bool = False) -> None:
+        gateway = self._gateway_for(session_id)
+        native = result.get(_PRIVATE_SNAPSHOT, {})
         if model_id not in {row["model_id"] for row in native.get("models", [])}:
             raise AcpRpcError(-32602, "模型不在当前 OpenClaw 会话的可选目录中")
-        await self._ensure_gateway_identity(state.connection, state.session_id, state.session_result,
-                                            resumed=bool(state.handle.metadata.get("resumed")))
+        await self._ensure_gateway_identity(connection, session_id, result, resumed=resumed)
         key = native["key"]
         params = {"key": key, "expectedSessionId": native["sessionId"], "model": model_id}
         if native.get("lifecycleRevision"):
@@ -569,8 +616,7 @@ class OpenClawAcpDriver(AcpDriver):
         native["current"] = actual
         native["exists"] = True
         native["selectionPending"] = False
-        self._install_model_option(state.session_result)
-        self._accept_config_update(state, state.session_result)
+        self._install_model_option(result)
 
     async def _ensure_gateway_identity(self, connection: Any, session_id: str, result: dict, *, resumed: bool = False) -> None:
         gateway = self._gateway_for(session_id)

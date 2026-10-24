@@ -46,7 +46,7 @@ async def test_project_mcp_is_scoped_before_native_acp_projection(monkeypatch):
     assert agent._skill_plans[conversation.id] is plan
 
 
-@pytest.mark.parametrize('engine',['deepseek-acp'])
+@pytest.mark.parametrize('engine',['antigravity'])
 async def test_unverified_terminal_resume_has_no_guessed_session_id_command(engine):
     preset=get_preset(engine)
     agent=AcpDriver(AcpAgentSpec(command=('synthetic-never-run',)),backend_key=engine,preset=preset)

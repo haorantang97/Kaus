@@ -50,7 +50,7 @@ def test_new_catalog_rows_do_not_mislabel_source_review_as_live() -> None:
         else:
             assert not preset.verified_bits
             assert "verifiedBits" not in preset.to_wire()
-        if id in {"goose", "copilot", "omp", "grok"}:
+        if id in {"goose", "copilot", "omp", "grok", "cursor"}:
             assert preset.resume_argv_template is not None
         else:
             assert preset.resume_argv_template is None
@@ -219,7 +219,7 @@ def test_the_three_new_rows_from_the_relay_run() -> None:
     # Kilo uses its native same-session attach TUI through the guarded adapter.
     assert kilo.resume_argv("ses_fixture") == ("kilo", "-s", "ses_fixture")
     for preset in (dsh, deepseek):
-        assert preset.resume_argv_template is None
+        assert preset.resume_argv("same-session") == ("dsh", "--profile", "kaus-tui", "--resume", "same-session")
     for preset in (dsh, deepseek, kilo):
         assert preset.auth_method_ids == (), "authMethods 实测是空数组（靠 env）"
 

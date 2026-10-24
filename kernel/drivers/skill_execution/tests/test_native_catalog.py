@@ -1,10 +1,40 @@
 import json
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
 from drivers.acp.client import AcpAgentSpec
 from drivers.skill_execution import commandcode, gemini, pi
 from drivers.skill_execution.native_catalog import cache_path, cached_roots, save_paths
+
+
+async def test_query_does_not_lose_cancellation_when_reader_completes(monkeypatch):
+    """A native history read can complete in the same tick as a surface stop."""
+    import pytest
+    from drivers.skill_execution import native_catalog
+    started = asyncio.Event()
+    release = asyncio.Event()
+    process = SimpleNamespace(returncode=0)
+    async def communicate():
+        started.set()
+        await release.wait()
+        return b'{}', None
+    process.communicate = communicate
+    async def create(*args, **kwargs):
+        return process
+    monkeypatch.setattr(asyncio, 'create_subprocess_exec', create)
+    spec = AcpAgentSpec(command=('synthetic',))
+    task = asyncio.create_task(native_catalog.query(spec, ('synthetic',)))
+    await started.wait()
+    release.set()
+    # Let the subprocess reader finish, with its parent still resuming.
+    await asyncio.sleep(0)
+    cancelled = task.cancel()
+    if cancelled:
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    else:
+        assert task.done() and await task == '{}'
 
 
 def skill(path):

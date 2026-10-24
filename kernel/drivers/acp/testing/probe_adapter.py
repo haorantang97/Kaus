@@ -1,83 +1,35 @@
-"""ACP 适配器取证探针：把一个 agent 命令拉起来，问它三句话，把原话打出来。
+"""Opt-in live ACP verification, using disposable native history and workspace.
 
-为什么要有这个文件
-------------------
-``presets.py`` 那张怪癖表里，几乎每一位都只到 ``declared``（AD-151 的「待办」
-原话）。要把它们升到 ``live``，需要的不是更仔细地读文档，而是**把每个适配器真的
-拉起来一次，记下它自己说的话**。这个脚本就是那一次的可重复形态：
+Pass --preset to reuse that Agent's existing connection configuration. Only
+allowlisted configuration files are copied, never histories. Native OS login
+stores are reused where supported; credentials are not printed. Additional
+environment names require --env-key. No authenticate request is sent.
 
-1. ``initialize``（``protocolVersion`` 1 + 本 Driver 的默认 ``clientCapabilities``）；
-2. ``session/new``（空 ``mcpServers``，``cwd`` 用一个临时目录；``--mcp-ping``
-   时改为把本仓那台假 MCP 服务传进去）；
-3. 只有在 2 成功时，才可选地发一条 ``session/prompt``，记 ~15 秒内出现过哪些
-   ``session/update`` 的 ``sessionUpdate`` 种类，然后 ``session/cancel``。
+The report contains native protocol replies and diagnostics; keep it private.
+--mcp-ping approves only the synthetic kaus_ping tool. Other tool requests are
+denied. Gateway-backed Agents require a separate test service.
 
-输出是一份 JSON，**逐字**保留每一步的响应（包括错误对象的 ``code`` /
-``message`` / ``data``）。没有解释、没有归纳——归纳写进
-``docs/forensics/``，这里只负责取证。
-
-安全边界（与 AD-10 / AD-48 同一条口径）
----------------------------------------
-- **不读 ``.env``、不读任何配置文件、不找凭据。** 这个脚本一行文件读取都没有。
-- 子进程环境默认只有 ``PATH`` / ``HOME`` / ``TMPDIR`` / ``LANG`` 这几个与凭据
-  无关的名字；要额外透传什么，必须用 ``--env-key NAME`` 一个个显式点名
-  （**只写名字**，值从当前进程环境里取，脚本自己从不打印任何值）。
-- 输出里只有 agent 说的话；``--env-key`` 点过的名字会以名字形态出现在
-  ``envKeysPassed`` 里，值不出现。
-- **不做登录。** 适配器要求登录时它会回一个错误（通常是 ``auth_required``），
-  这个脚本原样记下来就结束——不调用 ``authenticate``、不写任何凭据。
-
-用法
-----
-::
-
-    python -m drivers.acp.testing.probe_adapter -- npx -y <package>@latest
-    python -m drivers.acp.testing.probe_adapter --probe-methods --prompt \
-        --out out.json -- <argv 照抄 presets.py 里那一行的 command>
-
-``--mcp-ping``（批次四十三）
----------------------------
-怪癖位 ``mcp_via_session_new`` 问的是「把 MCP 随 ``session/new`` 传进去，agent 到底
-会不会真的挂上它」。协议不保证，也没有任何响应字段读得出来——只能**问它一句**：
-把 ``drivers/acp/testing/fake_mcp_server.py`` 当一条 ``mcpServers`` 传进去，让 agent
-调 ``kaus_ping`` 并原样复述返回。判据两条，任一成立即 ``verified_true``：
-更新流里出现过名为 ``kaus_ping`` 的 tool_call，或最终文本里有这一次运行的随机
-nonce（那串只有那台服务知道，编不出来）。都不成立就是 ``verified_false``，
-并把 agent 的**原话**记下来——那句话是唯一能解释「为什么不行」的材料。
-
-**这一次 ping 自己的权限请求会被自动批准**（批次五十四 / AG-03）。2026-09-22 真机
-上探针自己把这条证据链掐断了：agent 先发 ``session/request_permission``，探针照
-「一律回绝」的老口径回了取消（stderr 里那句 ``Denied by user (*)`` 是**探针**说的，
-不是用户），工具没跑完，nonce 自然回不来。既然 ``--mcp-ping`` 的整个目的就是让那
-一次工具真的跑完，就只对**工具名是 ``kaus_ping``** 的那一次放行；别的工具照旧拒，
-而且「自动批准了哪一次」原样记进输出的 ``autoApprovals``——免得下一个读报告的人把
-「探针替我批的」当成「用户批的」。
-
-输出里还留着前两条 ``tool_call_update`` 的 ``content``（``toolUpdateContents``）：
-``tool_update_cumulative`` 那一位只能从**连续两条**里读出来，2026-09-22 那一趟就是
-因为没留而取不到。
-
-在没有凭据的容器里，通常止步于 ``session/new`` 的 ``auth_required``；在用户自己
-的机器上（已经在终端登录过）同一条命令会走完 ``session/prompt``，把
-``thoughtChunks`` / ``toolUpdateCumulative`` 这两位一并取回来。
-
-stdlib only：这个脚本要能在一台只有 python3 的机器上直接跑。
+Usage: python -m drivers.acp.testing.probe_adapter --preset <id> --prompt -- <command>
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
+import contextlib
 import json
 import os
 import queue
+import signal
 import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import uuid
 from typing import Any
+from drivers.acp.client import AcpAgentSpec
+from drivers.discovery_scope import isolated_agent_spec, prepare_discovery_credentials, require_local_discovery
 
 #: 与 :data:`drivers.acp.capabilities.ACP_PROTOCOL_VERSION` 同一个值。这里写成
 #: 字面量而不是 import，是为了让脚本能被单独拷到别的机器上跑（取证工具的可搬运
@@ -91,8 +43,7 @@ CLIENT_CAPABILITIES: dict[str, Any] = {
     "terminal": False,
 }
 
-#: 默认透传的环境变量名。都与凭据无关；``HOME`` 在这里是必要的——各家 CLI 的
-#: 登录态放在家目录里，不给它就等于强行制造一个「未登录」的假象。
+#: 原始 HOME 只用于定位连接配置；子进程的记录目录由 discovery_scope 隔离。
 SAFE_ENV_KEYS = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "SHELL", "USER")
 
 
@@ -110,8 +61,11 @@ class AcpProbe:
         env_keys: tuple[str, ...] = (),
         cwd: str | None = None,
         auto_approve_tool: str | None = None,
+        preset_id: str | None = None,
     ) -> None:
         self.argv = argv
+        self.preset_id = preset_id
+        self._native_scope = None
         self.env_keys = tuple(env_keys)
         self.cwd = cwd
         #: 批次五十四：**只**对这一个工具名的权限请求自动批准（``--mcp-ping``
@@ -138,16 +92,21 @@ class AcpProbe:
         return env
 
     def start(self) -> None:
-        self._proc = subprocess.Popen(  # noqa: S603 - argv，不过 shell
-            self.argv,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=self.child_env(),
-            cwd=self.cwd,
-            text=True,
-            bufsize=1,
-        )
+        require_local_discovery(self.preset_id)
+        original = AcpAgentSpec(command=tuple(self.argv), env=self.child_env(),
+            inherit_env=False, cwd=self.cwd)
+        self._native_scope = isolated_agent_spec(original, preset_id=self.preset_id)
+        scoped = self._native_scope.__enter__()
+        try:
+            asyncio.run(prepare_discovery_credentials(scoped, original.build_env(), preset_id=self.preset_id))
+            self.cwd = scoped.cwd
+            self._proc = subprocess.Popen(scoped.command, stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=scoped.build_env(),
+                cwd=scoped.cwd, text=True, bufsize=1, start_new_session=(os.name != "nt"))
+        except BaseException:
+            self._native_scope.__exit__(*sys.exc_info())
+            self._native_scope = None
+            raise
         threading.Thread(target=self._read_stdout, daemon=True).start()
         threading.Thread(target=self._read_stderr, daemon=True).start()
 
@@ -174,17 +133,29 @@ class AcpProbe:
         proc = self._proc
         if proc is None:
             return None
-        if proc.poll() is None:
+        try:
             try:
                 if proc.stdin is not None:
                     proc.stdin.close()
             except Exception:  # noqa: BLE001
                 pass
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGTERM) if os.name != "nt" else proc.terminate()
             try:
-                proc.terminate()
                 proc.wait(timeout=5)
-            except Exception:  # noqa: BLE001
-                proc.kill()
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL) if os.name != "nt" else proc.kill()
+                proc.wait(timeout=5)
+            if os.name != "nt":
+                # A launcher can finish before its children. Own the complete
+                # process group before deleting the writable temporary root.
+                time.sleep(0.05)
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+        finally:
+            if self._native_scope is not None:
+                self._native_scope.__exit__(None, None, None)
+                self._native_scope = None
         return proc.poll()
 
     # ------------------------------------------------------------- JSON-RPC
@@ -538,6 +509,7 @@ def probe(
     argv: list[str],
     *,
     env_keys: tuple[str, ...] = (),
+    preset_id: str | None = None,
     probe_methods: bool = False,
     prompt: bool = False,
     mcp_ping: bool = False,
@@ -547,10 +519,8 @@ def probe(
     prompt_window: float = 15.0,
 ) -> dict[str, Any]:
     """跑完一次取证，返回一份可直接 ``json.dumps`` 的报告。"""
-    workdir = tempfile.mkdtemp(prefix="acp-probe-")
     report: dict[str, Any] = {
         "command": list(argv),
-        "cwd": workdir,
         "envKeysPassed": list(SAFE_ENV_KEYS + tuple(env_keys)),
         "clientCapabilities": CLIENT_CAPABILITIES,
         "protocolVersion": PROTOCOL_VERSION,
@@ -569,10 +539,11 @@ def probe(
 
         auto_approve_tool = _PING_TOOL
     probe_run = AcpProbe(
-        argv, env_keys=env_keys, cwd=workdir, auto_approve_tool=auto_approve_tool
+        argv, env_keys=env_keys, auto_approve_tool=auto_approve_tool, preset_id=preset_id
     )
     try:
         probe_run.start()
+        report["cwd"] = probe_run.cwd
     except Exception as exc:  # noqa: BLE001
         report["outcome"] = "spawn_failed"
         report["detail"] = f"{type(exc).__name__}: {exc}"
@@ -607,7 +578,7 @@ def probe(
         report["sessionNew"] = _step(
             lambda: probe_run.call(
                 "session/new",
-                {"cwd": workdir, "mcpServers": mcp_servers},
+                {"cwd": probe_run.cwd, "mcpServers": mcp_servers},
                 timeout=session_timeout,
             )
         )
@@ -687,6 +658,7 @@ def main(argv_in: list[str] | None = None) -> int:
         prog="probe_adapter",
         description="拉起一个 ACP 适配器，跑 initialize / session/new，原话打成 JSON。",
     )
+    parser.add_argument("--preset", default=None, help="复用该 Agent 的连接配置，历史保持隔离。")
     parser.add_argument(
         "--env-key",
         action="append",
@@ -725,6 +697,7 @@ def main(argv_in: list[str] | None = None) -> int:
     report = probe(
         command,
         env_keys=tuple(args.env_key),
+        preset_id=args.preset,
         probe_methods=args.probe_methods,
         prompt=args.prompt,
         mcp_ping=args.mcp_ping,

@@ -2,7 +2,7 @@
 .kaus-chat-icon-action { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: color-mix(in srgb, var(--midground-base) 76%, transparent); cursor: pointer; }
 .kaus-chat-icon-action:hover:not(:disabled) { background: color-mix(in srgb, var(--midground-base) 7%, transparent); color: var(--midground-base); }
 .kaus-chat-icon-action:disabled { opacity: .35; cursor: default; }
-.kaus-chat-icon-action:focus-visible, .kaus-group-panel button:focus-visible { outline: 2px solid color-mix(in srgb, var(--midground-base) 38%, transparent); outline-offset: 2px; }
+.kaus-chat-icon-action:focus-visible, .kaus-group-panel button:focus-visible { outline: none; }
 .kaus-bar-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kaus-bar-pill > svg { flex: 0 0 auto; }
 .kaus-bar-pill > .kaus-bar-caret { width: 12px; height: 12px; margin-left: 1px; }
@@ -146,7 +146,7 @@
 .kaus-engine-config-switch[aria-checked="true"] { background: var(--accent-text); }
 .kaus-engine-config-switch[aria-checked="true"] > span { transform: translateX(12px); }
 .kaus-engine-config-switch:disabled { opacity: .5; cursor: default; }
-.kaus-engine-config-switch:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; }
+.kaus-engine-config-switch:focus-visible { outline: none; }
 
 /* Secondary controls share their module's surface; selected states stay visible. */
 .kaus-group-dock .kaus-group-pill {

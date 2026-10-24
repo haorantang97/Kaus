@@ -23,7 +23,7 @@
 .workbench-runtime-select{position:relative;display:block;min-width:0}
 .workbench-config .workbench-runtime-select select{-webkit-appearance:none;appearance:none;width:100%;background-image:none;color:inherit;font-family:inherit;line-height:1.35;padding-right:34px;box-shadow:none;cursor:pointer;transition:border-color .16s,background-color .16s}
 .workbench-config .workbench-runtime-select select:hover:not(:disabled){border-color:color-mix(in srgb,var(--midground-base) 24%,transparent)}
-.workbench-config .workbench-runtime-select select:focus-visible{outline:2px solid color-mix(in srgb,var(--accent-text,var(--midground-base)) 38%,transparent);outline-offset:2px}
+.workbench-config .workbench-runtime-select select:focus-visible{outline: none;}
 .workbench-runtime-select>svg{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;opacity:.5}
 .workbench-runtime-select select:disabled{cursor:default;opacity:.5}
 .workbench-runtime-select select:disabled+svg{opacity:.3}
@@ -37,7 +37,7 @@
 .workbench-page .workbench-card .workbench-card-open,
 .workbench-page .workbench-card .workbench-card-open:hover,
 .workbench-page .workbench-card .workbench-card-open:active {background:transparent;box-shadow:none;transform:none;border:0;border-radius:12px}
-.workbench-page .workbench-card .workbench-card-open:focus-visible {outline:2px solid var(--accent-base,var(--midground-base));outline-offset:8px}
+.workbench-page .workbench-card .workbench-card-open:focus-visible {outline: none;}
 .workbench-intake-list{display:flex;flex-direction:column;gap:6px;max-width:1200px;margin-bottom:20px}
 .workbench-intake-row{display:flex;align-items:center;gap:4px;padding:0 8px 0 0;border-radius:12px;text-align:left;background:color-mix(in srgb,var(--midground-base) 4%,transparent);font-size:13px;transition:background .18s}
 .workbench-intake-open{display:flex;align-items:center;gap:10px;min-width:0;flex:1;padding:11px 14px;text-align:left;color:inherit;border-radius:12px}

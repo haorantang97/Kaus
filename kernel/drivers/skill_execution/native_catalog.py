@@ -25,7 +25,11 @@ async def query(spec, command, *, cwd=None):
         env=spec.build_env(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
         start_new_session=os.name == 'posix')
     try:
-        output, _ = await asyncio.wait_for(process.communicate(), 25)
+        # Keep cancellation on this task. Python 3.11 wait_for can consume an
+        # external cancellation when its reader completes in the same tick;
+        # the session event pump would then keep waiting after surface stop.
+        async with asyncio.timeout(25):
+            output, _ = await process.communicate()
     except asyncio.TimeoutError:
         raise ValueError("技能来源读取超时") from None
     finally:

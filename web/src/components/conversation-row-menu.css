@@ -4,7 +4,7 @@
 .kaus-conversation-row:focus-within .kaus-conversation-menu-trigger,
 .kaus-conversation-row-menu.is-open .kaus-conversation-menu-trigger { opacity:1; }
 .kaus-conversation-menu-trigger:hover, .kaus-conversation-row-menu.is-open .kaus-conversation-menu-trigger { background:color-mix(in srgb,var(--midground-base) 8%,transparent); }
-.kaus-conversation-menu-trigger:focus-visible { outline:2px solid var(--accent-text); outline-offset:1px; }
+.kaus-conversation-menu-trigger:focus-visible { outline: none; }
 .kaus-conversation-menu { position:fixed; z-index:120; display:flex; flex-direction:column; min-width:184px; max-width:calc(100vw - 16px); padding:5px; border:1px solid color-mix(in srgb,var(--midground-base) 12%,transparent); border-radius:12px; background:var(--surface-3); color:var(--midground-base); box-shadow:var(--shadow-popover); }
 .kaus-conversation-menu > button { display:flex; align-items:center; gap:10px; min-height:35px; padding:7px 10px; border:0; border-radius:7px; background:transparent; color:inherit; font:13px/1.4 var(--theme-font-sans); text-align:left; cursor:pointer; }
 .kaus-conversation-menu > button:hover, .kaus-conversation-menu > button:focus-visible { background:color-mix(in srgb,var(--midground-base) 7%,transparent); outline:none; }

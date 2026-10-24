@@ -16,25 +16,21 @@ import {
   ensureProjectBinding,
   emptyEffectiveSettings,
   fetchConnectedBackends,
-  fetchEffectiveSettings,
-  fetchModelCatalog,
   fetchProjectBindings,
   fetchProjects,
-  fetchBackendUiCapabilities,
   patchConversation,
   patchProject,
   sendConversationMessage,
   type BindingWire,
   type BackendWire,
-  type EffectiveSettingsWire,
-  type ModelCatalogWire,
   type ProjectWire,
   describeFailure,
   SessionApiError,
 } from "../lib/sessionApi";
-import { hasCapability, type UiCapabilities } from "../components/cards/capabilities";
+import { hasCapability } from "../components/cards/capabilities";
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, fileSizeLabel, uploadConversationAttachment, type ConversationAttachment } from "../lib/attachmentsApi";
-import { modelEffort, modelOptionsFor, modelSelection, modelValue } from "../lib/modelCatalogView";
+import { modelOptionsFor, modelSelection, modelValue } from "../lib/modelCatalogView";
+import { composerReasoning, observeComposerSettings, readComposerSettings, type ComposerSettings } from "../lib/composerSettings";
 import { findProject, matchProjectId } from "../lib/projectRef";
 import { isConfirmedMessageRejection } from "../lib/messageDelivery";
 import { newClientRef } from "../lib/pendingMessages";
@@ -52,7 +48,7 @@ import {
  *
  *     项目 → 已接入引擎（首次选用建立 binding）→ 模型/推理（该 binding 的 Model Catalog）
  *
- * 模型下拉在拿不到 Catalog（501/空目录）时**整块不渲染**，不写「本引擎不支持」——AD-71。
+ * 配置按引擎实际能力显示；暂时读取失败会后台恢复，不当成不支持。
  */
 
 /** 项目清单 → 菜单项：按项目树深度优先排开，`depth` 交给 `BarMenu` 做缩进。
@@ -108,23 +104,6 @@ export interface NewConversationPageProps {
 }
 
 const DRAFT_OPTIONS_TTL_MS = 30_000;
-interface DraftEngineOptions {
-  bindingId: string;
-  catalog: ModelCatalogWire | null;
-  settings: EffectiveSettingsWire;
-  caps: UiCapabilities | null;
-}
-
-async function readDraftEngineOptions(binding: BindingWire): Promise<DraftEngineOptions> {
-  const settings = await fetchEffectiveSettings(binding.id, undefined, { includeCatalog: true })
-    .catch(() => emptyEffectiveSettings(binding.id));
-  // Older hosts do not include the bundle; explicit null means unavailable, not missing.
-  const [catalog, caps] = await Promise.all([
-    settings.modelCatalog !== undefined ? settings.modelCatalog : fetchModelCatalog(binding.backendId, binding.id).catch(() => null),
-    settings.uiCapabilities !== undefined ? settings.uiCapabilities : fetchBackendUiCapabilities(binding.backendId).catch(() => null),
-  ]);
-  return { bindingId: binding.id, catalog, settings, caps };
-}
 
 function engineLabel(backendId: string, backend?: BackendWire): string {
   return engineBrand(backend?.productId ?? backendId)?.name ?? backend?.productName
@@ -151,15 +130,16 @@ export function NewConversationPage({
     () => bindings?.find((item) => item.id === bindingId && item.projectId === projectId && item.enabled && engineAcceptsNewWork(item) && engineAcceptsNewWork(connectedBackends.find(c => c.id === item.backendId))) ?? null,
     [bindings, bindingId, projectId, connectedBackends],
   );
-  const [engineOptions, setEngineOptions] = useState<DraftEngineOptions | null>(null);
+  const [engineOptions, setEngineOptions] = useState<ComposerSettings | null>(null);
   const currentOptions = engineOptions?.bindingId === binding?.id ? engineOptions : null;
   const catalog = currentOptions?.catalog ?? null;
   const settings = currentOptions?.settings ?? null;
   const caps = currentOptions?.caps ?? null;
   // Draft-local caches: returning to a selection is immediate; reopening the page reads afresh.
   const bindingsCache = useRef(new Map<string, { value: BindingWire[]; expires: number }>());
-  const optionsCache = useRef(new Map<string, { value: DraftEngineOptions; expires: number }>());
+  const optionsCache = useRef(new Map<string, { value: ComposerSettings; expires: number }>());
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [settingsPending, setSettingsPending] = useState(false);
   const [selectedReasoning, setSelectedReasoning] = useState<string | null>(null);
   const [selectedApproval, setSelectedApproval] = useState<string | null>(null);
   const [selectedExecution, setSelectedExecution] = useState<string | null>(null);
@@ -313,10 +293,11 @@ export function NewConversationPage({
 
   const reloadSettings = useCallback(async (target: BindingWire) => {
     optionsCache.current.clear();
-    const next = await readDraftEngineOptions(target);
-    optionsCache.current.set(target.id, { value: next, expires: Date.now() + DRAFT_OPTIONS_TTL_MS });
+    const next = await readComposerSettings(target, undefined, selectedModelId ? modelSelection(selectedModelId).modelId : undefined);
+    const key = selectedModelId ? `${target.id}:${selectedModelId}` : target.id;
+    if (!next.retryable) optionsCache.current.set(key, { value: next, expires: Date.now() + DRAFT_OPTIONS_TTL_MS });
     setEngineOptions((current) => current?.bindingId === target.id ? next : current);
-  }, []);
+  }, [selectedModelId]);
 
   useEffect(() => {
     setSelectedReasoning(null);
@@ -324,28 +305,26 @@ export function NewConversationPage({
     setSelectedExecution(null);
     setSelectedConfig({});
     setSelectedModelId(null);
+  }, [binding]);
+
+  useEffect(() => {
     if (!binding) {
       setEngineOptions(null);
+      setSettingsPending(false);
       return;
     }
-    const cached = optionsCache.current.get(binding.id);
-    if (cached && cached.expires > Date.now()) {
-      setEngineOptions(cached.value);
-      return;
-    }
-    let cancelled = false;
-    setEngineOptions(null);
-    void readDraftEngineOptions(binding).then((next) => {
-      if (cancelled) return;
-      if (next.settings.model.source !== "none" || next.catalog !== null) {
-        optionsCache.current.set(binding.id, { value: next, expires: Date.now() + DRAFT_OPTIONS_TTL_MS });
-      }
+    const key = selectedModelId ? `${binding.id}:${selectedModelId}` : binding.id;
+    const cached = optionsCache.current.get(key);
+    const initial = cached && cached.expires > Date.now() ? cached.value : undefined;
+    if (initial || !selectedModelId) setEngineOptions(initial ?? null);
+    setSettingsPending(Boolean(selectedModelId && !initial));
+    return observeComposerSettings(binding, (next) => {
+      if (!next.retryable) optionsCache.current.set(key, { value: next, expires: Date.now() + DRAFT_OPTIONS_TTL_MS });
+      else optionsCache.current.delete(key);
       setEngineOptions(next);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [binding]);
+      setSettingsPending(false);
+    }, { initial, modelId: selectedModelId ? modelSelection(selectedModelId).modelId : undefined });
+  }, [binding, selectedModelId]);
 
   useEffect(() => {
     writeDraftText(text);
@@ -366,12 +345,7 @@ export function NewConversationPage({
   const selectedValue = selectedModelId || modelValue(bar.model.value ?? catalog?.defaultModelId, catalog?.defaultProviderId ?? binding?.defaultProviderId, catalog);
   const selection = selectedValue ? modelSelection(selectedValue) : null;
   const selectedDescriptor = catalog?.models.find(model => model.modelId === selection?.modelId && (!selection?.providerId || model.providerId === selection.providerId));
-  const reasoning = {
-    ...bar.reasoningEffort,
-    ...(modelEffort(selectedDescriptor) ? { value: modelEffort(selectedDescriptor), source: "catalog" as const } : {}),
-    ...(selectedReasoning ? { value: selectedReasoning } : {}),
-    levels: selectedDescriptor?.reasoningLevels?.length ? selectedDescriptor.reasoningLevels : bar.reasoningEffort.levels,
-  };
+  const reasoning = composerReasoning(bar, selectedDescriptor, selectedReasoning);
   const approval = {
     ...bar.approvalMode,
     ...(controls?.approvalDefault ? { value: controls.approvalDefault, source: "catalog" as const } : {}),
@@ -410,7 +384,7 @@ export function NewConversationPage({
   const send = useCallback(async () => {
     const body = text.trim();
     const stagedFiles = filesRef.current;
-    if ((!body && !stagedFiles.length) || !projectId || !binding || !currentOptions || sendLockRef.current || unconfirmedRef.current) return;
+    if ((!body && !stagedFiles.length) || !projectId || !binding || !currentOptions || settingsPending || sendLockRef.current || unconfirmedRef.current) return;
     if (stagedFiles.length && !canAttach) { setError(t("conversation.attach.unsupported")); return; }
     if (caps?.card.attachments === "images" && stagedFiles.some((file) => !/^image\/(?:png|jpeg|webp|gif|avif)$/.test(file.type))) {
       setError(t("draft.attachments.imagesOnly"));
@@ -474,7 +448,7 @@ export function NewConversationPage({
       if (!completed) { sendLockRef.current = false; setSending(false); }
       setUploadingName(null);
     }
-  }, [binding, bindingId, currentOptions, bar.model.value, canAttach, canChooseModel, caps?.card.attachments, onCreated, projectId, selectedModelId, selectedReasoning, selectedApproval, selectedExecution, selectedConfig, text, t]);
+  }, [binding, bindingId, currentOptions, bar.model.value, canAttach, canChooseModel, caps?.card.attachments, onCreated, projectId, selectedModelId, selectedReasoning, selectedApproval, selectedExecution, selectedConfig, settingsPending, text, t]);
 
   /* 第 4 件①：`Enter` 发送、`Shift+Enter` 换行，⌘/Ctrl+Enter 继续可用。
      中文输入法组字期间的 Enter 是"选词"，绝不能当发送（`isComposing`）。 */
@@ -552,9 +526,9 @@ export function NewConversationPage({
             modelOptions={modelOptions}
             modelDiagnostic={modelDiagnostic}
             modelDegraded={modelDegraded}
-            onChangeModel={canChooseModel && !sending ? setSelectedModelId : undefined}
+            onChangeModel={canChooseModel && !sending ? (value) => { setSelectedModelId(value); setSelectedReasoning(null); } : undefined}
             reasoning={reasoning}
-            onChangeReasoning={controls?.reasoning && !sending ? setSelectedReasoning : undefined}
+            onChangeReasoning={controls?.reasoning && !sending && !settingsPending ? setSelectedReasoning : undefined}
             approval={approval}
             onChangeApproval={approval.options.length && !sending ? setSelectedApproval : undefined}
             executionMode={selectedExecution ?? controls?.executionDefault}
@@ -571,7 +545,7 @@ export function NewConversationPage({
                 className="kaus-send"
                 aria-label={sending ? t("draft.sending") : t("draft.send")}
                 title={sending ? t("draft.sending") : t("draft.send")}
-                disabled={(!text.trim() && !files.length) || !binding || !currentOptions || sending || !!unconfirmed || (files.length > 0 && !canAttach)}
+                disabled={(!text.trim() && !files.length) || !binding || !currentOptions || settingsPending || sending || !!unconfirmed || (files.length > 0 && !canAttach)}
                 onClick={() => void send()}
               >
                 {sending ? <LoaderCircle size={18} aria-hidden /> : <ArrowUp size={18} aria-hidden />}

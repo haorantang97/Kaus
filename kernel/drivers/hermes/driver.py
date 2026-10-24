@@ -513,7 +513,7 @@ class HermesDriver:
             if self.static_catalog_path
             else {}
         )
-        dynamic: list[tuple[str, str | None, str | None]] = []
+        dynamic = None
         notes: list[str] = []
         report = self._report
         endpoints = report.endpoints if report else capabilities_mod.HermesEndpoints.from_capabilities(None)
@@ -529,7 +529,7 @@ class HermesDriver:
                 )
                 if response.ok:
                     parsed = catalog_mod.parse_model_options(response.json())
-                    dynamic = list(parsed)
+                    dynamic = parsed
                     # 批次二十九：解析阶段就知道的原因（一个已登录的 provider 都没有）
                     # 原样带上——它与「形状认不出」是两件完全不同的事，压成同一句话
                     # 用户就不知道该去登录还是该报 bug。
@@ -555,7 +555,7 @@ class HermesDriver:
 
         merged = catalog_mod.merge_catalog(
             binding_id=binding.id,
-            dynamic=dynamic or None,
+            dynamic=dynamic,
             static=static,
             default_model_id=binding.default_model_id or engine_model_id,
             default_provider_id=(binding.default_provider_id if binding.default_model_id else engine_provider_id),
@@ -1962,6 +1962,15 @@ class HermesDriver:
         canonical = self.canonical_map_for(binding)
         command: list[str] = [self.hermes_bin, "-p", profile, "chat"]
         scoped = project_scope.enabled(binding)
+        if not scoped:
+            # The original HTTP connection can use a non-default native home.
+            # Explicit CLI choices supplement native resume without relocating
+            # its ledger or replacing the original configuration.
+            for flag, value in (("--model", conversation.model_id),
+                                ("--provider", conversation.provider_id),
+                                ("--reasoning", conversation.reasoning_mode)):
+                if value:
+                    command[-1:-1] = [flag, value]
         if scoped:
             project_scope.prepare(self.hermes_root, self.gateway_config_for(binding).hermes_home, binding)
             from drivers.hermes.skill_launch import command_for, policy_required
@@ -1987,7 +1996,7 @@ class HermesDriver:
             path_prefix=native_binary_dirs(self.gateway_config_for(binding).hermes_home, self.hermes_root),
             terminal_integration="hermes",
             cwd=binding.runtime_config.get("workspace_root"),
-            config_directory=("HERMES_HOME", str(self.projection_scope(binding))) if scoped else None,
+            config_directory=("HERMES_HOME", str(self.projection_scope(binding))),
             # AD-10：只能列变量名，不能给值。HERMES_HOME 由 ``-p`` / wrapper 决定，
             # 绝不写成 ("env", "HERMES_HOME=…", …)（规格 §2.9 的「不允许的形态」）。
             env_passthrough=("PATH", "HOME"),

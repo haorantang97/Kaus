@@ -51,8 +51,11 @@ await kaus.data.set('draft', { text: '草稿' });
 | clipboard.writeText | text，返回 copied |
 | navigation.openExternal | url，用户确认后打开 HTTP(S) 链接 |
 | navigation.openConversation | conversationId，仅限本模块任务 |
+| editor.chatcut | 专用固定剪辑视图，须声明并授予 editor:chatcut 且宿主支持；open/url、layout/bounds/visible、hide 或 status |
 
 数据、任务与固定顺序存入独立的 workbench.sqlite3；共享的会话事件使用原有存储。
+
+固定 ChatCut 视图在可选 Chromium 开发壳可用；`context.get` 的 `surfaces.chatcut` 表示实际支持且已获授权。普通浏览器或当前 WKWebView 壳不会宣称支持。远端视图与模块 iframe 分离，切换模块隐藏并保留剪辑进程，宿主弹窗优先；布局只能位于模块矩形内。模块可调用 `request('editor.chatcut', {action:'open', url})`，短时登录地址只放内存，作品关联只保存无凭据的稳定项目 URL。详情与实测范围见 [固定剪辑模块验收](product/chatcut-fixed-editor-acceptance-20261024.md)。
 
 ## 自有本地后端
 

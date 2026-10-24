@@ -7,7 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
-PERMISSIONS = frozenset({"agent:run", "data:read", "data:write", "backend:run"})
+PERMISSIONS = frozenset({"agent:run", "data:read", "data:write", "backend:run", "editor:chatcut"})
 MODULE_ID = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 
 

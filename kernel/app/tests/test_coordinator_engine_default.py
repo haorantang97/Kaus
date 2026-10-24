@@ -92,3 +92,28 @@ async def test_engine_default_reasoning_still_requires_advertised_native_level(t
         assert response.json()['error']['code'] == 'reasoning_not_supported'
     finally:
         await cleanup(built, api)
+
+
+async def test_coordinator_validates_model_specific_effort_from_shared_preview(tmp_path):
+    from drivers.base import ModelDescriptor
+    built, api, gid, _members = await setup(tmp_path, configured=False)
+    seen = []
+    async def catalog(binding):
+        return ModelCatalog(binding_id=binding.id, mode='constrained', models=(
+            ModelDescriptor(model_id='dynamic', display_name='Dynamic', reasoning_levels=('low',)),), default_model_id='dynamic')
+    async def preview(binding, model_id):
+        seen.append(model_id)
+        value = await catalog(binding)
+        return value.model_copy(update={'models': (value.models[0].model_copy(update={'reasoning_levels': ('medium',)}),)}), {
+            'reasoning': True, 'reasoningLevels': ['medium'], 'approvalModes': []}
+    built.driver.get_model_catalog = catalog
+    built.driver.preview_model_settings = preview
+    try:
+        response = await api.put(f'/api/groups/{gid}/coordinator', json={
+            'config': {'bindingId': built.binding.id, 'modelId': 'dynamic', 'reasoningMode': 'medium'},
+            'expectedRevision': 0})
+        assert response.status_code == 200, response.text
+        assert seen == ['dynamic']
+        assert response.json()['group']['settings']['coordinator']['reasoningMode'] == 'medium'
+    finally:
+        await cleanup(built, api)

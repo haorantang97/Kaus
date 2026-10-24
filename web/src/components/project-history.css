@@ -4,7 +4,7 @@
 .project-history-muted { color:color-mix(in srgb,currentColor 58%,transparent); font-size:12px; }
 .project-history-icon { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border:0; border-radius:8px; background:transparent; color:inherit; cursor:pointer; }
 .project-history-icon:hover { background:color-mix(in srgb, currentColor 8%, transparent); }
-.project-history-icon:focus-visible { outline:2px solid var(--accent-text); outline-offset:2px; }
+.project-history-icon:focus-visible { outline: none; }
 .project-history-controls { margin-bottom:14px; }
 .project-history-controls .kaus-select { flex:1; }
 .project-history-search { display:flex; align-items:center; gap:8px; padding:8px 11px; border:1px solid color-mix(in srgb,currentColor 14%,transparent); border-radius:9px; }

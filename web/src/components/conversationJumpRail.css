@@ -59,7 +59,7 @@ body.dark .kaus-jump-rail { --rail-card: #252525; --rail-ink: #f1f1f1; --rail-mu
 .kaus-jump-preview p > span { display: block; }
 .kaus-jump-preview p > span + span { margin-top: 8px; }
 .kaus-jump-preview p[data-clipped] { mask-image: linear-gradient(#000 calc(100% - 8px), transparent); }
-.kaus-jump-preview-link:focus-visible { outline: 1px solid var(--control-focus); outline-offset: 3px; border-radius: 3px; }
+.kaus-jump-preview-link:focus-visible { outline: none; border-radius: 3px;  text-decoration: underline; text-underline-offset: 3px; }
 .kaus-jump-bookmark {
   position: absolute; top: 7px; right: 6px; display: grid; place-items: center; width: 24px; height: 24px;
   border: 0; border-radius: 5px; padding: 0; color: var(--rail-muted); background: transparent; cursor: pointer;

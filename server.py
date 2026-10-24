@@ -1230,6 +1230,7 @@ def _profile_memory_signature(profile_dir: Path, limit: int = 80) -> dict:
 
 
 def _profile_skills_signature(profile_dir: Path, limit: int = 3000) -> dict:
+    ignored_dirs = {".git", ".hub", ".archive", ".venv", "node_modules", "__pycache__"}
     root = profile_dir / "skills"
     out = {"__dir__": _state_stat_token(root)}
     if not root.exists():
@@ -1240,25 +1241,23 @@ def _profile_skills_signature(profile_dir: Path, limit: int = 3000) -> dict:
         return out
     n = 0
     for entry in entries:
-        if entry.name in {".git", ".hub", ".archive"}:
+        if entry.name in ignored_dirs:
             continue
         # 顶层 entry 的 lstat 足以捕捉技能增删、symlink 迁移和 .usage.json 更新。
         out[entry.name] = _state_stat_token(entry)
         n += 1
         if entry.is_dir() and not entry.is_symlink():
-            try:
-                skill_files = sorted(entry.rglob("SKILL.md"))
-            except OSError:
-                skill_files = []
-            for skill_file in skill_files:
-                rel = skill_file.relative_to(root)
-                if any(part in {".git", ".hub", ".archive"} for part in rel.parts):
-                    continue
-                out[str(rel)] = _state_stat_token(skill_file)
-                n += 1
-                if n >= limit:
-                    out["__truncated__"] = True
-                    return out
+            # Prune before traversing: filtering rglob results still walks every
+            # dependency and archive directory on each dashboard refresh.
+            for directory, dirs, files in os.walk(entry, followlinks=False):
+                dirs[:] = sorted(d for d in dirs if d not in ignored_dirs)
+                if "SKILL.md" in files:
+                    skill_file = Path(directory) / "SKILL.md"
+                    out[str(skill_file.relative_to(root))] = _state_stat_token(skill_file)
+                    n += 1
+                    if n >= limit:
+                        out["__truncated__"] = True
+                        return out
         if n >= limit:
             out["__truncated__"] = True
             return out
@@ -1407,7 +1406,10 @@ def api_events():
 
     async def event_stream():
         try:
-            yield _sse_payload(_dashboard_event_from_signatures(None, _dashboard_state_signature()))
+            snapshot = _EVENT_LAST_SIGNATURE
+            if snapshot is None:
+                snapshot = await asyncio.to_thread(_dashboard_state_signature)
+            yield _sse_payload(_dashboard_event_from_signatures(None, snapshot))
             # 批次二十八：首帧之后推一段填充注释，隧道/代理才会把前面的字节真的
             # 转出去（注释行不进 EventSource 的 message 回调）。
             yield ": " + " " * 2048 + "\n\n"

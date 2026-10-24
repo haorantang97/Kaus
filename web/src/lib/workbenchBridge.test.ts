@@ -3,6 +3,18 @@ import { connectModuleFrame, dispatchModuleRequest } from "./workbenchBridge";
 import * as api from "./workbenchApi";
 vi.mock("./workbenchApi",()=>({fetchWorkbenchModule:vi.fn(),fetchModuleJobs:vi.fn(),fetchModuleJob:vi.fn(),startModuleJob:vi.fn(),cancelModuleJob:vi.fn(),resumeModuleJob:vi.fn(),readModuleData:vi.fn(),writeModuleData:vi.fn(),fetchWorkflow:vi.fn(),saveWorkflow:vi.fn(),runWorkflow:vi.fn(),moduleBackendRequest:vi.fn()}));
 const ports: {port1:{close:ReturnType<typeof vi.fn>;start:ReturnType<typeof vi.fn>;postMessage:ReturnType<typeof vi.fn>;onmessage:((e:MessageEvent)=>Promise<void>)|null};port2:object}[]=[];
+it("fixed editor requires an enabled module, declared permission, grant and native host",async()=>{
+ const chatcut=vi.fn().mockResolvedValue({accepted:true}),ui={chatcut,confirm:vi.fn(),copy:vi.fn(),external:vi.fn()},open=vi.fn();
+ const module={id:"fixed",name:"App",enabled:true,permissions:["editor:chatcut"],grants:["editor:chatcut"]} as api.WorkbenchModule;
+ vi.mocked(api.fetchWorkbenchModule).mockResolvedValue(module);
+ expect(await dispatchModuleRequest("fixed",{id:"1",method:"editor.chatcut",params:{action:"hide"}},open,ui)).toEqual({accepted:true});
+ for(const value of [{...module,enabled:false},{...module,grants:[]},{...module,permissions:[]}]) {
+  vi.mocked(api.fetchWorkbenchModule).mockResolvedValue(value);
+  await expect(dispatchModuleRequest("fixed",{id:"2",method:"editor.chatcut",params:{action:"hide"}},open,ui)).rejects.toThrow("scope_denied");
+ }
+ await expect(dispatchModuleRequest("fixed",{id:"3",method:"editor.chatcut"},open)).rejects.toThrow("method_not_allowed");
+ expect(chatcut).toHaveBeenCalledTimes(1);
+});
 beforeEach(()=>{vi.clearAllMocks();ports.length=0;vi.stubGlobal("MessageChannel",class{port1={close:vi.fn(),start:vi.fn(),postMessage:vi.fn(),onmessage:null};port2={};constructor(){ports.push(this);}});});
 afterEach(()=>vi.unstubAllGlobals());
 it("accepts only this opaque frame and revokes its old port on reload",async()=>{

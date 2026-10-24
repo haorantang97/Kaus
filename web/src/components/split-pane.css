@@ -4,7 +4,7 @@
 .kaus-split-handle::before { content:""; position:absolute; top:0; bottom:0; width:1px; background:var(--border-subtle, #8882); }
 .kaus-split-handle span { width:3px; height:26px; border-radius:4px; background:color-mix(in srgb,var(--midground-base) 28%,transparent); }
 .kaus-split-handle:hover,.kaus-split-handle:focus-visible { background:var(--control-hover); }
-.kaus-split-handle:focus-visible { outline:2px solid var(--control-focus); }
+.kaus-split-handle:focus-visible { outline: none; }
 .kaus-split-pane[data-pane-dragging] { cursor:col-resize; user-select:none; }
 .kaus-split-pane[data-pane-dragging] iframe { pointer-events:none; }
 .kaus-split-shield { position:absolute; inset:0; z-index:3; cursor:col-resize; pointer-events:auto; }

@@ -7,6 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import tempfile
 
 from drivers.base import UnsupportedCapabilityError
 from drivers.projection_store import atomic_write_text
@@ -14,14 +15,23 @@ from .common import materialize, selection_of, unsupported
 
 
 async def inspect(executable, spec, cwd, *args):
-    process = await asyncio.create_subprocess_exec(executable, 'debug', *args, cwd=cwd,
-        env=spec.build_env(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-    try:
-        output, _ = await asyncio.wait_for(process.communicate(), 30)
-    except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
-        raise UnsupportedCapabilityError('原生项目配置验证超时')
+    # Some CLI releases exit before flushing a large JSON value to a pipe.
+    # A private regular file avoids truncated permission inventories. It is
+    # removed on close and never copied into project configuration or logs.
+    with tempfile.TemporaryFile() as stdout:
+        process = await asyncio.create_subprocess_exec(executable, 'debug', *args, cwd=cwd,
+            env=spec.build_env(), stdout=stdout, stderr=asyncio.subprocess.DEVNULL)
+        try:
+            await asyncio.wait_for(process.communicate(), 30)
+        except BaseException as exc:
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
+            if isinstance(exc, asyncio.TimeoutError):
+                raise UnsupportedCapabilityError('原生项目配置验证超时') from exc
+            raise
+        stdout.seek(0)
+        output = stdout.read()
     if process.returncode:
         raise UnsupportedCapabilityError('原生引擎未提供项目配置查询')
     try:

@@ -3,7 +3,7 @@
 .kaus-pdf-controls button { display: grid; place-items: center; width: 30px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
 .kaus-pdf-controls button:hover:not(:disabled) { background: color-mix(in srgb, var(--midground-base) 7%, transparent); }
 .kaus-pdf-controls button:disabled { cursor: default; opacity: .35; }
-.kaus-pdf-controls button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.kaus-pdf-controls button:focus-visible { outline: none; }
 .kaus-pdf-status { margin: 8px 0; font-size: 13px; color: color-mix(in srgb, var(--midground-base) 55%, transparent); }
 .kaus-pdf-canvas { display: block; max-width: 100%; background: white; box-shadow: 0 2px 18px #00000012; }
 .kaus-pdf-canvas[hidden] { display: none; }

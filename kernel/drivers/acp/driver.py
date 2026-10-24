@@ -124,6 +124,11 @@ from drivers.base import (
     unknown_auth_state,
 )
 from drivers.acp.mcp_projection import project_mcp_servers
+from drivers.discovery_scope import (
+    DiscoveryCredentialsUnavailable, configuration_paths, isolated_agent_spec,
+    prepare_discovery_credentials,
+)
+from drivers.model_discovery_access import connection_configured, offered_models
 from drivers.instructions_projection import (
     INSTRUCTIONS_MARKER,
     INVALID_DETAIL,
@@ -143,6 +148,7 @@ from runtime.capability_matrix import (
 from runtime.event_envelope import AgentEventEnvelope
 
 DRIVER_VERSION: str = "0.1.0"
+AUTH_STATUS_WAIT_SECONDS = 6.0
 
 _SENTINEL = object()
 
@@ -239,7 +245,7 @@ class _CatalogSnapshot:
     connect_hint: str | None = None
 
     def is_fresh(self, now: datetime, ttl: float = CATALOG_TTL_SECONDS) -> bool:
-        return (now - self.fetched_at).total_seconds() < ttl
+        return (now - self.fetched_at).total_seconds() < (min(ttl, 5.0) if self.degraded else ttl)
 
 
 @dataclass
@@ -352,6 +358,7 @@ class AcpDriver:
         #: :data:`CATALOG_TTL_SECONDS`）。
         self._catalog: dict[str, _CatalogSnapshot] = {}
         self._catalog_config_stamps: dict[str, tuple] = {}
+        self._selection_catalog: dict[tuple[str, str], tuple[tuple, _CatalogSnapshot]] = {}
         self._runtimes: dict[str, _RuntimeState] = {}
         self._skill_plans: dict[str, Any] = {}
         self._computer_use_plans: dict[str, dict] = {}
@@ -379,6 +386,10 @@ class AcpDriver:
         policy_factory = getattr(adapter, "session_start_retry_policy", None)
         retry_policy = await policy_factory(actual_spec) if policy_factory is not None else None
         connection = await AcpConnection.spawn(actual_spec)
+        connection.native_auth_state = None
+        connection.native_auth_event = asyncio.Event()
+        connection.native_auth_expected = False
+        connection.on_notification = lambda method, params: self._capture_auth_status(connection, method, params)
         connection.session_start_retry_policy = retry_policy
         connection.graceful_shutdown_timeout = getattr(adapter, "GRACEFUL_SHUTDOWN_TIMEOUT", None)
         try:
@@ -391,6 +402,8 @@ class AcpDriver:
             except AcpTransportError as exc:
                 spawn_failure = await self._handshake_failure(connection, exc)
                 raise spawn_failure or exc from exc
+            meta = ((result.get("agentCapabilities") or {}).get("_meta") or {}) if isinstance(result, Mapping) else {}
+            connection.native_auth_expected = isinstance(meta, Mapping) and "authStatus" in meta
             self._absorb_initialize(result)
             return connection, result
         except BaseException:
@@ -541,7 +554,9 @@ class AcpDriver:
             native_default = resolve_mode_id(self._approval_mode_for(binding.id), permission_options, self.preset.approval_mode_ids or None if self.preset else None) or native_default
         approval_default = next((option["id"] for option in choices if option.get("nativeId") == native_default), None)
         return {
-            "reasoning": self.quirks.model_id_format == "effort_suffix"
+            "model": bool(snapshot and snapshot.model_option_id) or (
+                self.quirks.model_switch != "none" and (snapshot is None or bool(snapshot.models))),
+            "reasoning": (self.quirks.model_id_format == "effort_suffix" and not (snapshot and snapshot.model_option_id))
             or (self.quirks.supports_set_mode and self.quirks.mode_semantics == "thought_level")
             or bool(snapshot and snapshot.thought_option_id and snapshot.thought_levels),
             "reasoningDefault": snapshot.current_thought_level if snapshot else None,
@@ -705,7 +720,8 @@ class AcpDriver:
         return self._model_catalog_from_snapshot(binding, snapshot, capabilities)
 
     async def runtime_model_catalog(self, runtime: RuntimeHandle, binding: AgentBinding) -> ModelCatalog:
-        snapshot = self._snapshot_from_session(self._state(runtime).session_result)
+        state = self._state(runtime)
+        snapshot = self._with_connection_auth(self._snapshot_from_session(state.session_result), state.connection)
         return self._model_catalog_from_snapshot(binding, snapshot, await self.get_capabilities())
 
     @staticmethod
@@ -740,11 +756,52 @@ class AcpDriver:
         self._catalog_config_stamps[binding.id] = stamp
         return snapshot
 
+    async def preview_model_settings(self, binding: AgentBinding, model_id: str) -> tuple[ModelCatalog, dict]:
+        """Discover model-dependent controls without sending a prompt or changing defaults."""
+        snapshot = await self._catalog_snapshot(binding)
+        if snapshot.model_option_id and self.quirks.model_id_format == "effort_suffix":
+            base = _strip_effort_suffix(model_id)
+            ids = {item.model_id for item in snapshot.models}
+            if model_id not in ids and base in ids:
+                model_id = base
+        if snapshot.current_model_id != model_id and not snapshot.degraded:
+            key = (binding.id, model_id)
+            stamp = self._config_stamp(binding)
+            cached = self._selection_catalog.get(key)
+            if cached and cached[0] == stamp and cached[1].is_fresh(_now()):
+                snapshot = cached[1]
+            else:
+                snapshot = await self._probe_catalog(binding, model_id=model_id)
+                if len(self._selection_catalog) >= 64:
+                    self._selection_catalog.pop(next(iter(self._selection_catalog)))
+                self._selection_catalog[key] = (stamp, snapshot)
+        catalog = self._model_catalog_from_snapshot(binding, snapshot, await self.get_capabilities())
+        return catalog.model_copy(update={"default_model_id": snapshot.current_model_id}), self._controls_from_snapshot(binding, snapshot)
+
     def _config_stamp(self, binding: AgentBinding) -> tuple:
         """Invalidate model discovery after external configuration changes."""
-        if self.preset is None or not self.preset.config_root_default:
-            return ()
+        import shutil
         environment = self.agent_spec.build_env()
+        stamps = []
+        for path in configuration_paths(environment, self.preset.id if self.preset else None):
+            try:
+                stat = path.stat()
+                stamps.append((str(path), stat.st_mtime_ns, stat.st_size, stat.st_ino))
+            except OSError:
+                stamps.append((str(path), None))
+        # An installed engine/adapter may change without changing its config.
+        # This also works for custom connections with no named preset.
+        command = self.agent_spec.command
+        executable = shutil.which(command[0], path=environment.get("PATH")) if command else None
+        for raw in ([executable] if executable else []) + [arg for arg in command[1:] if Path(arg).is_absolute()]:
+            try:
+                path = Path(raw)
+                stat = path.stat()
+                stamps.append((str(path), stat.st_mtime_ns, stat.st_size, stat.st_ino))
+            except OSError:
+                stamps.append((raw, None))
+        if self.preset is None or not self.preset.config_root_default:
+            return tuple(stamps)
         explicit_root = environment.get(self.preset.config_root_env or "")
         root = Path(explicit_root or self.preset.config_root_default).expanduser()
         if not explicit_root and self.preset.config_xdg_dir and environment.get("XDG_CONFIG_HOME"):
@@ -753,7 +810,6 @@ class AcpDriver:
         workspace = self._workspace_root_for(binding.id)
         if workspace:
             roots.append(Path(workspace) / (self.preset.workspace_config_dir if self.preset.workspace_config_dir is not None else Path(self.preset.config_root_default).name))
-        stamps = []
         for folder in roots:
             for name in self.preset.config_watch_files:
                 paths = sorted(folder.glob(name)) if "*" in name else [folder / name]
@@ -767,21 +823,28 @@ class AcpDriver:
                         stamps.append((str(path), None))
         return tuple(stamps)
 
-    async def _probe_catalog(self, binding: AgentBinding) -> _CatalogSnapshot:
-        """起一条短命连接、开一个会话、抄下目录、**把会话收掉**。
+    async def _probe_catalog(self, binding: AgentBinding, *, model_id: str | None = None) -> _CatalogSnapshot:
+        """Read native selectors in disposable storage, without a model prompt."""
+        family = self.preset.id if self.preset else None
+        if connection_configured(self.agent_spec, family) is False:
+            hint = login_diagnostic(self._login_command())
+            return _CatalogSnapshot(fetched_at=_now(), auth_state="signed_out",
+                degraded=True, diagnostics=(hint,), auth_hint=hint)
+        with isolated_agent_spec(self.agent_spec,
+                preset_id=self.preset.id if self.preset else None,
+                workspace=self._workspace_root_for(binding.id)) as spec:
+            try:
+                await prepare_discovery_credentials(spec, self.agent_spec.build_env(),
+                    preset_id=self.preset.id if self.preset else None)
+            except DiscoveryCredentialsUnavailable as exc:
+                return _CatalogSnapshot(fetched_at=_now(), degraded=True,
+                    auth_state="signed_out" if exc.signed_out else "unknown",
+                    diagnostics=(str(exc),), auth_hint=str(exc))
+            return await self._probe_catalog_in_scope(binding, spec, model_id=model_id)
 
-        三条纪律：
-
-        1. **不留会话。** 探测开出来的会话不进账本（那不是用户的会话），走之前
-           发一次 ``session/cancel`` 并关掉连接。ACP 的 stdio 形态里「关掉进程」
-           本身就是最彻底的收尾，取消只是礼貌地告诉它别再干活了。
-        2. **不代登录。** 撞上「要先登录」只记录状态与那句修法，一次
-           ``authenticate`` 都不发（AD-93 own-auth）。
-        3. **认不出来的失败照实说。** 既不是登录问题也读不出模型时，返回空目录 +
-           degraded + 引擎自己那句话，不编「引擎未报告可用模型」。
-        """
+    async def _probe_catalog_in_scope(self, binding, spec, *, model_id=None):
         try:
-            connection, _init = await self._connect()
+            connection, _init = await self._connect(agent_spec=spec)
         except (AcpTransportError, AcpRpcError) as exc:
             return _CatalogSnapshot(
                 fetched_at=_now(),
@@ -794,9 +857,11 @@ class AcpDriver:
             result, _params = await self._new_session(
                 connection,
                 CreateSessionOptions(
-                    workspace_root=self._workspace_root_for(binding.id)
+                    workspace_root=spec.cwd
                 ),
             )
+            if model_id:
+                result = await self._select_probe_model(connection, result, model_id)
         except AcpRpcError as exc:
             failure = self._auth_failure(exc)
             if failure is not None:
@@ -821,10 +886,66 @@ class AcpDriver:
                 connect_hint=_connect_hint(exc),
             )
         else:
-            snapshot = self._snapshot_from_session(result)
+            await self._await_connection_auth(connection)
+            snapshot = self._with_connection_auth(self._snapshot_from_session(result), connection)
         finally:
             await self._close_probe_session(connection, result)
         return snapshot
+
+    @staticmethod
+    def _capture_auth_status(connection, method, params):
+        # ACP extension advertised by native adapters. No brand-name branching
+        # and no interpreting silence as a logged-out account.
+        if method != "_auth/status_update" or not isinstance(params, Mapping):
+            return
+        status = params.get("authStatus")
+        kind = status.get("kind") if isinstance(status, Mapping) else None
+        if kind == "none":
+            connection.native_auth_state = "signed_out"
+        elif kind in {"account", "api_key", "gateway", "external"}:
+            connection.native_auth_state = "signed_in"
+        if kind in {"none", "account", "api_key", "gateway", "external"}:
+            event = getattr(connection, "native_auth_event", None)
+            if event is not None:
+                event.set()
+
+    @staticmethod
+    async def _await_connection_auth(connection):
+        # Advertised auth is a separate asynchronous push. session/new can
+        # finish first; closing immediately would discard the login result.
+        if (getattr(connection, "native_auth_expected", False)
+                and getattr(connection, "native_auth_state", None) is None):
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(connection.native_auth_event.wait(), AUTH_STATUS_WAIT_SECONDS)
+
+    def _with_connection_auth(self, snapshot, connection):
+        auth = getattr(connection, "native_auth_state", None)
+        if auth == "signed_out":
+            hint = login_diagnostic(self._login_command())
+            return replace(snapshot, models=(), model_option_id=None,
+                engine_default_available=False, auth_state=auth, degraded=True,
+                auth_hint=hint, diagnostics=(hint,))
+        if auth is None and getattr(connection, "native_auth_expected", False):
+            return replace(snapshot, models=(), model_option_id=None,
+                engine_default_available=False, auth_state="unknown", degraded=True,
+                diagnostics=("暂时无法读取引擎登录状态",))
+        return replace(snapshot, auth_state=auth) if auth else snapshot
+
+    async def _select_probe_model(self, connection: AcpConnection, result: dict, model_id: str) -> dict:
+        """Use the transport's session-local selector for a disposable preview."""
+        config = self._config_options(result)
+        if config.model_option_id:
+            reply = await self._call_config_option(connection, result["sessionId"], config.model_option_id, model_id)
+            if not isinstance(reply, Mapping) or not isinstance(reply.get("configOptions"), list):
+                raise AcpTransportError("引擎未返回模型配置")
+            result = {**result, **reply}
+            if self._config_options(result).current_model_id != model_id:
+                raise AcpTransportError("引擎未确认所选模型")
+        elif self.quirks.model_switch == "set_model":
+            reply = await connection.call("session/set_model", {"sessionId": result["sessionId"], "modelId": model_id}, timeout=self._call_timeout)
+            result = {**result, **(reply if isinstance(reply, Mapping) else {})}
+            result["models"] = {**result.get("models", {}), "currentModelId": model_id}
+        return result
 
     async def _close_probe_session(self, connection: AcpConnection, result: Any) -> None:
         """收掉探测会话：能取消就取消，然后一律关连接。
@@ -845,14 +966,14 @@ class AcpDriver:
     def _snapshot_from_session(self, result: Any) -> _CatalogSnapshot:
         """一次成功的 ``session/new`` / ``session/resume`` 结果 → 快照。
 
-        模型有**两个来源**（批次三十二取证）：``models.availableModels`` 与
-        ``configOptions`` 里 ``category == "model"`` 的那一项。两处都读，先到先得；
-        两处都空就是空目录（那时 degraded，并说一句为什么）。
+        标准 ``configOptions`` 的模型项优先；旧版 ``models`` 用作兼容来源。
         """
         config = self._config_options(result)
-        models = models_from_session_result(result) or config.models
-        models = tuple(self._label_model(model) for model in models)
-        if self.quirks.model_id_format == "effort_suffix":
+        # The current session's standard selectors outrank legacy preset data.
+        models = config.models if config.model_option_id else models_from_session_result(result)
+        models = offered_models(tuple(self._label_model(model) for model in models),
+            self.agent_spec, self.preset.id if self.preset else "", self._default_cwd)
+        if self.quirks.model_id_format == "effort_suffix" and not config.model_option_id:
             levels: dict[str, list[str]] = {}
             for model in models:
                 base = _strip_effort_suffix(model.model_id)
@@ -861,11 +982,12 @@ class AcpDriver:
                     if effort not in levels.setdefault(base, []):
                         levels[base].append(effort)
             models = tuple(model.model_copy(update={"reasoning_levels": tuple(levels.get(_strip_effort_suffix(model.model_id), model.reasoning_levels))}) for model in models)
-        current = current_model_from_session_result(result) or config.current_model_id
+        current = config.current_model_id if config.model_option_id else current_model_from_session_result(result)
         # A custom route may report only its active model. Keep that observed
         # selection visible without inventing a provider-wide model catalog.
         if current and not any(model.model_id == current for model in models):
-            models = (*models, self._label_model(ModelDescriptor(model_id=current)))
+            models = (*models, *offered_models((self._label_model(ModelDescriptor(model_id=current)),),
+                self.agent_spec, self.preset.id if self.preset else "", self._default_cwd))
         modes = tuple(
             mode_id
             for mode_id in (
@@ -875,9 +997,12 @@ class AcpDriver:
         )
         if self.quirks.mode_semantics == "thought_level":
             models = tuple(model.model_copy(update={"reasoning_levels": config.thought_levels or modes}) for model in models)
-        elif config.thought_option_id and self.quirks.model_id_format != "effort_suffix":
+        elif config.thought_option_id:
             models = tuple(model.model_copy(update={"reasoning_levels": config.thought_levels}) for model in models)
-        engine_default = bool(isinstance(result, Mapping) and result.get("sessionId") and not models and self.quirks.model_switch == "none")
+        # A successfully opened session without a model selector can use its
+        # native default. Stale preset claims must not invent a missing picker
+        # or turn this valid state into a discovery failure.
+        engine_default = bool(isinstance(result, Mapping) and result.get("sessionId") and not models and not config.model_option_id)
         return _CatalogSnapshot(
             fetched_at=_now(),
             models=models,
@@ -1201,7 +1326,7 @@ class AcpDriver:
         finally:
             await connection.aclose()
         session_id = _require_session_id(result)
-        self._remember_models(binding.id, result)
+        self._remember_models(binding.id, result, connection=connection)
         session = NativeSession(
             native_session_id=session_id,
             binding_id=binding.id,
@@ -1595,8 +1720,8 @@ class AcpDriver:
         return self._skill_adapter() is not None
 
     def coordinator_selection(self, model_id: str, reasoning_mode: str | None) -> str:
-        if reasoning_mode and self.quirks.model_id_format == 'effort_suffix':
-            return f'{_strip_effort_suffix(model_id)}[{reasoning_mode}]'
+        # The coordinator shares the normal session path. Transport-specific
+        # effort encoding is applied only after the session protocol is known.
         return model_id
 
     def group_context_isolation(self) -> bool:
@@ -1728,7 +1853,7 @@ class AcpDriver:
                 await after_session(connection, spec, conversation, runtime_metadata, session_id)
             mode_id = None
             # Cache the engine's defaults before applying this conversation's overrides.
-            self._remember_models(conversation.agent_binding_id, result)
+            self._remember_models(conversation.agent_binding_id, result, connection=connection)
             if is_host_approval(conversation.approval_mode):
                 if not getattr(self.preset, "host_approval", False):
                     raise UnsupportedCapabilityError("当前引擎未提供审批委托。")
@@ -1871,10 +1996,14 @@ class AcpDriver:
         if not selected_model and conversation.reasoning_mode and self.quirks.model_id_format == "effort_suffix":
             selected_model = self._catalog[conversation.agent_binding_id].current_model_id
         try:
-            if selected_model and self.quirks.model_switch != "none":
+            if selected_model and (self._config_options(state.session_result).model_option_id or self.quirks.model_switch != "none"):
                 await self.set_conversation_model(handle, selected_model)
             config = self._config_options(state.session_result)
             wanted_effort = conversation.reasoning_mode or self._binding_reasoning_effort(conversation.agent_binding_id)
+            if not wanted_effort and selected_model and self.quirks.model_id_format == "effort_suffix":
+                base = _strip_effort_suffix(selected_model)
+                if base != selected_model:
+                    wanted_effort = selected_model[len(base) + 1:-1]
             if config.thought_option_id and wanted_effort:
                 await self._set_reasoning_config(state, wanted_effort)
             for key, value in conversation.config_options.items():
@@ -1996,13 +2125,15 @@ class AcpDriver:
                     model_id = snapshot.current_model_id if snapshot is not None else None
                 if not model_id:
                     raise UnsupportedCapabilityError("请先选择模型。")
-                if conversation.reasoning_mode and self.quirks.model_id_format == "effort_suffix":
-                    model_id = f"{_strip_effort_suffix(model_id)}[{conversation.reasoning_mode}]"
+                # Native config values are opaque. Legacy model/effort encoding
+                # belongs only to the session/set_model transport below.
                 await self._set_conversation_model_locked(runtime, model_id, reasoning_mode=conversation.reasoning_mode)
             if model_changed and state.config_revision != config_revision:
                 applied = self._config_options(state.session_result)
                 if applied.thought_option_id and applied.current_thought_level:
                     conversation = conversation.evolve(reasoning_mode=applied.current_thought_level)
+                elif config.thought_option_id and not applied.thought_option_id:
+                    conversation = conversation.evolve(reasoning_mode=None)
             conversation = self._confirmed_config_values(conversation, state.session_result)
             state.conversation = conversation
             return conversation
@@ -2010,34 +2141,13 @@ class AcpDriver:
     async def _set_conversation_model_locked(
         self, runtime: RuntimeHandle, model_id: str, *, reasoning_mode: str | None = None
     ) -> str:
-        """给一条**活着的** ACP 会话换模型（批次二十六第 5 件⑤ / AD-114 的下发面）。
+        """Apply a native session selector and preserve rejection diagnostics.
 
-        在此之前 ``supports_set_model`` 只是能力表上的一位声明：界面据它显示了
-        会话级模型下拉，可用户改完之后，那个值只落在 Kaus 的会话快照里，
-        agent 那边一无所知——下一轮仍按它自己的默认模型跑。声明与实测之间隔着
-        一个没写的调用面，而能力表看不出这一点（AD-151 的三层优先级管的是
-        「声明 vs initialize」，管不了「声明 vs 我们有没有实现」）。
-
-        三条口径，与 :meth:`_apply_set_mode` 同源：
-
-        1. **按怪癖表分支，不按 agent 名字。** ``supports_set_model`` 为假就
-           抛 :class:`UnsupportedCapabilityError`，一次 RPC 都不发。
-        2. **被拒是被拒，不是不支持。** agent 回错误就抛
-           :class:`ModelRejectedError` 并原样带上它那句话——接入层据此回 400
-           ``model_rejected``，用户能看懂并换一个。压成「不支持」会让他以为
-           这台引擎从来不能换模型。
-        3. **只带 agent 那句话，不带请求参数。** 错误的 ``data`` 里可能回显我们
-           发过去的东西；这条路径上没有凭据，但「只回显消息文本」是更省心的
-           默认（§5.4 的同一条精神）。
-
-        AD-158 之后这条路有**两种下发面**，由 ``model_switch`` 说了算：协议里的
-        ``session/set_model``，与真机上另外四家用的 ``session/set_config_option``
-        （``optionId = "model"``）。第二条不是我们发明的扩展——它是这些引擎唯一
-        的换模型入口（``set_model`` 一律 -32601）。走哪条由目录决定，Driver 里
-        仍然没有一个产品名。
+        Standard configOptions take precedence over legacy transport quirks;
+        only verified legacy transports use session/set_model or mode IDs.
         """
         state = self._state(runtime)
-        switch = self.quirks.model_switch
+        switch = "config_option" if self._config_options(state.session_result).model_option_id else self.quirks.model_switch
         if switch == "none":
             raise UnsupportedCapabilityError(
                 "这台引擎没有会话级换模型的入口（session/set_model 与 "
@@ -2082,6 +2192,13 @@ class AcpDriver:
            ``"model"``（取证到的四家都叫这个名字，但那是巧合不是协议）。
         """
         snapshot = self._snapshot_from_session(state.session_result) if getattr(state, "session_result", None) else self._catalog.get(state.handle.binding_id)
+        # Existing conversations may store a legacy combined selection. Only
+        # decode it when the new catalog confirms the base id and effort.
+        if snapshot and self.quirks.model_id_format == "effort_suffix" and snapshot.thought_option_id:
+            ids = {model.model_id for model in snapshot.models}
+            base = _strip_effort_suffix(model_id)
+            if model_id not in ids and base in ids and model_id[len(base) + 1:-1] in snapshot.thought_levels:
+                model_id = base
         option_id = (
             snapshot.model_option_id
             if snapshot is not None and snapshot.model_option_id
@@ -2093,6 +2210,10 @@ class AcpDriver:
         result = await self._call_config_option(state.connection, state.session_id, option_id, value)
         if isinstance(result, Mapping) and isinstance(result.get("configOptions"), list):
             self._accept_config_update(state, result)
+            actual = next((entry.get("currentValue") for entry in result["configOptions"]
+                           if isinstance(entry, Mapping) and entry.get("id") == option_id), None)
+            if actual != value:
+                raise AcpTransportError("引擎未确认所选配置")
         elif getattr(state, "session_result", None):
             # Older engines acknowledge without returning the updated catalog.
             for entry in state.session_result.get("configOptions", []):
@@ -2745,16 +2866,30 @@ class AcpDriver:
         metadata = self._computer_use_contexts.get(conversation.id, (None, {}))[1]
         native_command = computer_external_command(native_command, adapter, metadata, scoped=plan is not None)
         from drivers.terminals.environment import selected_environment
+        # The card may have a per-conversation loader/configuration overlay.
+        # The terminal must receive that same environment, not the unprepared
+        # connection defaults. Native history roots stay wherever the driver
+        # selected them; only probes/tests choose a temporary home.
+        terminal_spec = getattr(plan, "spec", None) or self.agent_spec
+        terminal_context = getattr(adapter, "external_cli_context", None)
+        if terminal_context is not None:
+            native_command, terminal_spec = terminal_context(native_command, terminal_spec, metadata)
+        prepare_terminal = getattr(adapter, "prepare_terminal_launch", None)
+        if prepare_terminal is not None:
+            native_command, terminal_spec = await prepare_terminal(native_command, terminal_spec, metadata,
+                conversation=conversation, binding=self._bindings.get(conversation.agent_binding_id))
+        terminal_env = terminal_spec.build_env()
         return CliLaunchSpec(
             command=native_command,
-            private_env=selected_environment(self.agent_spec, preset.env_keys_hint),
+            private_env=selected_environment(terminal_spec, preset.env_keys_hint),
             terminal_integration=preset.id,
             config_directory=(
-                (preset.config_root_env, str(Path(self.agent_spec.build_env().get(
+                (preset.config_root_env, str(Path(terminal_env.get(
                     preset.config_root_env) or preset.config_root_default).expanduser().resolve()))
                 if preset.config_root_env and preset.config_root_default else None
             ),
-            path_prefix=tuple(part for part in search_path.split(os.pathsep) if part and os.path.isabs(part)),
+            path_prefix=tuple(part for part in terminal_env.get("PATH", search_path).split(os.pathsep)
+                              if part and os.path.isabs(part)),
             cwd=self._workspace_root_for(conversation.agent_binding_id)
             or self._default_cwd,
             # v1.0 §16.6：只带变量**名**，一个值都不带。
@@ -2768,6 +2903,11 @@ class AcpDriver:
     # ------------------------------------------------------------------ #
 
     def _on_notification(self, state: _RuntimeState, method: str, params: dict) -> None:
+        if method == "_auth/status_update":
+            self._capture_auth_status(state.connection, method, params)
+            self._catalog[state.conversation.agent_binding_id] = self._with_connection_auth(
+                self._snapshot_from_session(state.session_result), state.connection)
+            return
         if state.closed:
             return
         if state.client_interactions:
@@ -2995,14 +3135,17 @@ class AcpDriver:
         cwd = workspace_root or self._default_cwd or os.getcwd()
         return os.path.abspath(cwd)
 
-    def _remember_models(self, binding_id: str, result: Any) -> None:
+    def _remember_models(self, binding_id: str, result: Any, *, connection=None) -> None:
         """真实会话的 ``session/new`` 结果覆盖目录快照（AD-157 的「运行时失效」）。
 
         探测出来的那份是「十分钟前问的」，这一份是「此刻这条会话真的拿到的」——
         后者更新目录。仅创建本地记录的桥保留既有认证证据，直到原生提示成功或
         明确返回认证错误；静态模型目录不会被当作已登录。
         """
-        self._catalog[binding_id] = self._retain_auth_state(binding_id, self._snapshot_from_session(result))
+        snapshot = self._snapshot_from_session(result)
+        if connection is not None:
+            snapshot = self._with_connection_auth(snapshot, connection)
+        self._catalog[binding_id] = self._retain_auth_state(binding_id, snapshot)
         binding = self._bindings.get(binding_id)
         if binding is not None:
             self._catalog_config_stamps[binding_id] = self._config_stamp(binding)
@@ -3010,6 +3153,10 @@ class AcpDriver:
     def _retain_auth_state(self, binding_id: str, snapshot: _CatalogSnapshot) -> _CatalogSnapshot:
         previous = self._catalog.get(binding_id)
         if snapshot.auth_state == "unknown" and previous is not None and previous.auth_state != "unknown":
+            if previous.auth_state == "signed_out":
+                return replace(snapshot, auth_state="signed_out", auth_hint=previous.auth_hint,
+                    models=(), model_option_id=None, engine_default_available=False,
+                    degraded=True, diagnostics=previous.diagnostics)
             return replace(snapshot, auth_state=previous.auth_state, auth_hint=previous.auth_hint)
         return snapshot
 

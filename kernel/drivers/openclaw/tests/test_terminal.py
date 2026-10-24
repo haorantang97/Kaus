@@ -40,6 +40,7 @@ async def test_terminal_uses_gateway_key_and_private_target_after_current_settin
     assert driver.start_runtime.call_args.args[0] == conv
     assert launch.private_env['OPENCLAW_GATEWAY_TOKEN'] == credential.read_text()
     assert launch.private_env['OPENCLAW_GATEWAY_URL'] == 'ws://127.0.0.1:12345'
+    assert launch.config_directory == ('OPENCLAW_STATE_DIR', str(tmp_path / 'state'))
     assert credential.read_text() not in launch.model_dump_json() and credential.read_text() not in repr(launch)
     driver.stop_runtime.assert_awaited_once()
 

@@ -58,6 +58,7 @@ def setup_driver():
     })})
     driver._runtime_adapter = lambda: adapter
     driver.gateway = GatewayFixture()
+    driver._configured_default_model = lambda _binding: "first/shared"
     harness = FakeAcpHarness(backend_key="openclaw")
     project = harness.make_project()
     binding = harness.make_binding(project, driver)
@@ -210,3 +211,15 @@ async def test_fixed_native_session_cannot_be_used_for_independent_group_role(ro
     assert not driver.group_context_isolation()
     with pytest.raises(UnsupportedCapabilityError, match="固定了原生会话"):
         await driver.start_runtime(harness.make_conversation(project, binding), "card")
+
+
+async def test_draft_model_preview_reads_gateway_without_creating_or_patching_sessions():
+    driver, harness, project, binding = setup_driver()
+    default = await driver.get_model_catalog(binding)
+    catalog, controls = await driver.preview_model_settings(binding, "second/shared")
+    assert catalog.default_model_id == "second/shared"
+    assert controls["model"] is True
+    assert all(method == "models.list" for method, _ in driver.gateway.calls)
+    assert not driver.gateway.rows
+    assert (await driver.get_model_catalog(binding)).default_model_id == default.default_model_id == "first/shared"
+    assert not driver._runtimes

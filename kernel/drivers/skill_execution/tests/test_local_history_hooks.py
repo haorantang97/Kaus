@@ -137,7 +137,7 @@ async def test_explicit_local_hook_dispatch_reads_synthetic_native_files_only(tm
         assert first.complete and not first.missing
 
 
-@pytest.mark.parametrize('engine',['antigravity','cursor','deepseek','dsh'])
+@pytest.mark.parametrize('engine',['antigravity'])
 async def test_adapters_without_verified_local_reader_do_not_fall_back_to_service(engine):
     adapter=importlib.import_module('drivers.skill_execution.'+engine)
     assert not hasattr(adapter,'load_local_native_history')

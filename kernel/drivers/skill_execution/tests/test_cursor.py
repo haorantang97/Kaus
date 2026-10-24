@@ -55,7 +55,7 @@ async def test_snapshots_are_immutable_independent_and_keep_identity(tmp_path, m
     assert first.spec.env['NODE_OPTIONS'].startswith('--no-warnings --require=')
     assert Path(first.spec.env['KAUS_CURSOR_SKILL_SCOPE']).read_bytes()==before
     assert json.loads(Path(second.spec.env['KAUS_CURSOR_SKILL_SCOPE']).read_text())['paths']==[]
-    with pytest.raises(UnsupportedCapabilityError):adapter.cli_command(first,('cursor-agent','--resume','same-id'))
+    assert adapter.cli_command(first,('cursor-agent','--resume','same-id')) == ('cursor-agent','--resume','same-id')
 
 
 async def test_native_service_guard_covers_dynamic_sources_plugins_and_slash_parser(tmp_path,monkeypatch):

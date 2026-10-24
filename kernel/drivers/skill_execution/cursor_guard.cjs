@@ -13,7 +13,9 @@ function once(code, anchor, replacement) {
 function install(scope) {
   const expected = new Map(Object.entries(scope.modules).map(([file, digest]) => [path.resolve(file), digest]));
   for (const [file, digest] of expected) if (hash(fs.readFileSync(file)) !== digest) throw Error('Cursor Skill loader version changed');
-  const paths = new Set(scope.paths.map(p => path.resolve(p)));
+  const paths = new Set((scope.paths||[]).map(p => path.resolve(p)));
+  const mcp = process.env.KAUS_CURSOR_TERMINAL_MCP ? JSON.parse(process.env.KAUS_CURSOR_TERMINAL_MCP) : null;
+  delete process.env.KAUS_CURSOR_TERMINAL_MCP;
   function allowed(value) {
     if (typeof value !== 'string' || !paths.has(path.resolve(value))) return false;
     try { return fs.realpathSync(value) === path.resolve(value); } catch { return false; }
@@ -35,7 +37,9 @@ function install(scope) {
       return typeof original === 'function' ? original.bind(target) : original;
     }});
   }
-  const guard = {allowed, roots, filterSkills, filterRules, filteredLoaded, pluginService};
+  const guard = {allowed, roots, filterSkills, filterRules, filteredLoaded, pluginService,
+    readMcp:async(file,read)=>{try{return await read()}catch(error){if(error.code==='ENOENT'&&mcp&&path.resolve(file)===path.resolve(mcp.path))return '{}';throw error}},
+    mergeMcp:(file,value)=>mcp&&path.resolve(file)===path.resolve(mcp.path)?{...value,mcpServers:{...value.mcpServers,...mcp.servers}}:value};
   globalThis[SYMBOL] = guard;
   const originalCompile = Module.prototype._compile;
   Module.prototype._compile = function(code, filename) {
@@ -43,6 +47,9 @@ function install(scope) {
     if (digest) {
       if (hash(code) !== digest) throw Error('Cursor Skill loader changed at runtime');
       if (path.basename(filename) === 'index.js') {
+        if(mcp)code=once(code,'const r=yield(0,i.readFile)(e,"utf8"),n=I((0,E.qg)(r),t);return P.parse(n)',
+          'const r=yield globalThis[Symbol.for("kaus.cursor.skill-scope")].readMcp(e,()=>(0,i.readFile)(e,"utf8")),n=I((0,E.qg)(r),t);return P.parse(globalThis[Symbol.for("kaus.cursor.skill-scope")].mergeMcp(e,n))');
+        if(scope.paths!==null){
         code = once(code, 'this.pluginsService=n,this.onChangeCallbacks=new Set,this.currentImportSettings=',
           'this.pluginsService=globalThis[Symbol.for("kaus.cursor.skill-scope")].pluginService(n),this.onChangeCallbacks=new Set,this.currentImportSettings=');
         code = once(code, 'Tp.CHANGE_COALESCE_MS=1500;', 'Tp.CHANGE_COALESCE_MS=1500;' + `
@@ -56,9 +63,12 @@ function install(scope) {
            Tp.prototype.getAllAgentSkills=async function(ctx){return g.filterSkills(await skills.call(this,ctx))};
            xs.prototype.getAllCursorRules=async function(ctx){return g.filterRules(await rules.call(this,ctx))};
           }`);
+        }
       } else if (path.basename(filename) === '1348.index.js') {
+        if(scope.paths!==null){
         code = once(code, 'loadSkillRoots(e){return ', 'loadSkillRoots(e){e=globalThis[Symbol.for("kaus.cursor.skill-scope")].roots.map(dirPath=>({dirPath,source:"workspace"}));return ');
         code = once(code, 'parseSkillMarkdown(e,t,r,n){', 'parseSkillMarkdown(e,t,r,n){if(!globalThis[Symbol.for("kaus.cursor.skill-scope")].allowed(n))return null;');
+        }
       } else throw Error('Unknown Cursor Skill module');
     }
     return originalCompile.call(this, code, filename);

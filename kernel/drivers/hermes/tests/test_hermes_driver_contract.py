@@ -163,3 +163,10 @@ class TestDeclaredCapabilitiesMatchBehaviour:
         assert all("=" not in name for name in spec.env_passthrough)
         # 规格 §2.9 的「不允许的形态」：绝不把 env 值塞进启动规格。
         assert "env" not in spec.command
+        assert spec.config_directory == ("HERMES_HOME", str(driver.gateway_config_for(binding).hermes_home))
+
+        changed = await driver.build_external_cli_launch(conversation.evolve(
+            model_id="custom-model", provider_id="custom", reasoning_mode="high"))
+        assert changed.command == ("hermes", "-p", "coder", "--model", "custom-model",
+                                   "--provider", "custom", "--reasoning", "high", "chat",
+                                   "--resume", "api_1788339747_a7afdfa5")

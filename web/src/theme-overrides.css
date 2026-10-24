@@ -2849,7 +2849,7 @@ button.kaus-conversation-title:hover {
 .kaus-cap-tabs [role="tab"] > span { font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
 .kaus-cap-tabs [role="tab"]:focus-visible,
 .kaus-cap-icon-button:focus-visible,
-.kaus-project-more > summary:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.kaus-project-more > summary:focus-visible { outline: none; }
 
 .kaus-cap-value { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 .kaus-cap-summary { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
@@ -3913,7 +3913,7 @@ body.dark .kaus-cap-row.is-head {
   color: var(--background-base); border-color: var(--midground-base); font-weight: 600;
 }
 .kaus-button--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
-.kaus-button:focus-visible, .kaus-project-conversation:focus-visible, .ag-node-enter:focus-visible, .ag-node:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; }
+.kaus-button:focus-visible, .kaus-project-conversation:focus-visible, .ag-node-enter:focus-visible, .ag-node:focus-visible { outline: none; }
 .kaus-button:disabled { cursor: default; opacity: .42; box-shadow: none; }
 .kaus-project-primary, .kaus-project-secondary { min-height: 42px; padding: 10px 16px; font-size: 13px; }
 .ag-node-enter { position: relative; z-index: 1; display: inline-grid; place-items: center; align-self: center; width: 30px; height: 30px; margin-left: 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent-text) 25%, transparent); color: var(--accent-text); background: var(--surface-raised); cursor: pointer; }

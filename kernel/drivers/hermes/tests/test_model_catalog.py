@@ -60,7 +60,7 @@ def test_static_overrides_the_two_r14_consumer_fields() -> None:
     model = merged.catalog.models[0]
     assert model.context_window == 128000
     assert model.reasoning_levels == ("low", "medium", "high")
-    assert model.display_name == "DeepSeek V4 Flash"
+    assert model.display_name == "whatever"
     assert model.provider_id == "deepseek"
     assert merged.catalog.supports_reasoning is True
 
@@ -132,10 +132,10 @@ def test_engine_model_is_always_listed_even_with_no_providers_section() -> None:
     model = merged.catalog.models[0]
     assert model.provider_id == "openai-codex"
     assert model.display_name == "gpt-5.5"
-    assert any("未经引擎确认" in line for line in merged.diagnostics)
+    assert "显示当前配置的模型" in merged.diagnostics
 
 
-def test_engine_model_provider_pulls_in_its_static_siblings_normalized() -> None:
+def test_engine_model_does_not_add_static_siblings() -> None:
     """② 静态目录里 provider ∈（``providers`` 段 ∪ 引擎模型的 provider）的条目。
 
     静态目录写 ``OpenAI Codex``、引擎配置写 ``openai-codex``——归一化后是同一个。
@@ -156,11 +156,11 @@ def test_engine_model_provider_pulls_in_its_static_siblings_normalized() -> None
     )
     ids = [m.model_id for m in merged.catalog.models]
     assert ids[0] == "gpt-5.5", "引擎当前配置的模型排在最前"
-    assert set(ids) == {"gpt-5.5", "gpt-5.6-terra", "local-only-model"}
+    assert set(ids) == {"gpt-5.5"}
     assert "deepseek-v4-flash" not in ids, "没声明也不是引擎模型的 provider 不进"
 
 
-def test_no_dynamic_catalog_intersects_static_with_declared_providers() -> None:
+def test_provider_name_alone_does_not_populate_model_choices() -> None:
     """规格 §2.3 规则 4（批次十三改判）：动态不可用 → 静态 ∩ 引擎声明的 provider。
 
     **不要**退化到 ``/v1/models`` 的伪模型，也**不要**退化成静态全集——后者会把
@@ -174,9 +174,9 @@ def test_no_dynamic_catalog_intersects_static_with_declared_providers() -> None:
     )
     assert merged.degraded is True
     ids = {m.model_id for m in merged.catalog.models}
-    assert ids == {"deepseek-v4-flash"}, "没被声明的 provider（local）不该出现"
+    assert ids == set(), "provider 名称不能扩出公共模型目录"
     assert "hermes-agent" not in ids
-    assert any("provider" in line for line in merged.diagnostics)
+    assert "暂未取得模型列表" in merged.diagnostics
     # 诚实标记要上 wire，不能只活在 MergedCatalog 里。
     assert merged.catalog.degraded is True
     assert merged.catalog.diagnostics == merged.diagnostics
@@ -189,7 +189,7 @@ def test_no_dynamic_catalog_and_no_providers_is_an_empty_catalog() -> None:
     )
     assert merged.degraded is True
     assert merged.catalog.models == ()
-    assert "引擎未报告可用模型" in merged.diagnostics
+    assert "暂未取得模型列表" in merged.diagnostics
 
 
 def test_declared_provider_with_no_static_models_says_so() -> None:
@@ -201,7 +201,7 @@ def test_declared_provider_with_no_static_models_says_so() -> None:
         provider_ids=("nobody",),
     )
     assert merged.catalog.models == ()
-    assert any("可选模型为空" in line for line in merged.diagnostics)
+    assert "暂未取得模型列表" in merged.diagnostics
 
 
 def test_extra_diagnostics_are_carried_through() -> None:
@@ -439,7 +439,7 @@ def test_authenticated_inventory_is_not_a_model_entitlement():
     merged = catalog.merge_catalog(binding_id="b", dynamic=catalog.parse_model_options(payload), static={},
                                    default_model_id="current", default_provider_id="one")
     states = {model.model_id: model.availability for model in merged.catalog.models}
-    assert states == {"current": "configured", "generic": "unknown", "denied": "unavailable",
+    assert states == {"current": "available", "generic": "available", "denied": "unavailable",
                       "confirmed": "available", "blocked": "unavailable"}
 
 
@@ -456,3 +456,11 @@ def test_saved_custom_model_and_same_name_resellers_keep_their_routes():
     assert models[("original", "same")].context_window == 999
     assert models[("reseller", "same")].context_window is None
     assert models[("private", "custom")].availability == "configured"
+
+
+def test_signed_out_native_route_cannot_be_reintroduced_by_saved_selection():
+    dynamic = catalog.parse_model_options({"providers": [
+        {"slug": "account", "authenticated": False, "models": ["old-model"]}]})
+    merged = catalog.merge_catalog(binding_id="b", dynamic=dynamic, static={},
+        default_provider_id="account", default_model_id="old-model")
+    assert not merged.catalog.models

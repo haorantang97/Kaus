@@ -1,0 +1,240 @@
+{
+  "codex": {
+    "folder": ".codex",
+    "env": "CODEX_HOME",
+    "files": [
+      "config.toml",
+      "auth.json",
+      "models_cache.json"
+    ],
+    "workspace": [
+      ".codex/config.toml"
+    ]
+  },
+  "claude-code": {
+    "folder": ".claude",
+    "env": "CLAUDE_CONFIG_DIR",
+    "files": [
+      ".claude.json",
+      "settings.json",
+      "settings.local.json",
+      ".credentials.json"
+    ],
+    "workspace": [
+      ".claude/settings.json",
+      ".claude/settings.local.json",
+      ".mcp.json"
+    ]
+  },
+  "opencode": {
+    "folder": ".config/opencode",
+    "files": [
+      "opencode.json",
+      "opencode.jsonc"
+    ],
+    "workspace": [
+      "opencode.json",
+      "opencode.jsonc",
+      ".opencode/opencode.json",
+      ".opencode/opencode.jsonc"
+    ],
+    "data_folder": "opencode",
+    "data_files": [
+      "auth.json"
+    ]
+  },
+  "kilo": {
+    "folder": ".config/kilo",
+    "files": [
+      "kilo.json",
+      "kilo.jsonc"
+    ],
+    "workspace": [
+      "kilo.json",
+      "kilo.jsonc",
+      ".kilo/kilo.json",
+      ".kilo/kilo.jsonc"
+    ],
+    "data_folder": "kilo",
+    "data_files": [
+      "auth.json"
+    ]
+  },
+  "gemini": {
+    "folder": ".gemini",
+    "env": "GEMINI_CLI_HOME",
+    "files": [
+      "settings.json",
+      "oauth_creds.json",
+      "google_accounts.json"
+    ],
+    "workspace": [
+      ".gemini/settings.json"
+    ]
+  },
+  "qwen": {
+    "folder": ".qwen",
+    "files": [
+      "settings.json",
+      "oauth_creds.json"
+    ],
+    "workspace": [
+      ".qwen/settings.json"
+    ]
+  },
+  "antigravity": {
+    "folder": ".gemini/antigravity-acp",
+    "files": [
+      "settings.json",
+      "acp_token.json"
+    ]
+  },
+  "hermes-acp": {
+    "folder": ".hermes",
+    "env": "HERMES_HOME",
+    "files": [
+      "config.yaml",
+      ".env",
+      "auth.json"
+    ],
+    "workspace": [
+      ".hermes/config.yaml"
+    ]
+  },
+  "dsh": {
+    "folder": ".dsh",
+    "env": "DSH_HOME",
+    "files": [
+      "config.yaml",
+      "settings.yaml",
+      "cordis.patch.yml",
+      ".credentials.yaml",
+      ".env",
+      "profiles/*/cordis.patch.yml",
+      "profiles/*/package.json",
+      "profiles/kaus-tui/.kaus-owner"
+    ]
+  },
+  "deepseek-acp": {
+    "folder": ".dsh",
+    "env": "DSH_HOME",
+    "files": [
+      "config.yaml",
+      "settings.yaml",
+      ".credentials.yaml",
+      ".env"
+    ]
+  },
+  "pi": {
+    "folder": ".pi/agent",
+    "env": "PI_CODING_AGENT_DIR",
+    "files": [
+      "settings.json",
+      "models.json",
+      "auth.json"
+    ],
+    "workspace": [
+      ".pi/settings.json"
+    ]
+  },
+  "omp": {
+    "folder": ".omp/agent",
+    "env": "PI_CODING_AGENT_DIR",
+    "files": [
+      "settings.json",
+      "config.yml",
+      "config.yaml",
+      "models.json",
+      "models.yml",
+      "models.yaml",
+      "models.jsonc",
+      "auth.json"
+    ],
+    "workspace": [
+      ".omp/settings.json"
+    ]
+  },
+  "goose": {
+    "folder": ".config/goose",
+    "env": "GOOSE_PATH_ROOT",
+    "files": [
+      "config.yaml",
+      "permission.yaml",
+      "secrets.yaml",
+      "config/config.yaml",
+      "config/permission.yaml",
+      "config/secrets.yaml"
+    ]
+  },
+  "cursor": {
+    "folder": ".cursor",
+    "env": "CURSOR_CONFIG_DIR",
+    "files": [
+      "cli-config.json",
+      "cli.json",
+      "auth.json",
+      "credentials.json",
+      "mcp.json"
+    ],
+    "workspace": [
+      ".cursor/cli.json",
+      ".cursor/mcp.json"
+    ]
+  },
+  "copilot": {
+    "folder": ".copilot",
+    "env": "COPILOT_HOME",
+    "files": [
+      "settings.json",
+      "config.json",
+      "providers.json",
+      "mcp-config.json"
+    ]
+  },
+  "grok": {
+    "folder": ".grok",
+    "env": "GROK_HOME",
+    "files": [
+      "config.toml",
+      "auth.json"
+    ]
+  },
+  "crush": {
+    "folder": ".config/crush",
+    "files": [
+      "crush.json",
+      "crushrc"
+    ],
+    "workspace": [
+      "crush.json",
+      ".crush.json"
+    ]
+  },
+  "commandcode": {
+    "folder": ".commandcode",
+    "files": [
+      "config.json",
+      "settings.json",
+      "settings.local.json",
+      "providers.json",
+      "auth.json",
+      "mcp.json"
+    ]
+  },
+  "zcode": {
+    "folder": ".zcode/v2",
+    "files": [
+      "provider_config.json",
+      "settings.json"
+    ]
+  },
+  "devin": {
+    "folder": ".config/devin",
+    "files": [
+      "config.json",
+      "config.local.json",
+      "mcp_config.json",
+      "mcp_config.local.json"
+    ]
+  }
+}

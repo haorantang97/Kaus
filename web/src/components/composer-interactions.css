@@ -1,7 +1,8 @@
 /* Composer and message behaviors adapted from the pinned open-claude-ui reference. */
 .kaus-composer-layout { container: kaus-composer / inline-size; }
 .kaus-composer-layout .kaus-composer-bar { min-height: 28px; flex-wrap: wrap; }
-.kaus-composer-layout .kaus-composer-bar > .kaus-send { margin-left: auto; }
+.kaus-composer-tail { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 3px; margin-left: auto; min-width: 0; max-width: 100%; }
+.kaus-composer-tail > .kaus-send { margin-left: 5px; flex-shrink: 0; }
 .kaus-composer-layout .kaus-composer-bar > :not(.kaus-send) { max-width: 100%; min-width: 0; }
 body :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer textarea,
 .kaus-group-workspace .kaus-group-textarea { min-height: 44px; max-height: min(40svh, 384px); field-sizing: content; overflow-y: auto; }
@@ -39,7 +40,6 @@ body :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer textarea,
 .kaus-reasoning-expand > div { min-height: 0; overflow: hidden; }
 .kaus-reasoning-status { animation: kaus-thinking-status .24s cubic-bezier(.3,.7,.4,1); }
 .kaus-bar-pop-item > .kaus-bar-selected-check { margin-left: auto; flex: 0 0 auto; }
-.kaus-bar-pop-item:focus-visible { outline-offset: -2px; }
 .kaus-bar-pop-item:focus { background: color-mix(in srgb, var(--midground-base) 7%, transparent); }
 body :is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread-flow { padding-bottom: max(36px, 35vh); }
 .kaus-group-stream-content { flex: 0 0 auto; padding-bottom: 8px; }

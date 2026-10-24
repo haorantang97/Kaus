@@ -106,6 +106,26 @@ function toolbarBundle(target: api.BindingWire, name: string): api.EffectiveSett
   };
 }
 
+it("refreshes model-dependent effort before sending a new conversation", async () => {
+  const first = toolbarBundle(binding, "Alpha");
+  first.modelCatalog!.models.push({ ...first.modelCatalog!.models[0], modelId: "Beta", displayName: "Beta" });
+  first.conversationControls = { reasoning: true, reasoningLevels: ["low", "high"], reasoningDefault: "low", approvalModes: [] };
+  const second = { ...first, model: { value: "Beta", source: "catalog" as const },
+    conversationControls: { reasoning: true, reasoningLevels: ["medium"], reasoningDefault: "medium", approvalModes: [] } };
+  mocked.fetchEffectiveSettings.mockImplementation(async (_id, _signal, options) => options?.modelId === "Beta" ? second : first);
+  const user = userEvent.setup();
+  render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+  await waitFor(() => expect(barButton("推理强度")).toHaveTextContent("low"));
+  await pick(user, "模型", "Beta");
+  await waitFor(() => expect(barButton("推理强度")).toHaveTextContent("medium"));
+  expect(mocked.fetchEffectiveSettings).toHaveBeenCalledWith(binding.id, undefined, { includeCatalog: true, modelId: "Beta" });
+  await user.click(barButton("推理强度"));
+  expect(screen.getByRole("option", { name: "medium" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "high" })).not.toBeInTheDocument();
+  expect(mocked.createConversation).not.toHaveBeenCalled();
+  expect(mocked.sendConversationMessage).not.toHaveBeenCalled();
+});
+
 describe("全局引擎在项目中选用", () => {
   const connected = { id: "backend:codex", displayName: "Codex", key: "codex" };
   const linked = { ...binding, id: "binding:pronto:codex", backendId: connected.id, displayName: "codex", isDefault: false, nativeScopeRef: null };
@@ -313,6 +333,53 @@ describe("项目与分身选择", () => {
 });
 
 describe("草稿切换加载", () => {
+  it("recovers a missing settings bundle on return without losing the draft", async () => {
+    mocked.fetchEffectiveSettings.mockResolvedValueOnce({ ...noSettings, modelCatalog: null, uiCapabilities: ALL_SUPPORTED_UI_CAPABILITIES })
+      .mockResolvedValue(toolbarBundle(binding, "Recovered model"));
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(mocked.fetchEffectiveSettings).toHaveBeenCalledTimes(1));
+    await user.type(screen.getByLabelText("消息"), "keep my draft");
+    fireEvent.focus(window);
+    await waitFor(() => expect(barButton("模型")).toHaveTextContent("Recovered model"));
+    expect(screen.getByLabelText("消息")).toHaveValue("keep my draft");
+    expect(mocked.createConversation).not.toHaveBeenCalled();
+  });
+
+  it("uses native session effort defaults and sends the user's changed effort without changing project defaults", async () => {
+    const bundle = toolbarBundle(binding, "model-a");
+    bundle.modelCatalog!.models[0].reasoningLevels = ["default", "low", "high"];
+    bundle.conversationControls = { reasoning: true, reasoningDefault: "default", reasoningLevels: ["default", "low", "high"], approvalModes: [] };
+    mocked.fetchEffectiveSettings.mockResolvedValue(bundle);
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("推理强度")).toHaveTextContent("default"));
+    await pick(user, "推理强度", "high");
+    expect(barButton("推理强度")).toHaveTextContent("high");
+    await user.type(screen.getByLabelText("消息"), "use this effort");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(mocked.sendConversationMessage).toHaveBeenCalled());
+    expect(mocked.patchConversation).toHaveBeenCalledWith("conversation:new", { reasoningMode: "high" });
+    expect(mocked.patchBinding).not.toHaveBeenCalled();
+    expect(mocked.patchConversation.mock.invocationCallOrder.at(-1)).toBeLessThan(mocked.sendConversationMessage.mock.invocationCallOrder[0]);
+  });
+
+  it("keeps native choices selectable when the engine reports no default", async () => {
+    const bundle = toolbarBundle(binding, "model-a");
+    bundle.model = noSettings.model;
+    bundle.modelCatalog!.defaultModelId = null;
+    bundle.modelCatalog!.models[0].reasoningLevels = ["low", "high"];
+    bundle.conversationControls = { reasoning: true, reasoningLevels: ["low", "high"], approvalModes: [] };
+    mocked.fetchEffectiveSettings.mockResolvedValue(bundle);
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    await waitFor(() => expect(barButton("模型")).toBeEnabled());
+    await pick(user, "模型", "model-a");
+    expect(barButton("推理强度")).toHaveTextContent("默认");
+    await pick(user, "推理强度", "high");
+    expect(barButton("推理强度")).toHaveTextContent("high");
+  });
+
   it("uses one bundle and restores a recently used engine without waiting; expires after 30 seconds", async () => {
     const other = { ...binding, id: "binding:pronto:other", backendId: "backend:other", displayName: "Other", isDefault: false };
     mocked.fetchProjectBindings.mockResolvedValue({ bindings: [binding, other] });

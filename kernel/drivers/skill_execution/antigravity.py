@@ -360,4 +360,4 @@ def inventory_roots(spec, projects, bindings):
 
 
 def cli_command(plan, command):
-    raise UnsupportedCapabilityError('当前引擎尚未提供原生终端续接入口')
+    raise UnsupportedCapabilityError('当前版本的 Antigravity 终端接续尚未完成')
