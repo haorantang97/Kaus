@@ -102,9 +102,9 @@ cd kernel
 
 ## 许可证
 
-Copyright (C) 2026 `<COPYRIGHT_HOLDER>`
+Copyright (C) 2026 Haoran Tang
 
-Kaus 按 [GNU AGPL-3.0-only](LICENSE) 授权。闭源修改、嵌入其他产品或转售需要商业授权，联系 `<COMMERCIAL_LICENSE_EMAIL>`。
+Kaus 按 [GNU AGPL-3.0-only](LICENSE) 授权。闭源修改、嵌入其他产品或转售需要商业授权，联系 <haorantang3033@gmail.com>。
 
 [`sdk/`](sdk/LICENSE)、[`examples/`](examples/LICENSE)，以及 [模块接入说明](docs/workbench-modules.md) 中的清单格式和宿主协议，按 Apache-2.0 授权，第三方模块可以直接打包使用。详见 [NOTICE](NOTICE)。
 
