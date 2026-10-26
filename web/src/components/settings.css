@@ -45,6 +45,8 @@
 .shell-settings-footer { flex-shrink:0; padding-top:12px; margin-top:auto; }
 .kaus-settings-link { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; min-height:44px; padding:10px 0; border:0; background:transparent; color:inherit; font-size:13px; text-align:left; }
 .kaus-settings-link:hover { color:var(--accent-text); }
+a.kaus-settings-link { text-decoration:none; }
+.kaus-settings-link-value { display:inline-flex; align-items:center; gap:8px; color:color-mix(in srgb,var(--midground-base) 60%,transparent); }
 .kaus-settings-native { margin-top:16px; }
 .kaus-settings-native > summary { display:flex; align-items:center; justify-content:space-between; padding:14px 0; font-size:13px; cursor:pointer; list-style:none; }
 .kaus-settings-native > summary::-webkit-details-marker { display:none; }

@@ -97,3 +97,11 @@ it("通用设置可修改外观和语言", async () => {
   expect(change).toHaveBeenCalledWith("dark");
   expect(screen.getByRole("combobox", {name:"语言"})).toBeInTheDocument();
 });
+it("关于页给出许可证、源码和第三方声明入口", async () => {
+  const user = userEvent.setup();
+  render(<MemoryRouter><ConfigOverlay onClose={() => {}} /></MemoryRouter>);
+  await user.click(screen.getByRole("button", { name: "关于" }));
+  expect(screen.getByRole("link", { name: /许可证.*AGPL-3\.0-only/ })).toHaveAttribute("href", "https://github.com/haorantang97/Kaus/blob/main/LICENSE");
+  expect(screen.getByRole("link", { name: /源代码/ })).toHaveAttribute("href", "https://github.com/haorantang97/Kaus");
+  expect(screen.getByRole("link", { name: /第三方声明/ })).toHaveAttribute("href", "/THIRD_PARTY_NOTICES.txt");
+});

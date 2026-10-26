@@ -1,7 +1,7 @@
 import { ErrorNotice } from "./ui";
 import { EngineIcon } from "./EngineIcon";
 import { useEffect, useState } from "react";
-import { Archive, ArchiveRestore, ArrowUpRight, Bot, ChevronRight, Folder, Gauge, Languages, Moon, Settings2, SlidersHorizontal } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUpRight, Bot, ChevronRight, Folder, Gauge, Info, Languages, Moon, Settings2, SlidersHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { apiGet } from "../lib/api";
 import { useLocale, type LocalePref } from "../i18n";
@@ -19,7 +19,15 @@ import "./settings.css";
 
 interface CfgCat { id: string; label: string; desc: string; items: { k: string; v: string }[] }
 interface CfgOverview { categories: CfgCat[] }
-type Section = "general" | "agents" | "usage" | "coordinator" | "native" | "archive";
+type Section = "general" | "agents" | "usage" | "coordinator" | "native" | "archive" | "about";
+
+/* AGPL 第 13 条：通过网络使用修改版的人要能拿到源码，这里给出许可证与源码入口。 */
+const SOURCE_URL = "https://github.com/haorantang97/Kaus";
+const ABOUT_LINKS = [
+  { key: "settings.about.license", value: "AGPL-3.0-only", href: `${SOURCE_URL}/blob/main/LICENSE` },
+  { key: "settings.about.source", value: "GitHub", href: SOURCE_URL },
+  { key: "settings.about.notices", value: null, href: "/THIRD_PARTY_NOTICES.txt" },
+] as const;
 
 export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThemeChange }: { onClose: () => void; refreshKey?: number; theme?: "light" | "dark"; onThemeChange?: (theme: "light" | "dark") => void }) {
   const { t, locale, pref, setPref } = useLocale();
@@ -69,6 +77,7 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThem
     { id: "coordinator" as const, icon: Bot, label: zh ? "组长" : "Coordinator" },
     { id: "archive" as const, icon: Archive, label: zh ? "已归档" : "Archived" },
     { id: "native" as const, icon: SlidersHorizontal, label: zh ? "高级" : "Advanced" },
+    { id: "about" as const, icon: Info, label: t("settings.about") },
   ];
 
   return <Overlay title={zh ? "设置" : "Settings"} onClose={onClose} onReload={section === "usage" ? undefined : () => setReload(n => n + 1)}>
@@ -135,6 +144,12 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThem
                 onClick={() => void restore(item)}><ArchiveRestore size={16} /></button>
             </div>)}</div>}
           </AsyncState>
+        </>}
+        {section === "about" && <>
+          <h2 className="kaus-settings-page-title">{t("settings.about")}</h2>
+          {ABOUT_LINKS.map(link => <a key={link.key} className="kaus-settings-link" href={link.href} target="_blank" rel="noopener noreferrer">
+            {t(link.key)}<span className="kaus-settings-link-value">{link.value}<ArrowUpRight size={16} aria-hidden="true" /></span>
+          </a>)}
         </>}
       </section>
     </div>

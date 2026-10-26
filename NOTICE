@@ -1,0 +1,24 @@
+Kaus
+Copyright (C) 2026 <COPYRIGHT_HOLDER>
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License, version 3 only
+(AGPL-3.0-only), as published by the Free Software Foundation. See LICENSE.
+
+Commercial licensing
+  Modifying Kaus without publishing the source, embedding it in a closed
+  product, or reselling it requires a separate commercial license.
+  Contact: <COMMERCIAL_LICENSE_EMAIL>
+
+Exceptions
+  The following are licensed under the Apache License, Version 2.0, so
+  that third-party modules can bundle them without adopting the AGPL:
+  - sdk/        (see sdk/LICENSE)
+  - examples/   (see examples/LICENSE)
+  - the module manifest format (kaus-module.json) and host protocol
+    described in docs/workbench-modules.md
+
+Third-party components
+  Third-party components keep their own licenses. See
+  web/public/THIRD_PARTY_NOTICES.txt, the license files in the font
+  directories and static/vendor/LICENSE-xterm.txt.

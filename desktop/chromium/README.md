@@ -29,7 +29,8 @@ npm start
 ```sh
 npx --yes @electron/packager@20.3.0 desktop/chromium 'Kaus Chromium Preview' \
   --out=output/apps --platform=darwin --arch=arm64 --electron-version=45.0.0 \
-  --app-bundle-id=local.kaus.chromium-preview
+  --app-bundle-id=local.kaus.chromium-preview \
+  --extra-resource=LICENSE --extra-resource=NOTICE
 ```
 
 桌面包不自动启动 Python 服务。先启动上述隔离服务，再打开 `.app`；当前不是签名发布安装器。
