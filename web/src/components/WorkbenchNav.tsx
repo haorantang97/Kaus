@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, LayoutGrid, MoreHorizontal, PinOff } from "lucide-r
 import { useLocale } from "../i18n";
 import { notifyWorkbenchChanged, patchWorkbenchModule, reorderWorkbenchPins, type WorkbenchModule } from "../lib/workbenchApi";
 import { workbenchPath } from "../lib/routes";
+import { useModuleAttention } from "../lib/moduleAttention";
 import "./workbench.css";
 export const MODULE_DRAG_TYPE = "application/x-kaus-module";
 export function writeModuleDrag(event: DragEvent, id: string) { event.dataTransfer.setData(MODULE_DRAG_TYPE, id); event.dataTransfer.effectAllowed = "move"; }
@@ -20,6 +21,7 @@ export function WorkbenchNav({modules, activeId, active, navigate, compact = fal
     return ()=>{document.removeEventListener("pointerdown",outside);document.removeEventListener("keydown",escape);};
   },[menu]);
   const pins = modules.filter(module => module.pinned && module.enabled).sort((a,b) => a.pinOrder - b.pinOrder);
+  const waiting = new Set(useModuleAttention().map(item => item.moduleId));
   async function drop(id: string, before?: string) {
     const module = modules.find(item => item.id === id && item.enabled);
     if (!module) return;
@@ -41,7 +43,7 @@ export function WorkbenchNav({modules, activeId, active, navigate, compact = fal
     <button className={`shell-nav-item ${active && !activeId ? "is-active" : ""}`} title={t("workbench.title")} aria-label={t("workbench.title")} onClick={() => navigate(workbenchPath())}><span className="shell-nav-icon"><LayoutGrid /></span>{!compact && <span className="shell-nav-label">{t("workbench.title")}</span>}</button>
     {pins.map((module,index) => <div key={module.id} className={`workbench-pin ${over === module.id ? "is-drop" : ""}`} draggable onDragStart={event => writeModuleDrag(event,module.id)} onDragEnd={() => setOver(null)}
       onDragOver={event => { event.stopPropagation(); dragOver(event,module.id); }} onDrop={event => { event.preventDefault(); event.stopPropagation(); setOver(null); void drop(event.dataTransfer.getData(MODULE_DRAG_TYPE),module.id); }}>
-      <button className={`shell-nav-item ${activeId === module.id ? "is-active" : ""}`} title={module.name} aria-label={module.name} onClick={() => navigate(workbenchPath(module.id))}><span className="shell-nav-icon"><WorkbenchModuleIcon module={module} /></span>{!compact && <span className="shell-nav-label">{module.name}</span>}</button>
+      <button className={`shell-nav-item ${activeId === module.id ? "is-active" : ""}`} title={module.name} aria-label={module.name} onClick={() => navigate(workbenchPath(module.id))}><span className="shell-nav-icon"><WorkbenchModuleIcon module={module} />{waiting.has(module.id) && <span className="workbench-pin-dot" data-testid="module-waiting" aria-label={t("overview.attention.awaiting")} />}</span>{!compact && <span className="shell-nav-label">{module.name}</span>}</button>
       {!compact && <button className="workbench-pin-menu kaus-chat-icon-action" aria-label={`${module.name} · ${t("common.more")}`} onClick={() => setMenu(menu === module.id ? null : module.id)}><MoreHorizontal size={15}/></button>}
       {menu === module.id && <div className="workbench-menu" role="menu" onKeyDown={event => { if (event.key === "Escape") setMenu(null); }}>
         <button role="menuitem" disabled={index===0} onClick={() => { setMenu(null); void move(module.id,-1); }}><ArrowUp size={14}/>{t("workbench.up")}</button>

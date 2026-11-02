@@ -119,6 +119,7 @@ from drivers.base import (
     RuntimeNotFoundError,
     SessionProjection,
     TurnAlreadyRunningError,
+    UnappliedCapability,
     UnsupportedCapabilityError,
     turn_already_running_hint,
     unknown_auth_state,
@@ -724,14 +725,33 @@ class AcpDriver:
         snapshot = self._with_connection_auth(self._snapshot_from_session(state.session_result), state.connection)
         return self._model_catalog_from_snapshot(binding, snapshot, await self.get_capabilities())
 
-    @staticmethod
-    def _model_catalog_from_snapshot(binding, snapshot, capabilities) -> ModelCatalog:
+    def _selection_applies(self, snapshot) -> bool | None:
+        """Whether a Kaus model selection reaches this engine at session start.
+
+        Decided by what the live session exposes, not by the preset alone: a
+        model config option, or a ``session/set_model`` transport with reported
+        models. ``None`` when there is no session evidence (no snapshot, or a
+        degraded probe).
+        """
+        if snapshot is None:
+            return None
+        if snapshot.model_option_id:
+            return True
+        if snapshot.degraded:
+            return None
+        return self.quirks.model_switch == "set_model" and bool(snapshot.models)
+
+    def _model_catalog_from_snapshot(self, binding, snapshot, capabilities) -> ModelCatalog:
+        applies = self._selection_applies(snapshot)
         return ModelCatalog(
             binding_id=binding.id,
             mode=capabilities.models.mode,
             models=snapshot.models,
             # Binding 自己写了默认模型就以它为准；没写才用引擎此刻在用的那个。
-            default_model_id=binding.default_model_id or snapshot.current_model_id,
+            # 引擎选不了模型时，Binding 默认到不了引擎，不能当成目录默认。
+            default_model_id=(binding.default_model_id if applies is not False else None)
+            or snapshot.current_model_id,
+            selection_applies=applies,
             default_provider_id=binding.default_provider_id,
             supports_reasoning=bool(capabilities.models.reasoning) or bool(snapshot.thought_option_id and snapshot.thought_levels),
             degraded=snapshot.degraded,
@@ -1659,6 +1679,43 @@ class AcpDriver:
             warnings=tuple(warnings),
         )
 
+    async def unapplied_project_capabilities(
+        self, conversation: Conversation, effective: EffectiveCapabilities, *, workspace_root: str | None = None
+    ) -> tuple[UnappliedCapability, ...]:
+        """Effective capabilities this session will not receive (D-03).
+
+        Instructions reach ACP engines only through the preset's workspace file;
+        they count as delivered when its managed block already holds the current
+        text. MCP declarations the translation skipped and skills the adapter
+        rejected are reported by id.
+        """
+        from drivers.acp.mcp_projection import _Acc, _servers_of, _value_of
+        from drivers.projection_gaps import INVALID_CONFIG, MCP, SKILLS, UNSUPPORTED, instructions_gap
+
+        gaps: list[UnappliedCapability] = []
+        instructions = instructions_gap(
+            effective,
+            workspace_root=workspace_root or self._workspace_root_for(conversation.agent_binding_id),
+            filename=self._instructions_file,
+        )
+        if instructions is not None:
+            gaps.append(instructions)
+        delivered = set(project_mcp_servers(effective).names)
+        skipped: list[str] = []
+        for entry in effective.by_type("mcp"):
+            value = _value_of(entry.config)
+            servers = _servers_of(entry.capability_id, value, _Acc())
+            if not isinstance(value, Mapping) or any(name not in delivered for name, _raw in servers):
+                skipped.append(entry.capability_id)
+        if skipped:
+            gaps.append(UnappliedCapability(kind=MCP, names=tuple(dict.fromkeys(skipped)), reason=INVALID_CONFIG))
+        plan = self._skill_plans.get(conversation.id)
+        rejected = tuple(dict.fromkeys(item.capability_id for item in plan.report.unsupported)) if plan else ()
+        if rejected:
+            reason = next((item.reason for item in plan.report.unsupported if item.reason), None) or UNSUPPORTED
+            gaps.append(UnappliedCapability(kind=SKILLS, names=rejected, reason=reason))
+        return tuple(gaps)
+
     def supports_workspace_override(self) -> bool:
         return True
 
@@ -1993,6 +2050,15 @@ class AcpDriver:
         # Engines without a selection RPC may still have an observed/default
         # model snapshot; that snapshot must not prevent their normal startup.
         selected_model = conversation.model_id
+        if not selected_model:
+            # The binding default applies to conversations without their own
+            # model, mirroring the binding reasoning effort below.
+            # Only when the live session exposes a model control; otherwise
+            # effective-settings reports the binding default as unapplied.
+            binding_model = binding.default_model_id if binding else None
+            live = self._snapshot_from_session(state.session_result)
+            if binding_model and binding_model != live.current_model_id and self._selection_applies(live):
+                selected_model = binding_model
         if not selected_model and conversation.reasoning_mode and self.quirks.model_id_format == "effort_suffix":
             selected_model = self._catalog[conversation.agent_binding_id].current_model_id
         try:
@@ -2847,7 +2913,7 @@ class AcpDriver:
         executable = native_path(self)
         if not executable or not Path(executable).is_file() or not os.access(executable, os.X_OK):
             raise UnsupportedCapabilityError("原生终端命令尚未安装，当前会话可继续在界面中使用")
-        native_command = (executable, *command[1:])
+        native_command = (executable, *preset.terminal_args, *command[1:])
         plan = self._skill_plans.get(conversation.id)
         adapter = self._runtime_adapter()
         from drivers.computer_use.native_policy import prepare_spec as prepare_computer_policy
@@ -2878,6 +2944,8 @@ class AcpDriver:
         if prepare_terminal is not None:
             native_command, terminal_spec = await prepare_terminal(native_command, terminal_spec, metadata,
                 conversation=conversation, binding=self._bindings.get(conversation.agent_binding_id))
+        if preset.terminal_env:
+            terminal_spec = terminal_spec.with_env(**preset.terminal_env)
         terminal_env = terminal_spec.build_env()
         return CliLaunchSpec(
             command=native_command,
@@ -2896,6 +2964,12 @@ class AcpDriver:
             env_passthrough=preset.env_keys_hint,
             title=conversation.title,
             resume=True,
+            workspace_trust=(
+                (preset.workspace_trust, terminal_env.get(preset.config_root_env) if preset.config_root_env else None)
+                if preset.workspace_trust else None
+            ),
+            draft_flag=preset.draft_prompt_flag,
+            status_hooks=preset.status_hooks,
         )
 
     # ------------------------------------------------------------------ #

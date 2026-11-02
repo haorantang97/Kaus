@@ -81,6 +81,8 @@ LEASE_TAKEN_OVER_NAME = "lease.taken_over"
 #: ``complete=False`` 时那句诚实话（任务书原文）。
 INCOMPLETE_NOTICE = "外部终端期间的结构化轨迹无法完整恢复"
 HISTORY_RETRY_NOTICE = "终端记录暂未同步，请稍后重试"
+#: 预览只回最近这些条；完整内容在回站校准时写入。
+PREVIEW_LIMIT = 200
 
 def _utcnow() -> datetime:
     return datetime.now(tz=timezone.utc)
@@ -125,6 +127,7 @@ class ExternalHandoff:
     command_summary: str
     launched: bool
     reason: str | None = None
+    draft_prefilled: bool = False
 
 
 @dataclass(frozen=True)
@@ -171,9 +174,9 @@ class SurfaceCoordinator:
     # --- 开终端 --------------------------------------------------------- #
 
     async def to_external(
-        self, conversation: Conversation, *, force: bool = False
+        self, conversation: Conversation, *, force: bool = False, draft: str | None = None
     ) -> ExternalHandoff:
-        """站内卡片 → 外部终端。"""
+        """站内卡片 → 外部终端。``draft`` 只交给支持原生预填的 CLI，不进入会话记录。"""
         lock = self._handoff_locks.setdefault(conversation.id, asyncio.Lock())
         async with lock:
             try:
@@ -182,11 +185,12 @@ class SurfaceCoordinator:
                     current = current or conversation
                     if current.archived_at is not None:
                         raise SurfaceConflictError("conversation_archived", "请先恢复这条对话")
-                    return await self._to_external(current, force=force)
+                    return await self._to_external(current, force=force, draft=draft)
             except TurnAlreadyRunningError as exc:
                 raise SurfaceConflictError("card_running", "请等待当前回复结束，再打开终端") from exc
 
-    async def _to_external(self, conversation: Conversation, *, force: bool) -> ExternalHandoff:
+    async def _to_external(self, conversation: Conversation, *, force: bool,
+                           draft: str | None = None) -> ExternalHandoff:
         conversation = await self._release_card(conversation)
         binding, driver = await self._driver_for(conversation)
 
@@ -253,6 +257,7 @@ class SurfaceCoordinator:
                 await self._reserve_computer_resources(pending_launch)
             result: LaunchResult = await self._launcher.launch(
                 spec, conversation_id=conversation.id, launch_uuid=launch_uuid,
+                **({"draft": draft} if draft else {}),
             )
             launch = await self._repositories.terminal_launches.save(result.launch.evolve(
                 metadata={**result.launch.metadata, **computer_metadata}))
@@ -301,6 +306,7 @@ class SurfaceCoordinator:
             command_summary=result.command_summary,
             launched=result.launched,
             reason=result.reason,
+            draft_prefilled=result.draft_prefilled,
         )
 
     async def _release_card(self, conversation: Conversation) -> Conversation:
@@ -477,6 +483,8 @@ class SurfaceCoordinator:
             await self._host.leases.release(
                 conversation.id, expected_owner_id=description.owner_id
             )
+        if (board := self.status_board) is not None:
+            board.release(conversation.id)
         conversation = await self._save_conversation(
             conversation, state="idle", preferred_surface="card"
         )
@@ -564,6 +572,8 @@ class SurfaceCoordinator:
             conversation = await self._repositories.conversations.get(signal.conversation_id)
             if conversation is None:
                 await self._host.leases.release(signal.conversation_id, expected_owner_id=signal.launch.id)
+                if (board := self.status_board) is not None:
+                    board.release(signal.conversation_id)
                 return
             try:
                 async with self._host.conversation_control(signal.conversation_id):
@@ -625,6 +635,62 @@ class SurfaceCoordinator:
         return frozenset(known)
 
     # --- 只读视图 ------------------------------------------------------- #
+
+    async def preview(self, conversation: Conversation) -> dict[str, Any]:
+        """外部终端运行期间新增的公开消息。只读：不写事件、不动写权。
+
+        正式记录仍只由回站校准（``kaus/history.reconciled``）写入；这里与它用同一份
+        原生读取和同一个起点，所以校准后预览条目会被同 ID 的正式条目替换。
+        """
+        description = await self._host.leases.describe(conversation.id)
+        if description is None or description.owner_type != "external-cli":
+            return {"active": False, "supported": True, "entries": []}
+        status = self.terminal_status(conversation.id)
+        try:
+            history = await self._load_history(conversation)
+        except Exception:
+            return {"active": True, "supported": True, "available": False, "entries": [], "status": status}
+        if history is None:
+            return {"active": True, "supported": False, "entries": [], "status": status}
+        seen, known = await self._reconciliation_marks(conversation)
+        entries, complete, _ = _diff_history(history, seen=seen, known=known)
+        return {"active": True, "supported": True, "available": True, "complete": complete,
+                "entries": list(entries[-PREVIEW_LIMIT:]), "status": self.terminal_status(conversation.id)}
+
+    async def focus(self, conversation: Conversation) -> bool:
+        """Bring the terminal that holds this conversation to the front (no input is sent)."""
+        description = await self._host.leases.describe(conversation.id)
+        if description is None or description.owner_type != "external-cli":
+            return False
+        launch = await self.latest_launch(conversation.id)
+        focus = getattr(self._launcher, "focus", None)
+        return bool(launch is not None and focus is not None and await focus(launch))
+
+    @property
+    def status_board(self) -> Any:
+        return getattr(self._launcher, "status_board", None)
+
+    def terminal_status(self, conversation_id: str) -> dict[str, Any] | None:
+        """Hook-reported state of the agent in the external terminal, if any."""
+        status = self.status_board.status(conversation_id) if self.status_board is not None else None
+        return status.to_wire() if status is not None else None
+
+    async def _reconciliation_marks(self, conversation: Conversation) -> tuple[str | None, frozenset[str]]:
+        """One replay for both the last folded entry and every folded id (polled often)."""
+        seen, known = None, set()
+        for envelope in await self._host.event_store.replay(conversation.id):
+            event = envelope.event
+            if (event.type != "extension.event" or event.namespace != KAUS_NAMESPACE
+                    or event.name not in (HISTORY_RECONCILED_NAME, HISTORY_CHECKPOINT_NAME)
+                    or not isinstance(event.data, dict)
+                    or event.data.get("nativeSessionId") not in (None, conversation.native_session_id)):
+                continue
+            if event.data.get("lastEntryId"):
+                seen = str(event.data["lastEntryId"])
+            if event.name == HISTORY_RECONCILED_NAME:
+                known.update(entry["entryId"] for entry in event.data.get("entries", [])
+                             if isinstance(entry, dict) and isinstance(entry.get("entryId"), str))
+        return seen, frozenset(known)
 
     async def describe(self, conversation: Conversation) -> dict[str, Any]:
         """``GET /surface`` 的 wire 形状。"""

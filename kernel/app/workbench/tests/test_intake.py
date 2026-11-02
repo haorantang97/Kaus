@@ -118,7 +118,8 @@ async def test_actual_artifact_installs_with_same_scope_and_hidden_conversation(
         assert response.status_code == 200, response.text
         module = response.json()['module']; assert module['projectId'] == binding.project_id
         assert module['grants'] == ['agent:run'] and module['providerId'] == 'mock-provider'
-        assert (await client.get(module['assetUrl'])).text == HTML
+        frame = (await client.post(f"/api/workbench/modules/{module['id']}/frames")).json()
+        assert (await client.get(frame['url'])).text == HTML
         assert (await intakes.install(intake['id'], InstallIntakeBody(grants=['agent:run'])))['module']['id'] == module['id']
 
 
@@ -290,3 +291,14 @@ async def test_syntax_check_ignores_inherited_node_injection(tmp_path,monkeypatc
     async with intake_world(tmp_path) as (intakes,*_):
         await intakes._syntax_check(root,manifest)
     assert not marker.exists()
+
+
+async def test_deleted_project_refuses_module_adaptation(tmp_path):
+    source = source_project(tmp_path)
+    async with intake_world(tmp_path) as (intakes, _service, host, repos, driver, client, binding):
+        project = await repos.projects.get(binding.project_id)
+        await repos.projects.save(project.evolve(status='disabled'))
+        intake = (await client.post('/api/workbench/intakes/inspect', json={'path': str(source)})).json()
+        response = await client.post(f"/api/workbench/intakes/{intake['id']}/start", json=body(binding).model_dump(by_alias=True))
+        assert response.status_code == 409 and response.json()['error']['code'] == 'project_deleted'
+        assert driver.received == [] and not host.active_conversation_ids()

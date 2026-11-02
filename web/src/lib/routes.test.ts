@@ -2,19 +2,22 @@ import { describe, expect, it } from "vitest";
 import { conversationPath, newConversationPath, parseRoute, projectPath, routeView, shellViewPath } from "./routes";
 
 describe("路由解析", () => {
-  /* 批次十一第 1 件：七个视图各有一个真 URL（IA §6.2）。 */
-  it("七个视图各解析成自己那条路由", () => {
+  /* 批次十一第 1 件：每个视图各有一个真 URL（IA §6.2）。 */
+  it("每个视图各解析成自己那条路由", () => {
     expect(parseRoute("/")).toEqual({ name: "overview" });
     expect(parseRoute("/agents")).toEqual({ name: "agents" });
-    expect(parseRoute("/dashboard")).toEqual({ name: "dash" });
     expect(parseRoute("/kanban")).toEqual({ name: "kanban" });
-    expect(parseRoute("/vault")).toEqual({ name: "vault" });
-    expect(parseRoute("/warehouse")).toEqual({ name: "warehouse" });
     expect(parseRoute("/config")).toEqual({ name: "config" });
   });
 
+  it("已移除的运行概况、资料库、仓库不再是视图", () => {
+    for (const path of ["/dashboard", "/vault", "/warehouse"]) {
+      expect(parseRoute(path)).toEqual({ name: "unknown", pathname: path });
+    }
+  });
+
   it("视图 ↔ 路径互为逆运算，非视图路由 routeView 返回 null", () => {
-    for (const view of ["overview", "agents", "dash", "kanban", "vault", "warehouse", "config"] as const) {
+    for (const view of ["overview", "agents", "kanban", "config"] as const) {
       expect(routeView(parseRoute(shellViewPath(view)))).toBe(view);
     }
     expect(routeView(parseRoute("/new"))).toBeNull();

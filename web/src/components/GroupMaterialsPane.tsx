@@ -1,6 +1,6 @@
 import { ErrorNotice } from "./ui";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { BookmarkPlus, Check, Copy, FileUp, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, Copy, FileUp, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useLocale } from "../i18n";
 import { toast } from "./ui";
 import { deleteGroupMaterial, fetchGroupMaterials, isGroupOpen, saveGroupMaterial,
@@ -9,9 +9,7 @@ import { deleteGroupMaterial, fetchGroupMaterials, isGroupOpen, saveGroupMateria
 
 type Draft = Omit<GroupMaterialInput, "expectedRevision"> & { id?: string; revision: number };
 
-export function GroupMessageActions({ message, onCapture }: {
-  message: GroupMessageWire; onCapture?: (message: GroupMessageWire) => void;
-}) {
+export function GroupMessageActions({ message }: { message: GroupMessageWire }) {
   const { t } = useLocale();
   const [copied, setCopied] = useState(false);
   useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 1500); return () => clearTimeout(timer); }, [copied]);
@@ -21,13 +19,11 @@ export function GroupMessageActions({ message, onCapture }: {
       onClick={() => { void navigator.clipboard?.writeText(message.text).then(() => setCopied(true)).catch(() => toast(t("group.material.copyFailed"), "bad")); }}>
       {copied ? <Check size={13} /> : <Copy size={13} />}
     </button>
-    {onCapture && <button type="button" className="kaus-icon-btn" aria-label={t("group.material.capture")} title={t("group.material.capture")} onClick={() => onCapture(message)}><BookmarkPlus size={13} /></button>}
   </div>;
 }
 
-export function GroupMaterialsPane({ group, members, changeToken, capture, onCaptured, children }: {
+export function GroupMaterialsPane({ group, members, changeToken }: {
   group: GroupWire; members: GroupMemberWire[]; changeToken: number;
-  capture: GroupMessageWire | null; onCaptured: () => void; children?: ReactNode;
 }) {
   const { t } = useLocale();
   const [bundle, setBundle] = useState<GroupMaterialsWire | null>(null);
@@ -38,8 +34,6 @@ export function GroupMaterialsPane({ group, members, changeToken, capture, onCap
   const generation = useRef(0);
   const alive = useRef(true);
   const fileInput = useRef<HTMLInputElement>(null);
-  const draftRef = useRef<Draft | null>(null);
-  draftRef.current = draft;
   const locked = !isGroupOpen(group) || ["running", "closing"].includes(group.thread?.status ?? "");
   const disabled = locked || pending || !bundle;
   useEffect(() => { alive.current = true; return () => { alive.current = false; generation.current++; }; }, []);
@@ -59,12 +53,6 @@ export function GroupMaterialsPane({ group, members, changeToken, capture, onCap
     } finally { if (alive.current && token === generation.current) setLoading(false); }
   }, [group.id, t]);
   useEffect(() => { const control = new AbortController(); void reload(control.signal); return () => control.abort(); }, [reload, changeToken]);
-  useEffect(() => {
-    if (!capture || !bundle || draftRef.current) return;
-    setDraft({ title: capture.text.slice(0, 40), content: capture.text, sourceKind: "group_message",
-      sourceId: capture.id, sourceLabel: null, revision: bundle.revision });
-    onCaptured();
-  }, [capture, bundle, onCaptured]);
   const fresh = (): Draft => ({ title: "", content: "", sourceKind: "note", sourceId: null, sourceLabel: null, revision: bundle?.revision ?? 0 });
   async function save() {
     if (!draft || disabled) return;
@@ -116,10 +104,10 @@ export function GroupMaterialsPane({ group, members, changeToken, capture, onCap
         <option value="">{t("group.material.note")}</option>
         {members.filter(x => x.sourceConversationId).map(x => <option key={x.id} value={x.sourceConversationId!}>{x.conversation?.title ?? x.roleLabel ?? x.id}</option>)}
       </select>}
-      <textarea aria-label={t("group.material.content")} placeholder={t("group.material.selection")} value={draft.content} rows={9} disabled={pending} onChange={e => setDraft({ ...draft, content: e.target.value })} />
+      <textarea aria-label={t("group.material.content")} placeholder={t("group.material.content")} value={draft.content} rows={9} disabled={pending} onChange={e => setDraft({ ...draft, content: e.target.value })} />
       <div className="kaus-material-editor-foot">
         <small className={used > (bundle?.maxChars ?? 12000) ? "kaus-group-bad" : "kaus-group-dim"}>{t("group.material.limit", { used, max: bundle?.maxChars ?? 12000 })}</small>
-        <button type="button" className="kaus-icon-btn" disabled={pending} aria-label={t("group.material.cancel")} title={t("group.material.cancel")} onClick={() => { setDraft(null); onCaptured(); setError(null); }}><X size={14} /></button>
+        <button type="button" className="kaus-icon-btn" disabled={pending} aria-label={t("group.material.cancel")} title={t("group.material.cancel")} onClick={() => { setDraft(null); setError(null); }}><X size={14} /></button>
         <button type="submit" className="kaus-icon-btn" disabled={disabled || !draft.title.trim() || !draft.content.trim() || used > (bundle?.maxChars ?? 12000)} aria-label={t("group.material.save")} title={t("group.material.save")}><Check size={14} /></button>
       </div>
     </form>}
@@ -133,6 +121,5 @@ export function GroupMaterialsPane({ group, members, changeToken, capture, onCap
     </article>)}
     {bundle && !bundle.items.length && !draft && <div className="kaus-group-empty">{t("group.material.empty")}</div>}
     {bundle && !draft && !!bundle.items.length && <small className="kaus-group-dim">{t("group.material.limit", { used: bundle.charCount, max: bundle.maxChars })}</small>}
-    {children}
   </section>;
 }

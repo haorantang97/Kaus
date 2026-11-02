@@ -15,4 +15,4 @@
 - Frontend checks: `cd web && npm run check`. Backend checks: install `requirements-dev.txt`, then run `cd kernel && ../.venv/bin/python -m pytest -q`.
 - The local backend serves `web/dist`; a source edit needs a new frontend build to appear on port 8877. The development frontend uses port 5174.
 - Keep the backend on loopback. Avoid touching another installation's `HERMES_HOME`, services or database during tests.
-- `static/` and some top-level endpoints are historical compatibility code. The current conversation path uses structured driver events, the event store and SSE.
+- Some top-level `server.py` endpoints are historical compatibility code (the legacy `static/` UI was removed 2026-11-02). The current conversation path uses structured driver events, the event store and SSE.

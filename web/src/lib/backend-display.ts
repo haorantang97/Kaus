@@ -36,12 +36,10 @@ export const ENGINE_BRANDS: Record<string, EngineBrand> = {
   goose: { name: "Goose", icon: "goose" },
   cursor: { name: "Cursor", icon: "cursor" },
   copilot: { name: "GitHub Copilot", icon: "copilot", color: true },
-  devin: { name: "Devin", icon: "devin", color: true },
   omp: { name: "Oh My Pi", icon: "omp", color: true },
   grok: { name: "Grok", icon: "grok" },
   crush: { name: "Crush" },
   commandcode: { name: "Command Code", icon: "commandcode" },
-  alma: { name: "Alma" },
   zcode: { name: "ZCode", icon: "zai" },
   mock: { name: "Mock" },
 };

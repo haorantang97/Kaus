@@ -34,18 +34,17 @@
 | PATCH | `/groups/{id}/members/{memberId}` | `{roleLabel}`（空字符串 = 清掉；不给这个键 = 400 `empty_patch`） | `{member}` |
 | POST | `/groups/{id}/members/{memberId}/pause` | — | `{member}` |
 | POST | `/groups/{id}/members/{memberId}/resume` | — | `{member}` |
-| POST | `/groups/{id}/members/{memberId}/promote` | — | `{member, conversation, promoted}` |
+| ~~POST~~ | ~~`/groups/{id}/members/{memberId}/promote`~~ | 2026-11-03 删除 | — |
 | POST | `/groups/{id}/spawn` | `{projectId, bindingId?, modelId?, title?, role?, initialMessage?}` | 201 `{member, conversation, initialMessage}` |
 | POST | `/groups/{id}/broadcast` | `{text, targetMemberIds?}` | `{message, deliveries}` |
 | POST | `/groups/{id}/members/{memberId}/send` | `{text}` | `{message, deliveries}` |
 | GET | `/groups/{id}/messages` | `?limit=50&before=<sequence>` | `{groupId, messages, count, nextBefore}` |
-| GET | `/groups/{id}/context-packet` | — | `{groupId, generatedAt, members, markdown}` |
 | POST | `/groups/{id}/thread/stop` | — | `{group, thread}`（批次四十五 b，见 §7） |
 | GET | `/groups/events` | `?token=&since=<sequence>` | SSE，组级变更 |
 
 `PATCH /groups/{id}/members/{m}` 是批次五十二加的（AD-173）：改这位成员**在本组叫什么**。写的是 `roleLabel`，它在显示名那条回退链的**第一位**（`roleLabel > 会话标题 > 成员 id 尾段`），所以改它正好是「这位在这个房间里的名字」，而**会话自己的标题一个字不动**——同一条会话可以在这个组里叫「评审」，在侧栏仍旧叫它本来的名字。改完**重算**那张共用表（撞名照旧 `#2`，时间线上写的是重算之后的名字，不是用户刚敲进去的那一串），时间线上一行 `kind="system"`「X 现在叫 Y」（`metadata.change = "member_renamed"`），组级流一条 `member_renamed`。要改**会话自己**的标题走 `PATCH /api/conversations/{id}` 的 `title`（同批加的）。
 
-`/broadcast`、`/members/{m}/send`、`/messages`、`/context-packet` 四条是批次二十六加的，详见 §5；`/thread/stop` 与 `PATCH` 上的 `roundCap` 是批次四十五 b 加的，详见 §7。组对象上另有 `settings`（`{roundCap}`）与 `thread`（当前那条房间线程，从没转过是 `null`），成员行上另有 `lastDeliveredSequence`。
+`/broadcast`、`/members/{m}/send`、`/messages` 是批次二十六加的，详见 §5（同批的 `/context-packet` 已于 2026-11-03 删除）；`/thread/stop` 与 `PATCH` 上的 `roundCap` 是批次四十五 b 加的，详见 §7。组对象上另有 `settings`（`{roundCap}`）与 `thread`（当前那条房间线程，从没转过是 `null`），成员行上另有 `lastDeliveredSequence`。
 
 `GET /groups` 的每一行还带 **`memberConversationIds: []`**（成员的会话 id，只有 id，没有摘要）——浮窗要对一下「我正在看的那条会话在不在这个组里」时不必再打一次详情端点。
 
@@ -126,7 +125,7 @@
 
 响应里的 `dispositions` 逐条给出 `{memberId, conversationId, retention, action}`，前端据此显示「这次关组做了什么」。
 
-关组之后：所有**改**成员的端点（加入 / 移出 / 暂停 / 恢复 / spawn / PATCH / 再次 close）一律 **409 `group_closed`**；只读的 `GET /groups/{id}` 与 `POST …/promote` 仍然通——「关完之后才决定这条留下」是正常的用法。
+关组之后：所有**改**成员的端点（加入 / 移出 / 暂停 / 恢复 / spawn / PATCH / 再次 close）一律 **409 `group_closed`**；只读的 `GET /groups/{id}` 仍然通。（`POST …/promote` 2026-11-03 删除；早先已提升的会话照常读取。）
 
 ---
 
@@ -139,7 +138,7 @@
   "memberId": "member:…", "conversationId": "conversation:…" }
 ```
 
-`change ∈ group_created | group_updated | group_closed | member_joined | member_left | member_paused | member_resumed | member_promoted | message_posted | member_turn | thread_state`。
+`change ∈ group_created | group_updated | group_closed | member_joined | member_left | member_paused | member_resumed | member_promoted（2026-11-03 起不再发出，保留取值供旧事件重放） | message_posted | member_turn | thread_state`。
 与成员无关的变更（建组 / 改标题 / 关组）**不带** `memberId` / `conversationId` 这两个键（不是 `null`）。
 
 `message_posted`（批次二十六）表示 Group 自己的时间线上多了一行，`data.messageId` 是那一行的 id。成员变更也会带 `messageId`——它们同时在时间线上留一行系统消息（见 §5）。
@@ -277,7 +276,9 @@ GET /api/groups/{id}/messages?limit=50&before=<sequence>
 
 **移出那一条是个例外，要先取名字再动手**：`list_for_collaboration` 默认不带 `left`，成员一被标成 `left` 就不在那张表里了。所以 `remove_member` 在 `member.leave()` **之前**把显示名取出来传给系统行与移交行——「刚被移出的是 media 还是 media#2」正是这两行唯一要说清的事。（他走之后剩下的那位同名成员会**去掉后缀**：那张表算的是**当下**的名册，界面与房间说明也从那一刻起都叫他 `media`。）
 
-### 5.5 Context Packet v0
+### 5.5 Context Packet v0（2026-11-03 已删除）
+
+> 端点 `GET /groups/{id}/context-packet` 与它的汇编函数随界面上的「成员近况」一起删除，下面是历史记录。
 
 ```
 GET /api/groups/{id}/context-packet

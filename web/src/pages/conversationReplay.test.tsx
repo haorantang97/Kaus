@@ -32,7 +32,6 @@ vi.mock("../lib/sessionApi", async () => {
     fetchModelCatalog: vi.fn(),
     fetchBindingStatus: vi.fn(),
     fetchSurface: vi.fn(),
-    fetchLaunches: vi.fn(),
   };
 });
 
@@ -201,7 +200,6 @@ beforeEach(() => {
     lease: null,
     launch: null,
   });
-  mocked.fetchLaunches.mockResolvedValue({ conversationId: "conversation:1", launches: [], count: 0 });
 });
 
 describe("batch18 第 1 件：刷新后重放出全部消息", () => {

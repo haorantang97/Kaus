@@ -35,13 +35,11 @@
 | Claude Code、Cursor | 完成原生登录，随后实测模型回合 |
 | Kilo | 配置模型认证 |
 | OpenClaw | 配置当前模型认证并启动本地 Gateway；若使用其他网关，指定对应连接 |
-| Alma | 若继续纳入实战验收，需要安装客户端或提供兼容本地服务 |
 | Codex | 已登录，可进入实战轮次 |
 | OpenCode | 已存在认证，仍需真实请求确认有效 |
 
 ## 尚未由本轮解决的适配边界
 
-- Devin、Alma 尚缺可验证的完整专属技能范围契约。
 - OpenClaw、Pi、Command Code 的现有会话入口不执行 Project MCP，需要原生扩展或 Agent 级配置适配。
 - 部分 Agent 的受管终端缺少与当前权限、技能集合相等的原生入口。
 

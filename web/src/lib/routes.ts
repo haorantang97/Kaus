@@ -5,27 +5,19 @@
  * "我在哪一页"改由 URL 说了算。
  */
 
-/* 每个视图一个真 URL（批次十一第 1 件）。以前 Overview / 轮盘 / Dashboard /
-   Kanban / Vault / Warehouse / Config 七个视图全挂在 `/` 下、靠 localStorage 记
-   "我在哪页"——`/dashboard` 打开的是 Overview、链接发给别人也对不上。现在
-   路径就是视图，`App.tsx` 里的 `view` / `overlay` 都由这里推导。 */
+/* 每个视图一个真 URL（批次十一第 1 件）：路径就是视图，`App.tsx` 里的
+   `view` / `overlay` 都由这里推导。 */
 export type ShellViewName =
   | "overview"
   | "agents"
-  | "dash"
   | "kanban"
-  | "vault"
-  | "warehouse"
   | "config";
 
 /** 视图 ↔ 路径（IA §6.2 的表；`/` 是概览，其余一段路径）。 */
 const VIEW_PATHS: Record<ShellViewName, string> = {
   overview: "/",
   agents: "/agents",
-  dash: "/dashboard",
   kanban: "/kanban",
-  vault: "/vault",
-  warehouse: "/warehouse",
   config: "/config",
 };
 
@@ -46,7 +38,7 @@ export type KausRoute =
   | { name: "workbench"; moduleId: string | null }
   | { name: "unknown"; pathname: string };
 
-/** 这条路由是不是"某个视图"（概览 / 轮盘 / 五个旧浮层）。 */
+/** 这条路由是不是"某个视图"（概览 / 轮盘 / 设置 / 已屏蔽的任务板）。 */
 export function routeView(route: KausRoute): ShellViewName | null {
   return route.name in VIEW_PATHS ? (route.name as ShellViewName) : null;
 }

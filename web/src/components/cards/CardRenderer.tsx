@@ -19,8 +19,9 @@
 
 import type { ReactNode } from "react";
 
-import { useLocale } from "../../i18n";
-import { hasExtensionCard } from "../../lib/timeline/extensionCards";
+import { useLocale, type DictKey } from "../../i18n";
+import { hasExtensionCard, PROJECT_UNAPPLIED_NAME, PROJECT_UNAPPLIED_NAMESPACE, PROXY_ACTION_NAME, PROXY_ACTION_NAMESPACE, STOP_REASON_NAME, STOP_REASON_NAMESPACE } from "../../lib/timeline/extensionCards";
+import { approvalLabel } from "../ComposerBar";
 import type { UiCapabilities } from "./capabilities";
 import type { EngineLabel } from "./CardShell";
 import { MonoBlock, stringify } from "./CardShell";
@@ -28,6 +29,7 @@ import { cleanLine, RowCard } from "./RowCard";
 import { ErrorCard, toneForLevel } from "./ErrorCard";
 import { GenericCard, LifecycleMarker } from "./GenericCard";
 import { PermissionCard } from "./PermissionCard";
+import { ProjectUnappliedNotice } from "./ProjectUnappliedNotice";
 import { QuestionCard } from "./QuestionCard";
 import { ReasoningCard } from "./ReasoningCard";
 import { TextCard, type MessageActions } from "./TextCard";
@@ -254,6 +256,22 @@ export function CardRenderer({
           />
         );
       }
+      if (item.namespace === STOP_REASON_NAMESPACE && item.name === STOP_REASON_NAME) {
+        const reason = item.data && typeof item.data === "object" ? String((item.data as { stopReason?: unknown }).stopReason ?? "") : "";
+        const known: Record<string, DictKey> = {
+          max_tokens: "timeline.stopReason.maxTokens",
+          max_turn_requests: "timeline.stopReason.maxTurns",
+          refusal: "timeline.stopReason.refusal",
+        };
+        return <LifecycleMarker text={t(known[reason] ?? "timeline.stopReason.other")} detail={reason || undefined} time={time} />;
+      }
+      if (item.namespace === PROXY_ACTION_NAMESPACE && item.name === PROXY_ACTION_NAME) {
+        const note = proxyActionText(item.data, t);
+        return note ? <LifecycleMarker text={note.text} detail={note.detail} time={time} /> : null;
+      }
+      if (item.namespace === PROJECT_UNAPPLIED_NAMESPACE && item.name === PROJECT_UNAPPLIED_NAME) {
+        return <ProjectUnappliedNotice data={item.data} time={time} />;
+      }
       if (item.namespace === MODEL_ADOPTED_NAMESPACE && item.name === MODEL_ADOPTED_NAME) {
         const adopted = modelAdoption(item.data);
         if (!adopted) return null;
@@ -298,6 +316,36 @@ export function CardRenderer({
         />
       );
   }
+}
+
+/** `kaus/proxy.action`: what the main agent did for the user. Unknown shapes fall back to the server text. */
+function proxyActionText(data: unknown, t: (key: DictKey, vars?: Record<string, string | number>) => string): { text: string; detail?: string } | null {
+  if (!data || typeof data !== "object") return null;
+  const value = data as { action?: unknown; subject?: unknown; choice?: unknown; setting?: unknown; value?: unknown; label?: unknown; text?: unknown };
+  const str = (input: unknown) => (typeof input === "string" ? input : "");
+  const subject = str(value.subject);
+  const choice = str(value.choice) || undefined;
+  const actions: Record<string, DictKey> = {
+    approved: "timeline.proxy.approved",
+    denied: "timeline.proxy.denied",
+    answered: "timeline.proxy.answered",
+    cancelled: "timeline.proxy.cancelled",
+  };
+  const settings: Record<string, DictKey> = {
+    model: "timeline.proxy.model",
+    reasoning: "timeline.proxy.reasoning",
+    approval: "timeline.proxy.approval",
+  };
+  const action = str(value.action);
+  if (actions[action] && subject) return { text: t(actions[action], { subject }), detail: choice };
+  const setting = str(value.setting);
+  const raw = str(value.value);
+  if (action === "setting" && settings[setting] && raw) {
+    const shown = str(value.label) || (setting === "approval" ? approvalLabel(raw, t) : raw);
+    return { text: t(settings[setting], { value: shown }) };
+  }
+  const text = str(value.text);
+  return text ? { text } : null;
 }
 
 function genericTitle(item: AnyTimelineItem, t: (key: "card.type.extension" | "card.type.unknown", vars?: Record<string, string | number>) => string): string {

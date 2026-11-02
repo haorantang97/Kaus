@@ -30,9 +30,7 @@ import { t } from "../i18n";
 
 const api = vi.hoisted(() => ({
   fetchGroupMessages: vi.fn(),
-  fetchContextPacket: vi.fn(),
   broadcastGroup: vi.fn(),
-  sendToGroupMember: vi.fn(),
   stopGroupThread: vi.fn(),
 }));
 
@@ -149,8 +147,6 @@ function renderWorkspace(
         members={members}
         changeToken={0}
         membersPane={<div />}
-        directedMemberId={null}
-        onClearDirected={() => {}}
 
       />
     </>,
@@ -164,12 +160,6 @@ beforeEach(() => {
     messages: [],
     count: 0,
     nextBefore: null,
-  });
-  api.fetchContextPacket.mockResolvedValue({
-    groupId: "collaboration:1",
-    generatedAt: "2026-09-14T10:00:00Z",
-    members: [],
-    markdown: "",
   });
   api.stopGroupThread.mockResolvedValue({
     group: group(),

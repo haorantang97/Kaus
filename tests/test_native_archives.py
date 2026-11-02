@@ -204,15 +204,13 @@ def test_api_requires_token_and_project_and_scanned_ids(tmp_path):
     app=FastAPI();router=build_native_archive_router(service,auth_policy=SessionAuthPolicy(lambda:'fixture-token'))
     app.router.routes.extend(router.routes)
     client=TestClient(app,base_url='http://127.0.0.1:8877')
-    assert client.get('/api/native-archives').status_code==401
+    assert client.get('/api/native-archives/choices').status_code==401
     headers={'Authorization':'Bearer fixture-token'}
-    assert client.get('/api/native-archives/sources',headers=headers).status_code==200
-    assert client.post('/api/native-archives/preview',headers=headers,json={'projectId':project.id,'sourceIds':['not-scanned']}).status_code==400
-    assert client.post('/api/native-archives/preview',headers=headers,json={'projectId':'project:missing','sourceIds':[key]}).status_code==404
-    response=client.post('/api/native-archives/preview',headers=headers,json={'projectId':project.id,'sourceIds':[key]})
-    assert response.status_code==200,response.text
-    result=client.post('/api/native-archives/import',headers=headers,json={'projectId':project.id,'previewToken':response.json()['previewToken']})
+    assert client.get('/api/native-archives/choices',headers=headers).status_code==200
+    assert client.post('/api/native-archives/add',headers=headers,json={'projectId':'project:missing','sourceIds':[key]}).status_code==404
+    result=client.post('/api/native-archives/add',headers=headers,json={'projectId':project.id,'sourceIds':[key]})
     assert result.status_code==200,result.text
+    assert result.json()['count']==1
 
 
 def test_backup_restores_current_revision_and_all_earlier_records(tmp_path):
@@ -326,21 +324,20 @@ def test_orphaned_trash_restores_to_valid_project_with_owned_content_and_backup(
     client=TestClient(app,base_url='http://127.0.0.1:8877')
     headers={'Authorization':'Bearer fixture-token'}
     base='/api/native-archives/'+archive
-    assert client.post(base+'/trash',headers=headers,json={'projectId':old.id}).status_code==200
+    store.trash(archive,old.id)
     asyncio.run(repos.projects.delete(old.id))
-    assert client.get('/api/native-archives?trash=true',headers=headers).json()['archives'][0]['projectIds']==[]
+    assert asyncio.run(service.list(trash=True))[0]['projectIds']==[]
     path.unlink()
     # Native account/config changes cannot affect owned archive reads or recovery.
     monkeypatch.setenv('CODEX_HOME',str(tmp_path/'another-account'))
     monkeypatch.setenv('CLAUDE_CONFIG_DIR',str(tmp_path/'another-claude-account'))
-    assert client.post(base+'/restore',json={'projectId':new.id}).status_code==401
-    assert client.post(base+'/restore',headers={'Authorization':'Bearer wrong-token'},json={'projectId':new.id}).status_code==401
-    assert client.post(base+'/restore',headers=headers,json={'projectId':old.id}).status_code==404
-    assert client.post(base+'/restore',headers=headers,json={'projectId':'project:missing'}).status_code==404
-    assert store.list(trash=True)[0]['projectIds']==[]
-    assert client.post('/api/native-archives/missing/restore',headers=headers,json={'projectId':new.id}).status_code==404
+    assert client.get(base,params={'projectId':new.id}).status_code==401
+    assert client.get(base,headers={'Authorization':'Bearer wrong-token'},params={'projectId':new.id}).status_code==401
+    assert client.get(base,headers=headers,params={'projectId':'project:missing'}).status_code==404
+    with pytest.raises(ArchiveError):
+        store.restore_to_project('missing',new.id)
     for _ in range(2):
-        assert client.post(base+'/restore',headers=headers,json={'projectId':new.id}).status_code==200
+        store.restore_to_project(archive,new.id)
     assert store.list()[0]['projectIds']==[new.id]
     detail=client.get(base,headers=headers,params={'projectId':new.id}).json()
     assert [m['text'] for m in detail['messages']]==['question','answer']

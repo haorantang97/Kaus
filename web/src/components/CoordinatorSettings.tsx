@@ -19,13 +19,17 @@ export interface CoordinatorConfig {
   reasoningMode?: string | null; approvalMode?: string | null; workspaceRoot?: string | null;
   executionMode?: string | null;
   configOptions?: Record<string, string | boolean>;
-  instructions?: string; callCap?: number; timeLimitMinutes?: number; revision?: number; sourceRevision?: number | null;
+  /** Legacy hosting note; no longer editable and dropped on the next save. */
+  instructions?: string;
+  callCap?: number; timeLimitMinutes?: number; revision?: number; sourceRevision?: number | null;
 }
 type ConfigurationView = { retainedBinding?: BindingWire & { projectName: string }; config: CoordinatorConfig | null; candidate?: CoordinatorConfig | null; defaults?: CoordinatorConfig | null };
 const defaultsPath = "/api/group-settings/coordinator";
 const pathFor = (groupId?: string) => groupId ? `/api/groups/${encodeURIComponent(groupId)}/coordinator` : defaultsPath;
 const modelKey = (model: string, provider?: string | null) => JSON.stringify([provider ?? null, model]);
 const engineDefaultKey = JSON.stringify([null, null]);
+/** The hosting-note field was removed (2026-11-03): tell the leader in chat instead. */
+const savedConfig = ({ instructions: _legacy, ...config }: CoordinatorConfig): CoordinatorConfig => config;
 
 function CoordinatorField({ label, children, wide = false }: { label: string; children: ReactNode; wide?: boolean }) {
   return <div className={`kaus-coordinator-field${wide ? " is-wide" : ""}`}><span>{label}</span>{children}</div>;
@@ -107,10 +111,10 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
     try {
       if (asDefault) {
         const latest = await sessionRequest<ConfigurationView>(defaultsPath);
-        const result = await sessionRequest<ConfigurationView>(defaultsPath, { method: "PUT", body: { config: draft, expectedRevision: latest.config?.revision ?? 0 } });
+        const result = await sessionRequest<ConfigurationView>(defaultsPath, { method: "PUT", body: { config: savedConfig(draft), expectedRevision: latest.config?.revision ?? 0 } });
         setDefaults(result.config);
       } else {
-        await sessionRequest(pathFor(group?.id), { method: "PUT", body: { config: draft, expectedRevision: revision } });
+        await sessionRequest(pathFor(group?.id), { method: "PUT", body: { config: savedConfig(draft), expectedRevision: revision } });
         if (handoff && group) await sessionRequest(`${pathFor(group.id)}/handoff`, { method: "POST", body: {} });
         await refreshGroups();
         setOpen(false);
@@ -131,12 +135,12 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
         <CoordinatorField label={t("draft.field.project")} wide><BarMenu floating label={t("draft.field.project")} value={projectId}
           display={projects.find(p => p.id === projectId)?.displayName ?? t("draft.project.choose")}
           options={projects.map(p => ({ value: p.id, label: p.displayName }))}
-          onSelect={id => { setProjectId(id); setDraft(current => ({ bindingId: "", instructions: current.instructions, callCap: current.callCap, timeLimitMinutes: current.timeLimitMinutes })); }} /></CoordinatorField>
+          onSelect={id => { setProjectId(id); setDraft(current => ({ bindingId: "", callCap: current.callCap, timeLimitMinutes: current.timeLimitMinutes })); }} /></CoordinatorField>
         <CoordinatorField label="Agent" wide><ProjectAgentPicker projectId={projectId} value={draft.bindingId} retainedBinding={!engineAcceptsNewWork(selectedBinding) ? selectedBinding : undefined} allowedBackendIds={engineIds} disabled={busy}
           onChange={binding => {
             if (!binding) { setDraft(current => ({ ...current, bindingId: "" })); return; }
             setBindings(current => [...current.filter(b => b.id !== binding.id), { ...binding, projectName: projects.find(p => p.id === binding.projectId)?.displayName ?? binding.projectId }]);
-            setDraft(current => current.bindingId === binding.id ? current : { bindingId: binding.id, instructions: current.instructions, callCap: current.callCap, timeLimitMinutes: current.timeLimitMinutes });
+            setDraft(current => current.bindingId === binding.id ? current : { bindingId: binding.id, callCap: current.callCap, timeLimitMinutes: current.timeLimitMinutes });
           }} /></CoordinatorField>
         <CoordinatorField label="模型" wide><BarMenu floating label="模型" value={draft.modelId ? modelKey(draft.modelId, draft.providerId) : engineDefault ? engineDefaultKey : null}
           display={selected?.displayName ?? draft.modelId ?? (engineDefault ? "引擎默认" : "选择模型")}
@@ -158,14 +162,13 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
           options={[{ value: "", label: "默认" }, ...execution.map(option => ({ value: option.id, label: option.name }))]}
           onSelect={executionMode => set({ executionMode: executionMode || null })} /></CoordinatorField>}
         </div>
-        <button type="button" className="kaus-coordinator-more" onClick={() => setMore(!more)} aria-expanded={more}><ChevronDown size={13} aria-hidden className={more ? "is-expanded" : ""} />更多设置</button>
+        <button type="button" className="kaus-coordinator-more" data-testid="coordinator-advanced" onClick={() => setMore(!more)} aria-expanded={more}><ChevronDown size={13} aria-hidden className={more ? "is-expanded" : ""} />{t("group.coordinator.advanced")}</button>
         {more && <div className="kaus-coordinator-fields">
           {!!effective?.conversationControls?.configOptions?.length && <div className="is-wide"><EngineConfigFields
             options={effective.conversationControls.configOptions} values={draft.configOptions}
             onChange={!busy ? (key, value) => set({ configOptions: { ...draft.configOptions, [key]: value } }) : undefined} /></div>}
           {bindings.find(b => b.id === draft.bindingId) && <a className="kaus-coordinator-project-link" href={projectPath(bindings.find(b => b.id === draft.bindingId)!.projectId)} target="_blank" rel="noreferrer">插件与规则<ArrowUpRight size={13} aria-hidden /></a>}
           <div className="is-wide"><WorkspacePill setting={{ value: draft.workspaceRoot ?? effective?.workspaceRoot.value ?? null, source: draft.workspaceRoot ? "binding" : "project" }} onSave={async workspaceRoot => { set({ workspaceRoot }); }} /></div>
-          <label className="is-wide">主持要求<textarea style={inputStyle()} rows={4} value={draft.instructions ?? ""} onChange={e => set({ instructions: e.target.value })} /></label>
           <label>调用上限<input style={inputStyle()} type="number" min={2} max={200} value={draft.callCap ?? 40} onChange={e => set({ callCap: Number(e.target.value) })} /></label>
           <label>运行时限（分钟）<input style={inputStyle()} type="number" min={1} max={240} value={draft.timeLimitMinutes ?? 30} onChange={e => set({ timeLimitMinutes: Number(e.target.value) })} /></label>
         </div>}

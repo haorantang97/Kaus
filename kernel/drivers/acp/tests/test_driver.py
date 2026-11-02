@@ -396,14 +396,14 @@ async def test_attachments_become_content_blocks() -> None:
             text="look",
             attachments=(
                 AttachmentRef(kind="file", ref="/tmp/a.txt", mime_type="text/plain"),
-                AttachmentRef(kind="context_packet", ref="packet-1"),
+                AttachmentRef(kind="artifact", ref="artifact-1"),
             ),
         )
     )
     assert blocks[0] == {"type": "text", "text": "look"}
     assert blocks[1]["type"] == "resource_link" and blocks[1]["uri"] == "/tmp/a.txt"
-    # ACP 没有 context_packet 这种块：退化成可读文本，而不是发它不认识的块。
-    assert blocks[2] == {"type": "text", "text": "[context_packet] packet-1"}
+    # ACP 没有 artifact 这种块：退化成可读文本，而不是发它不认识的块。
+    assert blocks[2] == {"type": "text", "text": "[artifact] artifact-1"}
 
 
 # --------------------------------------------------------------------------- #

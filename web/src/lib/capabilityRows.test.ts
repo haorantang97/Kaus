@@ -61,6 +61,12 @@ describe("visibleCapabilityRows", () => {
     expect(view.entries.map(row => row.capabilityType)).toEqual(["mcp"]);
     expect(view.blocked).toEqual([]);
   });
+  it("Agent 原生 MCP 记录在项目树整理，配置表只保留通用 MCP", () => {
+    const view = visibleCapabilityRows(wire([entry({ capabilityType: "mcp" }), entry({ capabilityType: "alpha:mcp" })],
+      [{ capabilityType: "alpha:mcp", capabilityId: "native", blockedByProjectId: "project:x", blocked: true }]));
+    expect(view.entries.map(row => row.capabilityType)).toEqual(["mcp"]);
+    expect(view.blocked).toEqual([]);
+  });
   it("计数只数渲染出来的行；被禁止的行照常显示并计入", () => {
     const view = visibleCapabilityRows(
       wire(

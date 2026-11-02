@@ -8,6 +8,7 @@ import { useLocale } from "../i18n";
 import { cream } from "../components/ui";
 import { BarMenu, ComposerBar, type BarMenuOption } from "../components/ComposerBar";
 import { AttentionBlock } from "../components/AttentionBlock";
+import { useModuleAttention } from "../lib/moduleAttention";
 import { backendDisplay, engineBrand, engineFamily } from "../lib/backend-display";
 import { engineSelectionChoices } from "../lib/engineSelection";
 import type { SidebarGroup } from "../lib/conversationIndex";
@@ -118,6 +119,7 @@ export function NewConversationPage({
   onOpenConversation,
 }: NewConversationPageProps) {
   const { t } = useLocale();
+  const moduleAttention = useModuleAttention();
   const [projects, setProjects] = useState<ProjectWire[]>([]);
   const [projectId, setProjectId] = useState<string>(() => matchProjectId([], initialProjectId || readDefaultDestination()));
   const [bindings, setBindings] = useState<BindingWire[] | null>(null);
@@ -471,7 +473,7 @@ export function NewConversationPage({
     <div className="kaus-draft-page" data-testid="draft-page">
       <div className="kaus-draft-window">
         {indexGroups && onOpenConversation && (
-          <AttentionBlock groups={indexGroups} onOpenConversation={onOpenConversation} />
+          <AttentionBlock groups={indexGroups} modules={moduleAttention} onOpenConversation={onOpenConversation} />
         )}
 
         <div className="kaus-draft-empty">

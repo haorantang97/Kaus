@@ -62,12 +62,54 @@ def create(state_root: Path, name: str, *, description: str = "", source: Path |
     return target
 
 
-def archive(state_root: Path, name: str) -> Path:
+DELETED_RECORD = ".kaus-deleted.json"
+_STAMP = re.compile(r"^\d{8}T\d{12}Z$")
+
+
+def archive_root(state_root: Path) -> Path:
+    return state_root / "state" / "project-config-archive"
+
+
+def archive(state_root: Path, name: str, *, record: dict | None = None) -> Path:
+    """Move a project configuration aside. ``record`` keeps its tree position for restore."""
     source = directory(state_root, name)
     if not contains(state_root, name):
         raise ValueError("项目配置不存在")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    target = state_root / "state" / "project-config-archive" / f"{name}-{stamp}"
+    target = archive_root(state_root) / f"{name}-{stamp}"
     target.parent.mkdir(parents=True, exist_ok=True)
     source.rename(target)
+    if record is not None:
+        (target / DELETED_RECORD).write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    return target
+
+
+def latest_archive(state_root: Path, name: str) -> Path | None:
+    """Newest archived copy of ``name`` (``<name>-<stamp>``), or ``None``."""
+    directory(state_root, name)
+    base = archive_root(state_root)
+    if not base.is_dir():
+        return None
+    prefix = f"{name}-"
+    copies = [p for p in base.iterdir() if p.is_dir() and p.name.startswith(prefix)
+              and _STAMP.fullmatch(p.name[len(prefix):]) and (p / MARKER).is_file()]
+    return max(copies, key=lambda p: p.name) if copies else None
+
+
+def deleted_record(archived: Path) -> dict:
+    try:
+        value = json.loads((archived / DELETED_RECORD).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def restore(state_root: Path, name: str, archived: Path) -> Path:
+    """Move an archived copy back. Refuses when the name is in use again."""
+    target = directory(state_root, name)
+    if target.exists():
+        raise FileExistsError("项目配置已存在")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    archived.rename(target)
+    (target / DELETED_RECORD).unlink(missing_ok=True)
     return target

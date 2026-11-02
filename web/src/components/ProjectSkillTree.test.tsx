@@ -92,8 +92,8 @@ describe("ProjectSkillTree", () => {
   it("opens the connected Agent group during onboarding and retains the same drag and menu controls", async () => {
     render(<ProjectSkillTree focusProject="creative" initialAgent="codex" />);
     await waitFor(() => expect(skillRow("creative", "codex-review")).toBeVisible());
-    expect(screen.getByRole("button", { name: /Codex 专属技能\s*1/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("button", { name: /Hermes 专属技能\s*1/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /Codex 专属能力\s*1/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /Hermes 专属能力\s*1/ })).toHaveAttribute("aria-expanded", "false");
     expect(within(skillRow("creative", "codex-review")).getByRole("button", { name: "拖动 代码审查" })).toBeEnabled();
     expect(within(skillRow("creative", "codex-review")).getByRole("button", { name: "代码审查 的操作" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "进入 创作" })).toBeNull();
@@ -103,8 +103,8 @@ describe("ProjectSkillTree", () => {
     await ready();
     expect(skillRow("creative", "common-design")).toBeVisible();
     expect(screen.queryByRole("button", { name: "代码审查 的操作" })).not.toBeInTheDocument();
-    const codex = screen.getByRole("button", { name: /Codex 专属技能\s*1/ });
-    const hermes = screen.getByRole("button", { name: /Hermes 专属技能\s*1/ });
+    const codex = screen.getByRole("button", { name: /Codex 专属能力\s*1/ });
+    const hermes = screen.getByRole("button", { name: /Hermes 专属能力\s*1/ });
     expect(codex).toHaveAttribute("aria-expanded", "false");
     expect(hermes).toHaveAttribute("aria-expanded", "false");
     await user.click(codex);
@@ -124,7 +124,7 @@ describe("ProjectSkillTree", () => {
     expect(document.querySelector('[data-skill-id="hermes-review"]')).toBeNull();
     expect(screen.queryByRole("button", { name: "开发" })).not.toBeInTheDocument();
     await user.clear(search);
-    expect(screen.getByRole("button", { name: /Codex 专属技能\s*1/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /Codex 专属能力\s*1/ })).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("button", { name: "海报" })).toHaveAttribute("aria-expanded", "false");
   });
 
@@ -158,14 +158,14 @@ describe("ProjectSkillTree", () => {
     copied.entries.push(entry("development", "hermes-review"));
     applyAction.mockResolvedValue(copied);
     await ready();
-    await user.click(screen.getByRole("button", { name: /Hermes 专属技能\s*1/ }));
+    await user.click(screen.getByRole("button", { name: /Hermes 专属能力\s*1/ }));
     await openActions(user, "creative", "hermes-review");
     await selectDestination(user, "另加到…", "母项目 / 开发");
     expect(applyAction).toHaveBeenCalledWith({ revision: "r1", action: "copy", skillId: "hermes-review", sourceProjectId: "creative", targetProjectId: "development" });
     expect(screen.queryByRole("dialog", { name: "移动" })).not.toBeInTheDocument();
     expect(skillRow("creative", "hermes-review")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "开发" }));
-    const groups = screen.getAllByRole("button", { name: /Hermes 专属技能\s*1/ });
+    const groups = screen.getAllByRole("button", { name: /Hermes 专属能力\s*1/ });
     await user.click(groups.find(group => group.dataset.projectId === "development")!);
     expect(skillRow("development", "hermes-review")).toHaveAttribute("data-agent-key", "hermes");
     expect(document.querySelector('[data-project-id="development"][data-skill-id="codex-review"]')).toBeNull();
@@ -192,8 +192,8 @@ describe("ProjectSkillTree", () => {
   it("supports alternate-drag copying and refuses a drop in another Agent's group", async () => {
     const user = userEvent.setup();
     await ready();
-    await user.click(screen.getByRole("button", { name: /Hermes 专属技能\s*1/ }));
-    dragSkill("creative", "hermes-review", screen.getByRole("button", { name: /Codex 专属技能\s*1/ }));
+    await user.click(screen.getByRole("button", { name: /Hermes 专属能力\s*1/ }));
+    dragSkill("creative", "hermes-review", screen.getByRole("button", { name: /Codex 专属能力\s*1/ }));
     expect(applyAction).not.toHaveBeenCalled();
     const target = screen.getByRole("button", { name: "开发" }).closest('[data-skill-drop="project"]')!;
     dragSkill("creative", "hermes-review", target, true);
@@ -213,7 +213,7 @@ describe("ProjectSkillTree", () => {
   it("reloads a conflicting revision while retaining search and explicit expansion, then retries against the new revision", async () => {
     const user = userEvent.setup();
     await ready();
-    await user.click(screen.getByRole("button", { name: /Hermes 专属技能\s*1/ }));
+    await user.click(screen.getByRole("button", { name: /Hermes 专属能力\s*1/ }));
     const search = screen.getByRole("textbox", { name: "搜索项目或技能" });
     await user.type(search, "Hermes");
     fetchTree.mockResolvedValue({ ...snapshot(), revision: "r9" });
@@ -224,8 +224,8 @@ describe("ProjectSkillTree", () => {
     expect(fetchTree).toHaveBeenCalledTimes(2);
     expect(search).toHaveValue("Hermes");
     await user.clear(search);
-    expect(screen.getByRole("button", { name: /Hermes 专属技能\s*1/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("button", { name: /Codex 专属技能\s*1/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /Hermes 专属能力\s*1/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /Codex 专属能力\s*1/ })).toHaveAttribute("aria-expanded", "false");
     await openActions(user, "creative", "hermes-review");
     await selectDestination(user, "另加到…", "母项目 / 开发");
     expect(applyAction).toHaveBeenLastCalledWith({ revision: "r9", action: "copy", skillId: "hermes-review", sourceProjectId: "creative", targetProjectId: "development" });
@@ -288,7 +288,7 @@ it("shows generated skills within the existing collapsed Agent group and assigns
   const user = userEvent.setup(); fetchTree.mockResolvedValue(withPending());
   await ready();
   expect(document.querySelector('[data-skill-id="generated-review"]')).toBeNull();
-  await user.click(screen.getByRole("button", { name: /Hermes 专属技能\s*2/ }));
+  await user.click(screen.getByRole("button", { name: /Hermes 专属能力\s*2/ }));
   expect(skillRow("creative", "generated-review")).toHaveTextContent("待分配");
   await openActions(user, "creative", "generated-review");
   expect(screen.queryByRole("menuitem", { name: "停用" })).toBeNull();
@@ -303,7 +303,7 @@ it("pending skills are searchable, pointer assign across projects keeps scope, a
   await user.type(screen.getByRole("textbox", { name: "搜索项目或技能" }), "会话生成");
   expect(skillRow("creative", "generated-review")).toBeVisible();
   await user.clear(screen.getByRole("textbox", { name: "搜索项目或技能" }));
-  await user.click(screen.getByRole("button", { name: /Hermes 专属技能\s*2/ }));
+  await user.click(screen.getByRole("button", { name: /Hermes 专属能力\s*2/ }));
   const target = document.querySelector<HTMLElement>('[data-skill-drop="project"][data-project-id="development"]')!;
   dragSkill("creative", "generated-review", target);
   await waitFor(() => expect(applyAction).toHaveBeenCalledWith({ revision: "r1", action: "assign", skillId: "generated-review", targetProjectId: "development" }));

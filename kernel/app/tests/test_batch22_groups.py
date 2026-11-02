@@ -6,7 +6,7 @@
 2. 加入的两条 409（同组重复、已在别的开着的组里）；
 3. 移出 / 暂停 / 恢复（含「移出后重新加入」）；
 4. ``/spawn`` 全链路（Mock Driver，含首句真的发出去了）；
-5. ``/promote``（group_only → project_visible + persistent）；
+5. ``/promote`` 已删除（2026-11-03）；早先提升过的会话仍能读取；
 6. 关组对三种 ``retention`` 的处置；
 7. 两条事件流：会话流里的 ``kaus/group.changed``、组级全局 SSE；
 8. 关组之后成员端点一律 409 ``group_closed``；
@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -136,7 +137,7 @@ async def test_create_group_starts_active_and_empty(tmp_path) -> None:
 
 
 async def test_list_groups_defaults_to_open_ones(tmp_path) -> None:
-    """``?status=active`` 只列开着的；``all`` 连关掉的一起列。"""
+    """``?status=active`` 只列开着的；关组即删除，``all`` 里也不再有它。"""
     built = await _seeded(tmp_path)
     try:
         async with _api(built) as api:
@@ -149,10 +150,7 @@ async def test_list_groups_defaults_to_open_ones(tmp_path) -> None:
             assert active["count"] == 1
 
             everything = (await api.get("/api/groups", params={"status": "all"})).json()
-            assert {g["id"] for g in everything["groups"]} == {
-                open_group["id"],
-                closed["id"],
-            }
+            assert {g["id"] for g in everything["groups"]} == {open_group["id"]}
 
             bad = await api.get("/api/groups", params={"status": "nope"})
             assert bad.status_code == 400
@@ -442,13 +440,14 @@ async def test_spawn_sends_the_initial_message_through_the_driver(tmp_path) -> N
 
 
 # --------------------------------------------------------------------------- #
-# 5. promote
+# 5. promote（2026-11-03 删除）
 # --------------------------------------------------------------------------- #
 
 
-async def test_promote_turns_a_group_only_conversation_into_a_normal_one(
+async def test_promote_endpoint_is_gone_and_promoted_members_still_load(
     tmp_path,
 ) -> None:
+    """端点已删除；早先提升过的成员会话（project_visible + persistent）照常读取。"""
     built = await _seeded(tmp_path)
     try:
         async with _api(built) as api:
@@ -461,28 +460,29 @@ async def test_promote_turns_a_group_only_conversation_into_a_normal_one(
             ).json()
             member_id = spawned["member"]["id"]
 
-            promoted = await api.post(
+            gone = await api.post(
                 f"/api/groups/{group['id']}/members/{member_id}/promote"
             )
-            assert promoted.status_code == 200
-            body = promoted.json()
-            assert body["promoted"] is True
-            assert body["conversation"]["visibility"] == "project_visible"
-            assert body["conversation"]["retention"] == "persistent"
+            assert gone.status_code in (404, 405)
 
-            # 提升之后它就进项目常用列表了。
+            # 旧版本留下的数据：成员会话已经被提升过。
+            conversation = await built.repositories.conversations.get(
+                spawned["conversation"]["id"]
+            )
+            assert conversation is not None
+            await built.repositories.conversations.save(
+                conversation.promote_to_project()
+            )
+
+            detail = await api.get(f"/api/groups/{group['id']}")
+            assert detail.status_code == 200, detail.text
+            assert member_id in [m["id"] for m in detail.json()["members"]]
             listed = (
                 await api.get(f"/api/projects/{built.project_id}/conversations")
             ).json()
             assert spawned["conversation"]["id"] in [
                 c["id"] for c in listed["conversations"]
             ]
-
-            # 再提升一次是无操作，仍然 200。
-            again = await api.post(
-                f"/api/groups/{group['id']}/members/{member_id}/promote"
-            )
-            assert again.status_code == 200 and again.json()["promoted"] is False
     finally:
         await built.aclose()
 
@@ -510,153 +510,76 @@ async def _spawn_with_retention(built: GroupHarness, api, group_id: str, retenti
     return conversation
 
 
-async def test_close_leaves_persistent_members_alone(tmp_path) -> None:
+async def test_close_deletes_the_group_and_keeps_originals(tmp_path) -> None:
+    """关组 = 删除组：组记录、时间线、资料、成员与组内会话都删掉，原会话不动。"""
     built = await _seeded(tmp_path)
     try:
         conversation = await _new_conversation(built, "本来就是普通会话")
         async with _api(built) as api:
             group = await _new_group(api)
-            await api.post(
-                f"/api/groups/{group['id']}/members",
-                json={"conversationId": conversation.id},
-            )
+            member = (await api.post(
+                f"/api/groups/{group['id']}/members", json={"conversationId": conversation.id}
+            )).json()["member"]
+            spawned = (await api.post(
+                f"/api/groups/{group['id']}/spawn", json={"projectId": built.project_id}
+            )).json()["conversation"]
             closed = await api.post(f"/api/groups/{group['id']}/close")
-            assert closed.status_code == 200
+            assert closed.status_code == 200, closed.text
             body = closed.json()
-            assert body["group"]["status"] == "closed"
-            assert body["group"]["closedAt"] is not None
-            assert body["dispositions"][0]["action"] == "kept"
+            assert body["deleted"] is True
+            assert set(body["deletedConversationIds"]) == {member["conversationId"], spawned["id"]}
 
-            after = await built.repositories.conversations.get(conversation.id)
-            assert after.state == "idle"
-            assert after.visibility == "project_visible"
-            assert after.retention == "persistent"
+            assert await built.repositories.collaborations.get(group["id"]) is None
+            assert await built.repositories.members.list_for_collaboration(group["id"]) == ()
+            assert await built.repositories.group_messages.list_for_collaboration(group["id"]) == ()
+            for conversation_id in body["deletedConversationIds"]:
+                assert await built.repositories.conversations.get(conversation_id) is None
+            original = await built.repositories.conversations.get(conversation.id)
+            assert original is not None and original.state == "idle"
+            assert original.visibility == "project_visible" and original.archived_at is None
+            assert (await api.get(f"/api/groups/{group['id']}")).status_code == 404
     finally:
         await built.aclose()
 
 
-async def test_close_with_keep_promotes_decide_on_group_close(tmp_path) -> None:
-    """缺省 ``onClose=keep``：``decide_on_group_close`` → 提升为普通项目会话。"""
+async def test_close_keeps_a_member_conversation_the_user_promoted(tmp_path) -> None:
     built = await _seeded(tmp_path)
     try:
+        conversation = await _new_conversation(built, "要留下的")
         async with _api(built) as api:
             group = await _new_group(api)
-            spawned = (
-                await api.post(
-                    f"/api/groups/{group['id']}/spawn",
-                    json={"projectId": built.project_id},
-                )
-            ).json()["conversation"]
-
+            member = (await api.post(
+                f"/api/groups/{group['id']}/members", json={"conversationId": conversation.id}
+            )).json()["member"]
+            # 旧版本「提升为普通会话」留下的数据（端点 2026-11-03 已删除）。
+            stored = await built.repositories.conversations.get(member["conversationId"])
+            await built.repositories.conversations.save(stored.promote_to_project())
             body = (await api.post(f"/api/groups/{group['id']}/close")).json()
-            assert body["onClose"] == "keep"
-            assert body["dispositions"][0]["action"] == "promoted"
-
-            after = await built.repositories.conversations.get(spawned["id"])
-            assert after.visibility == "project_visible"
-            assert after.retention == "persistent"
-            # 归档才置 ended；保留下来的这条仍然是一条能继续用的会话。
-            assert after.state == "idle"
+            assert body["deletedConversationIds"] == []
+            kept = await built.repositories.conversations.get(member["conversationId"])
+            assert kept is not None and kept.visibility == "project_visible"
     finally:
         await built.aclose()
 
 
-async def test_close_archives_on_archive_and_always_archives_ephemeral(
-    tmp_path,
-) -> None:
-    """``onClose=archive`` 归档待定的那批；``ephemeral`` 不问、一律归档。
-
-    归档 = 置 ``state=ended``，**不清事件、不删会话**（任务书第 4 件）。
-    """
+async def test_close_refuses_while_a_group_conversation_is_in_a_terminal(tmp_path) -> None:
     built = await _seeded(tmp_path)
     try:
+        conversation = await _new_conversation(built, "终端里")
         async with _api(built) as api:
             group = await _new_group(api)
-            undecided = await _spawn_with_retention(
-                built, api, group["id"], "decide_on_group_close"
-            )
-            throwaway = await _spawn_with_retention(
-                built, api, group["id"], "ephemeral"
-            )
+            member = (await api.post(
+                f"/api/groups/{group['id']}/members", json={"conversationId": conversation.id}
+            )).json()["member"]
 
-            body = (
-                await api.post(
-                    f"/api/groups/{group['id']}/close", json={"onClose": "archive"}
-                )
-            ).json()
-            actions = {d["conversationId"]: d["action"] for d in body["dispositions"]}
-            assert actions[undecided.id] == "archived"
-            assert actions[throwaway.id] == "archived"
+            async def external(conversation_id):
+                return SimpleNamespace(owner_type="external-cli") if conversation_id == member["conversationId"] else None
 
-            for conversation_id in (undecided.id, throwaway.id):
-                after = await built.repositories.conversations.get(conversation_id)
-                assert after is not None, "归档不是删除"
-                assert after.state == "ended"
-                assert after.visibility == "group_only"
-
-            bad = await api.post("/api/groups/group:x/close", json={"onClose": "burn"})
-            assert bad.status_code == 404  # 组先不存在，轮不到校验 onClose
-    finally:
-        await built.aclose()
-
-
-async def test_ephemeral_is_archived_even_when_the_user_says_keep(tmp_path) -> None:
-    built = await _seeded(tmp_path)
-    try:
-        async with _api(built) as api:
-            group = await _new_group(api)
-            throwaway = await _spawn_with_retention(
-                built, api, group["id"], "ephemeral"
-            )
-            body = (
-                await api.post(
-                    f"/api/groups/{group['id']}/close", json={"onClose": "keep"}
-                )
-            ).json()
-            actions = {d["conversationId"]: d["action"] for d in body["dispositions"]}
-            assert actions[throwaway.id] == "archived"
-            after = await built.repositories.conversations.get(throwaway.id)
-            assert after.state == "ended"
-    finally:
-        await built.aclose()
-
-
-async def test_member_endpoints_are_409_after_the_group_is_closed(tmp_path) -> None:
-    built = await _seeded(tmp_path)
-    try:
-        conversation = await _new_conversation(built, "关了之后")
-        other = await _new_conversation(built, "想加进来")
-        async with _api(built) as api:
-            group = await _new_group(api)
-            member = (
-                await api.post(
-                    f"/api/groups/{group['id']}/members",
-                    json={"conversationId": conversation.id},
-                )
-            ).json()["member"]
-            await api.post(f"/api/groups/{group['id']}/close")
-
-            base = f"/api/groups/{group['id']}"
-            attempts = [
-                await api.post(
-                    f"{base}/members", json={"conversationId": other.id}
-                ),
-                await api.delete(f"{base}/members/{member['id']}"),
-                await api.post(f"{base}/members/{member['id']}/pause"),
-                await api.post(f"{base}/members/{member['id']}/resume"),
-                await api.post(f"{base}/spawn", json={"projectId": built.project_id}),
-                await api.patch(base, json={"title": "改个名"}),
-                await api.post(f"{base}/close"),
-            ]
-            assert [r.status_code for r in attempts] == [409] * len(attempts)
-            assert {r.json()["error"]["code"] for r in attempts} == {"group_closed"}
-
-            # 只读那两条仍然通：组还在，只是关了。
-            assert (await api.get(base)).status_code == 200
-            # 提升也仍然通——关组之后才决定「这条留下」是正常的用法。
-            assert (
-                await api.post(f"{base}/members/{member['id']}/promote")
-            ).status_code == 200
+            built.host.describe_runtime_owner = external
+            refused = await api.post(f"/api/groups/{group['id']}/close")
+            assert refused.status_code == 409
+            assert refused.json()["error"]["code"] == "surface_external_active"
+            assert await built.repositories.collaborations.get(group["id"]) is not None
     finally:
         await built.aclose()
 
@@ -717,10 +640,10 @@ async def test_group_events_sse_broadcasts_group_level_changes(tmp_path) -> None
             assert probe.headers["content-type"].startswith("text/event-stream")
             async with _api(built) as api:
                 group = await _new_group(api, "会广播的组")
-                await api.post(
+                joined = (await api.post(
                     f"/api/groups/{group['id']}/members",
                     json={"conversationId": conversation.id},
-                )
+                )).json()["member"]
                 await api.post(f"/api/groups/{group['id']}/close")
             frames = await probe.next_events(3)
         assert [f["data"]["change"] for f in frames] == [
@@ -730,7 +653,7 @@ async def test_group_events_sse_broadcasts_group_level_changes(tmp_path) -> None
         ]
         assert [f["sequence"] for f in frames] == [1, 2, 3]
         assert all(f["type"] == "kaus/group.changed" for f in frames)
-        assert frames[1]["data"]["conversationId"] == built.group_session_for(conversation.id)
+        assert frames[1]["data"]["conversationId"] == joined["conversationId"]
     finally:
         await built.aclose()
 

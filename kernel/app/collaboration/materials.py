@@ -56,6 +56,7 @@ class GroupMaterials(DomainModel):
 class GroupMaterialsRepository(Protocol):
     async def get(self, group_id: str) -> GroupMaterials: ...
     async def save(self, bundle: GroupMaterials, *, expected_revision: int) -> GroupMaterials: ...
+    async def delete(self, group_id: str) -> None: ...
 
 
 class InMemoryGroupMaterialsRepository:
@@ -72,6 +73,9 @@ class InMemoryGroupMaterialsRepository:
         saved = bundle.evolve(revision=expected_revision + 1)
         self._rows[bundle.group_id] = saved
         return saved
+
+    async def delete(self, group_id: str) -> None:
+        self._rows.pop(group_id, None)
 
 
 def material_context(snapshot: dict[str, Any] | None) -> str:

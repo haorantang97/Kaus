@@ -6,7 +6,7 @@ import { fetchGroupMaterials, saveGroupMaterial, type GroupWire } from "../lib/g
 vi.mock("../lib/groupsApi", async (original) => ({ ...await original<object>(), fetchGroupMaterials: vi.fn(), saveGroupMaterial: vi.fn(), deleteGroupMaterial: vi.fn() }));
 const group = { id: "group-a", title: "A", status: "active", thread: null } as GroupWire;
 const bundle = { groupId: "group-a", revision: 2, items: [], charCount: 0, maxChars: 12000, maxItems: 20 };
-const props = { group, members: [], changeToken: 0, capture: null, onCaptured: vi.fn() };
+const props = { group, members: [], changeToken: 0 };
 beforeEach(() => { vi.resetAllMocks(); setLocalePref("zh"); vi.mocked(fetchGroupMaterials).mockResolvedValue(bundle); });
 afterEach(cleanup);
 async function newDraft() {

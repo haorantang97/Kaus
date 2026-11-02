@@ -107,3 +107,31 @@ def macos_open(app: str, script_path: Path, *, cwd: str | None = None,
     except OSError as exc:  # pragma: no cover - 极少见（fork 失败之类）
         return False, f"打开 {app} 失败：{type(exc).__name__}: {exc}"
     return True, None
+
+
+def macos_activate(app: str) -> bool:
+    """Bring a supported terminal app to the front; never types into it."""
+    path = terminal_app_path(app)
+    if path is None or shutil.which("open") is None:
+        return False
+    try:
+        subprocess.run(["open", "-a", str(path)], check=True, capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return True
+
+
+def _applescript_text(value: str) -> str:
+    flat = " ".join(value.split())
+    return '"' + flat.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def macos_notify(title: str, body: str) -> None:
+    """Fire-and-forget system notification; failures are silent by design."""
+    if shutil.which("osascript") is None:
+        return
+    script = f"display notification {_applescript_text(body)} with title {_applescript_text(title)}"
+    try:
+        subprocess.Popen(["osascript", "-e", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass

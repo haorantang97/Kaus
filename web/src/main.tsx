@@ -4,7 +4,6 @@ import { BrowserRouter } from "react-router-dom";
 import "./index.css";
 import "./theme-overrides.css";
 import { App } from "./App";
-import { TerminalLab } from "./components/TerminalLab";
 import { CardsPreview } from "./components/cards/preview";
 import "./styles/controls.css";
 import { currentLocale } from "./i18n";
@@ -103,7 +102,6 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
    import.meta.env.DEV 为 false，这段判断被摇掉，预览页不进产物。 */
 function root() {
   const path = window.location.pathname;
-  if (path === "/terminal-lab") return <TerminalLab />;
   if (import.meta.env.DEV && path === "/dev/cards") return <CardsPreview />;
   // 真路由（IA §6.4，采纳 react-router）。App 内部只读 location，
   // flag 关闭时它一条路由分支都不会走——界面与改造前一致。

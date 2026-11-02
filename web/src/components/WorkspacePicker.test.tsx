@@ -3,6 +3,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WorkspacePill } from "./ComposerBar";
 import { fetchWorkspaceDirectories } from "../lib/workspaceApi";
+import { SessionApiError } from "../lib/sessionApi";
 
 vi.mock("../lib/workspaceApi", async () => ({
   ...await vi.importActual<typeof import("../lib/workspaceApi")>("../lib/workspaceApi"),
@@ -67,5 +68,14 @@ describe("workspace selection", () => {
     expect(screen.getByRole("button", { name: "选择此文件夹" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "取消" }));
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it("shows a localized message for a missing folder", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchWorkspaceDirectories).mockRejectedValue(new SessionApiError(404, "workspace_directory_missing", "raw diagnostic"));
+    render(<WorkspacePill setting={{ value: "/gone", source: "project" }} onSave={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "工作目录" }));
+    expect(await screen.findByText("文件夹不存在")).toBeInTheDocument();
+    expect(screen.queryByText("raw diagnostic")).not.toBeInTheDocument();
   });
 });

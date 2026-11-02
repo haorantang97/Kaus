@@ -5,7 +5,6 @@
 
 export const SIDEBAR_PINNED_KEY = "kaus-sidebar-pinned-v1";
 export const SIDEBAR_GROUPS_KEY = "kaus-sidebar-collapsed-groups-v1";
-export const NAV_MORE_KEY = "kaus-nav-more-open-v1";
 export const DEFAULT_DESTINATION_KEY = "kaus-default-destination-v1";
 export const DRAFT_TEXT_KEY = "kaus-new-conversation-draft-v1";
 /* `kaus-shell-route-migrated-v1` 在批次十一取消：旧 localStorage 外壳状态不再
@@ -51,17 +50,6 @@ export function readCollapsedGroups(): string[] {
 
 export function writeCollapsedGroups(ids: string[]): void {
   write(SIDEBAR_GROUPS_KEY, JSON.stringify(ids));
-}
-
-/* batch40（DESIGN ★L）：导航里「更多」那一组开着还是折着。
-   **出厂是折着**——那五个旧面板不是每天要用的东西，常显只是把三个真入口挤窄。
-   记 localStorage（同这一文件的其余偏好：读写都吞异常，存不下就回默认）。 */
-export function readNavMoreOpen(): boolean {
-  return read(NAV_MORE_KEY) === "1";
-}
-
-export function writeNavMoreOpen(open: boolean): void {
-  write(NAV_MORE_KEY, open ? "1" : "0");
 }
 
 export function readDefaultDestination(): string {

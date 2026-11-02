@@ -6,6 +6,11 @@ import { useWorkbenchRuntime } from "../hooks/useWorkbenchRuntime";
 import { WorkbenchRuntimeFields } from "./WorkbenchRuntimeFields";
 import { activeWorkbenchIntake, cancelWorkbenchIntake, fetchWorkbenchIntake, installWorkbenchIntake, notifyWorkbenchChanged, retryWorkbenchIntake, startWorkbenchIntake, workbenchFailure, type WorkbenchIntake as Intake, type WorkbenchModule } from "../lib/workbenchApi";
 
+const OPT_IN_GRANTS = new Set(["backend:run", "editor:chatcut"]);
+export function defaultGrants(permissions: readonly string[] | null | undefined): string[] {
+  return (permissions ?? []).filter(permission => !OPT_IN_GRANTS.has(permission));
+}
+
 export function WorkbenchIntake({ initial, onClose, onUpdate, onInstalled, onConversation }: {
   initial: Intake; onClose: () => void; onUpdate: (intake: Intake) => void;
   onInstalled: (module: WorkbenchModule) => void; onConversation: (conversationId: string, intakeId: string) => void;
@@ -13,7 +18,10 @@ export function WorkbenchIntake({ initial, onClose, onUpdate, onInstalled, onCon
   const { t, locale } = useLocale();
   const [intake, setIntake] = useState(initial);
   const runtime = useWorkbenchRuntime(initial.configuration ?? {});
-  const [grants, setGrants] = useState<string[]>([]);
+  // Data and Agent access default to what the manifest asks for; running a local
+  // backend and special surfaces stay opt-in.
+  const [grants, setGrants] = useState<string[]>(() => defaultGrants(initial.manifestPermissions));
+  const grantsTouched = useRef(false);
   const [instruction, setInstruction] = useState(initial.instruction ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +36,9 @@ export function WorkbenchIntake({ initial, onClose, onUpdate, onInstalled, onCon
   const active = activeWorkbenchIntake(intake);
   const retry = ["failed", "cancelled", "interrupted"].includes(intake.status);
   const ready = intake.status === "ready";
+  // Adaptation fills in the manifest later; apply defaults once it does, unless the user already chose.
+  const permissionKey = intake.manifestPermissions.join(" ");
+  useEffect(() => { if (!grantsTouched.current) setGrants(defaultGrants(permissionKey ? permissionKey.split(" ") : [])); }, [permissionKey]);
   function update(next: Intake) { setIntake(next); callbacks.current.onUpdate(next); }
   useEffect(() => {
     if (!active && !pollFailed) return;
@@ -75,7 +86,7 @@ export function WorkbenchIntake({ initial, onClose, onUpdate, onInstalled, onCon
     {active ? <div className="workbench-intake-progress" role="status"><LoaderCircle size={22} className="kaus-ui-spin"/><span>{t((`workbench.intake.status.${intake.status}`) as DictKey)}</span></div> : <>
       <WorkbenchRuntimeFields runtime={runtime} disabled={busy}/>
       {!ready && <label>{t("workbench.intake.instruction")}<textarea aria-label={t("workbench.intake.instruction")} value={instruction} disabled={busy} maxLength={4000} placeholder={t("workbench.optional")} onChange={event => setInstruction(event.target.value)} rows={2}/></label>}
-      {ready && !!intake.manifestPermissions.length && <fieldset><legend>{t("workbench.access")}</legend>{intake.manifestPermissions.map(permission => <label className="workbench-grant" key={permission}><input type="checkbox" checked={grants.includes(permission)} disabled={busy} onChange={event => setGrants(previous => event.target.checked ? [...previous, permission] : previous.filter(value => value !== permission))}/><span>{t((`workbench.grant.${permission}`) as DictKey)}</span></label>)}</fieldset>}
+      {ready && !!intake.manifestPermissions.length && <fieldset><legend>{t("workbench.access")}</legend>{intake.manifestPermissions.map(permission => <label className="workbench-grant" key={permission}><input type="checkbox" checked={grants.includes(permission)} disabled={busy} onChange={event => { grantsTouched.current = true; setGrants(previous => event.target.checked ? [...previous, permission] : previous.filter(value => value !== permission)); }}/><span>{t((`workbench.grant.${permission}`) as DictKey)}</span></label>)}</fieldset>}
       {retry && <p className="workbench-inline-error" role="status">{intake.status === "failed" ? workbenchFailure({code:intake.errorCode}, locale === "en") : t((`workbench.intake.status.${intake.status}`) as DictKey)}</p>}
     </>}
     {pollFailed && <div className="workbench-inline-error" role="alert"><span>{t("workbench.loadFailed")}</span><button className="kaus-chat-icon-action" aria-label={t("workbench.retry")} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={15}/></button></div>}

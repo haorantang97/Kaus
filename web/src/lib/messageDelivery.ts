@@ -11,6 +11,13 @@ const REJECTION_REASON_KEYS: Readonly<Record<string, DictKey>> = {
   attachments_unsupported: "conversation.message.reason.attachments",
   runtime_not_active: "conversation.message.reason.inactive",
   runtime_start_failed: "conversation.message.reason.startFailed",
+  // Raised while starting the runtime or before it (session_router.send_message):
+  // the prompt was never dispatched, so the draft can be retried safely.
+  auth_required: "conversation.message.reason.auth",
+  agent_spawn_failed: "conversation.message.reason.startFailed",
+  driver_not_registered: "conversation.message.reason.driver",
+  conversation_archived: "conversation.message.reason.archived",
+  project_deleted: "conversation.message.reason.projectDeleted",
 };
 
 // Historical events retain their original diagnostics. Render the current copy

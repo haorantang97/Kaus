@@ -994,9 +994,9 @@ async def test_ad13_group_timeline_belongs_to_the_group(repos: RepositorySet) ->
         CollaborationMessage.create(
             collaboration_session_id=session.id,
             sequence=0,
-            kind="context_packet",
+            kind="writeback",
             author_type="system",
-            content="给新成员的上下文包",
+            content="写回项目的结论",
             created_at=NOW,
         )
     )
@@ -1023,11 +1023,11 @@ async def test_ad13_group_timeline_belongs_to_the_group(repos: RepositorySet) ->
             session.id, after_sequence=0
         )
     ] == [spoken.id]
-    # 按类型取（Group 关闭时对 Context Packet 做归档快照的入口）。
+    # 按类型取。
     assert [
         m.id
         for m in await repos.group_messages.list_for_collaboration(
-            session.id, kinds=["context_packet"]
+            session.id, kinds=["writeback"]
         )
     ] == [packet.id]
 

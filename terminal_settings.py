@@ -16,30 +16,47 @@ from typing import Any
 from drivers.terminals.launcher import installed_terminals, terminal_app_id
 
 
+TERMINAL_APPS = {"cmux", "terminal", "iterm2"}
+
+
 class TerminalPreferences:
     def __init__(self, path: Path, *, default: str = "cmux") -> None:
         self.path = path
         self.default = terminal_app_id(default)
         self._lock = threading.RLock()
 
+    def _read(self) -> dict[str, Any]:
+        if not self.path.exists():
+            return {"version": 1, "app": self.default, "trustWorkspace": True}
+        data = json.loads(self.path.read_text(encoding="utf-8"))
+        if (not isinstance(data, dict) or data.get("version") != 1 or data.get("app") not in TERMINAL_APPS
+                or not isinstance(data.get("trustWorkspace", True), bool)):
+            raise ValueError("终端偏好文件格式不正确")
+        return {"version": 1, "app": data["app"], "trustWorkspace": data.get("trustWorkspace", True)}
+
     def selected(self) -> str:
         with self._lock:
-            if not self.path.exists():
-                return self.default
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(data, dict) or data.get("version") != 1 or data.get("app") not in {"cmux", "terminal", "iterm2"}:
-                raise ValueError("终端偏好文件格式不正确")
-            return data["app"]
+            return self._read()["app"]
 
-    def save(self, app: str) -> None:
-        if app not in {"cmux", "terminal", "iterm2"}:
+    def trust_workspace(self) -> bool:
+        """Prewrite the agent's folder trust when Kaus opens a terminal (default on)."""
+        with self._lock:
+            return self._read()["trustWorkspace"]
+
+    def save(self, app: str | None = None, *, trust_workspace: bool | None = None) -> None:
+        if app is not None and app not in TERMINAL_APPS:
             raise ValueError("请选择受支持的终端")
         with self._lock:
+            data = self._read()
+            if app is not None:
+                data["app"] = app
+            if trust_workspace is not None:
+                data["trustWorkspace"] = trust_workspace
             self.path.parent.mkdir(parents=True, exist_ok=True)
             fd, temporary = tempfile.mkstemp(prefix=".terminal-preferences-", dir=self.path.parent)
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                    json.dump({"version": 1, "app": app}, stream)
+                    json.dump(data, stream)
                     stream.write("\n")
                     stream.flush()
                     os.fsync(stream.fileno())
@@ -51,7 +68,8 @@ class TerminalPreferences:
 
 def build_terminal_router(*, preferences: TerminalPreferences, launcher: Any,
                           repositories: Any, auth_policy: Any) -> Any:
-    from fastapi import APIRouter, Body, Depends
+    from fastapi import APIRouter, Body, Depends, Header
+    from drivers.terminals.status_hook import TOKEN_HEADER as STATUS_TOKEN_HEADER
     from fastapi.responses import JSONResponse
     from app.api.api_errors import ApiError, json_error_endpoint
     from app.api.session_auth import auth_route_class, require_session_auth
@@ -64,16 +82,21 @@ def build_terminal_router(*, preferences: TerminalPreferences, launcher: Any,
     async def settings() -> dict[str, Any]:
         try:
             app = preferences.selected()
+            trust = preferences.trust_workspace()
         except (OSError, ValueError) as exc:
             raise ApiError(503, "terminal_preferences_unavailable", "无法读取终端偏好") from exc
-        return {"app": app, "launchers": installed_terminals()}
+        return {"app": app, "trustWorkspace": trust, "launchers": installed_terminals()}
 
     async def update(body: dict = Body(...)) -> dict[str, Any]:
         available = {row["id"] for row in installed_terminals() if row["installed"]}
-        if set(body) != {"app"} or not isinstance(body.get("app"), str) or body["app"] not in available:
+        if not body or not set(body) <= {"app", "trustWorkspace"}:
             raise ApiError(400, "invalid_terminal", "请选择已安装的终端")
+        if "app" in body and (not isinstance(body["app"], str) or body["app"] not in available):
+            raise ApiError(400, "invalid_terminal", "请选择已安装的终端")
+        if "trustWorkspace" in body and not isinstance(body["trustWorkspace"], bool):
+            raise ApiError(400, "invalid_terminal_trust", "目录信任设置无效")
         try:
-            preferences.save(body["app"])
+            preferences.save(body.get("app"), trust_workspace=body.get("trustWorkspace"))
         except (OSError, ValueError) as exc:
             raise ApiError(503, "terminal_preferences_unavailable", "无法保存终端偏好") from exc
         return await settings()
@@ -94,7 +117,18 @@ def build_terminal_router(*, preferences: TerminalPreferences, launcher: Any,
             raise ApiError(503, "terminal_launch_unavailable", "无法打开终端") from exc
         return {"projectId": project.id, **result}
 
+    async def terminal_status(launch_id: str, body: Any = Body(None),
+                              token: str = Header("", alias=STATUS_TOKEN_HEADER)) -> dict[str, Any]:
+        # Exempt from the session-token gate (session_bootstrap); this launch's own
+        # token is the only credential. The backend itself listens on loopback only.
+        board = getattr(launcher, "status_board", None)
+        if (board is None or not isinstance(body, dict)
+                or not board.record(launch_id, token, body.get("event"), body.get("message"))):
+            raise ApiError(403, "terminal_status_rejected", "状态上报无效")
+        return {"ok": True}
+
     router.add_api_route("/terminal/settings", endpoint(settings), methods=["GET"], dependencies=[auth])
+    router.add_api_route("/terminal-status/{launch_id}", endpoint(terminal_status), methods=["POST"])
     router.add_api_route("/terminal/settings", endpoint(update), methods=["PUT"], dependencies=[auth])
     router.add_api_route("/projects/{project_id}/terminal", endpoint(open_project), methods=["POST"], dependencies=[auth])
     return router

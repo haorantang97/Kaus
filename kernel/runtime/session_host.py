@@ -119,6 +119,9 @@ CONVERSATION_DELETED_NAMESPACE = USER_MESSAGE_NAMESPACE
 CONVERSATION_DELETED_NAME = "conversation.deleted"
 """同上：事件名。核心 union 已冻结，这条走 ``extension.event``（同 AD-86 的做法）。"""
 
+PROJECT_UNAPPLIED_NAME = "project.unapplied"
+"""``kaus`` extension event: Project capabilities this session did not receive (D-03)."""
+
 RUNTIME_LOST_CODE = "runtime_lost"
 """AD-136 运行态自愈：合成 ``run.failed`` 时用的错误 code（前端按 code 分支）。"""
 
@@ -445,6 +448,8 @@ class SessionHost:
         #: 批次四十三：这条会话最近一次建 runtime 时，**随协议参数送进引擎**的
         #: 那份项目能力摘要（只有名字）。没装投影器 / 这台引擎没有这条路时不写。
         self._session_projections: dict[str, SessionProjection] = {}
+        #: Last unapplied-capability notice per conversation (avoids repeats on restart).
+        self._unapplied_notices: dict[str, tuple] = {}
         #: 批次四十五 a：**每一条落库事件**的旁观者（:meth:`add_event_observer`）。
         self._event_observers: list[Any] = []
         from drivers.computer_use.durable import register_resolver
@@ -665,6 +670,7 @@ class SessionHost:
                     ExtensionEvent(namespace="kaus", name="runtime.workspace", data={"workspaceRoot": root}),
                     run_id=None,
                 )
+            await self._emit_unapplied_notice(runtime)
         except BaseException:
             self._runtimes.pop(conversation.id, None)
             await self._abandon_half_started(driver, handle, conversation.id)
@@ -712,6 +718,9 @@ class SessionHost:
             projection = await hook(conversation, effective, workspace_root=str(root.resolve()))
             if projection is None or projection.options.workspace_root != str(root.resolve()):
                 raise UnsupportedCapabilityError("适配工作目录未生效。")
+            gaps = await self._driver_unapplied(driver, conversation, effective, workspace_root=str(root.resolve()))
+            if gaps:
+                projection = projection.model_copy(update={"unapplied": (*projection.unapplied, *gaps)})
             self._session_projections[conversation.id] = projection
             return projection
         if self._capability_projector is None:
@@ -719,6 +728,7 @@ class SessionHost:
         hook = getattr(driver, "session_options_for", None)
         if hook is None:
             return None
+        effective = None
         try:
             effective = await self._capability_projector(binding)
             projection = await hook(conversation, effective)
@@ -731,11 +741,64 @@ class SessionHost:
                 conversation.id,
                 exc_info=True,
             )
+            # D-03: the session proceeds, but what it lost is recorded and shown.
+            from drivers.projection_gaps import unapplied_kinds
+            gaps = unapplied_kinds(effective)
+            if gaps:
+                self._session_projections[conversation.id] = SessionProjection(unapplied=gaps)
             return None
+        gaps = await self._driver_unapplied(driver, conversation, effective)
         if projection is None:
+            if gaps:
+                self._session_projections[conversation.id] = SessionProjection(unapplied=gaps)
             return None
+        if gaps:
+            projection = projection.model_copy(update={"unapplied": (*projection.unapplied, *gaps)})
         self._session_projections[conversation.id] = projection
         return projection
+
+    async def _driver_unapplied(
+        self, driver: BackendDriver, conversation: Conversation, effective: EffectiveCapabilities, *,
+        workspace_root: str | None = None,
+    ) -> tuple:
+        """Kinds the driver delivers outside session options that are not in place."""
+        hook = getattr(driver, "unapplied_project_capabilities", None)
+        if hook is None:
+            return ()
+        try:
+            gaps = await hook(conversation, effective, **({"workspace_root": workspace_root} if workspace_root else {}))
+        except Exception:  # noqa: BLE001 - a delivery check never blocks startup
+            LOGGER.warning("会话 %s 的项目能力核对失败", conversation.id, exc_info=True)
+            return ()
+        return tuple(gaps or ())
+
+    async def _emit_unapplied_notice(self, runtime: "_ConversationRuntime") -> None:
+        """One timeline notice when Project capabilities did not reach this session."""
+        conversation = runtime.conversation
+        recorded = self._session_projections.get(conversation.id)
+        gaps = recorded.unapplied if recorded is not None else ()
+        if not gaps:
+            self._unapplied_notices.pop(conversation.id, None)
+            return
+        key = tuple((gap.kind, gap.names, gap.reason) for gap in gaps)
+        if self._unapplied_notices.get(conversation.id) == key:
+            return
+        self._unapplied_notices[conversation.id] = key
+        await self._emit_host_event(
+            runtime,
+            ExtensionEvent(
+                namespace="kaus",
+                name=PROJECT_UNAPPLIED_NAME,
+                data={
+                    "projectId": conversation.project_id,
+                    "items": [
+                        {"kind": gap.kind, "names": list(gap.names), "reason": gap.reason}
+                        for gap in gaps
+                    ],
+                },
+            ),
+            run_id=None,
+        )
 
     async def prepare_external_session(self, conversation: Conversation, binding: AgentBinding,
                                        driver: BackendDriver) -> None:

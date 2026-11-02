@@ -28,8 +28,8 @@
 
 1. 首次分配引导已由 [后续实现](skill-onboarding-20261017.md) 补齐。
 2. 接续交互与目标配置传递已由 [后续实现](cross-agent-continuation-20261017.md) 补齐；模型业务质量留待真实任务验收。
-3. 真实账号与服务前提：以 [登录清单](agent-login-next-steps-20261016.md) 的上次检查为线索，实测前重新确认 Claude Code、Cursor、Kilo、OpenClaw 及 Alma 的条件；不把旧状态当作当前登录结果。
-4. 引擎差异与运行隔离剩余项：见 [验收矩阵](agent-skill-support-20261016.md) 和 [前轮剩余项](kaus-remediation-loop-20261016.md)。其中包含 Devin/Alma 范围接口、部分受管终端、OpenClaw/Pi/Command Code 的项目 MCP，以及真实业务验收。
+3. 真实账号与服务前提：以 [登录清单](agent-login-next-steps-20261016.md) 的上次检查为线索，实测前重新确认 Claude Code、Cursor、Kilo 及 OpenClaw 的条件；不把旧状态当作当前登录结果。
+4. 引擎差异与运行隔离剩余项：见 [验收矩阵](agent-skill-support-20261016.md) 和 [前轮剩余项](kaus-remediation-loop-20261016.md)。其中包含部分受管终端、OpenClaw/Pi/Command Code 的项目 MCP，以及真实业务验收。
 5. UI 统一调整与实战测试另行开展。存储通过后也需用实际工作任务验证长对话、文件、技能与接续质量。
 
 ## 验收记录

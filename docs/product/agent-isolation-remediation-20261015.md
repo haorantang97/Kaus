@@ -31,8 +31,8 @@
 | --- | --- | --- |
 | Codex 原生 CLI | `login status` 显示已登录 | 无需先重登；进行受控真实任务验收 |
 | Claude Code 原生 CLI | `auth status` 显示未登录 | 用新入口完成登录，再检查实际 ACP 使用的原生/捆绑 CLI 与配置目录 |
-| Antigravity、Alma | 未找到预设启动目标或已知应用位置 | 确认是否安装；如位于其他位置指定实际路径 |
-| Hermes、OpenCode、Gemini、Qwen、OpenClaw、Pi、DSH、DeepSeek ACP、Kilo、Goose、Cursor、Copilot、Devin、OMP、Grok、Crush、CommandCode、ZCode | 本机发现启动目标，认证未查询 | 逐家检测已有认证，只有确认缺失时才登录；OpenClaw 同时检查 Gateway |
+| Antigravity | 未找到预设启动目标或已知应用位置 | 确认是否安装；如位于其他位置指定实际路径 |
+| Hermes、OpenCode、Gemini、Qwen、OpenClaw、Pi、DSH、DeepSeek ACP、Kilo、Goose、Cursor、Copilot、OMP、Grok、Crush、CommandCode、ZCode | 本机发现启动目标，认证未查询 | 逐家检测已有认证，只有确认缺失时才登录；OpenClaw 同时检查 Gateway |
 
 “发现启动目标”“连接握手成功”“账号已登录”“模型任务成功”分别记录。不能仅依据存在可执行文件或 ACP 握手就把账号标为可用。
 

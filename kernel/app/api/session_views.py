@@ -107,7 +107,18 @@ def session_projection_to_wire(projection: SessionProjection | None) -> dict[str
     """
     if projection is None:
         return None
-    return {str(key): [str(name) for name in names] for key, names in projection.summary.items()}
+    wire = {str(key): [str(name) for name in names] for key, names in projection.summary.items()}
+    if projection.unapplied:
+        # D-03: kinds that did not reach the engine (names travel on the timeline notice).
+        wire["unapplied"] = list(dict.fromkeys(gap.kind for gap in projection.unapplied))
+    return wire
+
+
+def awaiting_input(state: TimelineState | None) -> bool:
+    """这条会话此刻有没有一张等用户回答的审批 / 提问卡。"""
+    return state is not None and any(
+        isinstance(item, InteractionItem) and item.status == "pending" for item in state.items
+    )
 
 
 def timeline_summary(state: TimelineState | None) -> dict[str, Any] | None:
@@ -124,13 +135,18 @@ def timeline_summary(state: TimelineState | None) -> dict[str, Any] | None:
     for item in state.items:
         counts[item.kind] = counts.get(item.kind, 0) + 1
         if isinstance(item, InteractionItem) and item.status == "pending":
-            pending_interactions.append(
-                {
-                    "interactionId": item.item_id.split(":", 1)[-1],
-                    "interactionKind": item.interaction_kind,
-                    "runId": item.run_id,
-                }
-            )
+            entry: dict[str, Any] = {
+                "interactionId": item.item_id.split(":", 1)[-1],
+                "interactionKind": item.interaction_kind,
+                "runId": item.run_id,
+            }
+            # The request as the card shows it, for clients that answer without
+            # replaying the stream (the Kaus control MCP).
+            for key, request in (("permission", item.permission), ("question", item.question),
+                                 ("authentication", item.authentication)):
+                if request is not None:
+                    entry[key] = request.model_dump(mode="json", by_alias=True)
+            pending_interactions.append(entry)
     return {
         "conversationId": state.conversation_id,
         "runState": state.run_state,
@@ -228,7 +244,14 @@ def effective_settings_to_wire(
     engine_approval = engine.approval_mode if engine else None
     catalog_default = catalog.default_model_id if catalog else None
 
-    model_value = binding.default_model_id
+    # A binding default the engine cannot select is not in effect: report it as
+    # ``unapplied`` and resolve the model from the engine side instead.
+    unapplied_model = (
+        binding.default_model_id
+        if binding.default_model_id and catalog is not None and catalog.selection_applies is False
+        else None
+    )
+    model_value = None if unapplied_model else binding.default_model_id
     model_source = "binding"
     if not model_value and engine_model:
         model_value, model_source = engine_model, "engine"
@@ -247,7 +270,11 @@ def effective_settings_to_wire(
 
     return {
         "bindingId": binding.id,
-        "model": _setting(model_value or None, model_source),
+        "model": _setting(
+            model_value or None,
+            model_source,
+            **({"unapplied": unapplied_model} if unapplied_model else {}),
+        ),
         "reasoningEffort": _setting(
             effort_value,
             effort_source,
@@ -506,6 +533,7 @@ SSE_HEADERS = {
 
 __all__ = [
     "DEBUG_PREVIEW_CHARS",
+    "awaiting_input",
     "KEEPALIVE_FRAME",
     "SSE_HEADERS",
     "SSE_PADDING_BYTES",

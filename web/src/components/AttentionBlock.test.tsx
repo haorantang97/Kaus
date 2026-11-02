@@ -6,6 +6,7 @@ import { AttentionBlock } from "./AttentionBlock";
 import { buildConversationGroups, type SidebarConversation } from "../lib/conversationIndex";
 import type { ProjectWire } from "../lib/sessionApi";
 import { setLocalePref } from "../i18n";
+import { dockState, refreshGroups, resetGroupStore } from "../lib/groupStore";
 
 /* batch42（用户裁决：概览页取消）：「需要处理」从概览页搬到草稿页上，形状不变，
    **空了整块不在 DOM 里**这条硬规则也不变。 */
@@ -46,7 +47,15 @@ const renderBlock = (conversations: SidebarConversation[]) => {
   return { onOpenConversation };
 };
 
-beforeEach(() => setLocalePref("zh"));
+const groupsApi = vi.hoisted(() => ({ fetchGroups: vi.fn(), fetchGroup: vi.fn() }));
+vi.mock("../lib/groupsApi", async (importOriginal) => ({ ...await importOriginal<object>(), ...groupsApi }));
+
+beforeEach(() => {
+  setLocalePref("zh");
+  resetGroupStore();
+  groupsApi.fetchGroups.mockReset();
+  groupsApi.fetchGroup.mockReset();
+});
 
 describe("「需要处理」块", () => {
   it("一条都没有时整块不在 DOM 里（不是空态文案）", () => {
@@ -82,5 +91,34 @@ describe("「需要处理」块", () => {
     expect(row).toHaveTextContent("Mock");
     await user.click(row);
     expect(onOpenConversation).toHaveBeenCalledWith("等着的");
+  });
+});
+
+describe("module jobs waiting for the user", () => {
+  it("lists them beside conversations and opens the module conversation", async () => {
+    const open = vi.fn();
+    const user = userEvent.setup();
+    render(<AttentionBlock groups={buildConversationGroups(projects, [])} onOpenConversation={open}
+      modules={[{ moduleId: "kith", moduleName: "亲友", jobId: "job:1", stepTitle: "整理交流", conversationId: "conversation:m", updatedAt: null }]} />);
+    const row = screen.getByTestId("overview-module-attention");
+    expect(row).toHaveTextContent("亲友 · 整理交流");
+    await user.click(row);
+    expect(open).toHaveBeenCalledWith("conversation:m");
+  });
+});
+
+describe("groups waiting for the user", () => {
+  it("lists a group whose member awaits an approval and opens its panel", async () => {
+    const user = userEvent.setup();
+    const waiting = { id: "collaboration:1", title: "调研组", status: "active", updatedAt: "2026-09-08T10:00:00Z", awaitingConversationIds: ["conversation:m"] };
+    groupsApi.fetchGroups.mockResolvedValue({ groups: [waiting, { ...waiting, id: "collaboration:2", title: "空闲组", awaitingConversationIds: [] }], count: 2 });
+    groupsApi.fetchGroup.mockResolvedValue({ group: waiting, members: [], memberCount: 0 });
+    await refreshGroups();
+    render(<AttentionBlock groups={buildConversationGroups(projects, [])} onOpenConversation={vi.fn()} />);
+    const rows = screen.getAllByTestId("overview-group-attention");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("调研组");
+    await user.click(rows[0]);
+    expect(dockState()).toMatchObject({ open: true, expandedGroupId: "collaboration:1" });
   });
 });

@@ -29,16 +29,13 @@ const api = vi.hoisted(() => ({
   removeGroupMember: vi.fn(),
   // batch52
   renameGroupMember: vi.fn(),
-  pauseGroupMember: vi.fn(),
   resumeGroupMember: vi.fn(),
-  promoteGroupMember: vi.fn(),
+  patchGroup: vi.fn(),
   spawnGroupMember: vi.fn(),
   subscribeGroupEvents: vi.fn(),
-  /* batch26：展开态那三栏的取数与两条写端点。 */
+  /* 组工作区的时间线取数与发送。 */
   fetchGroupMessages: vi.fn(),
-  fetchContextPacket: vi.fn(),
   broadcastGroup: vi.fn(),
-  sendToGroupMember: vi.fn(),
 }));
 
 const navigate = vi.hoisted(() => vi.fn());
@@ -138,10 +135,11 @@ function renderDock() {
   );
 }
 
-/** 打开浮层并展开第一个组。 */
+/** 打开浮层（组列表），再点那一行进入组（第二级）。 */
 async function openAndExpand(user: ReturnType<typeof userEvent.setup>, title: string) {
   await user.click(screen.getByTestId("group-dock-pill"));
-  await user.click(await screen.findByRole("button", { name: new RegExp(title) }));
+  await user.click(await screen.findByText(title, { selector: "[data-testid^='group-open-'] *" }));
+  await screen.findByTestId("group-workspace");
 }
 
 beforeEach(() => {
@@ -150,15 +148,8 @@ beforeEach(() => {
   for (const spy of Object.values(api)) spy.mockReset();
   for (const spy of Object.values(session)) spy.mockReset();
   api.subscribeGroupEvents.mockReturnValue(() => {});
-  /* 展开一个组就会拉时间线与 Context Packet：给一份空的缺省世界，要验的用例
-     自己覆盖。 */
+  /* 进入一个组就会拉时间线：给一份空的缺省世界，要验的用例自己覆盖。 */
   api.fetchGroupMessages.mockResolvedValue({ groupId: "collaboration:1", messages: [], count: 0, nextBefore: null });
-  api.fetchContextPacket.mockResolvedValue({
-    groupId: "collaboration:1",
-    generatedAt: "2026-09-05T02:00:00Z",
-    members: [],
-    markdown: "# 组上下文\n",
-  });
   session.fetchBackendUiCapabilities.mockResolvedValue({ externalCli: { supported: "none" } });
   session.fetchProjects.mockResolvedValue({
     projects: [
@@ -205,7 +196,7 @@ describe("Group 浮窗：Pill 与开合记忆", () => {
     await waitFor(() => expect(screen.getByTestId("group-dock-pill")).toHaveTextContent("协作组 · 2"));
   });
 
-  it("点开写 sessionStorage；最小化收回 Pill 但记着展开的组，关闭把位置也忘掉", async () => {
+  it("点开写 sessionStorage；最小化收回 Pill 但记着停在哪一级", async () => {
     const user = userEvent.setup();
     seed([group("collaboration:1", "重构评审组")], { "collaboration:1": [] });
     renderDock();
@@ -226,21 +217,121 @@ describe("Group 浮窗：Pill 与开合记忆", () => {
     });
 
     await user.click(screen.getByTestId("group-dock-pill"));
-    await user.click(screen.getByTestId("group-close-dock"));
+    expect(await screen.findByTestId("group-head-title")).toHaveTextContent("重构评审组");
+    expect(screen.queryByTestId("group-close-dock")).toBeNull();
+
+    // 返回组列表：同样记下来，最小化再打开仍是组列表。
+    await user.click(screen.getByRole("button", { name: "返回" }));
     expect(JSON.parse(window.sessionStorage.getItem(DOCK_STORAGE_KEY) ?? "{}")).toEqual({
-      open: false,
+      open: true,
       expandedGroupId: null,
     });
+    await user.click(screen.getByTestId("group-minimize"));
+    await user.click(screen.getByTestId("group-dock-pill"));
+    expect(await screen.findByTestId("group-open-collaboration:1")).toBeInTheDocument();
+    expect(screen.queryByTestId("group-workspace")).toBeNull();
   });
 });
 
-describe("Group 浮窗：成员四动作", () => {
+describe("Group 浮窗：两级导航", () => {
+  it("第一级：标题、新建、最小化；点一行进入那个组", async () => {
+    const user = userEvent.setup();
+    seed([group("collaboration:1", "重构评审组", 1), group("collaboration:2", "临时组")], { "collaboration:1": [member("m1")] });
+    renderDock();
+
+    await user.click(screen.getByTestId("group-dock-pill"));
+    const panel = screen.getByTestId("group-dock-panel");
+    expect(panel).toHaveAttribute("data-level", "list");
+    expect(within(panel).getByRole("button", { name: "新建组" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "最小化" })).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "返回" })).toBeNull();
+    expect(screen.queryByTestId("group-workspace")).toBeNull();
+
+    await user.click(await screen.findByTestId("group-open-collaboration:2"));
+    expect(screen.getByTestId("group-dock-panel")).toHaveAttribute("data-level", "group");
+    expect(await screen.findByTestId("group-workspace")).toBeInTheDocument();
+    // 列表里别的组不再出现。
+    expect(screen.queryByTestId("group-open-collaboration:1")).toBeNull();
+  });
+
+  it("第二级：返回、组名、删除组、最小化；没有新建，也没有旧的行内叉号", async () => {
+    const user = userEvent.setup();
+    seed([group("collaboration:1", "重构评审组", 1)], { "collaboration:1": [member("m1")] });
+    renderDock();
+
+    await openAndExpand(user, "重构评审组");
+    const head = screen.getByTestId("group-head-title").parentElement!;
+    expect(within(head).getByRole("button", { name: "返回" })).toHaveAttribute("title", "返回");
+    expect(screen.getByTestId("group-head-title")).toHaveTextContent("重构评审组");
+    expect(within(head).getByRole("button", { name: "删除组" })).toHaveAttribute("title", "删除组");
+    expect(within(head).getByRole("button", { name: "最小化" })).toBeInTheDocument();
+    expect(screen.queryByTestId("group-new")).toBeNull();
+    expect(screen.queryByTestId("group-close")).toBeNull();
+    // 组长 / 添加成员与标签页、输入框照旧。
+    expect(screen.getByTestId("group-add-member")).toBeInTheDocument();
+    expect(screen.getByTestId("group-tab-timeline")).toBeInTheDocument();
+    expect(screen.getByTestId("group-composer-input")).toBeInTheDocument();
+
+    await user.click(within(head).getByRole("button", { name: "返回" }));
+    expect(await screen.findByTestId("group-open-collaboration:1")).toBeInTheDocument();
+    expect(screen.queryByTestId("group-workspace")).toBeNull();
+  });
+
+  it("组行 ⋯ 菜单：重命名走 PATCH /groups/{id}", async () => {
+    const user = userEvent.setup();
+    seed([group("collaboration:1", "重构评审组")], { "collaboration:1": [] });
+    api.patchGroup.mockResolvedValue(group("collaboration:1", "接口评审"));
+    renderDock();
+
+    await user.click(screen.getByTestId("group-dock-pill"));
+    await user.click(await screen.findByRole("button", { name: "重构评审组 组菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "重命名" }));
+    const input = screen.getByTestId("group-rename-collaboration:1");
+    expect(input).toHaveValue("重构评审组");
+    await user.clear(input);
+    await user.type(input, "接口评审{Enter}");
+
+    await waitFor(() => expect(api.patchGroup).toHaveBeenCalledWith("collaboration:1", { title: "接口评审" }));
+    expect(await screen.findByText("已重命名为「接口评审」")).toBeInTheDocument();
+    // 改名不进入组。
+    expect(screen.queryByTestId("group-workspace")).toBeNull();
+  });
+
+  it("组行右键菜单：删除打开同一个删除确认", async () => {
+    const user = userEvent.setup();
+    seed([group("collaboration:1", "重构评审组")], { "collaboration:1": [] });
+    api.closeGroup.mockResolvedValue({ groupId: "collaboration:1", deleted: true, deletedConversationIds: [] });
+    renderDock();
+
+    await user.click(screen.getByTestId("group-dock-pill"));
+    fireEvent.contextMenu(await screen.findByTestId("group-open-collaboration:1"), { clientX: 40, clientY: 60 });
+    const menu = await screen.findByRole("menu", { name: "组菜单" });
+    await user.click(within(menu).getByRole("menuitem", { name: "删除" }));
+    expect(screen.queryByTestId("group-close-warning")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "删除" }));
+    expect(api.closeGroup).toHaveBeenCalledWith("collaboration:1");
+  });
+});
+
+describe("Group 浮窗：成员操作", () => {
   const g = group("collaboration:1", "重构评审组", 1);
 
+  it("菜单里没有「定向发送」「暂停 / 恢复」与「提升为普通会话」（点名用 @）", async () => {
+    const user = userEvent.setup();
+    seed([g], { "collaboration:1": [member("m1")] });
+    renderDock();
+
+    await openAndExpand(user, "重构评审组");
+    await user.click(await screen.findByTestId("member-actions-m1"));
+    const menu = screen.getByRole("menu", { name: "成员操作" });
+    expect(within(menu).getByRole("menuitem", { name: "移出组" })).toBeInTheDocument();
+    for (const gone of ["定向发送", "暂停", "恢复", "提升为普通会话"]) {
+      expect(within(menu).queryByRole("menuitem", { name: gone })).toBeNull();
+    }
+  });
+
   it.each([
-    ["暂停", "pauseGroupMember"],
     ["移出组", "removeGroupMember"],
-    ["提升为普通会话", "promoteGroupMember"],
   ] as const)("「%s」调 %s，并回执一句人话", async (label, fn) => {
     const user = userEvent.setup();
     seed([g], { "collaboration:1": [member("m1")] });
@@ -256,7 +347,7 @@ describe("Group 浮窗：成员四动作", () => {
     await waitFor(() => expect(document.body.textContent).toMatch(/已/));
   });
 
-  it("已被移出的成员：菜单里没有「暂停」，只给「重新加入」（走 resume）", async () => {
+  it("已被移出的成员：只给「重新加入」（走 resume）", async () => {
     const user = userEvent.setup();
     seed([g], { "collaboration:1": [member("m1", { participationState: "left", leftAt: "2026-09-05T01:00:00Z" })] });
     api.resumeGroupMember.mockResolvedValue({ member: member("m1") });
@@ -267,6 +358,7 @@ describe("Group 浮窗：成员四动作", () => {
     expect(screen.queryByRole("menuitem", { name: "暂停" })).toBeNull();
     await user.click(screen.getByRole("menuitem", { name: "重新加入" }));
     expect(api.resumeGroupMember).toHaveBeenCalledWith("collaboration:1", "m1");
+    expect(await screen.findByText("已重新加入")).toBeInTheDocument();
   });
 });
 
@@ -444,33 +536,26 @@ describe("Group 浮窗：添加成员两条路", () => {
   });
 });
 
-describe("Group 浮窗：关闭组", () => {
-  it("弹处置选择，默认「保留」，选「归档」后带 onClose=archive", async () => {
+describe("Group 浮窗：删除组", () => {
+  it("组内头部的删除组按删除确认：写明不可恢复，确认后调 POST /close 并回到组列表", async () => {
     const user = userEvent.setup();
     const g = group("collaboration:1", "重构评审组", 2);
-    seed([g], {
-      "collaboration:1": [
-        member("m1"),
-        member("m2", { conversation: { ...member("m2").conversation!, retention: "persistent" } }),
-      ],
-    });
-    api.closeGroup.mockResolvedValue({ group: { ...g, status: "closed" }, onClose: "archive", dispositions: [] });
+    seed([g], { "collaboration:1": [member("m1"), member("m2")] });
+    api.closeGroup.mockResolvedValue({ groupId: g.id, deleted: true, deletedConversationIds: [] });
     renderDock();
 
     await openAndExpand(user, "重构评审组");
-    await user.click(await screen.findByTestId("group-close"));
+    expect(screen.getByTestId("group-delete")).toHaveAccessibleName("删除组");
+    await user.click(screen.getByTestId("group-delete"));
+    expect(screen.getByText(/无法恢复/)).toBeInTheDocument();
+    expect(screen.queryByText(/提升为普通会话/)).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
+    seed([]);
+    await user.click(screen.getByRole("button", { name: "删除" }));
 
-    // 三档 retention 各有几条，就地数给用户看（不让人猜关组会做什么）。
-    expect(screen.getByTestId("group-close-counts")).toHaveTextContent("长期保留 1 条");
-    expect(screen.getByTestId("group-close-counts")).toHaveTextContent("关组时再决定 1 条");
-
-    // 「保留」那条的说明里也带「归档」二字，所以按开头匹配。
-    await user.click(screen.getByRole("radio", { name: /^归档/ }));
-    // 页面上有两枚「关闭组」：浮层里那枚（打开弹窗）与弹窗里的确认键。取后者。
-    const confirms = screen.getAllByRole("button", { name: "关闭组" });
-    await user.click(confirms[confirms.length - 1]);
-
-    expect(api.closeGroup).toHaveBeenCalledWith("collaboration:1", { onClose: "archive" });
+    expect(api.closeGroup).toHaveBeenCalledWith("collaboration:1");
+    await waitFor(() => expect(screen.getByTestId("group-dock-panel")).toHaveAttribute("data-level", "list"));
+    expect(JSON.parse(window.sessionStorage.getItem(DOCK_STORAGE_KEY) ?? "{}")).toMatchObject({ expandedGroupId: null });
   });
 });
 
@@ -552,12 +637,18 @@ describe("Group 浮窗：对话与辅助视图", () => {
     expect(screen.getByTestId("group-tab-timeline")).toHaveAttribute("aria-selected", "true");
     expect(screen.getByTestId("group-pane-members")).toBeInTheDocument();
     expect(screen.getByTestId("group-pane-timeline")).toBeInTheDocument();
-    expect(screen.getByTestId("group-pane-packet")).toBeInTheDocument();
+    expect(screen.getByTestId("group-materials")).toBeInTheDocument();
     // 成员行仍在左栏里（三栏是同一件工具，不是把成员挪走了）。
     expect(within(screen.getByTestId("group-pane-members")).getByTestId("group-member-m1")).toBeInTheDocument();
     // 窄屏折叠靠 CSS，DOM 一个不少：点 tab 只换选中态。
     await user.click(screen.getByTestId("group-tab-packet"));
     expect(screen.getByTestId("group-tab-packet")).toHaveAttribute("aria-selected", "true");
+    // 资料页只有手动维护的资料：没有「成员近况」。
+    expect(screen.queryByText("成员近况")).toBeNull();
+    // 消息上只有复制，没有「存入本组资料」。
+    const row = screen.getByTestId("group-message-msg1");
+    expect(within(row).getByRole("button", { name: "复制" })).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "存入本组资料" })).toBeNull();
   });
 
   it("时间线正序（batch45c），每条给投递摘要「N 已发 · N 已跳过」，展开看每成员状态", async () => {
@@ -688,27 +779,6 @@ describe("Group 浮窗：对话与辅助视图", () => {
     expect(screen.getByRole("menuitem", { name: "移出组" })).toBeInTheDocument();
   });
 
-  it("「定向发送」走 /members/{id}/send，不是把广播缩到一个人", async () => {
-    const user = userEvent.setup();
-    seed([g], { "collaboration:1": [member("m1")] });
-    const server = message("msg9", { kind: "directed" });
-    api.sendToGroupMember.mockResolvedValue({ message: server, deliveries: server.deliveries });
-    renderDock();
-
-    await openAndExpand(user, "重构评审组");
-    await user.click(await screen.findByTestId("member-actions-m1"));
-    await user.click(screen.getByRole("menuitem", { name: "定向发送" }));
-    expect(screen.getByTestId("group-composer-target")).toHaveTextContent("定向发给「会话 m1」");
-
-    await user.type(screen.getByTestId("group-composer-input"), "你先跑一下测试");
-    await user.click(screen.getByTestId("group-send"));
-
-    await waitFor(() =>
-      expect(api.sendToGroupMember).toHaveBeenCalledWith("collaboration:1", "m1", { text: "你先跑一下测试" }),
-    );
-    expect(api.broadcastGroup).not.toHaveBeenCalled();
-  });
-
   it("409 group_closed：失败的那条留在时间线上，输入框就地禁用并说明", async () => {
     const user = userEvent.setup();
     seed([g], { "collaboration:1": [member("m1")] });
@@ -736,127 +806,6 @@ describe("Group 浮窗：对话与辅助视图", () => {
     await openAndExpand(user, "已关的组");
     expect(await screen.findByTestId("group-composer-closed")).toBeInTheDocument();
     expect(screen.queryByTestId("group-composer-input")).toBeNull();
-  });
-});
-
-describe("Group 浮窗：Context Packet", () => {
-  const g = group("collaboration:1", "重构评审组", 1);
-
-  it("只读表按成员列出；缺席的可选键那一格是空的，不写「未知」", async () => {
-    const user = userEvent.setup();
-    seed([g], { "collaboration:1": [member("m1")] });
-    api.fetchContextPacket.mockResolvedValue({
-      groupId: "collaboration:1",
-      generatedAt: "2026-09-05T02:00:00Z",
-      members: [
-        {
-          memberId: "m1",
-          conversationId: "conversation:m1",
-          title: "接口层重构",
-          bindingId: "binding:default:mock",
-          participationState: "active",
-        },
-      ],
-      markdown: "# 组上下文\n- 接口层重构\n",
-    });
-    renderDock();
-
-    await openAndExpand(user, "重构评审组");
-    const row = await screen.findByTestId("group-packet-row-m1");
-    expect(within(row).getByText("接口层重构")).toBeInTheDocument();
-    expect(row.textContent).not.toMatch(/未知|unknown|null/);
-  });
-
-  it("成员近况的复制图标写入 Markdown；刷新重算一次", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(globalThis.navigator, "clipboard", { value: { writeText }, configurable: true });
-    seed([g], { "collaboration:1": [member("m1")] });
-    api.fetchContextPacket.mockResolvedValue({
-      groupId: "collaboration:1",
-      generatedAt: "2026-09-05T02:00:00Z",
-      members: [],
-      markdown: "# 组上下文\n",
-    });
-    renderDock();
-
-    await openAndExpand(user, "重构评审组");
-    await user.click(screen.getByText("成员近况", { selector: "summary" }));
-    await user.click(within(screen.getByTestId("group-pane-packet")).getByRole("button", { name: "复制" }));
-    expect(writeText).toHaveBeenCalledWith("# 组上下文\n");
-    await waitFor(() => expect(screen.getByText("已复制")).toBeInTheDocument());
-
-    const before = api.fetchContextPacket.mock.calls.length;
-    await user.click(screen.getByTestId("group-packet-refresh"));
-    await waitFor(() => expect(api.fetchContextPacket.mock.calls.length).toBeGreaterThan(before));
-  });
-
-  /* batch52 第 4 件（真机 UI-02）：这张表此前用会话标题，于是两位同名成员都叫
-     media——而成员栏、时间线、房间说明里它们是 media 与 media#2。 */
-  it("同名成员在这张表里也分得出（用后端给的 displayName）", async () => {
-    const user = userEvent.setup();
-    seed([group("collaboration:1", "同名组", 2)], {
-      "collaboration:1": [member("m1"), member("m2")],
-    });
-    api.fetchContextPacket.mockResolvedValue({
-      groupId: "collaboration:1",
-      generatedAt: "2026-09-05T02:00:00Z",
-      members: [
-        {
-          memberId: "m1",
-          conversationId: "conversation:m1",
-          displayName: "media",
-          title: "media",
-          bindingId: "binding:default:mock",
-          participationState: "active",
-        },
-        {
-          memberId: "m2",
-          conversationId: "conversation:m2",
-          displayName: "media#2",
-          title: "media",
-          bindingId: "binding:default:mock",
-          participationState: "active",
-          lastAssistantMessage: "我这边看完了。",
-        },
-      ],
-      markdown: "# 组上下文\n",
-    });
-    renderDock();
-
-    await openAndExpand(user, "同名组");
-    expect(
-      within(await screen.findByTestId("group-packet-row-m1")).getByText("media"),
-    ).toBeInTheDocument();
-    const second = screen.getByTestId("group-packet-row-m2");
-    expect(within(second).getByText("media#2")).toBeInTheDocument();
-    // 「最近一句」是他自己在组里说的那一条，不是投给他的那份增量。
-    expect(second).toHaveTextContent("我这边看完了。");
-  });
-
-  it("老后端没有 displayName 时退回会话标题（不空着）", async () => {
-    const user = userEvent.setup();
-    seed([g], { "collaboration:1": [member("m1")] });
-    api.fetchContextPacket.mockResolvedValue({
-      groupId: "collaboration:1",
-      generatedAt: "2026-09-05T02:00:00Z",
-      members: [
-        {
-          memberId: "m1",
-          conversationId: "conversation:m1",
-          title: "接口层重构",
-          bindingId: "binding:default:mock",
-          participationState: "active",
-        },
-      ],
-      markdown: "# 组上下文\n",
-    });
-    renderDock();
-
-    await openAndExpand(user, "重构评审组");
-    expect(
-      within(await screen.findByTestId("group-packet-row-m1")).getByText("接口层重构"),
-    ).toBeInTheDocument();
   });
 });
 
@@ -968,7 +917,7 @@ describe("batch28：一轮跑完自动刷新一次", () => {
     });
   });
 
-  it("成员 runState 从 running 落回 idle → 防抖 1s 后 Context Packet 与时间线各重取一次", async () => {
+  it("成员 runState 从 running 落回 idle → 防抖 1s 后时间线重取一次", async () => {
     const user = userEvent.setup();
     const running = member("m1", {
       conversation: { ...member("m1").conversation!, runState: "running" },
@@ -982,93 +931,17 @@ describe("batch28：一轮跑完自动刷新一次", () => {
     renderDock();
 
     await openAndExpand(user, "重构评审组");
-    await waitFor(() => expect(api.fetchContextPacket).toHaveBeenCalledTimes(1));
-    const packetCalls = api.fetchContextPacket.mock.calls.length;
-    const messageCalls = api.fetchGroupMessages.mock.calls.length;
+    await waitFor(() => expect(api.fetchGroupMessages).toHaveBeenCalledTimes(1));
 
     // 这一轮跑完了：组级流推一条变更，重取回来的成员 runState 已经是 idle。
     seed([g], { "collaboration:1": [member("m1")] });
-    handlers!.onChange({ groupId: "collaboration:1", change: "message_posted" });
-
-    await waitFor(
-      () => expect(api.fetchContextPacket.mock.calls.length).toBe(packetCalls + 1),
-      { timeout: 4_000 },
-    );
-    await waitFor(() => expect(api.fetchGroupMessages.mock.calls.length).toBeGreaterThan(messageCalls));
-    // 防抖：一轮结束连着来的几条变更只换来一次重取，不是每条一次。
-    expect(api.fetchContextPacket.mock.calls.length).toBe(packetCalls + 1);
-    // 手动「刷新」照旧在。
-    expect(screen.getByTestId("group-packet-refresh")).toBeInTheDocument();
+    act(() => handlers!.onChange({ groupId: "collaboration:1", change: "message_posted" }));
+    // 推送本身立刻重取一次；防抖满 1s 后再补一次（连着来的变更合成这一次）。
+    await waitFor(() => expect(api.fetchGroupMessages).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(api.fetchGroupMessages).toHaveBeenCalledTimes(3), { timeout: 4_000 });
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    expect(api.fetchGroupMessages).toHaveBeenCalledTimes(3);
   }, 15_000);
-});
-
-/* ================================================================== *
- * batch30 第 3 件：Context Packet 的请求定序（真机 P6）
- * ================================================================== *
- * 真机现象：成员栏列着两个人，右边那栏却写着「这个组还没有成员」。后端没问题
- * ——错在前端没有定序：进组时那次取数（那一刻组里还没有人 / 隧道上慢了几秒）
- * 回来得比自动刷新那次还晚，于是旧答案把新的盖掉了，说的还偏偏是最吓人的一句。
- */
-
-describe("batch30：Context Packet 不被过期的答案盖掉", () => {
-  const g = group("collaboration:1", "重构评审组", 2);
-
-  const packetOf = (memberIds: string[]) => ({
-    groupId: "collaboration:1",
-    generatedAt: "2026-09-05T02:00:00Z",
-    members: memberIds.map((id) => ({
-      memberId: id,
-      conversationId: `conversation:${id}`,
-      title: `会话 ${id}`,
-      bindingId: "binding:1",
-      backendId: "backend:mock",
-      modelId: null,
-      runState: "idle",
-      participationState: "active" as const,
-    })),
-    markdown: "# 组上下文\n",
-  });
-
-  it("先发的那次后回：整份丢掉，不许把两个人的版本换成「还没有成员」", async () => {
-    const user = userEvent.setup();
-    seed([g], { "collaboration:1": [member("m1"), member("m2")] });
-    let resolveStale!: (value: unknown) => void;
-    api.fetchContextPacket
-      .mockReturnValueOnce(new Promise((done) => { resolveStale = done; }))
-      .mockResolvedValue(packetOf(["m1", "m2"]));
-    renderDock();
-
-    await openAndExpand(user, "重构评审组");
-    // 取数在飞的时候**不说**「还没有成员」——「还不知道」和「确实没有」是两件事。
-    expect(screen.queryByText(/暂无成员/)).toBeNull();
-
-    // 第二次（刷新）先回来：两个人出现了。
-    await user.click(screen.getByTestId("group-packet-refresh"));
-    expect(await screen.findByTestId("group-packet-row-m1")).toBeInTheDocument();
-
-    // 现在那次"进组时"的请求才回来，而它看到的世界里一个人都没有。
-    await act(async () => {
-      resolveStale(packetOf([]));
-      await Promise.resolve();
-    });
-    expect(screen.getByTestId("group-packet-row-m1")).toBeInTheDocument();
-    expect(screen.queryByText(/暂无成员/)).toBeNull();
-  });
-
-  it("返回体的 groupId 与当前组对不上时也整份丢掉（换组时的兜底）", async () => {
-    const user = userEvent.setup();
-    seed([g], { "collaboration:1": [member("m1")] });
-    api.fetchContextPacket.mockResolvedValue({
-      ...packetOf([]),
-      groupId: "collaboration:别的组",
-    });
-    renderDock();
-
-    await openAndExpand(user, "重构评审组");
-    // 那份答案属于别的组：既不渲染它的内容，也不拿它当"这个组是空的"的证据。
-    await waitFor(() => expect(api.fetchContextPacket).toHaveBeenCalled());
-    expect(screen.queryByText(/暂无成员/)).toBeNull();
-  });
 });
 
 /* batch42 第 2 件（★J-4）：拖拽入组。
@@ -1272,6 +1145,8 @@ describe("拖拽入组（★J-4）", () => {
     fireEvent.drop(pill, { dataTransfer: conversationDrag("conversation:9") });
     expect(api.addGroupMember).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByText(/当前有 2 个组/)).toBeInTheDocument());
+    // 停在组列表：每一行都是放置目标。
+    expect(screen.getByTestId("group-dock-panel")).toHaveAttribute("data-level", "list");
   });
 
   it("一个组都没有：胶囊不装得能放", async () => {
@@ -1529,5 +1404,17 @@ describe("成员终端入口", () => {
     await user.click(screen.getByTestId("member-actions-m1"));
     await waitFor(() => expect(session.fetchBackendUiCapabilities).toHaveBeenCalledWith("backend:mock"));
     expect(screen.queryByRole("menuitem", { name: "到终端打开" })).toBeNull();
+  });
+});
+
+describe("Group 浮窗：待处理的组", () => {
+  it("组里有人等审批：收起的 Pill 带提示点，点开直接展开那个组", async () => {
+    const user = userEvent.setup();
+    seed([group("collaboration:1", "先开的组"), { ...group("collaboration:2", "等审批的组"), awaitingConversationIds: ["conversation:a"] }]);
+    renderDock();
+    expect(await screen.findByTestId("group-pill-awaiting")).toBeInTheDocument();
+    await user.click(screen.getByTestId("group-dock-pill"));
+    expect(JSON.parse(sessionStorage.getItem(DOCK_STORAGE_KEY) ?? "{}")).toMatchObject({ open: true, expandedGroupId: "collaboration:2" });
+    expect(await screen.findByTestId("group-head-title")).toHaveTextContent("等审批的组");
   });
 });

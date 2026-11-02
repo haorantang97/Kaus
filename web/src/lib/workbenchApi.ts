@@ -42,6 +42,11 @@ export const patchWorkbenchModule = (id: string, patch: Partial<ModuleConfig & P
 export const reorderWorkbenchPins = (moduleIds: string[]) => sessionRequest<{modules: WorkbenchModule[]}>(`${root}/pins`, {method:"PUT",body:{moduleIds}});
 export const installWorkbenchModule = (path: string) => sessionRequest<WorkbenchModule>(`${root}/install`, {method:"POST",body:{path}});
 export const removeWorkbenchModule = (id: string) => sessionRequest<void>(modulePath(id), {method:"DELETE"});
+export interface ModuleFrameGrant { url: string; token: string; expiresIn: number }
+/** Module code is served only under a per-open capability path; relative assets inherit it. */
+export const openModuleFrame = (id: string) => sessionRequest<ModuleFrameGrant>(`${modulePath(id)}/frames`, {method:"POST"});
+export const renewModuleFrame = (id: string, token: string) => sessionRequest<{expiresIn: number}>(`${modulePath(id)}/frames/${encodeURIComponent(token)}/renew`, {method:"POST"});
+export const releaseModuleFrame = (id: string, token: string) => sessionRequest<{released: true}>(`${modulePath(id)}/frames/${encodeURIComponent(token)}`, {method:"DELETE"});
 export const fetchModuleJobs = (id: string, signal?: AbortSignal) => sessionRequest<{jobs: ModuleJob[]}>(`${modulePath(id)}/jobs`, {signal});
 export const fetchModuleJob = (id: string, jobId: string) => sessionRequest<ModuleJob>(`${modulePath(id)}/jobs/${encodeURIComponent(jobId)}`);
 export const startModuleJob = (id: string, prompt: string, idempotencyKey: string) => sessionRequest<ModuleJob>(`${modulePath(id)}/jobs`, {method:"POST",body:{prompt,idempotencyKey}});
@@ -65,6 +70,7 @@ export function workbenchFailure(error: unknown, english = false): string {
     configuration_required:["请选择项目和 Agent。","Select a Project and Agent."],
     configuration_changed:["配置已变更，请重新运行。","Configuration changed. Start a new run."],
     configuration_unavailable:["请重新选择项目和 Agent。","Select a Project and Agent again."],
+    project_deleted:["所属 Project 已删除，请重新选择项目。","This Project was deleted. Select another Project."],
     module_busy:["请先结束运行中的任务。","Finish the active task first."],
     execution_policy_unsupported:["当前 Agent 暂不支持此任务。","This Agent cannot run this task yet."],
     model_unavailable:["请选择可用模型。","Select an available model."],

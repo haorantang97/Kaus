@@ -28,9 +28,6 @@ from app.collaboration.models import (
     CollaborationMessage,
     CollaborationSession,
 )
-# batch52 第 4 件：Context Packet 的「最近一句」改从**组时间线**取，所以这里要
-# 认识房间那张显示名表与点名解析（两个都是纯函数，本模块的纯净性不受影响）。
-from app.collaboration.room import RoomMember, resolve_mentions  # batch52
 from app.conversations.models import Conversation
 
 #: 产品自己的扩展事件 namespace（AD-86 定的那一个；信封 v1.1 冻结之后，
@@ -55,6 +52,7 @@ GROUP_CHANGES: frozenset[str] = frozenset(
         "member_left",
         "member_paused",
         "member_resumed",
+        # 「提升为普通会话」2026-11-03 删除，不再发出；保留取值以便旧事件重放。
         "member_promoted",
         # 批次五十二第 5 件（AD-173）：这位成员在本组改了名（`roleLabel`）。单开一
         # 个取值而不是复用 `group_updated`：改名同时改了**地址**（`@名字` 解析回
@@ -119,10 +117,6 @@ DELIVERY_REASONS: frozenset[str] = frozenset(
         "send_failed",
     }
 )
-
-#: 成员会话摘要的字数上限（任务书第 3 件：「最后一条用户/助手消息摘要 ≤200 字」）。
-SUMMARY_LIMIT: int = 200
-
 
 def group_to_wire(
     group: CollaborationSession, *, member_count: int | None = None
@@ -218,23 +212,6 @@ def member_to_wire(
     return wire
 
 
-def truncate_summary(text: str | None, *, limit: int = SUMMARY_LIMIT) -> str | None:
-    """把一段消息正文压成一行摘要（≤ ``limit`` 字），空白全部折叠。
-
-    ``None`` 与「折叠完只剩空白」都回 ``None``——Context Packet 里「这条会话还
-    没说过话」应当表现为**没有这个键**，而不是一个空字符串（同 AD-71 的口径）。
-    截断时补一个省略号，让读的人知道这里被剪过。
-    """
-    if text is None:
-        return None
-    collapsed = " ".join(str(text).split())
-    if not collapsed:
-        return None
-    if len(collapsed) <= limit:
-        return collapsed
-    return collapsed[: limit - 1] + "…"
-
-
 def collaboration_message_to_wire(
     message: CollaborationMessage,
 ) -> dict[str, Any]:
@@ -323,128 +300,6 @@ def collaboration_message_to_wire(
     return wire
 
 
-# batch52
-def packet_recent_lines(
-    messages: Sequence[CollaborationMessage],
-    roster: Sequence[RoomMember],
-) -> dict[str, dict[str, str]]:
-    """从**组时间线**里摘出每位成员的「最近一句」（批次五十二第 4 件 / 真机 UI-01）。
-
-    为什么换来源
-    ------------
-    Context Packet v0（批次二十六）是从**成员自己那条会话的事件流**里摘「最后
-    一条用户消息 / 助手消息」的。在房间里这两句都不是它们看上去的意思：投给成员
-    的「用户消息」正是**房间增量**（里面装着别人的发言），所以「最近一句」经常
-    显示成别人说的话或上一条输入——一张本该让人一眼看清「谁到哪儿了」的表，给出
-    的是一个会误读的答案。
-
-    换成时间线之后两句话各有准确的出处：
-
-    * ``lastAssistantMessage`` = 这位成员**最近一条 ``member_turn`` 的正文**。
-      标了 ``passed`` 的跳过：「（略过）」不是他说的一句话，把它当成最近发言等于
-      告诉用户他最后什么都没说。
-    * ``lastUserMessage`` = 最近一条**点到他**的用户消息。判据两条：
-      ``metadata.targetMemberIds`` 含他（勾选发送 / 定向发送），或者这一行没写
-      目标、而正文里**点了他的名**（``resolve_mentions``，宽尺子——用户那句话
-      认裸名，见 :func:`resolve_mentions` 的 docstring）。目标为空且一个人都没
-      点到 = 发给全体，那对每位成员都算「点到他」。
-
-    入参 ``messages`` 按 ``sequence`` **升序**（仓储的原样），所以后来的覆盖先前
-    的。返回 ``memberId → {键: 摘要}``，摘要照旧 ≤200 字
-    （:func:`truncate_summary`），**没有的键不出现**（N §13.1）。
-    """
-    member_ids = [member.member_id for member in roster]
-    found: dict[str, dict[str, str]] = {member_id: {} for member_id in member_ids}
-    for message in messages:
-        metadata = message.metadata or {}
-        text = truncate_summary(message.content)
-        if message.kind == "member_turn":
-            author = message.author_member_id
-            if author is None or author not in found:
-                continue
-            if metadata.get("passed"):
-                continue  # 「（略过）」不是一句发言
-            if text:
-                found[author]["lastAssistantMessage"] = text
-            continue
-        if message.kind not in ("broadcast", "directed"):
-            continue
-        targets = metadata.get("targetMemberIds")
-        targets = list(targets) if isinstance(targets, list) else []
-        if targets:
-            addressed: Sequence[str] = [mid for mid in targets if mid in found]
-        else:
-            mentioned = resolve_mentions(message.content or "", roster)
-            # 一个人都没点到 = 这一条是发给全体的。
-            addressed = mentioned or member_ids
-        if not text:
-            continue
-        for member_id in addressed:
-            if member_id in found:
-                found[member_id]["lastUserMessage"] = text
-    return found
-
-
-def context_packet_markdown(
-    *, title: str, generated_at: str | None, members: Sequence[dict[str, Any]]
-) -> str:
-    """Context Packet 的可复制文本（任务书第 3 件的 ``markdown``）。
-
-    与 ``members`` 是**同一份内容的两种形状**，不是两份数据：结构化的给界面渲染，
-    这一份给用户按一下「复制」贴进任何地方。AD-154：它**不会**被自动喂给任何
-    会话——要注入就得用户显式点「作为消息发给某成员」，那条路是定向消息。
-
-    刻意不用表格：一行里塞得下的字段有限，而摘要本身就有 200 字，表格会被撑成
-    横向滚动条。分节的列表在终端、聊天框、Markdown 渲染器里都读得通。
-
-    批次五十二第 4 件：小标题用的是 ``displayName``（后端那张共用表算的，含重名
-    后缀 ``#2``），不再是会话标题——真机上两位成员在这张表里都叫 ``media``，而
-    成员栏、时间线、房间说明里它们是 ``media`` 与 ``media#2``（真机 UI-02）。
-    会话标题仍旧列在下面那几条事实里，原标题一个字都没丢。
-    """
-    lines = [f"# {title} · Context Packet"]
-    if generated_at:
-        lines.append(f"生成于 {generated_at}（只读汇编，未发给任何成员）")
-    if not members:
-        lines.append("")
-        lines.append("这个组现在没有成员。")
-        return "\n".join(lines)
-    for index, member in enumerate(members, start=1):
-        lines.append("")
-        # batch52
-        heading = (
-            member.get("displayName")
-            or member.get("title")
-            or member.get("conversationId")
-            or "（无标题）"
-        )
-        lines.append(f"## {index}. {heading}")
-        facts = [
-            ("会话标题", member.get("title")),
-            ("会话", member.get("conversationId")),
-            ("Binding", member.get("bindingId")),
-            ("引擎", member.get("backendId")),
-            ("模型", member.get("modelId")),
-            ("运行态", member.get("runState")),
-            ("参与状态", member.get("participationState")),
-            ("最近完成", member.get("lastCompletedAt")),
-        ]
-        for label, value in facts:
-            if value:
-                lines.append(f"- {label}：{value}")
-        last_user = member.get("lastUserMessage")
-        last_assistant = member.get("lastAssistantMessage")
-        # batch52：两句的出处都换成了**组时间线**，标签因此照着改——「最后一条
-        # 用户消息」此前指的是投给它的那份房间增量（里面装着别人的话）。
-        if last_user:
-            lines.append(f"- 最近一条点到它的话：{last_user}")
-        if last_assistant:
-            lines.append(f"- 它在组里最近说的：{last_assistant}")
-        if not last_user and not last_assistant:
-            lines.append("- 还没有可摘要的对话内容")
-    return "\n".join(lines)
-
-
 def group_change_data(
     *,
     group_id: str,
@@ -506,15 +361,10 @@ __all__ = [
     "GROUP_CHANGES",
     "GROUP_EVENT_NAME",
     "GROUP_EVENT_NAMESPACE",
-    "SUMMARY_LIMIT",
     "collaboration_message_to_wire",
-    "context_packet_markdown",
     "group_change_data",
     "group_list_to_wire",
     "group_to_wire",
-    # batch52
-    "packet_recent_lines",
     "member_conversation_summary",
     "member_to_wire",
-    "truncate_summary",
 ]

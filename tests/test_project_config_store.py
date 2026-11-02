@@ -152,8 +152,56 @@ def test_standalone_project_cannot_be_dispatched_as_native_hermes(tmp_path, monk
         assert failure.value.status_code == 409
         with pytest.raises(HTTPException, match="Hermes"):
             server.api_kanban_assign("task-1", server.KanbanAssignReq(assignee="design"))
-        assert server.api_profile_subtasks("design")["supported"] is False
         config_path = store.directory(fixture.HERE, "design") / "config.yaml"
         before = config_path.read_bytes()
         assert server._materialize_config("design", {}, dry_run=False) is None
         assert config_path.read_bytes() == before
+
+
+def test_failed_sync_is_applied_by_the_next_write(tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    fixture = host(tmp_path)
+    repos = in_memory_repository_set()
+    asyncio.run(repos.projects.save(Project.create(slug="default")))
+    app = FastAPI()
+
+    @app.post('/api/agent/create-empty')
+    async def create(name: str):
+        store.create(fixture.HERE, name)
+        return {'ok': True}
+
+    sync.install(app, fixture, repos)
+    real = sync.apply_delta
+    failures = [True]
+
+    async def flaky(*args):
+        if failures.pop() if failures else False:
+            raise RuntimeError("database busy")
+        return await real(*args)
+
+    monkeypatch.setattr(sync, "apply_delta", flaky)
+    with TestClient(app) as client:
+        assert client.post('/api/agent/create-empty?name=first').status_code == 500
+        assert asyncio.run(repos.projects.get('project:first')) is None
+        assert client.post('/api/agent/create-empty?name=second').status_code == 200
+    assert asyncio.run(repos.projects.get('project:first')) is not None
+    assert asyncio.run(repos.projects.get('project:second')) is not None
+
+
+def test_file_edit_does_not_undo_a_block(tmp_path):
+    asyncio.run(check_block_kept(tmp_path))
+
+
+async def check_block_kept(tmp_path):
+    server = host(tmp_path)
+    repos = in_memory_repository_set()
+    store.create(server.HERE, "design")
+    (server.HERE / "hierarchy.json").write_text('{"design": "default"}')
+    await sync.apply_delta(repos, {"projects": {}, "capabilities": {}}, sync.snapshot(server))
+    blocked = await repos.capabilities.save(ProjectCapability.create(project_id="project:design",
+        capability_type="instructions", capability_id="project-persona", assignment_mode="block"))
+    before = sync.snapshot(server)
+    (store.directory(server.HERE, "design") / "SOUL.md").write_text("New persona")
+    await sync.apply_delta(repos, before, sync.snapshot(server))
+    assert await repos.capabilities.get(blocked.id) == blocked

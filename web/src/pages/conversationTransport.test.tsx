@@ -45,7 +45,6 @@ vi.mock("../lib/sessionApi", async () => {
     fetchModelCatalog: vi.fn(),
     fetchBindingStatus: vi.fn(),
     fetchSurface: vi.fn(),
-    fetchLaunches: vi.fn(),
     fetchEventsSnapshot: vi.fn(),
     sendConversationMessage: vi.fn(),
   };
@@ -216,7 +215,6 @@ beforeEach(() => {
     lease: null,
     launch: null,
   });
-  mocked.fetchLaunches.mockResolvedValue({ conversationId: "conversation:1", launches: [], count: 0 });
   mocked.fetchEventsSnapshot.mockResolvedValue({
     conversationId: "conversation:1",
     events: [],

@@ -369,7 +369,7 @@ class RoomEntry(NamedTuple):
 
 
 #: 能进房间增量的时间线 ``kind``。**这是一张白名单**：
-#: ``context_packet`` / ``writeback`` 不在里面，将来多一种 kind 也默认不进——
+#: ``writeback`` 不在里面，将来多一种 kind 也默认不进——
 #: 「哪些东西会被送进别人的上下文」不该靠记得改一处黑名单来保证。
 PUBLIC_DELTA_KINDS: frozenset[str] = frozenset(
     {"message", "broadcast", "directed", "member_turn", "system"}

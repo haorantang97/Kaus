@@ -1,6 +1,6 @@
 # Agent 技能范围适配状态（更新至 2026-10-17）
 
-本表记录 **22 个 ACP 预设：20 个保留正式新增接入，Alma、Devin 仅保留旧连接兼容**。正式接入的 20 个均已有项目技能范围适配。Grok、Goose 私有构建均已通过原生加载和 Kaus 投射验证；各引擎的验证深度见逐项记录。普通 Hermes HTTP/Group 另由 Hermes 专属适配提供，不重复计入预设数量。
+本表记录 **20 个正式接入的 ACP 预设**（Alma、Devin 已于 2026-11-02 移除）。正式接入的 20 个均已有项目技能范围适配。Grok、Goose 私有构建均已通过原生加载和 Kaus 投射验证；各引擎的验证深度见逐项记录。普通 Hermes HTTP/Group 另由 Hermes 专属适配提供，不重复计入预设数量。
 
 范围是“项目树有效技能集合进入哪个原生加载器、哪些技能可注册和调用”。账号登录、真实模型完成任务、原生终端接管和 MCP 冷恢复分别验收，不能由技能目录正确推导为全部通过。
 
@@ -39,15 +39,6 @@
 | qwen | 已注册；原生 0.24.6 ACP/MCP/TUI 通过 | SkillManager 模块守卫与精确文件读取；同 ID selected/empty/dynamic、三阶段历史、显式 model/plan 通过；MCP 更新/移除及同实例资源状态验证 | opaque qwen-route 无法恢复唯一厂家路由时不猜测终端参数；真实账号/远程授权另验，MCP 使用原生 tool_search 延迟入口 |
 | zcode | 已注册；0.16.9 原生 ACP / MCP / TUI / 时间线通过 | CJS hash/唯一加载点守卫；完整私有 TUI 包保留原安装；同原生 ID、私有数据库与 model/effort/mode；selected/empty/native 三种往返、MCP A→B→空、公开文字回填均通过 | 完整工作流/浏览器业务与真实账号另验；未知 bundle/Windows 受管入口未支持；缺 TUI 组件时明确拒绝而不降级 |
 
-## 2 个仅保留旧连接兼容的引擎
-
-Alma、Devin 已撤出新增接入、新会话和组长新选项；原有连接、配置、历史与已有会话保持兼容。恢复正式支持需要补齐 Project 技能范围，登录本身不能解决。
-
-| Agent | 当前已核验事实 | 精确缺口 | 可行方案及验收门槛 |
-| --- | --- | --- | --- |
-| alma | 已取得官方 Mac 0.4.148 包，实际原生加载器与 TUI 已测；聊天 TUI 可在同一线程恢复历史与模型，服务端使用合成 REST/WS | 原生 thread Skill 与 workspace allowlist 仍被全局 always-inject 绕过；MCP ToolSearch 仍可发现全局服务。原生 TUI 缺完整工具审批交互 | Skill/MCP 需要全来源范围接口或独立服务实例；工具终端需要补审批通道。原生模式和 Kaus 对话保留，不更改个人全局配置 |
-| devin | 原生 `3000.11.3 (9c803229faa4)`，临时 HOME 下 ACP initialize/session/new 成功；ACP agentInfo 报 `affogato / 0.0.0-dev` 占位信息 | 将 `read_config_from` 全部 false 后，原生仍列合成 user/workspace 两项及 3 个内置项。该配置限制第三方导入，不是本引擎 exclusive scope；无已验证 per-session 全来源字段 | 需要覆盖内置/项目/用户/动态来源的原生会话清单和加载回执，或可核验加载层适配；不能仅更换 HOME 或关闭配置导入。补 selected/empty/dynamic/resume 原生验收 |
-
 ## 原生技能如何进入项目树
 
 各适配器提供静态/缓存 `inventory_roots`，可选 `refresh_inventory` 在成功连接探测后后台刷新。树查询只读这些来源，不为了展开界面同步启动所有 CLI。刷新任务按驱动去重、按二进制指纹缓存；失败显示可重试状态，驱动替换和关闭取消任务并回收临时进程，不另开常驻扫描循环。
@@ -68,14 +59,13 @@ Alma、Devin 已撤出新增接入、新会话和组长新选项；原有连接�
 | Copilot / Qwen / OMP / Goose / Grok | 五家真实 TUI 往返及当前配置已验；加上 Pi/Command Code 共七家原生 reader，精确 ID、活动分支、公开文字、原件不变与幂等落库通过 | OMP Plan、不可恢复的厂家路由或无等价审批档在开窗前拒绝；不回填隐藏思考 |
 | Crush / ZCode | selected/empty/native 六组真实 Surface→PTY→Surface；model/effort、MCP A/B 实际结果、空集合、稳定消息 ID、三次回填 0、数据库重开通过 | Crush Plan 不等价，明确拒绝；ZCode 需完整 TUI 组件；远程鉴权和真实账号另验 |
 | OpenClaw | 自有 Gateway Agent + 精确 session key，selected/empty/precreate 三组真实终端及 Surface 回填；每次只新增终端两条公开消息，重复为 0 | 需可用 Gateway、所有权与配置更新支持；会话级项目 MCP 已补齐并独立验收，旧非自有会话不静默迁移 |
-| 尚未支持的受管终端 | Claude 缺等价交互范围控制；DeepSeek ACP 无原生 TUI、DSH 安装版缺 tui profile；Cursor/Antigravity/Devin 尚无完整适配；Alma 仅聊天模式已做原生 TUI + 合成服务验收 | 保留原生可用入口；不以添加 resume 参数代替技能、配置、身份和回填验收 |
+| 尚未支持的受管终端 | Claude 缺等价交互范围控制；DeepSeek ACP 无原生 TUI、DSH 安装版缺 tui profile；Cursor/Antigravity 尚无完整适配 | 保留原生可用入口；不以添加 resume 参数代替技能、配置、身份和回填验收 |
 | Codex / Claude MCP | 新建和冷恢复同投射配置，更新及重启原生 MCP；显式配置失败不会降级为空 | Claude 受管交互终端仍受上述接口限制；账号和远端授权另验 |
 | Copilot / DeepSeek ACP / Goose / Crush / ZCode / Gemini / DSH / Qwen / OMP / Grok MCP | 实际同 ID A→B→空及坏配置错误；各引擎按同实例状态或实际原生执行验收 | 远程 HTTP/SSE 鉴权、运行中断线另验；原生未知基线/同名优先级按各引擎规则保留 |
 | OpenCode / Kilo MCP | 同实例 SDK 状态桥核验 new/load；坏命令和握手拒绝明确报错且 0 模型请求；更新/移除通过 | 受管原生 TUI 同实例实际工具、替换/清空及失败前拦截已验；外部授权、运行中断线另验 |
 | Antigravity MCP | 原生/受管模式 11 阶段：A→B→空、坏 new/load、同 ID 修复；真实工具结果进入 loopback 模型。原生错误 end_turn 通过结构化回执转为 run.failed | 首 prompt 延迟连接；空集合仅移除 Project 下发项，原生 global 保留；未知版本拒绝显式 MCP |
 | Pi / Command Code MCP | 已补原生 extension/mod 执行，stdio/HTTP/SSE、A→B→空→坏配置→恢复、原生终端往返通过 | Plan 等原生权限保持；交互 OAuth 另验 |
-| Devin MCP | 原生新建/进程重新启动，A→同名 B→清空、坏配置与原生目录已验证；项目命名及缓存独立，原生全局服务保留 | 实际模型工具回合、同 ID 持久化恢复需登录后验；不将进程重启当作会话恢复 |
-| Cursor / Alma MCP | Cursor 真实会话受登录前提限制；Alma 原生目录缺完整线程范围接口 | Cursor 登录后补执行链；Alma 需线程范围接口或独立实例，不能仅改用户全局配置 |
+| Cursor MCP | 真实会话受登录前提限制 | 登录后补执行链 |
 
 公共交接通过一次性私有 Unix socket 传递当前连接环境，生成脚本不保存凭据。消息回填采用出站基线、原生稳定 ID 和持久化检查点；读取暂时失败会保存 pending，下一次交接先补齐，不以新基线跳过未同步消息。重复“回到页面”不释放正在运行的 Card 写权，旧终端退出也不能收回新 owner 的 lease。
 

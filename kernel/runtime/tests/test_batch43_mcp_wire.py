@@ -93,7 +93,10 @@ async def test_a_broken_projector_never_blocks_the_conversation() -> None:
     _install(world, projector)
     handle = await world.host.start_runtime(conversation)
     assert handle.conversation_id == conversation.id
-    assert world.host.session_projection(conversation.id) is None
+    # D-03: it proceeds, but the loss is recorded rather than silent.
+    projection = world.host.session_projection(conversation.id)
+    assert projection is not None
+    assert [(gap.kind, gap.reason) for gap in projection.unapplied] == [("project", "projection_failed")]
     await world.host.stop_runtime(conversation.id)
 
 

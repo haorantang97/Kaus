@@ -58,9 +58,8 @@ token 怎么拿：`GET /api/session-auth/bootstrap`（只对同源浏览器请�
 
 ## 4. 还没被这道闸盖住的
 
-- **WebSocket**（`/ws/chat/{name}`、`/ws/terminal-lab/{name}`）：不是 HTTP 写方法，本批没有
-  纳入。AD-14 计划在 Phase 4 真机验收后连同 `/api/pty`、Terminal Lab 一起删除；在那之前它们
-  仍然是一条没有闸的入口。
+- **WebSocket**（`/ws/chat/{name}`、`/ws/terminal-lab/{name}`）：已于 2026-11-02 连同 `/api/pty`、
+  Terminal Lab 一起删除。
 - **静态文件与 SPA 深链**：只读。
 
 ## 5. 自己验一遍（十分钟）

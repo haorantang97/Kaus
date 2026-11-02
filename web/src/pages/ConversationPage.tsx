@@ -13,9 +13,9 @@ import {
   DegradedLaunchPanel,
   ExternalBanner,
   ExternalHistoryGroup,
-  LaunchHistoryMenu,
   NoticeBanner,
   ReturnToAppDialog,
+  TerminalPreview,
 } from "../components/ExternalSurface";
 import { ComposerBar, type BarMenuOption } from "../components/ComposerBar";
 import { useConversationDraft } from "../lib/conversationDrafts";
@@ -41,10 +41,10 @@ import {
   fetchConversation,
   fetchEventsSnapshot,
   fetchMessageReceipt,
-  fetchLaunches,
   fetchSurface,
   interruptConversation,
   openExternalSurface,
+  focusExternalSurface,
   // batch52
   patchConversation,
   setConversationBookmark,
@@ -80,6 +80,7 @@ import {
   type ExternalHistoryGroup as HistoryGroup,
   type SurfaceEvent,
   type SurfaceKind,
+  useTerminalPreview,
 } from "../lib/externalSurface";
 import { parseGroupChange } from "../lib/groupsApi";
 import { catalogForBinding, hasModelCatalog, modelOptionsFor, modelSelection, modelValue } from "../lib/modelCatalogView";
@@ -481,7 +482,6 @@ export function ConversationPage({
   /* A terminal lease remains authoritative until verified handoff completes. */
   const [lease, setLease] = useState<SurfaceLeaseWire | null>(null);
   const [returnOpen, setReturnOpen] = useState(false);
-  const [launches, setLaunches] = useState<TerminalLaunchWire[]>([]);
   /** `launched=false` 时那个小面板：降级原因 + 可复制的命令。 */
   const [degraded, setDegraded] = useState<{ reason: string | null } | null>(null);
   /** 接管提示（5s 自动收起）。 */
@@ -607,17 +607,13 @@ export function ConversationPage({
       if (next === "card") {
         setDegraded(null);
         setLease(null);
+        // The first-load owner is only a fallback; once the card has the writer it must not keep the page read-only.
+        setDetail(current => current?.runtime?.owner?.ownerType === "external-cli"
+          ? { ...current, runtime: { ...current.runtime, owner: null } } : current);
       }
     },
     [conversationId],
   );
-
-  const reloadLaunches = useCallback(() => {
-    fetchLaunches(conversationId)
-      .then(({ launches: list }) => setLaunches(list))
-      // 没装 Launcher（404/501）时就是"没有启动记录"，那枚「历史 ▾」不渲染（AD-71）。
-      .catch(() => setLaunches([]));
-  }, [conversationId]);
 
   /* 刷新恢复（第 2 件最后一句）：`GET /surface` 说了算。端点不在就是站内。 */
   useEffect(() => {
@@ -639,11 +635,10 @@ export function ConversationPage({
         setLease(null);
         setExternalSurface(conversationId, false);
       });
-    reloadLaunches();
     return () => {
       cancelled = true;
     };
-  }, [conversationId, reloadLaunches]);
+  }, [conversationId]);
 
   /** 新增一组折叠历史（回站校准的产物）。同一组重复到达时按 id 覆盖，不叠加。 */
   const addHistoryGroup = useCallback(
@@ -662,7 +657,6 @@ export function ConversationPage({
       if (event.kind === "surface.changed") {
         // 终端自己退出时监视器也走这一条：页面不区分"谁触发的"。
         applySurface(event.surface);
-        reloadLaunches();
         /* 第 2 件：租约跟着表面走一次真源（进外部态时它才有意义）。 */
         if (event.surface === "external-cli") {
           fetchSurface(conversationId)
@@ -688,7 +682,7 @@ export function ConversationPage({
         }),
       );
     },
-    [addHistoryGroup, applySurface, conversationId, reloadLaunches, t],
+    [addHistoryGroup, applySurface, conversationId, t],
   );
 
   /* SSE 订阅只按 conversationId 建一次，所以处理函数走 ref——换了它不该重连。 */
@@ -744,8 +738,14 @@ export function ConversationPage({
     try {
       for (let force = false; ; force = true) {
         try {
-          const result = await openExternalSurface(conversationId, force ? { force: true } : {});
+          const unsent = text.trim() ? text : undefined;
+          const result = await openExternalSurface(conversationId, { ...(force ? { force: true } : {}), draft: unsent });
           setError(null);
+          // 草稿留在 Kaus；原生不支持预填时复制到剪贴板，不往终端注入按键。
+          if (unsent && result.launched && !result.draftPrefilled) {
+            const copied = await navigator.clipboard?.writeText(unsent).then(() => true, () => false);
+            setNotice(t(copied ? "surface.draft.copied" : "surface.draft.kept"));
+          }
           setLaunch(result.launch);
           applySurface(result.launched && result.surface === "external-cli" ? "external-cli" : "card");
           setLease(result.lease);
@@ -756,7 +756,6 @@ export function ConversationPage({
                   reason: result.reason,
                 },
           );
-          reloadLaunches();
           onActivity?.();
           return;
         } catch (failure) {
@@ -780,7 +779,7 @@ export function ConversationPage({
     } finally {
       setHandoffBusy(false);
     }
-  }, [applySurface, archived, archiveBusy, conversationId, onActivity, reloadLaunches, t]);
+  }, [applySurface, archived, archiveBusy, conversationId, onActivity, t, text]);
 
   /** 回到站内（第 3 件）。`external_active` → 确认后 `force=1`。
    *  折叠历史组由 SSE 的 `history.reconciled` 送来，这里只负责切态。 */
@@ -793,7 +792,6 @@ export function ConversationPage({
           await returnToCardSurface(conversationId, force ? { force: true } : {});
           setError(null);
           applySurface("card");
-          reloadLaunches();
           onActivity?.();
           return;
         } catch (failure) {
@@ -813,7 +811,7 @@ export function ConversationPage({
     } finally {
       setHandoffBusy(false);
     }
-  }, [applySurface, conversationId, onActivity, reloadLaunches, t]);
+  }, [applySurface, conversationId, onActivity, t]);
 
   /* Confirm before stopping an active terminal; ordinary page viewing needs no handoff. */
   const externalActive = lease?.owner === "external-cli";
@@ -1268,6 +1266,7 @@ export function ConversationPage({
   /** 外部态（第 2 件）：以 `GET /surface` 与 `surface.changed` 为准，
    *  detail 上的 owner 只是首帧的兜底。 */
   const external = surface === "external-cli" || owner?.ownerType === "external-cli";
+  const terminalPreview = useTerminalPreview(conversationId, external);
   const readOnly = external || archived || archiveBusy;
   /* 第 1 件：运行态只有这一个真源（三来源按新鲜度取舍，见 lib/runState.ts）。
      页头状态、停止按钮、"正在回复"行、消息动作全部读它——走查里"页面说运行中、
@@ -1349,7 +1348,9 @@ export function ConversationPage({
   /* 第 1 件：能力缺失（含首帧的 `unknown`）就整枚不渲染（AD-71）；已经在外部态时
      入口换成横幅上的「回到站内」，这里也不出现。 */
   const canOpenExternal = hasCapability(effectiveCaps.externalCli.supported) && !readOnly;
-  const canInterrupt = hasCapability(effectiveCaps.card.interrupt);
+  // Unknown capabilities must never hide Stop while a turn is running; the backend
+  // answers clearly if the engine cannot interrupt.
+  const canInterrupt = caps === null || hasCapability(effectiveCaps.card.interrupt);
   const canAttach = hasCapability(effectiveCaps.card.attachments);
   const settingsRunRef = useRef(false);
   useEffect(() => {
@@ -1574,8 +1575,6 @@ export function ConversationPage({
             </span>
             {/* G-8：用量折成一枚 Pill，挂在页头右侧；没有 usage 能力就不渲染。 */}
             {hasCapability(effectiveCaps.card.usage) && <UsagePill usage={timeline.usage} />}
-            {/* 第 5 件：启动记录，只在开过终端之后出现。 */}
-            <LaunchHistoryMenu launches={launches} />
             {canOpenExternal && (
               <button
                 type="button"
@@ -1716,12 +1715,15 @@ export function ConversationPage({
           {detailLoaded && detail?.conversation?.id === conversationId && !nativeSourceUnavailable && history.groups.map((group) => (
             <ExternalHistoryGroup key={group.id} group={group} />
           ))}
+          {external && <TerminalPreview entries={terminalPreview.entries} />}
           {/* 第 2 件：外部态横幅 +「回到站内」，消息流的最后一条。 */}
           {external && (
             <ExternalBanner
               launchedAt={launch?.launchedAt ?? null}
               launcher={launch?.launcher ?? null}
               busy={handoffBusy}
+              status={terminalPreview.status}
+              onFocus={() => void focusExternalSurface(conversationId).catch(() => {})}
               onReturn={requestReturn}
             />
           )}

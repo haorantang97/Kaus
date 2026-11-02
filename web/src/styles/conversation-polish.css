@@ -19,9 +19,13 @@
 .kaus-group-panel .kaus-group-icon-btn { width: 30px; height: 30px; border: 0; background: transparent; }
 .kaus-group-panel .kaus-group-icon-btn:disabled { opacity: .4; cursor: default; }
 .kaus-group-panel .kaus-group-row { padding: 9px 8px; gap: 8px; font-size: 13px; }
-.kaus-group-panel .kaus-group-row[aria-expanded="true"] { font-weight: 550; }
+.kaus-group-panel .kaus-group-row-line { display: flex; align-items: center; gap: 2px; border-radius: 6px; }
+.kaus-group-panel .kaus-group-row-line > .kaus-group-row { flex: 1; min-width: 0; }
+.kaus-group-panel .kaus-group-row-line > .kaus-group-row > .kaus-group-member-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kaus-group-panel .kaus-group-row-line:hover .kaus-conversation-menu-trigger,
+.kaus-group-panel .kaus-group-row-line:focus-within .kaus-conversation-menu-trigger { opacity: 1; }
+.kaus-group-panel .kaus-group-head-title.is-group { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kaus-group-panel .kaus-group-actions { align-items: center; gap: 4px; padding: 2px 8px 8px; }
-.kaus-group-panel .kaus-group-close-action { margin-left: auto; }
 .kaus-group-panel .kaus-coordinator-trigger { background: transparent; border: 0; border-radius: 7px; font: 12px/1.4 var(--theme-font-sans); letter-spacing: 0; padding: 7px 8px; }
 .kaus-group-panel .kaus-coordinator-trigger:hover { background: color-mix(in srgb, var(--midground-base) 6%, transparent); }
 .kaus-group-workspace .kaus-group-tabs { display: flex; gap: 6px; padding: 0 10px 8px; }

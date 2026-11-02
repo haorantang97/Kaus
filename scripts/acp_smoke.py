@@ -258,7 +258,7 @@ async def run_smoke(args: argparse.Namespace, sandbox: Sandbox, printer: Printer
     )
     if sandbox.mode == "isolated":
         preset = args.preset or ("hermes-acp" if args.agent_command == DEFAULT_AGENT_COMMAND else None)
-        if preset in {"openclaw", "alma"}:
+        if preset == "openclaw":
             raise SmokeError("Gateway 实测请使用独立测试服务和对应探针")
         with isolated_agent_spec(spec, preset_id=preset) as scoped:
             await prepare_discovery_credentials(scoped, spec.build_env(), preset_id=preset)

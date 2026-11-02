@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, KeyRound, LogIn, RefreshCw, Settings2 } from "lucide-react";
+import { ChevronRight, Plug, RefreshCw } from "lucide-react";
 import { useLocale } from "../i18n";
 import { backendDisplay, engineFamily } from "../lib/backend-display";
 import { fetchAccountQuotas, type AccountQuotaResponse, type QuotaWindow } from "../lib/accountQuotasApi";
@@ -85,11 +85,10 @@ export function AccountQuotaSettings() {
   const other = unavailable.filter(item => !canRecover(item) && !item.connectionId);
   function renderUnavailable(item: AccountQuotaResponse["unavailable"][number]) {
     const id = item.connectionId ?? item.recovery?.connectionId;
-    const action = item.recovery?.action;
-    const actionLabel = action === "configure" ? (zh ? "配置查询" : "Configure lookup") : action === "login" ? (zh ? "登录查询" : "Sign in for quotas") : (zh ? "补充凭据" : "Provide credentials");
+    const actionLabel = zh ? "连接" : "Connect";
     return <div className="kaus-quota-source" key={item.sourceId ?? item.recovery?.sourceId ?? id ?? `${item.agentId}:${item.provider ?? ""}:${item.reason ?? item.state}`}>
       <span>{item.agentId && <EngineIcon engine={item.agentId} size={16} />}{item.label}</span><small>{issueLabel(item, zh)}</small>
-      {id ? <QuotaConnectionMenu ids={[id]} label={item.label} onSelect={target => setConnectionTarget({ ...target, recovery: item.recovery })} /> : canRecover(item) && <button type="button" className="kaus-quota-refresh" aria-label={`${actionLabel} · ${item.label}`} title={actionLabel} onClick={() => setConnectionTarget({ label: item.label, recovery: item.recovery })}>{action === "configure" ? <Settings2 size={15} /> : action === "login" ? <LogIn size={15} /> : <KeyRound size={15} />}</button>}
+      {id ? <QuotaConnectionMenu ids={[id]} label={item.label} onSelect={target => setConnectionTarget({ ...target, recovery: item.recovery })} /> : canRecover(item) && <button type="button" className="kaus-quota-refresh" aria-label={`${actionLabel} · ${item.label}`} title={actionLabel} onClick={() => setConnectionTarget({ label: item.label, recovery: item.recovery })}><Plug size={15} /></button>}
     </div>;
   }
   return <div className="kaus-account-quotas" aria-busy={loading}>

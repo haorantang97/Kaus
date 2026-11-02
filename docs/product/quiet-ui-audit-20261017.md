@@ -25,10 +25,9 @@
 | Kilo | 认证列表为 0 项 | 配置其支持的模型认证 |
 | OpenClaw | 当前 OpenAI provider 缺认证；Gateway 默认本地端口无监听 | 配置模型认证并启动 Gateway；如使用自定义网关需选择对应连接 |
 | OpenCode | 认证列表有 1 项 | 真实模型回合确认有效性；凭据存在本身不说明已通过实战 |
-| Alma | 未找到本机 CLI 或 App | 若要使用，安装或指定兼容本地服务 |
 
 结果仅保存脱敏状态与数量：`output/agent-auth-inventory-20261017/result.json`。
 
 ## 仍需后续适配或真实环境验收的边界
 
-这些范围不是登录后自动解决：Alma 尚无可验证的逐线程独占 Skill 契约；Devin 仍缺覆盖内置、用户、项目、动态来源的独占范围。OpenClaw、Pi、Command Code 当前会话入口不执行项目 MCP，需对应 Agent 级或原生扩展适配。部分引擎受管终端没有与当前权限、Skill 范围等价的原生入口。具体产品/版本矩阵沿用 `agent-skill-support-20261016.md`；本轮不将这些旧边界宣称为已完成。
+这些范围不是登录后自动解决：OpenClaw、Pi、Command Code 当前会话入口不执行项目 MCP，需对应 Agent 级或原生扩展适配。部分引擎受管终端没有与当前权限、Skill 范围等价的原生入口。具体产品/版本矩阵沿用 `agent-skill-support-20261016.md`；本轮不将这些旧边界宣称为已完成。

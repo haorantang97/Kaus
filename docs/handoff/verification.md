@@ -2,6 +2,60 @@
 
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
+## 11 月 3 日接入时能力分配、去掉项目页项目树与成员提升
+
+范围：删除自行弹出的 `SkillOnboardingHost`，接入弹窗登录成功后进入「能力分配」步骤（`CapabilityOnboardingStep.tsx`，`GET /api/skill-tree/onboarding/{id}`）；新增 `kernel/drivers/mcp_inventory.py` 与 `native_mcp_sources.json`，只读发现 Claude Code、Codex、Gemini、Qwen、OpenCode、Cursor、Copilot 的全局 MCP（只存名称、命令、去敏参数、URL、变量名与请求头名），记为 `<agent>:mcp`，投射时排除以免重复；项目详情页去掉顶部项目树，页头加 ⋯（改名、删除）；删除协作组 `promote_member` 端点与菜单项。
+
+结果（三路改动合并后统一跑）：内核 4,234 通过、124 跳过；宿主 `tests/` 461 通过；`npm run check` 116 个文件 1,075 项通过，构建通过。接入流程需真实 Agent 接入，未在浏览器中实测；原生 MCP 分配只整理不限制加载，见 `open-items.md`。
+
+## 11 月 3 日协作组两级导航
+
+范围：协作组浮窗改为组列表（新建组、最小化；每行 ⋯ / 右键菜单：重命名、删除）与组内页（返回、组名、垃圾桶「删除组」、最小化），去掉正文里的删除叉号与标题栏的关闭叉号；删除组长「主持要求」（调用上限、运行时限收进「高级」）、成员「定向发送」、消息「存入本组资料」、「成员近况」及 `GET /groups/{id}/context-packet`、成员「暂停 / 恢复」；额度入口统一为「连接」；删除提示改为「已删除」。
+
+结果：子任务跑内核 4,217 通过、124 跳过（删 7 个 context-packet 测试、加 1 个），宿主 460 通过；复跑 `npm run check` 117 个文件 1,073 项通过，构建通过。隔离数据目录 + Mock 引擎在 8877 上点过组列表、行菜单、进入组、返回、最小化，截图在本地 `.tmp/`。
+
+## 11 月 3 日界面精简
+
+范围：协作组「关闭组」改称「删除组」（垃圾桶图标）；项目页移除人格、协作影响面、备份恢复（含 `GET/POST /api/agent/{name}/soul`、`/api/profile/{name}/impact`、`/backups`、`/restore`，`SOUL.md` 文件不动），「更多设置」只剩守则；设置去掉「项目设置」跳转与刷新按钮（轮盘浮层同），Agent 详情的版本、运行时安装回滚、技能构建收进默认收起的「高级」；会话页头去掉终端「历史」菜单（后端 `launches` 接口保留）；删除无引用的 `KausPlate`、`SegmentedControl`、`ProjectEngines`。
+
+结果：子任务跑内核 4,223 通过、124 跳过；复跑宿主 `tests/` 460 通过，`npm run check` 117 个文件 1,075 项通过，构建通过（减少的 3 个文件、8 项为删除组件的测试）。旧脚本 `test_dashboard.py` 中测试已删接口的一节随之删除。未在浏览器中实际点击核对。
+
+## 11 月 2 日删除 Alma、Devin 接入
+
+范围：删除 `kernel/drivers/alma_bridge/`、Devin 运行时、两个 ACP 预设与发现布局、图标和相关文档行。旧数据：engine id 为自由字符串，指向已删引擎的 binding 按孤儿处理（选用时 `engine_not_connected`）；`engine_connections.py` 现在跳过目录里已不存在的预设 id，避免一条旧记录让全部接入失效（新增测试 `test_removed_preset_rows_do_not_block_other_connections_or_history`）。同时英文界面的工作目录错误改为本地化（`WorkspacePicker`）。
+
+结果：子任务跑内核 4,223 通过、124 跳过（减少的是删掉的驱动测试与两个预设的参数化用例）；复跑契约与预设测试 521 通过、101 跳过，宿主 `tests/` 460 通过；`npm run check` 120 个文件 1,083 项通过，构建通过。
+
+## 11 月 2 日删除无入口的旧代码
+
+范围：删除 `/terminal-lab` 与旧 PTY/WebSocket 终端（含 `@xterm/*` 依赖）、未引用的 `Conversation.tsx` 及其接口、整个 `static/` 旧界面、资料抽屉中未挂载的分区与接口、`NativeArchivePanel` 及 12 条归档路由、`server.py` 中无客户端调用的旧路由（7,416 → 3,725 行）；协作组 `context_packet` 消息类型移除，迁移 v20 删除旧行。保留项见 `open-items.md`「清理后的遗留」。
+
+结果：内核 4,286 通过、135 跳过（新增 v20 迁移测试）；宿主 `tests/` 461 通过；`npm run check` 120 个文件 1,082 项通过，构建通过（减少的文件与用例均来自删掉的组件测试）。`test_regressions.py` 30 项失败均在原 43 项已知失败之内；`test_pty_fixes.py` 随 PTY 删除；`test_dashboard.py` 只做语法检查。未用真实引擎或用户数据库验证。
+
+## 11 月 2 日级联删除、主 Agent 代办、模块令牌、移除个人 Hermes 页面
+
+范围：删除 Project 可连同下级（恢复要求原上级路径未变，同批上级自上而下恢复）；控制 MCP 新增 `kaus_pending`、`kaus_answer_pending`、`kaus_conversation_settings`、`kaus_change_settings`（需 `user_confirmed=true`，时间线记录）；模块资源改为短时路径令牌并拒绝跨站；模块在已删除 Project 中不能启动；删除仓库、资料库、运行概况、原生配置 · Hermes。
+
+结果（worktree 合并后统一跑）：内核 4,285 通过、135 跳过；宿主 `tests/` 461 通过；`npm run check` 121 个文件 1,103 项通过，边界、类型与构建通过。`test_regressions.py` 有 43 项在 `HEAD` 干净副本上同样失败（缺历史文件、旧写接口 401），与本次无关；`test_dashboard.py` 依赖真实 `~/.hermes`，只做语法检查。
+
+另外：模块令牌由子任务在 127.0.0.1:8899 的临时服务上用无头 Chrome 实测加载与跨站拒绝；「需要处理」用隔离数据目录加 Mock 引擎在 8877 截图确认位置。未用真实引擎、真实已安装模块或用户数据库验证。
+
+## 11 月 1 日协作组、Project 删除与配置缺口
+
+范围：
+- 协作组：关闭组即删除组，并一次性清理此前已关闭的组；运行中发的消息作为补充；组内审批进入「需要处理」；组长临时会话复用并在关组时删除；组长设置变更、需要用户补充时留说明。
+- Project：删除时可确认后强制停止运行中的对话，会话进入归档；归档中可恢复 Project 到原位置，或移到其他 Project。
+- 配置：Project 能力未生效时给出提示；默认模型按实际会话是否能选模型决定是否应用，包括 OpenClaw 的 Gateway 路径。
+- 其他：cmux 下的状态 hook；控制 MCP 在连接时下发操作规则；删除旧 Hermes MCP；Hermes 任务板保留代码、界面隐藏。
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 内核完整回归 | `cd kernel && ../.venv/bin/python -m pytest -q` | 4,277 项通过，135 项跳过 |
+| 宿主测试 | `.venv/bin/python -m pytest -q tests` | 449 项通过 |
+| 前端完整检查 | `cd web && NODE_OPTIONS=--no-experimental-webstorage npm run check` | 121 个文件、1,095 项通过；边界检查、类型检查、构建通过。Node 26 需要该参数，否则 jsdom 的 localStorage 不可用 |
+
+全部为单元与模拟验证，没有接真实引擎、真实 cmux 或 OpenClaw Gateway，也没有在 8877 端口的界面里实测。
+
 ## 10 月 24 日固定剪辑模块
 
 [ChatCut 验收](../product/chatcut-fixed-editor-acceptance-20261024.md)：独立工作台完成登录、素材导入、裁切拼接与本地导出后，Kaus 隔离开发预览又完成项目恢复、素材重关联与真实导出。前端 117 文件 / 1,063 项通过，边界/类型/构建通过；模块后端 67 项、Chromium 策略 3 项通过。日常桌面壳未安装升级，长视频、4K、全新账号和签名分发不在本轮通过范围。

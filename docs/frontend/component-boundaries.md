@@ -2,6 +2,10 @@
 
 **日期：** 2026-09-02
 **性质：** 规范。与 `docs/frontend/information-architecture.md`（页面与状态）、`docs/frontend/DESIGN.md`（视觉）配套。信息架构说"有哪些页面"，本文说"这些页面由哪些组件拼成、每个组件管什么、**不许**碰什么"。
+> **2026-11 移除：** `DashboardOverlay`、`DriftAlert`、`UpdateHealthAlert`、`VaultOverlay`、`WarehouseOverlay` 及 `ConfigOverlay` 的只读原生配置分区已删除（个人 Hermes 配置遗留）；下文对应的组件行与冻结域说明仅作历史记录。
+
+> **2026-11-02 移除：** `Conversation.tsx`、`TerminalLab.tsx` 与 `/terminal-lab`、旧 PTY/WebSocket 终端（`/ws/chat`、`/ws/terminal-lab`、`/api/pty/*`）、`NativeArchivePanel`、`ProfileDrawer` 抽屉本体及其记忆 / 运行设置 / 技能 / 子任务分区、`static/` 旧界面已删除；项目详情页仍复用人格、协作影响面与备份三个分区。
+
 **为什么要有这份文档：** 现在的前端有两个具体毛病——一个 717 行的组件同时管会话列表、模型设置、健康度和终端启动（`web/src/components/Conversation.tsx`），以及一个 536 行的抽屉塞了八个不相干的分区（`ProfileDrawer.tsx`）。这类组件改哪儿都会碰坏别处。更要紧的是：Phase 3A 之后要接多个 AI 引擎，如果组件里出现了"如果是 Hermes 就这么显示"的判断，第二个引擎接进来时就得把所有页面重写一遍。**边界写在前面，是为了让第二个引擎接入时前端一行不用改。**
 
 ---
@@ -205,7 +209,7 @@ switch (item.kind) {
 | `App.tsx`（在 `src/`） | 457 | 外壳、导航、全局状态、SSE、快捷键、localStorage 持久化 | **拆分** | `App` + `AppShell` + `NavRail` + `Router` + `useDashboardEvents()` |
 | `main.tsx` | 112 | 挂载、错误边界、`/terminal-lab` 分流 | **保留 + 删分流** | `main.tsx`（错误边界保留） |
 | `Backdrop.tsx` | 13 | 背景 | 保留（视觉随 DESIGN.md） | `Backdrop` |
-| `Sidebar.tsx` | 239 | 紧凑树（只在进入对话页时显示） | **合并**进常驻树 | `ProjectTree` + `ProjectTreeNode` |
+| `Sidebar.tsx` | 239 | 紧凑树（只在进入对话页时显示） | **合并**进常驻树 | `ProjectTree` + `ProjectTreeNode`（2026-11-03 removed：文件已删除，项目页不再渲染页内树） |
 | `AgentGraph.tsx` | 619 | 主区大图，轮盘/图谱两模式（`chat` / `governance`） | **拆分 + 降级**（见 §3.1） | `ProjectRelationGraph`（可选）；导航职责交给 `ProjectTree` |
 | `Conversation.tsx` | 717 | 会话列表、模型/推理/审批下拉、会话健康度、终端命令与启动 | **拆分**（见 §3.2） | `ConversationPage` / `BindingSettings` / `SessionHealthPanel` / `OpenInCliAction` |
 | `ProfileDrawer.tsx` | 536 | 抽屉：详情、停用、灵魂、记忆、控制杆、技能、影响面、备份、子任务 | **拆分**（见 §3.3） | `ProjectDetailPage` 的各分区 |
@@ -258,6 +262,8 @@ switch (item.kind) {
 拆完后单个文件应当都在 200 行以内。**拆分不是搬砖：** 每搬一块都要顺手把 `name`（profile 名）换成 `projectId` / `bindingId` / `conversationId`，否则会把 name-keyed 的旧口径带进新页面。
 
 ### 3.3 `ProfileDrawer.tsx`（536 行）怎么拆
+
+> 2026-11-03 removed：人格、协作影响面、备份恢复三个分区及其 `/soul`、`/impact`、`/backups`、`/restore` 接口已删除，`ProfileDrawer.tsx` 不再存在；项目页只保留守则编辑。
 
 它已经内部分好了区（`PersonaSection` / `MemorySection` / `LeversSection` / `SkillsSection` / `ImpactSection` / `BackupsSection` / `SubtasksSection`，各自独立请求，靠 `refreshKey` prop 重拉）。拆的工作量不大：把每个 `*Section` 提成独立文件，挂到 `ProjectDetailPage` 下，`LeversSection` 并入 `BindingSettings`（它和 `Conversation.tsx` 里的控制杆是**同一份数据的两个副本**，读同一个 `/api/agent/{name}/levers`——这次要合成一处）。
 

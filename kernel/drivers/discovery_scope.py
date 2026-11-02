@@ -236,5 +236,5 @@ def isolated_agent_spec(spec, *, preset_id: str | None = None, workspace: str | 
 
 
 def require_local_discovery(preset_id):
-    if preset_id in {"openclaw", "alma"}:
+    if preset_id == "openclaw":
         raise ValueError("Gateway 实测需要独立测试服务；本地目录隔离不隔离远端会话")

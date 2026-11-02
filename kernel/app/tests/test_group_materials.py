@@ -86,8 +86,9 @@ async def test_material_api_cas_scope_validation_and_retention(tmp_path):
             await api.patch(f"/api/groups/{a['id']}",json={'status':'minimized'})
             assert (await api.get(path)).json()==first
             await api.post(f"/api/groups/{a['id']}/close")
-            assert (await api.get(path)).json()==first
-            assert (await api.delete(path+'/'+mid,params={'expectedRevision':1})).status_code==409
+            # Closing deletes the group together with its materials.
+            assert (await api.get(path)).status_code==404
+            assert (await api.delete(path+'/'+mid,params={'expectedRevision':1})).status_code==404
     finally: await h.aclose()
 
 
@@ -129,7 +130,7 @@ def test_empty_legacy_memory_table_is_removed_and_upgrade_is_repeatable(tmp_path
         migrate(db,target_version=9)
         db.run("INSERT INTO backends(id,key,display_name,driver_kind,capabilities_json) VALUES (?,?,?,?,?)",
                ('backend:legacy','legacy','Legacy','mock','{"capabilityProjection":{"memory":"unsupported","mcp":"native"}}'))
-        assert migrate(db)==(10,11,12,13,14,15,16,17,18)
+        assert migrate(db)==(10,11,12,13,14,15,16,17,18,19,20)
         assert '"memory"' not in db.query_one("SELECT capabilities_json FROM backends WHERE id='backend:legacy'")[0]
         assert '"mcp"' in db.query_one("SELECT capabilities_json FROM backends WHERE id='backend:legacy'")[0]
         assert migrate(db)==()
@@ -165,7 +166,7 @@ async def test_upgrade_isolates_legacy_members_and_keeps_user_data(tmp_path):
                (mid,group.id,source.id,'existing','active','shared_read_only',timestamp))
         db.run("INSERT INTO shared_memory_records(id,project_id,record_type,content,created_at,updated_at) VALUES (?,?,?,?,?,?)",
                ('memory:legacy',project.id,'current_state','Do not lose this existing record',timestamp,timestamp))
-        assert migrate(db)==(10,11,12,13,14,15,16,17,18)
+        assert migrate(db)==(10,11,12,13,14,15,16,17,18,19,20)
         assert await repos.conversations.get(source.id)==source
         member=await repos.members.get(mid)
         clone=await repos.conversations.get(member.conversation_id)

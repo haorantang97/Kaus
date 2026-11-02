@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.capabilities.models import EffectiveCapabilities, EffectiveCapability
+from app.capabilities.models import EffectiveCapabilities, EffectiveCapability, parse_capability_type
 from app.capabilities.resolver import (
     CapabilityResolutionRequest,
     TreeCapabilityResolver,
@@ -64,10 +64,36 @@ async def resolve_effective_for_project(
         "blocked": tuple(entry for entry in result.blocked if accepted(entry))})
 
 
+def is_native_mcp_record(entry: Any) -> bool:
+    """A backend-scoped ``<agent>:mcp`` row records an Agent's own native MCP server."""
+    ref = parse_capability_type(entry.capability_type)
+    return ref.is_backend_scoped and ref.name == "mcp"
+
+
+def without_native_mcp(effective: EffectiveCapabilities) -> EffectiveCapabilities:
+    """Native MCP records never reach an adapter.
+
+    The source Agent already loads them from its own configuration, and their
+    catalogue copy carries no credential values. Projecting them again would
+    duplicate (or break) the server. Generic ``mcp`` rows are unaffected.
+    """
+    if not any(is_native_mcp_record(e) for e in (*effective.entries, *effective.blocked)):
+        return effective
+    return effective.model_copy(update={
+        "entries": tuple(e for e in effective.entries if not is_native_mcp_record(e)),
+        "blocked": tuple(e for e in effective.blocked if not is_native_mcp_record(e))})
+
+
 async def resolve_effective_for_binding(
     repositories: Any, binding: Any
 ) -> EffectiveCapabilities:
     """这条 Binding 的有效能力（带 ``backend_key`` 过滤，R-01）。"""
+    return without_native_mcp(await _resolve_effective_for_binding(repositories, binding))
+
+
+async def _resolve_effective_for_binding(
+    repositories: Any, binding: Any
+) -> EffectiveCapabilities:
     frozen = binding.runtime_config.get("group_capabilities")
     if frozen is not None and binding.runtime_config.get("group_execution"):
         return EffectiveCapabilities.model_validate(frozen)
@@ -117,6 +143,8 @@ async def resolve_effective_for_binding(
 
 
 __all__ = [
+    "is_native_mcp_record",
     "resolve_effective_for_binding",
     "resolve_effective_for_project",
+    "without_native_mcp",
 ]

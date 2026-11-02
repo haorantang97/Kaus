@@ -119,6 +119,27 @@ describe("概览页的两个纯函数（★L）", () => {
       ["等着", "awaiting"],
     ]);
   });
+
+  it("外部终端里等人的会话排在失败之后、普通等待之前", async () => {
+    const { buildConversationGroups, buildAttentionItems } = await import("./conversationIndex");
+    const groups = buildConversationGroups([project("p", "Pronto")], [
+      conv("等着", "p", { state: "paused" }),
+      conv("终端", "p", { state: "running", terminalWaiting: "Claude needs your permission" }),
+      conv("失败", "p", { state: "error" }),
+    ] as never);
+    expect(buildAttentionItems(groups).map((item) => [item.id, item.kind])).toEqual([
+      ["失败", "failed"], ["终端", "terminal"], ["等着", "awaiting"],
+    ]);
+  });
+
+  it("运行中但有审批卡等人回答的会话也进「需要处理」", async () => {
+    const { buildConversationGroups, buildAttentionItems } = await import("./conversationIndex");
+    const groups = buildConversationGroups([project("p", "Pronto")], [
+      conv("审批", "p", { state: "running", awaitingInput: true }),
+      conv("在跑", "p", { state: "running" }),
+    ] as never);
+    expect(buildAttentionItems(groups).map((item) => [item.id, item.kind])).toEqual([["审批", "awaiting"]]);
+  });
 });
 
 

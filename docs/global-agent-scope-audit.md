@@ -24,7 +24,7 @@ The active workflow connects an Agent globally, selects a project/persona separa
 ## Intentional compatibility boundaries
 
 - Existing native profile bindings preserve their directories, native session identifiers and resume mapping. They are not silently converted to empty execution homes. Shared-directory writes are guarded. Their original histories remain available.
-- `static/`, the feature-flag-off conversation UI and native profile endpoints remain compatibility code. They are not the normal global Agent selection path.
+- The feature-flag-off conversation UI and native profile endpoints remain compatibility code. They are not the normal global Agent selection path. (The legacy `static/` UI was removed 2026-11-02.)
 - The Hermes task board and its native background scheduler are still Hermes-specific. A general multi-Agent task scheduler has not been implemented in this change. Group orchestration already uses the shared driver layer and remains separate.
 - ACP MCP attachment follows the existing session protocol. Native instruction-file changes use the project configuration preview/apply action and workspace guards. Missing support is reported by the driver; merely connecting an Agent does not claim every project capability is active.
 - Private Hermes project execution requires an installed ACP runtime. The local installation passes `hermes acp --check`. HTTP-only installations retain their native compatibility path and shared-target protection; this audit does not certify every upstream Agent installation.

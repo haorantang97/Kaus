@@ -38,13 +38,16 @@ def read_connection_settings(path: Path) -> tuple[tuple[str, ...], dict[str, str
     if not isinstance(value, dict) or value.get("version") != 1:
         raise ValueError("引擎接入记录格式不正确")
     ids = value.get("presets")
-    if not isinstance(ids, list) or any(not isinstance(x, str) or x not in PRESETS for x in ids):
-        raise ValueError("引擎接入记录包含未知预设")
+    if not isinstance(ids, list) or any(not isinstance(x, str) for x in ids):
+        raise ValueError("引擎接入记录格式不正确")
     native = value.get("nativePaths", {})
     if not isinstance(native, dict) or any(key not in ids or not isinstance(v, str) or not Path(v).is_absolute()
                                           or "\0" in v or "\n" in v for key, v in native.items()):
         raise ValueError("引擎可执行路径格式不正确")
-    return tuple(dict.fromkeys(ids)), dict(native)
+    # A preset removed from the catalog is skipped, never mapped to a command;
+    # the remaining connections stay registered.
+    known = tuple(dict.fromkeys(x for x in ids if x in PRESETS))
+    return known, {key: path for key, path in native.items() if key in known}
 
 
 def read_connections(path: Path) -> tuple[str, ...]:
@@ -240,14 +243,18 @@ def build_engine_connection_router(*, registry: Any, repositories: Any, auth_pol
                 raise
             registry.register(driver)
             await sync_skill_scopes(registry, repositories)
+            onboarding = None
             if skill_tree is not None and first_product:
+                # The connect flow shows its capability step only for this
+                # first connection of a product; no popup is raised elsewhere.
                 scope = getattr(preset, "skill_scope_key", None) or preset.id
-                await asyncio.to_thread(skill_tree.begin_onboarding, scope,
-                                        product["productName"])
+                onboarding = await asyncio.to_thread(skill_tree.begin_onboarding, scope,
+                                                     product["productName"])
             refresh_inventory = getattr(driver, "start_skill_inventory_refresh", None)
             if callable(refresh_inventory):
                 refresh_inventory()
-            return {"backendId": backend_id, "registered": True}
+            return {"backendId": backend_id, "registered": True,
+                    **({"onboarding": onboarding} if onboarding else {})}
 
     async def refresh(body: dict = Body(default={})) -> dict[str, Any]:
         ids = body.get("backendIds")

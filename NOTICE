@@ -20,5 +20,5 @@ Exceptions
 
 Third-party components
   Third-party components keep their own licenses. See
-  web/public/THIRD_PARTY_NOTICES.txt, the license files in the font
-  directories and static/vendor/LICENSE-xterm.txt.
+  web/public/THIRD_PARTY_NOTICES.txt and the license files in the font
+  directories.

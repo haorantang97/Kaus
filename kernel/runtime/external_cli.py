@@ -46,8 +46,9 @@ import asyncio
 import os
 import pwd
 import shlex
+import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Awaitable, Callable, Sequence
 from uuid import uuid4
@@ -56,10 +57,16 @@ from app.ids import terminal_launch_id
 from app.runtimes.models import TerminalLaunch
 from app.runtimes.repository import TerminalLaunchRepository
 from drivers.base import CliLaunchSpec
-from drivers.terminals.integrations import prepare_command
+from drivers.terminals.integrations import prepare_command, terminal_wrapper, wrapper_keeps_caller_hooks
+from drivers.terminals.status_hook import TOKEN_ENV as STATUS_TOKEN_ENV, URL_ENV as STATUS_URL_ENV
+from drivers.terminals.status_hooks import hook_arguments
 from drivers.terminals.environment import EnvironmentRelay
 from drivers.terminals.managed_process import stop as stop_managed_process
+from drivers.terminals import draft_prefill
+from drivers.terminals.draft_prefill import DRAFT_ENV, MAX_DRAFT_CHARS
+from drivers.terminals.trust import grant_workspace_trust
 from runtime.lease_manager import LeaseManager
+from runtime.terminal_status import TerminalStatusBoard
 
 #: 缺省终端应用（`dashboard-config.json` 的 ``terminal.app`` 可覆盖）。
 DEFAULT_TERMINAL_APP = "cmux"
@@ -85,6 +92,9 @@ DEFAULT_PID_TIMEOUT = 3.0
 
 #: 监视器周期（秒）。与接入层 60s 的维护任务并列，各跑各的。
 DEFAULT_MONITOR_INTERVAL = 5.0
+
+#: 终端始终没有运行启动脚本时，过多久把写权还给对话。
+LAUNCH_START_GRACE = timedelta(minutes=2)
 
 #: 脚本与其所在目录的权限：只有本用户能读能跑。
 SCRIPT_MODE = 0o700
@@ -154,7 +164,7 @@ def build_launch_script(
 Opener = Callable[[str, Path], "tuple[bool, str | None]"]
 
 
-from drivers.terminals.launcher import macos_open
+from drivers.terminals.launcher import macos_activate, macos_open
 
 
 @dataclass(frozen=True)
@@ -166,6 +176,8 @@ class LaunchResult:
     command_summary: str
     script_path: Path
     reason: str | None = None
+    #: The unsent draft went to the native prefill flag (only true when launched).
+    draft_prefilled: bool = False
 
 
 class TerminalLauncher:
@@ -192,6 +204,10 @@ class TerminalLauncher:
         clock: Callable[[], datetime] = _utcnow,
         app_provider: Callable[[], str] | None = None,
         environment_timeout: float = 15.0,
+        trust_provider: Callable[[], bool] | None = None,
+        status_board: TerminalStatusBoard | None = None,
+        status_url: str | None = None,
+        activator: Callable[[str], bool] = macos_activate,
     ) -> None:
         self.root = Path(root)
         self.app = app or DEFAULT_TERMINAL_APP
@@ -201,10 +217,39 @@ class TerminalLauncher:
         self._clock = clock
         self._app_provider = app_provider
         self.environment_timeout = environment_timeout
+        self._trust_provider = trust_provider
+        #: Launch-scoped status hooks report here; both unset = no hooks.
+        self.status_board = status_board
+        self.status_url = status_url.rstrip("/") if status_url else None
+        self._activator = activator
         self._environment_relays: dict[str, EnvironmentRelay] = {}
 
     def selected_app(self) -> str:
         return self._app_provider() if self._app_provider else self.app
+
+    def _status_hooks(self, spec: CliLaunchSpec, app: str, launch_id: str,
+                      conversation_id: str) -> tuple[tuple[str, ...], dict[str, str]] | None:
+        """Hook arguments and launch token, unless a terminal wrapper would drop its own hooks for them."""
+        if not spec.status_hooks or self.status_board is None or self.status_url is None:
+            return None
+        if terminal_wrapper(spec, app) is not None and not wrapper_keeps_caller_hooks(
+                spec, app, os.pathsep.join((*spec.path_prefix, os.environ.get("PATH", "")))):
+            return None
+        token = self.status_board.register(launch_id, conversation_id)
+        return hook_arguments(spec.status_hooks), {
+            STATUS_URL_ENV: f"{self.status_url}/api/terminal-status/{launch_id}", STATUS_TOKEN_ENV: token}
+
+    async def _grant_workspace_trust(self, spec: CliLaunchSpec) -> str | None:
+        """Prewrite the agent's folder trust so its first-run menu cannot block resume."""
+        if spec.workspace_trust is None or not spec.cwd:
+            return None
+        try:
+            if self._trust_provider is not None and not self._trust_provider():
+                return None
+        except (OSError, ValueError):
+            return None
+        kind, config_dir = spec.workspace_trust
+        return await asyncio.to_thread(grant_workspace_trust, kind, spec.cwd, config_dir)
 
     async def open_directory(self, cwd: Path, *, title: str = "Kaus") -> dict[str, object]:
         """A project terminal opens its directory without acquiring a chat lease."""
@@ -224,10 +269,16 @@ class TerminalLauncher:
         return {"launcher": app, "cwd": str(cwd), "launched": opened, "reason": reason}
 
     async def launch(
-        self, spec: CliLaunchSpec, *, conversation_id: str, launch_uuid: str | None = None
+        self, spec: CliLaunchSpec, *, conversation_id: str, launch_uuid: str | None = None,
+        draft: str | None = None,
     ) -> LaunchResult:
-        """写脚本 → 开窗 → 读 pid。全程不抛，失败即降级。"""
+        """写脚本 → 开窗 → 读 pid。全程不抛，失败即降级。
+
+        ``draft``：Kaus 里未发送的草稿。只有规格声明了原生预填参数时才带进终端，
+        经内存中的环境交接传递，不写进脚本、启动记录或命令摘要。
+        """
         summary = quote_command(spec.command)
+        prefill = bool(draft and draft.strip() and spec.draft_flag and len(draft) <= MAX_DRAFT_CHARS and "\0" not in draft)
         # v1.0 §8.7：关联 id 就是 launch id 本身（脚本把它导进 KAUS_LAUNCH_ID）。
         # 所以 id 得先算出来，再拿去当 correlation_id。Driver 自己那个 correlation
         # 只作记录——它按会话取值，同一条会话启动两次就会撞 correlation 的唯一约束。
@@ -255,10 +306,25 @@ class TerminalLauncher:
         exit_path = directory / EXIT_FILENAME
         script_path = directory / SCRIPT_FILENAME
         relay = None
+        trust = await self._grant_workspace_trust(spec)
+        if trust is not None:
+            launch = launch.evolve(metadata={**launch.metadata, "workspaceTrust": trust})
         try:
             command = prepare_command(spec, directory, app)
-            if spec.private_env:
-                relay = EnvironmentRelay(spec.private_env, timeout=self.environment_timeout,
+            private_env = dict(spec.private_env)
+            hooks = self._status_hooks(spec, app, launch.id, conversation_id)
+            if hooks is not None:
+                arguments, values = hooks
+                command = (*command, *arguments)
+                private_env.update(values)
+            if spec.status_hooks and self.status_board is not None:
+                # "terminal": the terminal app's own wrapper owns this agent's hooks.
+                launch = launch.evolve(metadata={**launch.metadata, "statusHooks": "on" if hooks else "terminal"})
+            if prefill:
+                command = (sys.executable, str(Path(draft_prefill.__file__)), spec.draft_flag, "--", *command)
+                private_env[DRAFT_ENV] = draft
+            if private_env:
+                relay = EnvironmentRelay(private_env, timeout=self.environment_timeout,
                     on_close=lambda: self._environment_relays.pop(launch.id, None))
                 await relay.start()
                 self._environment_relays[launch.id] = relay
@@ -284,6 +350,8 @@ class TerminalLauncher:
         except asyncio.CancelledError:
             if relay is not None:
                 await relay.aclose()
+            if self.status_board is not None:
+                self.status_board.forget(launch.id)
             await asyncio.to_thread(stop_managed_process, directory, read_pid(pid_path))
             raise
         except Exception:
@@ -293,6 +361,8 @@ class TerminalLauncher:
         if not opened:
             if relay is not None:
                 await relay.aclose()
+            if self.status_board is not None:
+                self.status_board.forget(launch.id)
             # An unconfirmed delayed workspace must not start after its lease
             # has been returned to the conversation page.
             await asyncio.to_thread(stop_managed_process, directory, read_pid(pid_path))
@@ -314,12 +384,17 @@ class TerminalLauncher:
             launched=True,
             command_summary=summary,
             script_path=script_path,
+            draft_prefilled=prefill,
         )
 
     async def aclose(self) -> None:
         for relay in tuple(self._environment_relays.values()):
             await relay.aclose()
         self._environment_relays.clear()
+
+    async def focus(self, launch: TerminalLaunch) -> bool:
+        """Bring the terminal app of this launch to the front."""
+        return await asyncio.to_thread(self._activator, launch.launcher)
 
     async def stop(self, launch: TerminalLaunch) -> tuple[bool, str | None]:
         relay = self._environment_relays.pop(launch.id, None)
@@ -504,7 +579,15 @@ class ExternalCliMonitor:
                     directory.mkdir(mode=LAUNCH_DIR_MODE, parents=True, exist_ok=True)
                     (directory / "revoked").touch(mode=0o600)
                     return ExitSignal(conversation_id, launch, -1, "launch-owner-gone")
-            # 还没写出 pid：刚拉起，什么都别做。
+            # 还没写出 pid：刚拉起，什么都别做——除非脚本始终没开始跑（终端没打开、
+            # 用户关掉了窗口）。守卫脚本一开始就建 ``shell-started``，过了宽限期仍没有
+            # 它，就撤销这次启动并把写权还给对话，免得会话一直卡在外部态。
+            started = (directory / "shell-started").exists()
+            launched_at = launch.launched_at
+            if not started and launched_at is not None and self._clock() - launched_at > LAUNCH_START_GRACE:
+                directory.mkdir(mode=LAUNCH_DIR_MODE, parents=True, exist_ok=True)
+                (directory / "revoked").touch(mode=0o600)
+                return ExitSignal(conversation_id, launch, -1, "launch-never-started")
             return None
         if self._is_alive(pid):
             return None

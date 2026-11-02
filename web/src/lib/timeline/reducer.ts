@@ -280,7 +280,8 @@ export interface InteractionItem extends BaseItem {
   permission: PermissionRequest | null;
   question: QuestionRequest | null;
   authentication: AuthenticationRequest | null;
-  status: "pending" | "resolved";
+  /** `expired`: the main run ended (including a synthesized run.failed after process loss). */
+  status: "pending" | "resolved" | "expired";
   decision: string | null;
   outcome: AuthenticationOutcome | null;
 }
@@ -612,7 +613,10 @@ function runTerminalHandler(target: RunState): Handler {
       return upsertChildRun(appended, envelope, target, error);
     }
     if (isRunTerminal(state)) return dropStale(appended);
-    return { ...appended, runState: target, error: error ?? appended.error };
+    // A finished main run can no longer receive answers; keep the card, drop its buttons.
+    const items = appended.items.map(item => item.kind === "interaction" && item.status === "pending"
+      ? { ...item, status: "expired" as const } : item);
+    return { ...appended, items, runState: target, error: error ?? appended.error };
   };
 }
 

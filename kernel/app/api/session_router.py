@@ -87,6 +87,8 @@ from app.api.event_wait import (
     next_or_none as _next_or_none,
 )
 from app.api.group_router import group_labels_for_conversations
+from app.api import proxy_actions
+from app.api.proxy_actions import ProxyActor
 from app.api.session_views import (
     KEEPALIVE_FRAME,
     SSE_HEADERS,
@@ -94,6 +96,7 @@ from app.api.session_views import (
     advisory_to_wire,
     conversation_index_entry_to_wire,
     conversation_list_to_wire,
+    awaiting_input,
     conversation_status,
     conversation_surface,
     conversation_to_wire,
@@ -132,6 +135,7 @@ from app.conversations.models import Conversation
 from app.conversations.repository import DEFAULT_RECENT_LIMIT, MAX_RECENT_LIMIT
 from app.persistence.base import RepositorySet
 from app.projects.binding_snapshot import register_binding_snapshot
+from app.projects.retirement import is_retired, project_deleted_error, require_open_project
 from drivers.base import (
     AGENT_SPAWN_FAILED,
     AgentSpawnError,
@@ -221,6 +225,14 @@ class ArchiveConversationBody(_Body):
     archived: bool
 
 
+class MoveConversationBody(_Body):
+    """``POST /conversations/{id}/move``: rescue an archived conversation into another Project."""
+
+    project_id: str = Field(min_length=1, max_length=256)
+    binding_id: str = Field(min_length=1, max_length=256)
+    confirm_workspace_change: bool = False
+
+
 class CreateConversationBody(_Body):
     """``POST /projects/{id}/conversations``。
 
@@ -255,6 +267,8 @@ class PatchConversationBody(_Body):
     approval_mode: str | None = None
     execution_mode: str | None = Field(default=None, max_length=256)
     config_options: ConversationConfig | None = None
+    #: Set by the Kaus control MCP when a main agent changes this for the user.
+    proxy: ProxyActor | None = None
 
 
 class PutCapabilityBody(_Body):
@@ -305,6 +319,9 @@ class InteractionResponseBody(_Body):
     option_ids: tuple[str, ...] = ()
     text: str | None = None
     cancelled: bool = False
+    #: Set by the Kaus control MCP: only an offered choice is accepted, and the
+    #: answer is recorded in the timeline.
+    proxy: ProxyActor | None = None
 
     def to_response(self) -> InteractionResponse:
         return InteractionResponse(
@@ -689,6 +706,8 @@ def build_session_router(
         project = await repositories.projects.get(normalized)
         if project is None:
             raise _not_found("project_not_found", f"未知 Project：{project_id}")
+        if is_retired(project):
+            raise project_deleted_error()
         binding = await repositories.bindings.get(body.binding_id)
         if binding is None:
             raise _not_found("binding_not_found", f"未知 Binding：{body.binding_id}")
@@ -761,24 +780,29 @@ def build_session_router(
         entries = []
         for conversation in conversations:
             timeline = host.timeline(conversation.id)
-            entries.append(
-                conversation_index_entry_to_wire(
+            entry = conversation_index_entry_to_wire(
+                conversation,
+                backend_id=backend_by_binding.get(conversation.agent_binding_id),
+                status=conversation_status(
                     conversation,
-                    backend_id=backend_by_binding.get(conversation.agent_binding_id),
-                    status=conversation_status(
-                        conversation,
-                        live_run_state=(
-                            timeline.run_state if timeline is not None else None
-                        ),
+                    live_run_state=(
+                        timeline.run_state if timeline is not None else None
                     ),
-                    last_sequence=await host.event_store.latest_sequence(
-                        conversation.id
-                    ),
-                    surface=surfaces.get(conversation.id, "card"),
-                    group_id=(groups.get(conversation.id) or {}).get("id"),
-                    group_title=(groups.get(conversation.id) or {}).get("title"),
-                )
+                ),
+                last_sequence=await host.event_store.latest_sequence(
+                    conversation.id
+                ),
+                surface=surfaces.get(conversation.id, "card"),
+                group_id=(groups.get(conversation.id) or {}).get("id"),
+                group_title=(groups.get(conversation.id) or {}).get("title"),
             )
+            if awaiting_input(timeline):
+                entry["awaitingInput"] = True
+            # Hook-reported state of an agent in an external terminal (advisory).
+            if surface_coordinator is not None and entry.get("surface") == "external-cli":
+                if (terminal := surface_coordinator.terminal_status(conversation.id)) is not None:
+                    entry["terminalStatus"] = terminal
+            entries.append(entry)
         return {
             "conversations": entries,
             "count": len(entries),
@@ -859,6 +883,9 @@ def build_session_router(
         try:
             async with host.conversation_control(conversation_id):
                 conversation = await _load_conversation(conversation_id)
+                if not body.archived:
+                    # A deleted Project's conversations stay archived (read-only).
+                    await require_open_project(repositories, conversation.project_id)
                 owner = await host.describe_runtime_owner(conversation_id)
                 if body.archived and owner and owner.owner_type == "external-cli":
                     raise SessionApiError(409, "surface_external_active", "请先结束终端中的对话。")
@@ -872,6 +899,61 @@ def build_session_router(
                 return {"conversation": conversation_to_wire(saved)}
         except TurnAlreadyRunningError as exc:
             raise SessionApiError(409, "turn_already_running", "本轮结束后可归档。") from exc
+
+    @_endpoint
+    async def move_conversation(conversation_id: str, body: MoveConversationBody = Body(...)) -> Any:
+        """Move an archived conversation into an active Project and restore it.
+
+        The engine stays the same: the target Binding (ensured by the caller through
+        ``/projects/{id}/bindings/ensure``) must use the source Binding's Backend.
+        Native resume uses the stored session id with the runtime's working folder and
+        the Binding's native scope; if either differs the move needs explicit
+        confirmation (``workspace_changed``) because the session may not resume.
+        """
+        from app.errors import DomainInvariantError
+        try:
+            async with host.conversation_control(conversation_id):
+                conversation = await _load_conversation(conversation_id)
+                if conversation.archived_at is None:
+                    raise SessionApiError(409, "conversation_not_archived", "请先归档此对话。")
+                target_id = normalize_project_id(body.project_id)
+                target = await repositories.projects.get(target_id)
+                if target is None:
+                    raise _not_found("project_not_found", f"未知 Project：{body.project_id}")
+                if is_retired(target):
+                    raise project_deleted_error()
+                if target_id == conversation.project_id:
+                    raise SessionApiError(409, "conversation_same_project", "对话已在此 Project。")
+                source_binding = await repositories.bindings.get(conversation.agent_binding_id)
+                binding = await repositories.bindings.get(body.binding_id)
+                if (binding is None or binding.project_id != target_id or not binding.enabled
+                        or binding.runtime_config.get("group_execution")):
+                    raise SessionApiError(400, "binding_project_mismatch", "请选择目标 Project 的 Agent。")
+                if source_binding is None or binding.backend_id != source_binding.backend_id:
+                    raise SessionApiError(409, "engine_mismatch", "移动后须使用同一引擎。")
+                if conversation.native_session_id is not None and not body.confirm_workspace_change:
+                    source_project = await repositories.projects.get(conversation.project_id)
+                    source_workspace = (
+                        await _conversation_workspace(conversation)
+                        or source_binding.runtime_config.get("workspace_root")
+                        or (source_project.workspace_root if source_project else None)
+                    )
+                    target_workspace = binding.runtime_config.get("workspace_root") or target.workspace_root
+                    scope_changed = binding.native_scope_ref != source_binding.native_scope_ref
+                    if source_workspace != target_workspace or scope_changed:
+                        raise SessionApiError(
+                            409, "workspace_changed", "目标 Project 的工作目录或原生配置不同，原生会话可能无法续接。",
+                            sourceWorkspace=source_workspace, targetWorkspace=target_workspace,
+                            nativeScopeChanged=scope_changed,
+                        )
+                try:
+                    saved = await repositories.conversations.save(conversation.relocate_archived(
+                        project_id=target_id, agent_binding_id=binding.id, at=datetime.now(timezone.utc)))
+                except DomainInvariantError as exc:
+                    raise SessionApiError(409, "native_session_conflict", "目标 Agent 已关联同一原生会话。") from exc
+                return {"conversation": conversation_to_wire(saved)}
+        except TurnAlreadyRunningError as exc:
+            raise SessionApiError(409, "turn_already_running", "本轮结束后可移动。") from exc
 
     @_endpoint
     async def delete_conversation(conversation_id: str) -> Any:
@@ -906,6 +988,9 @@ def build_session_router(
     async def patch_conversation(
         conversation_id: str, body: PatchConversationBody = Body(...)
     ) -> Any:
+        if body.proxy is not None and (body.title is not None or body.execution_mode or body.config_options):
+            # Proxied changes are limited to what is recorded in the timeline.
+            raise SessionApiError(400, "proxy_setting_unsupported", "主 Agent 只能修改模型、推理强度和权限。")
         if body.model_id or body.reasoning_mode or body.approval_mode or body.execution_mode or body.config_options:
             try:
                 async with host.conversation_control(conversation_id):
@@ -1127,7 +1212,7 @@ def build_session_router(
         saved = await repositories.conversations.save(updated)
         # 活跃 runtime 手上那份也要换，否则这一轮还按旧快照发（AD-12 的反面）。
         host.update_conversation(saved)
-        return {
+        payload: dict[str, Any] = {
             "conversation": conversation_to_wire(
                 saved, run_state=await host.run_state_of(saved)
             ),
@@ -1135,6 +1220,22 @@ def build_session_router(
             # 下一次 `session/new` 之后才生效——界面据此决定要不要说一句。
             "appliedToRuntime": applied_to_runtime,
         }
+        if body.proxy is not None:
+            changes: list[tuple[Any, str, str | None]] = []
+            if model_id is not None:
+                model_label = next((m.display_name for m in (catalog.models if catalog else ())
+                                    if m.model_id == saved.model_id and m.display_name), None)
+                changes.append(("model", saved.model_id or model_id, model_label))
+            if reasoning_mode is not None:
+                changes.append(("reasoning", saved.reasoning_mode or reasoning_mode, None))
+            if approval_mode is not None:
+                approval_label = next((str(o.get("name")) for o in controls.get("approvalOptions") or ()
+                                       if isinstance(o, dict) and o.get("id") == approval_mode and o.get("name")), None)
+                changes.append(("approval", approval_mode, approval_label))
+            recorded = [await _record_proxy(saved, proxy_actions.setting_event(
+                setting, value, label, actor=body.proxy)) for setting, value, label in changes]
+            payload["recorded"] = all(recorded)
+        return payload
 
     # --- 发消息 ------------------------------------------------------------- #
 
@@ -1195,6 +1296,8 @@ def build_session_router(
         conversation_id: str, body: SendMessageBody = Body(...)
     ) -> Any:
         conversation = await _load_conversation(conversation_id)
+        # Before any runtime start: a confirmed pre-dispatch rejection.
+        await require_open_project(repositories, conversation.project_id)
         if conversation.archived_at:
             raise SessionApiError(409, "conversation_archived", "请先恢复此对话。")
         if not body.text.strip() and not body.attachments:
@@ -1480,13 +1583,28 @@ def build_session_router(
         interaction_id: str,
         body: InteractionResponseBody = Body(...),
     ) -> Any:
-        await _load_conversation(conversation_id)
+        conversation = await _load_conversation(conversation_id)
         try:
             response = body.to_response()
         except Exception as exc:  # noqa: BLE001 - 交互种类是封闭集合
             raise SessionApiError(
                 400, "invalid_interaction_response", f"交互响应不合法：{exc}"
             ) from exc
+        proxied = None
+        if body.proxy is not None:
+            # A proxied answer picks only what the card offers (the same rules the
+            # conversation card renders); the host and driver checks still follow.
+            if not host.is_active(conversation_id):
+                raise SessionApiError(409, "runtime_not_active", "这条会话当前没有运行中的 Agent。")
+            item = proxy_actions.pending_item(host.timeline(conversation_id), interaction_id)
+            if item is None:
+                raise _not_found("interaction_not_found", f"没有待处理的请求：{interaction_id}")
+            try:
+                action, choice = proxy_actions.offered_choice(item, response)
+            except ValueError as exc:
+                raise SessionApiError(400, "invalid_answer", "回答不符合要求，请检查后重试",
+                                      detail={"reason": str(exc)}) from exc
+            proxied = (item, action, choice)
         try:
             await host.resolve_interaction(conversation_id, interaction_id, response)
         except RuntimeNotActiveError as exc:
@@ -1495,11 +1613,31 @@ def build_session_router(
             raise _not_found("interaction_not_found", str(exc)) from exc
         except UnsupportedCapabilityError as exc:
             raise SessionApiError(501, "unsupported_capability", str(exc)) from exc
-        return {
+        except ValueError as exc:
+            # The driver rejected the answer itself (an option not offered, a non-numeric
+            # value for a number field). The card stays pending, so say how to fix it.
+            raise SessionApiError(400, "invalid_answer", "回答不符合要求，请检查后重试",
+                                  detail={"reason": str(exc)}) from exc
+        result: dict[str, Any] = {
             "conversationId": conversation_id,
             "interactionId": interaction_id,
             "resolved": True,
         }
+        if proxied is not None:
+            item, action, choice = proxied
+            result["recorded"] = await _record_proxy(conversation, proxy_actions.interaction_event(
+                item, response, action=action, choice=choice, actor=body.proxy), run_id=item.run_id)
+            result["action"] = action
+        return result
+
+    async def _record_proxy(conversation: Conversation, event: Any, *, run_id: str | None = None) -> bool:
+        """Timeline row for a proxied action. The action already happened, so a
+        failed write is reported as ``recorded: false`` rather than as a failure."""
+        try:
+            await host.emit_conversation_event(conversation, event, run_id=run_id)
+        except Exception:  # noqa: BLE001 - see docstring
+            return False
+        return True
 
     @_endpoint
     async def stop_runtime(conversation_id: str) -> Any:
@@ -1570,7 +1708,7 @@ def build_session_router(
 
     @_endpoint
     async def open_external_surface(
-        conversation_id: str, force: bool = Query(False)
+        conversation_id: str, force: bool = Query(False), body: dict | None = Body(None)
     ) -> Any:
         """``POST /surface/external``：把写权交给外部终端。
 
@@ -1579,8 +1717,12 @@ def build_session_router(
         """
         coordinator = _require_coordinator()
         conversation = await _load_conversation(conversation_id)
+        await require_open_project(repositories, conversation.project_id)
+        draft = (body or {}).get("draft")
+        if body is not None and (set(body) - {"draft"} or not isinstance(draft, (str, type(None)))):
+            raise SessionApiError(400, "invalid_terminal_draft", "草稿格式无效")
         try:
-            handoff = await coordinator.to_external(conversation, force=force)
+            handoff = await coordinator.to_external(conversation, force=force, draft=draft)
         except SurfaceError as exc:
             raise _surface_error(exc) from exc
         except DriverNotRegisteredError as exc:
@@ -1596,6 +1738,7 @@ def build_session_router(
             # 降级时这是唯一能用的东西：让用户自己粘。
             "launched": handoff.launched,
             "reason": handoff.reason,
+            "draftPrefilled": handoff.draft_prefilled,
         }
 
     @_endpoint
@@ -1623,6 +1766,21 @@ def build_session_router(
             "complete": handoff.complete,
             "gaps": list(handoff.gaps),
         }
+
+    @_endpoint
+    async def focus_surface(conversation_id: str) -> Any:
+        """``POST /surface/focus``：把持有这条会话的外部终端切到前台，不发送任何输入。"""
+        coordinator = _require_coordinator()
+        conversation = await _load_conversation(conversation_id)
+        return {"conversationId": conversation_id, "focused": await coordinator.focus(conversation)}
+
+    @_endpoint
+    async def get_surface_preview(conversation_id: str) -> Any:
+        """``GET /surface/preview``：外部终端期间的新消息预览（只读，不入事件）。"""
+        conversation = await _load_conversation(conversation_id)
+        if surface_coordinator is None:
+            return {"conversationId": conversation_id, "active": False, "supported": False, "entries": []}
+        return {"conversationId": conversation_id, **await surface_coordinator.preview(conversation)}
 
     @_endpoint
     async def get_surface(conversation_id: str) -> Any:
@@ -2135,6 +2293,13 @@ def build_session_router(
             [_auth],
         ),
         (
+            "/conversations/{conversation_id}/move",
+            move_conversation,
+            ["POST"],
+            "session_move_conversation",
+            [_auth],
+        ),
+        (
             "/conversations/{conversation_id}/bookmarks", set_bookmark,
             ["PUT"], "session_set_bookmark", [_auth],
         ),
@@ -2222,6 +2387,20 @@ def build_session_router(
             get_surface,
             ["GET"],
             "session_surface",
+            [_auth],
+        ),
+        (
+            "/conversations/{conversation_id}/surface/preview",
+            get_surface_preview,
+            ["GET"],
+            "session_surface_preview",
+            [_auth],
+        ),
+        (
+            "/conversations/{conversation_id}/surface/focus",
+            focus_surface,
+            ["POST"],
+            "session_surface_focus",
             [_auth],
         ),
         (

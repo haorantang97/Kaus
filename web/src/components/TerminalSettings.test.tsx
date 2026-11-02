@@ -11,8 +11,8 @@ const launchers = [
 ];
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(fetchTerminalSettings).mockResolvedValue({ app: "cmux", launchers });
-  vi.mocked(saveTerminalSettings).mockImplementation(async (app) => ({ app, launchers }));
+  vi.mocked(fetchTerminalSettings).mockResolvedValue({ app: "cmux", trustWorkspace: true, launchers });
+  vi.mocked(saveTerminalSettings).mockImplementation(async (body) => ({ app: body.app ?? "cmux", trustWorkspace: body.trustWorkspace ?? true, launchers }));
 });
 it("保存默认启动器，并在下次打开设置时读回", async () => {
   const user = userEvent.setup();
@@ -22,10 +22,10 @@ it("保存默认启动器，并在下次打开设置时读回", async () => {
   await user.click(select);
   expect(screen.getByRole("option", { name: /iTerm2/ })).toHaveAttribute("aria-disabled", "true");
   await user.click(screen.getByRole("option", { name: "Terminal" }));
-  await waitFor(() => expect(saveTerminalSettings).toHaveBeenCalledWith("terminal"));
+  await waitFor(() => expect(saveTerminalSettings).toHaveBeenCalledWith({ app: "terminal" }));
   expect(await screen.findByRole("status", { name: "已保存" })).toBeInTheDocument();
   view.unmount();
-  vi.mocked(fetchTerminalSettings).mockResolvedValue({ app: "terminal", launchers });
+  vi.mocked(fetchTerminalSettings).mockResolvedValue({ app: "terminal", trustWorkspace: true, launchers });
   render(<TerminalSettings />);
   await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("Terminal"));
 });
@@ -38,4 +38,13 @@ it("保存失败时保留已确认的选择", async () => {
   await user.click(screen.getByRole("option", { name: "Terminal" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("无法保存终端偏好");
   expect(screen.getByRole("combobox")).toHaveTextContent("cmux");
+});
+it("目录信任开关默认开启，单独保存", async () => {
+  const user = userEvent.setup();
+  render(<TerminalSettings />);
+  const toggle = await screen.findByRole("switch", { name: "自动信任项目目录" });
+  await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "true"));
+  await user.click(toggle);
+  await waitFor(() => expect(saveTerminalSettings).toHaveBeenCalledWith({ trustWorkspace: false }));
+  expect(toggle).toHaveAttribute("aria-checked", "false");
 });

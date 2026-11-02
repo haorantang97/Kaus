@@ -812,6 +812,15 @@ def test_redaction_helper_handles_several_shapes():
         == "/x?after=3&token=REDACTED&z=1"
     )
     assert session_bootstrap.redact_token_query("/x?after=3") == "/x?after=3"
+    assert (
+        session_bootstrap.redact_token_query("GET /api/workbench/assets/notes/~Ab_c-1/app/main.js HTTP/1.1")
+        == "GET /api/workbench/assets/notes/~REDACTED/app/main.js HTTP/1.1"
+    )
+    assert (
+        session_bootstrap.redact_token_query("POST /api/workbench/modules/notes/frames/Ab_c-1/renew")
+        == "POST /api/workbench/modules/notes/frames/REDACTED/renew"
+    )
+    assert session_bootstrap.redact_token_query("/api/workbench/modules/notes/frames") == "/api/workbench/modules/notes/frames"
 
 
 # --------------------------------------------------------------------------- #

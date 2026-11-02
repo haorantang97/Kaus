@@ -1060,6 +1060,31 @@ class HermesDriver:
         from drivers.hermes.isolated_runtime import create_driver
         return await create_driver(self, binding).session_options_for(conversation, effective)
 
+    async def unapplied_project_capabilities(self, conversation, effective, *, workspace_root=None):
+        """Effective capabilities this session will not receive (D-03).
+
+        Hermes reads Project instructions from the managed block in its profile
+        directory; they count as delivered when that block holds the current
+        text. A shared native directory does not carry a Project skill scope.
+        """
+        from drivers.base import UnappliedCapability
+        from drivers.hermes.skill_projection import selection_of
+        from drivers.projection_gaps import SKILLS, UNSUPPORTED, instructions_gap
+
+        binding = self._binding_for(conversation)
+        rule = projection_map.file_rule_for("instructions")
+        gaps = []
+        # Instructions live in the profile directory, whatever the workspace.
+        instructions = instructions_gap(effective, workspace_root=str(self.projection_scope(binding)),
+            filename=rule.filename if rule is not None else None, guard=False)
+        if instructions is not None:
+            gaps.append(instructions)
+        if (not workspace_root and not project_scope.enabled(binding)
+                and not binding.runtime_config.get("group_execution") and selection_of(effective) is not None):
+            gaps.append(UnappliedCapability(kind=SKILLS, names=(selection_of(effective).capability_id,),
+                reason=UNSUPPORTED))
+        return tuple(gaps)
+
     def supports_workspace_override(self) -> bool:
         return True
 

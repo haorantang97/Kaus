@@ -46,6 +46,10 @@ class CollaborationSessionRepository(Protocol):
 
     async def save(self, session: CollaborationSession) -> CollaborationSession: ...
 
+    async def delete(self, collaboration_id: str) -> None:
+        """Closing a group removes it entirely (2026-11-01)."""
+        ...
+
 
 @runtime_checkable
 class CollaborationMemberRepository(Protocol):
@@ -98,6 +102,9 @@ class InMemoryCollaborationSessionRepository:
     async def save(self, session: CollaborationSession) -> CollaborationSession:
         self._by_id[session.id] = session
         return session
+
+    async def delete(self, collaboration_id: str) -> None:
+        self._by_id.pop(collaboration_id, None)
 
 
 class InMemoryCollaborationMemberRepository:

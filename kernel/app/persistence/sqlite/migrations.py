@@ -507,6 +507,32 @@ MIGRATIONS: Final[tuple[Migration, ...]] = (
         "ALTER TABLE event_store ADD COLUMN native_reference_json TEXT",
         "CREATE TABLE native_history_storage (conversation_id TEXT PRIMARY KEY, state_json TEXT NOT NULL)",
     )),
+    # Closing a group now deletes it (2026-11-01). Groups closed before that
+    # kept their timeline, materials and group-only sessions where no screen
+    # reaches them; remove them the same way. Conversations the user kept in a
+    # Project (project_visible) and native agent history are untouched.
+    Migration(version=19, name="delete_closed_groups", statements=(
+        "CREATE TEMP TABLE retired_group_conversations AS SELECT id FROM conversations WHERE visibility = 'group_only' AND created_by_collaboration_id IN (SELECT id FROM collaboration_sessions WHERE status IN ('closed', 'archived'))",
+        "DELETE FROM event_store WHERE conversation_id IN (SELECT id FROM retired_group_conversations)",
+        "DELETE FROM conversation_bookmarks WHERE conversation_id IN (SELECT id FROM retired_group_conversations)",
+        "DELETE FROM native_history_storage WHERE conversation_id IN (SELECT id FROM retired_group_conversations)",
+        "DELETE FROM runtime_leases WHERE conversation_id IN (SELECT id FROM retired_group_conversations)",
+        "DELETE FROM terminal_launches WHERE conversation_id IN (SELECT id FROM retired_group_conversations)",
+        "DELETE FROM conversations WHERE id IN (SELECT id FROM retired_group_conversations)",
+        "DELETE FROM agent_bindings WHERE json_extract(runtime_config_json, '$.group_owner') IN (SELECT id FROM collaboration_sessions WHERE status IN ('closed', 'archived'))"
+        " AND id NOT IN (SELECT agent_binding_id FROM conversations)",
+        "DELETE FROM collaboration_messages WHERE collaboration_session_id IN (SELECT id FROM collaboration_sessions WHERE status IN ('closed', 'archived'))",
+        "DELETE FROM collaboration_members WHERE collaboration_session_id IN (SELECT id FROM collaboration_sessions WHERE status IN ('closed', 'archived'))",
+        "DELETE FROM group_materials WHERE group_id IN (SELECT id FROM collaboration_sessions WHERE status IN ('closed', 'archived'))",
+        "DELETE FROM collaboration_sessions WHERE status IN ('closed', 'archived')",
+        "DROP TABLE retired_group_conversations",
+    )),
+    # Group materials replaced the context-packet message kind (2026-11-02,
+    # docs/product/group-materials.md). Nothing writes it any more and the
+    # message model no longer accepts it, so old rows are removed.
+    Migration(version=20, name="delete_context_packet_messages", statements=(
+        "DELETE FROM collaboration_messages WHERE kind = 'context_packet'",
+    )),
 )
 """按版本升序排列的全部迁移。新的往后追加，旧的一律不动。"""
 

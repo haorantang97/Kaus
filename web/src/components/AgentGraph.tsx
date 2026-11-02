@@ -754,7 +754,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
   }
 
   return (
-    <Overlay title={t("graph.overlay.title")} onClose={onClose} onReload={onChanged}>
+    <Overlay title={t("graph.overlay.title")} onClose={onClose}>
       {graph}
     </Overlay>
   );

@@ -7,6 +7,10 @@ import { ProjectAgentPicker } from "./ProjectAgentPicker";
  * 右下角常驻一枚中性 Pill「协作组 · N」；点开是一个固定在右下、宽 420px、最高 60vh
  * 的浮层——**不是抽屉，不占主区**。开/最小化状态记 sessionStorage（`lib/groupStore.ts`）。
  *
+ * 两级导航（2026-11-03）：第一级是组列表（新建、最小化；每行有 ⋯ / 右键菜单：重命名、
+ * 删除）；点一行进入第二级——那个组的工作区，头部是返回、组名、删除组、最小化。
+ * 停在哪一级、哪个组也记在同一份 sessionStorage 里。
+ *
  * 四条硬规则：
  *  ① **全中性**（★H）：这一片没有任何强调色，唯一的例外是成员行的运行点。
  *  ② **缺的不渲染**（AD-71）：会话被单独删过的成员行只给一句「会话已不在」而不是
@@ -19,8 +23,8 @@ import { ProjectAgentPicker } from "./ProjectAgentPicker";
  */
 
 import { CoordinatorSettings } from "./CoordinatorSettings";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ChevronDown, ChevronRight, Ellipsis, Minus, Plus, Terminal, UserPlus, Users, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, Ellipsis, Minus, Pencil, Plus, Terminal, Trash2, UserPlus, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { conversationPath } from "../lib/routes";
 import { requestExternalHandoff } from "../lib/externalSurface";
@@ -35,6 +39,7 @@ import {
   memberDisplayName,
 } from "./GroupWorkspace";
 import { Button, Modal, ModalSub, ModalTitle, toast } from "./ui";
+import { RowMenu, type RowMenuPoint } from "./ConversationRowMenu";
 import { backendDisplay } from "../lib/backend-display";
 import {
   addGroupMember,
@@ -44,8 +49,6 @@ import {
   GROUP_ERROR_KEYS,
   initialMessageFailure,
   patchGroup,
-  pauseGroupMember,
-  promoteGroupMember,
   removeGroupMember,
   // batch52
   renameGroupMember,
@@ -59,12 +62,12 @@ import {
 import { groupDropTarget, useGroupDrop, type GroupDropPayload } from "../lib/groupDrop";
 import { matchProjectId } from "../lib/projectRef";
 import {
-  closeGroupDock,
   forgetGroup,
   minimizeGroupDock,
   openGroupDock,
   refreshGroups,
-  toggleGroupExpanded,
+  selectGroup,
+  showGroupList,
   useDockState,
   useGroupState,
 } from "../lib/groupStore";
@@ -100,6 +103,9 @@ export function describeGroupFailure(
  * 成员行
  * ------------------------------------------------------------------ */
 
+/** 开着组时重取列表的间隔（组内审批不走组级推送）。 */
+const AWAITING_POLL_MS = 15_000;
+
 /** 浮层里的小菜单统一的收起方式：点外面、按 Esc。两处都用它，行为不分叉。 */
 function useDismiss(open: boolean, close: () => void) {
   useEffect(() => {
@@ -120,24 +126,18 @@ function useDismiss(open: boolean, close: () => void) {
   }, [open, close]);
 }
 
-/** 「…」菜单五动作（batch26 加了「定向发送」）。已经走了的成员只剩
- *  「恢复（重新加入）」——暂停一个 left 的人是 409；定向发送也只给 active 的人。 */
+/** 成员「…」菜单：终端、改名、移出 / 重新加入。
+ *  点名一位成员用 @（2026-11-03 起不再有「定向发送」「暂停 / 恢复」与「提升为普通会话」）。 */
 function MemberActions({
   member,
-  onPause,
-  onResume,
+  onRejoin,
   onRemove,
-  onPromote,
-  onDirected,
   onRename,
   threadRunning = false,
 }: {
   member: GroupMemberWire;
-  onPause: () => void;
-  onResume: () => void;
+  onRejoin: () => void;
   onRemove: () => void;
-  onPromote: () => void;
-  onDirected: () => void;
   /** batch52 第 5 件：在本组叫什么（写 `roleLabel`）。 */
   onRename: () => void;
   threadRunning?: boolean;
@@ -147,7 +147,6 @@ function MemberActions({
   const [terminalSupported, setTerminalSupported] = useState(false);
   const navigate = useNavigate();
   const left = member.participationState === "left";
-  const paused = member.participationState === "paused";
   const conversation = member.conversation;
   const running = threadRunning || conversation?.runState === "running" || conversation?.state?.startsWith("running") === true;
 
@@ -195,20 +194,9 @@ function MemberActions({
               <Terminal size={14} aria-hidden />{t("surface.action.openExternal")}
             </button>
           )}
-          {/* 定向发送：只发给这一个人（走 `/members/{id}/send`，不是把广播缩到一人）。 */}
-          {!left && !paused && (
-            <button type="button" role="menuitem" className="kaus-bar-pop-item" onClick={pick(onDirected)}>
-              {t("group.member.directed")}
-            </button>
-          )}
-          {!left && !paused && (
-            <button type="button" role="menuitem" className="kaus-bar-pop-item" onClick={pick(onPause)}>
-              {t("group.member.pause")}
-            </button>
-          )}
-          {(paused || left) && (
-            <button type="button" role="menuitem" className="kaus-bar-pop-item" onClick={pick(onResume)}>
-              {left ? t("group.member.rejoin") : t("group.member.resume")}
+          {left && (
+            <button type="button" role="menuitem" className="kaus-bar-pop-item" onClick={pick(onRejoin)}>
+              {t("group.member.rejoin")}
             </button>
           )}
           {/* batch52 第 5 件（AD-173）：改他在**本组**的名字。已经走了的人也给
@@ -227,21 +215,19 @@ function MemberActions({
               {t("group.member.remove")}
             </button>
           )}
-          <button type="button" role="menuitem" className="kaus-bar-pop-item" onClick={pick(onPromote)}>
-            {t("group.member.promote")}
-          </button>
         </span>
       )}
     </span>
   );
 }
 
+type MemberAction = "rejoin" | "remove" | "leader" | "rename";
+
 function MemberRow({
   member,
   members,
   projectName,
   onAction,
-  onDirected,
   firstMessageFailed = false,
   threadRunning = false,
 }: {
@@ -249,12 +235,7 @@ function MemberRow({
   /** 整组的成员行——显示名要看得见组里有没有第二个同名的（`#2` 后缀）。 */
   members: GroupMemberWire[];
   projectName: string | null;
-  onAction: (
-    // batch52：多一条 "rename"（在本组叫什么，AD-173）。
-    action: "pause" | "resume" | "remove" | "promote" | "leader" | "rename",
-    member: GroupMemberWire,
-  ) => void;
-  onDirected: (member: GroupMemberWire) => void;
+  onAction: (action: MemberAction, member: GroupMemberWire) => void;
   /** batch27：这位成员是 spawn 出来的，而首句没发出去——成员行上留一枚小标，
    *  详情（原因 + 提示）在组时间线顶上那条常驻通知里。 */
   firstMessageFailed?: boolean;
@@ -285,11 +266,8 @@ function MemberRow({
       <MemberActions
         member={member}
         threadRunning={threadRunning}
-        onPause={() => onAction("pause", member)}
-        onResume={() => onAction("resume", member)}
+        onRejoin={() => onAction("rejoin", member)}
         onRemove={() => onAction("remove", member)}
-        onPromote={() => onAction("promote", member)}
-        onDirected={() => onDirected(member)}
         onRename={() => onAction("rename", member)}
       />
       {/* batch26：左栏只有 216px，标题与元信息挤在一行会把标题截成「文…」。
@@ -523,63 +501,24 @@ function ExistingPicker({
 }
 
 /* ------------------------------------------------------------------ *
- * 关闭组：处置弹窗
+ * 删除组：删除确认（2026-11-01 起关组即删除；2026-11-03 改称删除组）
  * ------------------------------------------------------------------ */
 
 function CloseGroupDialog({
   group,
-  members,
   onConfirm,
   onCancel,
 }: {
   group: GroupWire;
-  members: GroupMemberWire[];
-  onConfirm: (onClose: "keep" | "archive") => Promise<void>;
+  onConfirm: () => Promise<void>;
   onCancel: () => void;
 }) {
   const { t } = useLocale();
-  const [choice, setChoice] = useState<"keep" | "archive">("keep");
   const [busy, setBusy] = useState(false);
-  /* 「这次关组会做什么」不靠猜：三档 retention 各有几条，就地数给用户看。 */
-  const counts = useMemo(() => {
-    const tally = { persistent: 0, decide: 0, ephemeral: 0 };
-    for (const member of members) {
-      const retention = member.conversation?.retention;
-      if (retention === "persistent") tally.persistent += 1;
-      else if (retention === "ephemeral") tally.ephemeral += 1;
-      else if (retention === "decide_on_group_close") tally.decide += 1;
-    }
-    return tally;
-  }, [members]);
-
   return (
-    <Modal onClose={onCancel} width={460}>
-      <ModalTitle>{t("group.close.title")}</ModalTitle>
-      <ModalSub>{t("group.close.sub", { title: group.title })}</ModalSub>
-      <div className="kaus-group-choices">
-        {(["keep", "archive"] as const).map((option) => (
-          <label key={option} className={`kaus-group-choice ${choice === option ? "is-current" : ""}`}>
-            <input
-              type="radio"
-              name="group-close"
-              value={option}
-              checked={choice === option}
-              onChange={() => setChoice(option)}
-            />
-            <span>
-              <b>{t(`group.close.${option}` as DictKey)}</b>
-              <em>{t(`group.close.${option}.body` as DictKey)}</em>
-            </span>
-          </label>
-        ))}
-      </div>
-      <p className="kaus-group-close-counts" data-testid="group-close-counts">
-        {t("group.close.counts", {
-          persistent: counts.persistent,
-          decide: counts.decide,
-          ephemeral: counts.ephemeral,
-        })}
-      </p>
+    <Modal onClose={onCancel} width={440}>
+      <ModalTitle>{t("group.delete.title")}</ModalTitle>
+      <ModalSub>{t("group.delete.sub", { title: group.title })}</ModalSub>
       <div className="kaus-return-actions">
         <Button onClick={onCancel}>{t("ui.cancel")}</Button>
         <Button
@@ -587,10 +526,10 @@ function CloseGroupDialog({
           disabled={busy}
           onClick={() => {
             setBusy(true);
-            void onConfirm(choice).finally(() => setBusy(false));
+            void onConfirm().finally(() => setBusy(false));
           }}
         >
-          {t("group.close.confirm")}
+          {t("group.delete.confirm")}
         </Button>
       </div>
     </Modal>
@@ -693,8 +632,12 @@ export function GroupDock() {
   /** batch52 第 5 件：正在给谁改组内名字（null = 没开那个弹窗）。 */
   // batch52
   const [renaming, setRenaming] = useState<GroupMemberWire | null>(null);
-  const [directed, setDirected] = useState<string | null>(null);
-  /** 组级流每来一条变更就 +1：展开态的时间线拿它当重取的信号。 */
+  /** 组列表里正在改名的那一行。 */
+  const [renamingGroup, setRenamingGroup] = useState<{ id: string; title: string } | null>(null);
+  /** 组列表行的右键菜单：落在哪一行、开在哪个位置。 */
+  const [menuPoint, setMenuPoint] = useState<{ groupId: string; point: RowMenuPoint } | null>(null);
+  const menuSeq = useRef(0);
+  /** 组级流每来一条变更就 +1：组内的时间线拿它当重取的信号。 */
   const [changeToken, setChangeToken] = useState(0);
   /** batch27：首句没发出去的那几条常驻通知（不是 toast，见 `SpawnNotice`）。 */
   const [notices, setNotices] = useState<SpawnNotice[]>([]);
@@ -722,6 +665,16 @@ export function GroupDock() {
       },
     });
   }, []);
+
+  /* 组内的审批 / 提问不走组级推送：开着组时定期重取，收起的胶囊才能及时提示。 */
+  const hasOpenGroups = groups.some(isGroupOpen);
+  useEffect(() => {
+    if (!hasOpenGroups) return;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refreshGroups();
+    }, AWAITING_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [hasOpenGroups]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -752,9 +705,29 @@ export function GroupDock() {
     [t],
   );
 
+  /* 两级导航：`expandedGroupId` 为 null 时是组列表（第一级），否则是那个组（第二级）。
+     这个值记在 sessionStorage 里，最小化再打开仍停在同一级。指向的组已经不在了
+     （被删 / 被关）就退回组列表。 */
   const expanded = dock.expandedGroupId;
   const expandedGroup = groups.find((group) => group.id === expanded) ?? null;
-  const expandedMembers = expanded ? (members[expanded] ?? []) : [];
+
+  const enterGroup = useCallback((groupId: string | null) => {
+    selectGroup(groupId);
+    setAddMode(null);
+    setAddMenuOpen(false);
+    setCreating(false);
+    setRenamingGroup(null);
+  }, []);
+
+  const saveGroupTitle = useCallback(
+    (group: GroupWire, value: string) => {
+      setRenamingGroup(null);
+      const title = value.trim();
+      if (!title || title === group.title) return;
+      void run(() => patchGroup(group.id, { title }), "group.toast.renamed", { title });
+    },
+    [run],
+  );
 
   /* batch42 第 2 件（★J-4）：拖一条会话进组。
      **与「选择已有会话」完全同一条调用**（`addGroupMember` → POST /groups/{id}/members），
@@ -796,12 +769,10 @@ export function GroupDock() {
     },
     [run, projects],
   );
-  /* 收起态的胶囊：drop 到胶囊上加入哪个组？
-       ① 浮窗记着一个活动组（`expandedGroupId`）→ 加入它；
-       ② 没有活动组但只开着一个组 → 就是它（用户真机第一次试拖就卡在这里：刚刷新
-          的页面没有"活动组"，拖过去一点反应都没有——一个组都不用选的场景不该让人选）；
-       ③ 没有活动组且开着多个组 → 打开浮窗、把第一个组摊开，并告诉用户拖到具体的
-          组上（不替用户猜是哪个）；
+  /* 收起态的胶囊 / 浮窗外框：drop 上来加入哪个组？
+       ① 浮窗停在某个组里（`expandedGroupId`）→ 加入它；
+       ② 停在组列表、但只开着一个组 → 就是它（刚刷新的页面也能拖）；
+       ③ 停在组列表且开着多个组 → 打开组列表，并告诉用户拖到具体的组上（不替用户猜）；
        ④ 一个组都没有 → 告诉用户先建组。
      只有④不加虚线框（没有可放的目标）；②③都要有反馈，静默是最坏的结果。 */
   const openGroups = groups.filter(isGroupOpen);
@@ -817,7 +788,7 @@ export function GroupDock() {
           toast(t("group.drop.noGroup"), "bad");
           return;
         }
-        openGroupDock(openGroups[0].id);
+        showGroupList();
         toast(t("group.drop.pickGroup", { count: openGroups.length }), "bad");
       },
       [expanded, openGroups, joinByDrop, t],
@@ -826,10 +797,7 @@ export function GroupDock() {
   );
 
   const onMemberAction = useCallback(
-    (
-      action: "pause" | "resume" | "remove" | "promote" | "leader" | "rename",
-      member: GroupMemberWire,
-    ) => {
+    (action: MemberAction, member: GroupMemberWire) => {
       // batch52 第 5 件：改名要先问叫什么，所以它开一个小弹窗而不是直接调端点。
       if (action === "rename") {
         setRenaming(member);
@@ -845,11 +813,10 @@ export function GroupDock() {
         );
         return;
       }
+      // 「重新加入」走的是后端的 resume（left → active，重新过一遍唯一性）。
       const map = {
-        pause: [pauseGroupMember, "group.toast.paused"],
-        resume: [resumeGroupMember, "group.toast.resumed"],
+        rejoin: [resumeGroupMember, "group.toast.rejoined"],
         remove: [removeGroupMember, "group.toast.removed"],
-        promote: [promoteGroupMember, "group.toast.promoted"],
       } as const;
       const [call, okKey] = map[action];
       void run(() => call(member.groupId, member.id), okKey);
@@ -857,17 +824,22 @@ export function GroupDock() {
     [members, run],
   );
 
+  const awaitingGroup = openGroups.find((group) => (group.awaitingConversationIds ?? []).length > 0) ?? null;
   const pill = (
     <button
       type="button"
       className={`kaus-group-pill ${pillDrop.isOver ? "is-drop-target" : ""}`}
       data-testid="group-dock-pill"
       aria-expanded={dock.open}
+      title={awaitingGroup ? t("group.awaiting", { title: awaitingGroup.title }) : undefined}
       {...pillDrop.dragProps}
-      onClick={() => openGroupDock()}
+      onClick={() => openGroupDock(awaitingGroup?.id)}
     >
       <Users className="size-3" aria-hidden />
       {groups.length > 0 ? t("group.pill.count", { count: groups.length }) : t("group.pill")}
+      {awaitingGroup && (
+        <span className="kaus-group-pill-dot" data-testid="group-pill-awaiting" role="img" aria-label={t("overview.attention.awaiting")} />
+      )}
     </button>
   );
 
@@ -875,52 +847,84 @@ export function GroupDock() {
     return <div className="kaus-group-dock">{pill}</div>;
   }
 
+  const submitNewGroup = () => {
+    const title = newTitle.trim();
+    if (!title) return;
+    setNewTitle("");
+    setCreating(false);
+    void run(() => createGroup({ title }), "group.toast.created", { title });
+  };
+
+  const minimize = (
+    <button
+      type="button"
+      className="kaus-group-icon-btn"
+      aria-label={t("group.minimize")}
+      title={t("group.minimize")}
+      data-testid="group-minimize"
+      onClick={minimizeGroupDock}
+    >
+      <Minus className="size-3.5" />
+    </button>
+  );
+
   return (
     <div className="kaus-group-dock">
-      {/* 展开一个组之后浮层变宽（三栏要放得下）：宽度是**同一个浮层**换了个尺寸，
+      {/* 进入一个组之后浮层变宽（工作区要放得下）：宽度是**同一个浮层**换了个尺寸，
           不是另开一块面板——这一片要读起来像一件工具（DESIGN ★J 追加节）。 */}
       <div
         className={`kaus-group-panel ${expandedGroup ? "is-wide" : ""} ${pillDrop.isOver ? "is-drop-target" : ""}`}
         data-testid="group-dock-panel"
+        data-level={expandedGroup ? "group" : "list"}
         role="dialog"
-        aria-label={t("group.pill")}
+        aria-label={expandedGroup ? expandedGroup.title : t("group.pill")}
         {...pillDrop.dragProps}
       >
-        <div className="kaus-group-head">
-          <span className="kaus-group-head-title">{t("group.pill")}</span>
-          <button
-            type="button"
-            className="kaus-group-icon-btn"
-            data-testid="group-new"
-            aria-label={t("group.new")}
-            title={t("group.new")}
-            onClick={() => setCreating((current) => !current)}
-          >
-            <Plus size={16} aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="kaus-group-icon-btn"
-            aria-label={t("group.minimize")}
-            title={t("group.minimize")}
-            data-testid="group-minimize"
-            onClick={minimizeGroupDock}
-          >
-            <Minus className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            className="kaus-group-icon-btn"
-            aria-label={t("common.close")}
-            title={t("common.close")}
-            data-testid="group-close-dock"
-            onClick={closeGroupDock}
-          >
-            <X className="size-3.5" />
-          </button>
-        </div>
+        {expandedGroup ? (
+          <div className="kaus-group-head">
+            <button
+              type="button"
+              className="kaus-group-icon-btn"
+              data-testid="group-back"
+              aria-label={t("group.back")}
+              title={t("group.back")}
+              onClick={() => enterGroup(null)}
+            >
+              <ArrowLeft size={16} aria-hidden />
+            </button>
+            <span className="kaus-group-head-title is-group" data-testid="group-head-title" title={expandedGroup.title}>
+              {expandedGroup.title}
+            </span>
+            <button
+              type="button"
+              className="kaus-group-icon-btn"
+              data-testid="group-delete"
+              aria-label={t("group.delete")}
+              title={t("group.delete")}
+              onClick={() => setClosing(expandedGroup)}
+            >
+              <Trash2 size={15} aria-hidden />
+            </button>
+            {minimize}
+          </div>
+        ) : (
+          <div className="kaus-group-head">
+            <span className="kaus-group-head-title">{t("group.pill")}</span>
+            <button
+              type="button"
+              className="kaus-group-icon-btn"
+              data-testid="group-new"
+              aria-label={t("group.new")}
+              title={t("group.new")}
+              onClick={() => setCreating((current) => !current)}
+            >
+              <Plus size={16} aria-hidden />
+            </button>
+            {minimize}
+          </div>
+        )}
 
-        {creating && (
+        {!expandedGroup && creating && (
           <div className="kaus-group-form" data-testid="group-new-form">
             <input
               autoFocus
@@ -932,26 +936,12 @@ export function GroupDock() {
               onKeyDown={(event) => {
                 if (event.nativeEvent.isComposing || event.key !== "Enter") return;
                 event.preventDefault();
-                const title = newTitle.trim();
-                if (!title) return;
-                setNewTitle("");
-                setCreating(false);
-                void run(() => createGroup({ title }), "group.toast.created", { title });
+                submitNewGroup();
               }}
             />
             <span className="kaus-group-form-actions">
               <Button onClick={() => setCreating(false)}>{t("ui.cancel")}</Button>
-              <Button
-                variant="primary"
-                disabled={newTitle.trim() === ""}
-                onClick={() => {
-                  const title = newTitle.trim();
-                  if (!title) return;
-                  setNewTitle("");
-                  setCreating(false);
-                  void run(() => createGroup({ title }), "group.toast.created", { title });
-                }}
-              >
+              <Button variant="primary" disabled={newTitle.trim() === ""} onClick={submitNewGroup}>
                 {t("group.new.submit")}
               </Button>
             </span>
@@ -960,37 +950,13 @@ export function GroupDock() {
 
         <div className={`kaus-group-body ${expandedGroup ? "is-workspace" : ""}`}>
           {error && <ErrorNotice error={error} className="kaus-group-error" />}
-          {!error && groups.length === 0 && <div className="kaus-group-empty">{t("group.empty")}</div>}
 
-          {groups.map((group) => {
-            const open = group.id === expanded;
-            const rows = members[group.id] ?? [];
-            const count = group.memberCount ?? rows.length;
-            const active = rows.filter((row) => row.participationState === "active").length;
-            return (
-              <GroupDropItem key={group.id} group={group} onDropConversation={(dropped) => joinByDrop(group.id, dropped)}>
-                <button
-                  type="button"
-                  className="kaus-group-row"
-                  aria-expanded={open}
-                  onClick={() => {
-                    toggleGroupExpanded(group.id);
-                    setAddMode(null);
-                    setAddMenuOpen(false);
-                    setDirected(null);
-                  }}
-                >
-                  {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-                  {/* 组的状态点：有人在跑就亮，其余中性（★H）。 */}
-                  <span
-                    className={`kaus-run-dot ${active > 0 ? "kaus-accent" : "is-idle"}`}
-                    aria-hidden="true"
-                  />
-                  <span className="kaus-group-member-title">{group.title}</span>
-                  <span className="kaus-group-dim">{t(count === 1 ? "group.memberCount.one" : "group.memberCount", { count })}</span>
-                </button>
-
-                {open && (
+          {expandedGroup ? (
+            <GroupDropItem group={expandedGroup} onDropConversation={(dropped) => joinByDrop(expandedGroup.id, dropped)}>
+              {(() => {
+                const group = expandedGroup;
+                const rows = members[group.id] ?? [];
+                return (
                   <div className="kaus-group-detail is-workspace">
                     <div className="kaus-group-actions">
                       {group.coordinatorEnabled && <CoordinatorSettings group={group} />}
@@ -1033,16 +999,6 @@ export function GroupDock() {
                           </span>
                         )}
                       </span>
-                      <button
-                        type="button"
-                        className="kaus-group-icon-btn kaus-group-close-action"
-                        data-testid="group-close"
-                        aria-label={t("group.close")}
-                        title={t("group.close")}
-                        onClick={() => setClosing(group)}
-                      >
-                        <Archive size={15} aria-hidden />
-                      </button>
                     </div>
 
                     {addMode === "existing" && (
@@ -1094,9 +1050,8 @@ export function GroupDock() {
                       />
                     )}
 
-                    {/* batch26：展开态 = 三栏。左栏（成员）在这里拼好交给
-                        `GroupWorkspace`——成员的五动作在这一层，时间线与 Context
-                        Packet 的取数在那一层，谁也不越界。 */}
+                    {/* 成员栏在这里拼好交给 `GroupWorkspace`——成员的动作在这一层，
+                        时间线与资料的取数在那一层，谁也不越界。 */}
                     <GroupWorkspace
                       group={group}
                       members={rows}
@@ -1105,8 +1060,6 @@ export function GroupDock() {
                       onDismissNotice={(id) =>
                         setNotices((current) => current.filter((notice) => notice.id !== id))
                       }
-                      directedMemberId={directed}
-                      onClearDirected={() => setDirected(null)}
                       membersPane={
                         <MembersPane
                           disabled={!isGroupOpen(group)}
@@ -1125,7 +1078,6 @@ export function GroupDock() {
                               members={rows}
                               projectName={projectName(member.conversation?.projectId)}
                               onAction={onMemberAction}
-                              onDirected={(picked) => setDirected(picked.id)}
                               firstMessageFailed={notices.some((notice) => notice.memberId === member.id)}
                               threadRunning={group.thread?.status === "running" || group.thread?.status === "closing"}
                             />
@@ -1134,29 +1086,105 @@ export function GroupDock() {
                       }
                     />
                   </div>
-                )}
-              </GroupDropItem>
-            );
-          })}
+                );
+              })()}
+            </GroupDropItem>
+          ) : (
+            <>
+              {!error && groups.length === 0 && <div className="kaus-group-empty">{t("group.empty")}</div>}
+              {groups.map((group) => {
+                const rows = members[group.id] ?? [];
+                const count = group.memberCount ?? rows.length;
+                const active = rows.filter((row) => row.participationState === "active").length;
+                const editing = renamingGroup?.id === group.id ? renamingGroup : null;
+                return (
+                  <GroupDropItem key={group.id} group={group} onDropConversation={(dropped) => joinByDrop(group.id, dropped)}>
+                    <div
+                      className="kaus-group-row-line"
+                      onContextMenu={(event) => {
+                        if (editing) return;
+                        event.preventDefault();
+                        menuSeq.current += 1;
+                        setMenuPoint({ groupId: group.id, point: { x: event.clientX, y: event.clientY, seq: menuSeq.current } });
+                      }}
+                    >
+                      {editing ? (
+                        <span className="kaus-group-row">
+                          <span className={`kaus-run-dot ${active > 0 ? "kaus-accent" : "is-idle"}`} aria-hidden="true" />
+                          <input
+                            className="kaus-sidebar-title-input"
+                            autoFocus
+                            data-testid={`group-rename-${group.id}`}
+                            aria-label={t("group.new.title")}
+                            maxLength={200}
+                            value={editing.title}
+                            onChange={(event) => setRenamingGroup({ id: group.id, title: event.target.value })}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onBlur={() => setRenamingGroup(null)}
+                            onKeyDown={(event) => {
+                              event.stopPropagation();
+                              if (event.nativeEvent.isComposing) return;
+                              if (event.key === "Escape") { event.preventDefault(); setRenamingGroup(null); }
+                              if (event.key === "Enter") { event.preventDefault(); saveGroupTitle(group, editing.title); }
+                            }}
+                          />
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="kaus-group-row"
+                          data-testid={`group-open-${group.id}`}
+                          onClick={() => enterGroup(group.id)}
+                        >
+                          {/* 组的状态点：有人在跑就亮，其余中性（★H）。 */}
+                          <span className={`kaus-run-dot ${active > 0 ? "kaus-accent" : "is-idle"}`} aria-hidden="true" />
+                          <span className="kaus-group-member-title">{group.title}</span>
+                          <span className="kaus-group-dim">{t(count === 1 ? "group.memberCount.one" : "group.memberCount", { count })}</span>
+                        </button>
+                      )}
+                      <RowMenu
+                        triggerLabel={t("group.row.menuFor", { title: group.title })}
+                        menuLabel={t("group.row.menu")}
+                        testId={`group-menu-${group.id}`}
+                        point={menuPoint?.groupId === group.id ? menuPoint.point : null}
+                        items={[
+                          {
+                            id: "rename",
+                            icon: <Pencil size={16} aria-hidden />,
+                            label: t("group.row.rename"),
+                            onSelect: () => setRenamingGroup({ id: group.id, title: group.title }),
+                          },
+                          {
+                            id: "delete",
+                            icon: <Trash2 size={16} aria-hidden />,
+                            label: t("group.row.delete"),
+                            separated: true,
+                            onSelect: () => setClosing(group),
+                          },
+                        ]}
+                      />
+                    </div>
+                  </GroupDropItem>
+                );
+              })}
+            </>
+          )}
         </div>
       </div>
 
       {closing && (
         <CloseGroupDialog
           group={closing}
-          members={members[closing.id] ?? []}
           onCancel={() => setClosing(null)}
-          onConfirm={async (onClose) => {
+          onConfirm={async () => {
             const group = closing;
             setClosing(null);
             await run(async () => {
-              const result = await closeGroup(group.id, { onClose });
-              /* batch27 第 4 件（真机 C5）：关成功的那一刻就把这个组从共享 store 里
-                 抹掉，并让会话索引重取一次——否则侧栏那枚组名小标要等下一轮
-                 30s 轮询才消失。 */
+              const result = await closeGroup(group.id);
               forgetGroup(group.id);
+              if (dock.expandedGroupId === group.id) enterGroup(null);
               return result;
-            }, "group.toast.closed", { title: group.title });
+            }, "group.toast.deleted", { title: group.title });
           }}
         />
       )}

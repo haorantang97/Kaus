@@ -10,7 +10,9 @@
  *  - 侧栏那个小终端图标要跨组件知道"这条会话在外部跑"，走这里的一个模块级小注册表。
  */
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+
+import { fetchSurfacePreview, type TerminalStatusWire } from "./sessionApi";
 
 import type { AgentEventEnvelope } from "./timeline/reducer";
 
@@ -260,4 +262,38 @@ export function consumeExternalHandoff(conversationId: string): boolean {
   } catch {
     return false;
   }
+}
+
+
+/** 终端运行期间轮询新消息预览；页面不可见时暂停，离开外部态即清空。 */
+export const TERMINAL_PREVIEW_INTERVAL_MS = 3_000;
+
+export function useTerminalPreview(conversationId: string, active: boolean): {
+  entries: ReconciledEntry[]; status: TerminalStatusWire | null;
+} {
+  const [entries, setEntries] = useState<ReconciledEntry[]>([]);
+  const [status, setStatus] = useState<TerminalStatusWire | null>(null);
+  useEffect(() => {
+    setEntries([]);
+    setStatus(null);
+    if (!active) return;
+    let timer: number | undefined;
+    let controller: AbortController | null = null;
+    const poll = async () => {
+      if (document.visibilityState === "visible") {
+        controller = new AbortController();
+        try {
+          const preview = await fetchSurfacePreview(conversationId, controller.signal);
+          if (preview?.active) { setEntries(Array.isArray(preview.entries) ? preview.entries : []); setStatus(preview.status ?? null); }
+        } catch { /* 预览是尽力而为；正式记录在回站时校准 */ }
+      }
+      timer = window.setTimeout(() => void poll(), TERMINAL_PREVIEW_INTERVAL_MS);
+    };
+    // Resume at once when the page comes back instead of waiting for the next tick.
+    const resume = () => { if (document.visibilityState === "visible") { window.clearTimeout(timer); void poll(); } };
+    void poll();
+    document.addEventListener("visibilitychange", resume);
+    return () => { window.clearTimeout(timer); controller?.abort(); document.removeEventListener("visibilitychange", resume); };
+  }, [conversationId, active]);
+  return { entries, status };
 }

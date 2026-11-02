@@ -69,3 +69,10 @@ describe("扩展事件的白名单", () => {
     expect(isHiddenTimelineItem(tool)).toBe(false);
   });
 });
+
+describe("abnormal stop reasons", () => {
+  it("are shown instead of hidden", async () => {
+    const { hasExtensionCard } = await import("./extensionCards");
+    expect(hasExtensionCard("acp", "stop_reason")).toBe(true);
+  });
+});

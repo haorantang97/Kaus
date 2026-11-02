@@ -1,6 +1,6 @@
 import { sessionRequest, type BackendWire } from "./sessionApi";
 import { bindingDisplayName, engineBrand, engineFamily } from "./backend-display";
-import { SKILL_ONBOARDING_EVENT } from "./skillOnboarding";
+import type { CapabilityInvitation } from "./skillOnboarding";
 
 /** The backend catalog owns engine names, installation hints, and runtime state. */
 export interface EngineSetupFields {
@@ -39,10 +39,9 @@ export function fetchEngineCatalog(signal?: AbortSignal, backendId?: string): Pr
   return sessionRequest(`/api/engine-catalog${backendId ? `?backendId=${encodeURIComponent(backendId)}` : ""}`, { signal });
 }
 
-export async function connectEngine(presetId: string, nativePath?: string): Promise<{ backendId: string; registered: true }> {
-  const result = await sessionRequest<{ backendId: string; registered: true }>("/api/engine-connections", { method: "POST", body: { presetId, ...(nativePath ? { nativePath } : {}) } });
-  window.dispatchEvent(new Event(SKILL_ONBOARDING_EVENT));
-  return result;
+/** `onboarding` is present only on the first connection of a product whose capability step is still pending. */
+export function connectEngine(presetId: string, nativePath?: string): Promise<{ backendId: string; registered: true; onboarding?: CapabilityInvitation }> {
+  return sessionRequest("/api/engine-connections", { method: "POST", body: { presetId, ...(nativePath ? { nativePath } : {}) } });
 }
 
 export function refreshEngineConnections(backendIds?: string[]): Promise<{ backends: EngineConnection[]; count: number }> {

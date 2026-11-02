@@ -6,16 +6,15 @@ import { failureSummary } from "../lib/userFacingErrors";
  *   ② 会话      `GET /api/conversations?project=`
  *   ③ 项目配置  指令、插件与继承来源。Agent 接入统一在全局设置管理。
  *   ④ 能力      effective-capabilities 表：类型 / 内容摘要 / 来源 / 操作
- *   ⑤ 其余      原 ProfileDrawer 的面板（宪法 / 技能 / 记忆 / 看板…）**原样复用**，
- *               只是不再是抽屉，收进一个折叠区。
+ *   ⑤ 守则      折叠区里的 ConstitutionEditor。
  *
- * 左侧是**次级导航**（★定稿 B）：原来那棵紧凑树 `Sidebar.tsx` 不再进全局侧栏，
- * 在这里当「上级 / 子项目」导航列用，点一下换 `/projects/:id`。会话页不显示它。
+ * 2026-11-03 删除页内项目树：上下级导航由面包屑与项目轮盘承担；改名、删除等
+ * 走页头 ⋯ 打开的共用 CtxMenu。
  *
  * 项目保留工作目录与配置；会话记录保留原有引擎身份。
  */
 
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, ChevronRight, Maximize2, MessageSquare, MoreHorizontal, Plus, Settings, Sparkles, Terminal, X } from "lucide-react";
 
 import { useLocale } from "../i18n";
@@ -26,14 +25,7 @@ import { useProjectHistory } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
 import { ConstitutionEditor } from "../components/ConstitutionEditor";
 import { ProjectConfigurationApply } from "../components/ProjectConfigurationApply";
-import {
-  BackupsSection,
-  ImpactSection,
-  PersonaSection,
-  SubtasksSection,
-} from "../components/ProfileDrawer";
-import { Sidebar } from "../components/Sidebar";
-import { Button, Card, Modal, Pill, Section, cream, dname, toast } from "../components/ui";
+import { Button, Card, Modal, Pill, Section, cream, toast } from "../components/ui";
 import { type NetworkResp } from "../lib/api";
 import { openProjectTerminal } from "../lib/terminalApi";
 import {
@@ -62,35 +54,10 @@ const STATUS_TONE: Record<string, "success" | "muted" | "danger"> = {
   disabled: "danger",
 };
 
-/* ------------------------------------------------------------------ *
- * 次级导航的滚动位置（批次十五第 2 件）
- * ------------------------------------------------------------------ */
-
-/* 页面按 `/projects/:ref` 整个重挂载（App 里 `key={route.projectRef}`），
-   于是点一下子项目，导航列的 `scrollTop` 就回 0 了——真机上表现为"整页跳顶"。
-   位置存在**模块级**的 Map 里：它不随组件卸载而丢，也不进 localStorage
-   （这是本次会话的手感，不是要长期记住的偏好）。
-   `LAST_NAV_SCROLL` 是跨项目的兜底：第一次进 B 项目时没有 B 的记录，
-   但导航列渲染的是**同一棵树**，所以接着 A 的位置才是对的。 */
-const NAV_SCROLL_BY_PROJECT = new Map<string, number>();
-let LAST_NAV_SCROLL: number | null = null;
-
-/** 导航列里真正滚动的那一层（`Sidebar` 自己的 `<nav>`，`.kaus-project-nav` 是 hidden）。 */
-export function navScroller(root: HTMLElement | null): HTMLElement | null {
-  if (!root) return null;
-  return root.querySelector<HTMLElement>(".sidebar-agent-tree") ?? root;
-}
-
-/** 测试用：清掉记住的位置（模块级状态在同一个 worker 里会串场）。 */
-export function resetNavScrollMemory(): void {
-  NAV_SCROLL_BY_PROJECT.clear();
-  LAST_NAV_SCROLL = null;
-}
-
 export interface ProjectDetailPageProps {
   /** URL 里的 `/projects/:ref`：Project id、slug 或裸名字都认。 */
   projectRef: string;
-  /** 次级导航的数据（旧域 `GET /api/network`，由外壳持有）。 */
+  /** 旧域 `GET /api/network`（由外壳持有）：页头 ⋯ 菜单要它里面的节点。 */
   net: NetworkResp | null;
   onSelectProject: (name: string) => void;
   onOpenMenu: (name: string, rect: DOMRect) => void;
@@ -188,34 +155,6 @@ export function ProjectDetailPage({
     onFocusProject?.(legacyName);
   }, [legacyName, onFocusProject]);
 
-  /* 第 2 件：导航列的滚动位置。
-     ① 挂载时先恢复（有本项目的记录用本项目的，没有就接着上一次的位置）；
-     ② 一条记录都没有 = 第一次进来，这时才 `scrollIntoView({block:"nearest"})`
-        把当前项目那一行带进视野——之后每次切换都不再自动滚，位置归用户；
-     ③ 用户滚动时随手记下来（卸载时 DOM 已经没了，来不及读）。 */
-  const navRef = useRef<HTMLElement | null>(null);
-  const navReady = Boolean(net);
-  useLayoutEffect(() => {
-    const scroller = navScroller(navRef.current);
-    if (!scroller) return;
-    const remembered = NAV_SCROLL_BY_PROJECT.get(legacyName) ?? LAST_NAV_SCROLL;
-    if (remembered !== null && remembered !== undefined) {
-      scroller.scrollTop = remembered;
-    } else {
-      const current = scroller.querySelector<HTMLElement>(".sidebar-agent-row.is-current");
-      // jsdom 没有 scrollIntoView；真机上有。这里不为测试改行为，只是别崩。
-      current?.scrollIntoView?.({ block: "nearest" });
-    }
-    const remember = () => {
-      NAV_SCROLL_BY_PROJECT.set(legacyName, scroller.scrollTop);
-      LAST_NAV_SCROLL = scroller.scrollTop;
-    };
-    // 首次进来也把"0"记下来，否则下一次切换又会当成"第一次"再滚一遍。
-    remember();
-    scroller.addEventListener("scroll", remember, { passive: true });
-    return () => scroller.removeEventListener("scroll", remember);
-  }, [legacyName, navReady]);
-
   /** 面包屑：沿 parentProjectId 一路向上。 */
   const breadcrumb = useMemo(() => {
     const chain: ProjectWire[] = [];
@@ -252,25 +191,6 @@ export function ProjectDetailPage({
 
   return (
     <div className="kaus-project-page" data-testid="project-detail-page">
-      {/* 次级导航（★定稿 B）：紧凑树在这里，不在全局侧栏。 */}
-      <nav className="kaus-project-nav" aria-label={t("project.nav.aria")} ref={navRef}>
-        <div className="sidebar-context-title">{t("project.nav.title")}</div>
-        {net ? (
-          <Sidebar
-            net={net}
-            current={legacyName}
-            onSelect={onSelectProject}
-            onOpenMenu={onOpenMenu}
-            onChanged={onChanged}
-            compact
-          />
-        ) : (
-          <div className="px-2 py-3 text-xs" style={{ color: cream(45) }}>
-            {t("project.nav.loading")}
-          </div>
-        )}
-      </nav>
-
       <div className="kaus-project-main">
         {/* ① 头部 */}
         <header className="kaus-project-head">
@@ -322,6 +242,12 @@ export function ProjectDetailPage({
                 <Settings className="size-4" aria-hidden="true" />
                 <span className="sr-only">{t("project.action.settings")}</span>
               </Button>
+              {/* 改名、删除（含子项目级联确认与强制停止）等与轮盘节点共用 CtxMenu。 */}
+              <button type="button" className="kaus-button kaus-button--ghost !px-2" data-testid="project-more"
+                onClick={(event) => onOpenMenu(legacyName, event.currentTarget.getBoundingClientRect())}
+                disabled={!net?.nodes[legacyName]} title={t("common.more")} aria-label={t("common.more")} aria-haspopup="menu">
+                <MoreHorizontal className="size-4" aria-hidden="true" />
+              </button>
             </span>
           </div>
           {error && (
@@ -383,24 +309,18 @@ export function ProjectDetailPage({
           onChanged={reloadCapabilities}
         />
 
-        {/* ⑤ 其余面板：内容组件原样复用，只是不再是抽屉。 */}
+        {/* ⑤ 守则。人格、协作影响面、备份恢复 2026-11-03 删除。 */}
         <details
           className="kaus-project-more"
           open={settingsOpen}
           onToggle={(event) => setSettingsOpen((event.currentTarget as HTMLDetailsElement).open)}
         >
           <summary>{t("project.more")}<ChevronRight size={16} aria-hidden="true" /></summary>
-          {/* 折着的时候不挂载：八个面板各拉一次旧接口，而且名字要等项目列表回来才对。 */}
+          {/* 折着的时候不挂载：名字要等项目列表回来才对。 */}
           {settingsOpen && project && (
-            <>
-              <PersonaSection name={project.slug} onSaved={onChanged} refreshKey={refreshKey} />
-              <Section title={t("project.instructions.title")}>
-                <ConstitutionEditor name={project.slug} onSaved={onChanged} />
-              </Section>
-              <ImpactSection name={project.slug} refreshKey={refreshKey} />
-              <BackupsSection name={project.slug} refreshKey={refreshKey} />
-              <SubtasksSection name={project.slug} refreshKey={refreshKey} />
-            </>
+            <Section title={t("project.instructions.title")}>
+              <ConstitutionEditor name={project.slug} onSaved={onChanged} />
+            </Section>
           )}
         </details>
       </div>

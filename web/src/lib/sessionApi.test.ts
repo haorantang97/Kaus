@@ -156,3 +156,20 @@ describe("auth_required 的行内报错", () => {
     expect(describeFailure(failure)).toBe("请登录此 Agent 后重试");
   });
 });
+
+describe("已删除 Project", () => {
+  it("localizes project_deleted and asks for deleted Projects only when requested", async () => {
+    const failure = new SessionApiError(409, "project_deleted", "所属 Project 已删除。");
+    setLocalePref("en");
+    expect(describeFailure(failure)).toBe("Project deleted");
+    setLocalePref("zh");
+    expect(describeFailure(failure)).toBe("Project 已删除");
+    const fetchMock = vi.fn(async (url: string) => jsonResponse(url === "/api/session-auth/bootstrap" ? { token: "t1" } : { projects: [], roots: [], count: 0 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await fetchProjects();
+    await fetchProjects(undefined, { includeDisabled: true });
+    expect(fetchMock.mock.calls.map(([url]) => url).filter(url => url.startsWith("/api/projects"))).toEqual([
+      "/api/projects", "/api/projects?includeDisabled=true",
+    ]);
+  });
+});

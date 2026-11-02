@@ -2,30 +2,25 @@ import { useComposerAutosize, useComposerInputGuard } from "../hooks/useComposer
 import { useScrollInputCooldown } from "../hooks/useConversationPinning";
 import "./composer-interactions.css";
 import { failureSummary } from "../lib/userFacingErrors";
-import { EngineIcon } from "./EngineIcon";
 /* 协作组工作区：默认呈现对话，成员与共享资料通过标签切换。
  * 三个视图保持挂载，草稿、分页、运行输出与资料编辑不因切换丢失。
- * 普通输入由后端路由，前端只在用户定向时传目标成员；投递失败原地保留。
+ * 输入一律交给后端路由（点名用 @）；投递失败原地保留。
  */
 
 import { GroupRunContent } from "./GroupRunContent";
 import { MarkdownContent } from "./cards/MarkdownContent";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, ChevronDown, ChevronRight, Copy, LoaderCircle, MessageSquare, RefreshCw, Square, Users, X, Files } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronRight, LoaderCircle, MessageSquare, Square, Users, X, Files } from "lucide-react";
 import "../styles/conversation-polish.css";
 import { GroupMaterialsPane, GroupMessageActions } from "./GroupMaterialsPane";
 
 import { useLocale, type DictKey } from "../i18n";
 import { Button, toast } from "./ui";
-import { backendDisplay } from "../lib/backend-display";
 import {
   broadcastGroup,
-  fetchContextPacket,
   fetchGroupMessages,
   isGroupOpen,
-  sendToGroupMember,
   stopGroupThread,
-  type ContextPacketWire,
   type GroupDeliveryWire,
   type GroupMemberWire,
   type GroupMessageWire,
@@ -340,8 +335,6 @@ export function shortTime(iso: string): string {
 interface PendingMessage {
   localId: string;
   text: string;
-  kind: "broadcast" | "directed";
-  targetMemberIds: string[];
   /** 失败时后端那句人话；成功的那条会被整条替换掉，不会停在这里。 */
   error: string | null;
 }
@@ -417,12 +410,10 @@ function MemberTurnRow({
   message,
   memberName,
   memberEngineOf,
-  onCapture,
 }: {
   message: GroupMessageWire;
   memberName: (id: string) => string;
   memberEngineOf: (id: string) => string | null;
-  onCapture?: (message: GroupMessageWire) => void;
 }) {
   const { t } = useLocale();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -470,7 +461,7 @@ function MemberTurnRow({
           </span>
         )}
       </div>
-      <GroupMessageActions message={message} onCapture={onCapture} />
+      <GroupMessageActions message={message} />
       {message.text ? (
         <MarkdownContent text={message.text} conversationId={message.conversationId ?? undefined} />
       ) : (
@@ -533,12 +524,10 @@ function MessageRow({
   message,
   memberName,
   memberEngineOf,
-  onCapture,
 }: {
   message: GroupMessageWire;
   memberName: (id: string) => string;
   memberEngineOf: (id: string) => string | null;
-  onCapture?: (message: GroupMessageWire) => void;
 }) {
   const { t, tDynamic } = useLocale();
   const [open, setOpen] = useState(false);
@@ -548,7 +537,6 @@ function MessageRow({
         message={message}
         memberName={memberName}
         memberEngineOf={memberEngineOf}
-        onCapture={onCapture}
       />
     );
   }
@@ -578,7 +566,7 @@ function MessageRow({
           </button>
         )}
       </div>
-      <GroupMessageActions message={message} onCapture={onCapture} />
+      <GroupMessageActions message={message} />
       <p className="kaus-group-message-text">{message.text}</p>
       {open && <DeliveryDetail deliveries={message.deliveries} memberName={memberName} />}
     </div>
@@ -633,113 +621,6 @@ export function ThreadBar({
 }
 
 /* ------------------------------------------------------------------ *
- * ③ Context Packet
- * ------------------------------------------------------------------ */
-
-function ContextPacketPane({
-  packet,
-  loading,
-  error,
-  onRefresh,
-}: {
-  packet: ContextPacketWire | null;
-  loading: boolean;
-  error: string | null;
-  onRefresh: () => void;
-}) {
-  const { t } = useLocale();
-
-  const copy = useCallback(() => {
-    if (!packet) return;
-    const clipboard = globalThis.navigator?.clipboard;
-    if (!clipboard?.writeText) {
-      toast(t("group.packet.copyFailed"), "bad");
-      return;
-    }
-    void clipboard
-      .writeText(packet.markdown)
-      .then(() => toast(t("group.material.copied"), "ok"))
-      .catch(() => toast(t("group.packet.copyFailed"), "bad"));
-  }, [packet, t]);
-
-  return (
-    <div className="kaus-group-pane" data-pane="packet" data-testid="group-pane-packet">
-      <PaneHead
-        right={
-          <button
-            type="button"
-            className="kaus-group-icon-btn"
-            aria-label={t("group.packet.refresh")}
-            title={t("group.packet.refresh")}
-            data-testid="group-packet-refresh"
-            onClick={onRefresh}
-          >
-            <RefreshCw className="size-3" />
-          </button>
-        }
-      >
-        {t("group.material.overview")}
-      </PaneHead>
-      {error && <div className="kaus-group-error">{failureSummary(error)}</div>}
-      {!error && loading && !packet && <div className="kaus-group-empty">{t("group.packet.loading")}</div>}
-      {!error && packet && (
-        <>
-          <table className="kaus-group-packet" data-testid="group-packet-table">
-            <thead>
-              <tr>
-                <th>{t("group.packet.col.member")}</th>
-                <th>{t("group.packet.col.last")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {packet.members.map((member) => (
-                <tr key={member.memberId} data-testid={`group-packet-row-${member.memberId}`}>
-                  {/* 两列而不是四列：这一栏只有 232px，四列会把每一格挤成竖着的一串字。
-                      引擎 / 模型 / 运行态 / 参与态收成标题下面一行小字。 */}
-                  <td>
-                    {/* batch52 第 4 件（真机 UI-02）：这一栏此前用会话标题，于是
-                        两位同名成员在这张表里都叫 media——而成员栏、时间线、房间
-                        说明里它们是 media 与 media#2。原标题挂在 `title=` 上。 */}
-                    <span
-                      className="kaus-group-member-title"
-                      title={member.title || undefined}
-                    >
-                      {member.displayName || member.title}
-                    </span>
-                    <span className="kaus-group-packet-meta">
-                      {member.backendId && <EngineIcon engine={member.backendId} size={13} />}
-                      {/* 可选键**缺席就是没有这一段**：不写「未知」，也不留一个占位。 */}
-                      {[
-                        member.backendId ? backendDisplay(member.backendId).displayName : null,
-                        member.modelId,
-                        member.runState,
-                        t(`group.state.${member.participationState}` as DictKey),
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                  </td>
-                  <td className="kaus-group-dim">{member.lastAssistantMessage ?? member.lastUserMessage ?? ""}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {/* 批次三十第 3 件的第三道闸：**取数在飞的时候不说"没有成员"**。
-              「还不知道」与「确实没有」是两件事，只有后者配说这句话。 */}
-          {packet.members.length === 0 && !loading && (
-            <div className="kaus-group-empty">{t("group.packet.empty")}</div>
-          )}
-          <div className="kaus-group-pane-foot">
-            <span className="kaus-group-dim">{t("group.packet.generatedAt", { time: shortTime(packet.generatedAt) })}</span>
-            <button type="button" className="kaus-icon-btn" onClick={copy} aria-label={t("group.material.copy")} title={t("group.material.copy")}><Copy size={13} /></button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ *
  * 展开态本体
  * ------------------------------------------------------------------ */
 
@@ -759,8 +640,6 @@ export function GroupWorkspace({
   members,
   changeToken,
   membersPane,
-  directedMemberId,
-  onClearDirected,
   notices = [],
   onDismissNotice,
 }: {
@@ -768,11 +647,8 @@ export function GroupWorkspace({
   members: GroupMemberWire[];
   /** 组级流每来一条变更就 +1：时间线跟着重取（那条流没有重放，见 groupsApi）。 */
   changeToken: number;
-  /** 左栏（成员）由 GroupDock 渲染——成员行的四动作在那边，这里不重复一份。 */
+  /** 成员栏由 GroupDock 渲染——成员行的动作在那边，这里不重复一份。 */
   membersPane: React.ReactNode;
-  /** 「定向发送」选中的成员；null = 这次是广播。 */
-  directedMemberId: string | null;
-  onClearDirected: () => void;
   /** batch27：常驻通知（现在只有 spawn 首句失败一种）。它**不会自己消失**——
    *  这类回执此前是 toast，紧跟着的「已添加」把它盖掉了，用户以为一切正常。 */
   notices?: WorkspaceNotice[];
@@ -780,9 +656,7 @@ export function GroupWorkspace({
 }) {
   const { t } = useLocale();
   const [tab, setTab] = useState<WorkspaceTab>("timeline");
-  const [capture, setCapture] = useState<{ groupId: string; message: GroupMessageWire } | null>(null);
-  useEffect(() => { setCapture(null); setTab("timeline"); }, [group.id]);
-  useEffect(() => { if (directedMemberId) setTab("timeline"); }, [directedMemberId]);
+  useEffect(() => { setTab("timeline"); }, [group.id]);
   /** **正序**（最早在上、最新在下，batch45c / ★J-6）。后端给的是"最近 N 条、倒序"，
    *  进 state 之前翻一次面——它是 wire 的分页口径，不是这条时间线的读法。 */
   const [messages, setMessages] = useState<GroupMessageWire[] | null>(null);
@@ -811,9 +685,6 @@ export function GroupWorkspace({
   }, []);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [pending, setPending] = useState<PendingMessage[]>([]);
-  const [packet, setPacket] = useState<ContextPacketWire | null>(null);
-  const [packetLoading, setPacketLoading] = useState(false);
-  const [packetError, setPacketError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   /** batch48：`@` 浮层。`null` = 没在打 `@`；`at` 是那个 `@` 在文本里的下标。 */
@@ -854,66 +725,11 @@ export function GroupWorkspace({
     return () => controller.abort();
   }, [group.id, changeToken, autoToken, putTimeline]);
 
-  /* ---------------- 批次三十第 3 件：Context Packet 的请求定序 ---------------- *
-   *
-   * 真机 P6：成员栏明明列着两个人，右边那栏却写着「这个组没有成员，所以 Context
-   * Packet 是空的」。后端没问题（`GET /context-packet` 现算成员），错在前端**没有
-   * 定序**：进组时那次取数（那一刻组里还一个人都没有）在隧道上慢了几秒，等它回来
-   * 时自动刷新那一次早已把两个人的版本写进 state——旧的那份于是把新的盖掉了，
-   * 而它说的话恰好是最吓人的一句。
-   *
-   * 两道闸：
-   *  ① **令牌**：每次取数领一个号，回来时号不是最新的就整份丢掉（不写 state、
-   *     也不改 loading）。`AbortController` 挡不住这一类：中止的是**上一个组**的
-   *     请求，同一个组内的先后倒置它管不着。
-   *  ② **组 id**：返回体自报 `groupId`，对不上当前组的一律丢（换组时的兜底）。
-   *
-   * 外加渲染那一侧的第三道：**取数在飞的时候不渲染空态**（见 `ContextPacketPane`）
-   * ——「还不知道」和「确实没有」是两件事，后者才配说那句话。 */
-  const packetSeq = useRef(0);
-
-  const loadPacket = useCallback(
-    (signal?: AbortSignal) => {
-      packetSeq.current += 1;
-      const token = packetSeq.current;
-      const groupId = group.id;
-      setPacketLoading(true);
-      return fetchContextPacket(groupId, signal)
-        .then((payload) => {
-          // ① 号不是最新的：这是一份过期的答案，当它没来过。
-          if (token !== packetSeq.current) return;
-          // ② 组对不上（换组时的兜底）。
-          if (payload.groupId !== groupId) return;
-          setPacket(payload);
-          setPacketError(null);
-          setPacketLoading(false);
-        })
-        .catch((failure) => {
-          if (signal?.aborted) return;
-          if (token !== packetSeq.current) return;
-          setPacketError(String((failure as Error)?.message ?? failure));
-          setPacketLoading(false);
-        });
-    },
-    [group.id],
-  );
-
-  /* Context Packet **现算**，所以只在进组时拉一次，之后靠「刷新」——它不该跟着
-     每一条推送重算（那是一份快照，不是一条流）。 */
-  useEffect(() => {
-    const controller = new AbortController();
-    setPacket(null);
-    void loadPacket(controller.signal);
-    return () => controller.abort();
-  }, [loadPacket]);
-
   /* ---------------- 批次二十八第 3 件：跑完了就自己刷新一次 ---------------- *
    *
-   * 真机上一轮结束之后，Context Packet 与时间线都还停在旧内容，要手点「刷新」
-   * 才更新——而"这一轮说了什么"正是这一刻用户唯一想看的东西。所以：任一条
-   * `kaus/group.changed`（`changeToken` 变），或任一个成员的 runState 从
-   * running 落回别的值，都触发**一次**重取（防抖 1s：一轮结束往往连着来好几条）。
-   * 手动「刷新」按钮照旧留着——自动刷新是省事，不是把控制权收走。 */
+   * 一轮结束之后时间线要自己更新：任一条 `kaus/group.changed`（`changeToken`
+   * 变），或任一个成员的 runState 从 running 落回别的值，都触发**一次**重取
+   * （防抖 1s：一轮结束往往连着来好几条）。 */
   const runStates = useRef<Record<string, string | null>>(runStatesOf(members));
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -950,16 +766,6 @@ export function GroupWorkspace({
     scheduleRefresh();
   }, [changeToken, scheduleRefresh]);
 
-  /* 自动重取只重取 Context Packet：时间线那条 effect 已经把 `autoToken` 收进
-     依赖里了（同一次防抖里两份一起更新）。这里**不**把 packet 先置 null——
-     自动刷新不该让那一栏闪一下空白。 */
-  useEffect(() => {
-    if (autoToken === 0) return;
-    const controller = new AbortController();
-    void loadPacket(controller.signal);
-    return () => controller.abort();
-  }, [autoToken, loadPacket]);
-
   const memberName = useCallback(
     /* batch45a：口径改成与后端房间说明同一份（`roleLabel` > 标题 > id 尾段）。
        此前只看标题，于是一个有角色标签的成员在气泡上叫「会话 3」、在它自己收到
@@ -972,26 +778,16 @@ export function GroupWorkspace({
     [members],
   );
 
-  const directed = directedMemberId
-    ? (members.find((row) => row.id === directedMemberId) ?? null)
-    : null;
-
   // 只有全部成员不可参与时禁发；具体发言人由服务端按消息路由。
   const configureDraft = useRef<string | null>(null);
-  const noRecipients = !group.coordinatorEnabled && !directed && !members.some(member => member.participationState === "active");
+  const noRecipients = !group.coordinatorEnabled && !members.some(member => member.participationState === "active");
 
   const send = useCallback(async () => {
     const body = text.trim();
     if (!body || sending || !open || noRecipients) return;
     seq.current += 1;
     const localId = `local:${seq.current}`;
-    const optimistic: PendingMessage = {
-      localId,
-      text: body,
-      kind: directed ? "directed" : "broadcast",
-      targetMemberIds: directed ? [directed.id] : [],
-      error: null,
-    };
+    const optimistic: PendingMessage = { localId, text: body, error: null };
     setPending((current) => [...current, optimistic]);
     /* 自己刚说了一句话，那一定要看得见：不管刚才翻到哪儿，这一下贴回底部。 */
     stick.current = true;
@@ -999,9 +795,7 @@ export function GroupWorkspace({
     setTab("timeline");
     setSending(true);
     try {
-      const result = directed
-        ? await sendToGroupMember(group.id, directed.id, { text: body })
-        : await broadcastGroup(group.id, { text: body });
+      const result = await broadcastGroup(group.id, { text: body });
       /* 后端那份是真源：整条替换（id / sequence / 目标 / 投递都以它为准），
          而不是把 `deliveries` 补进本地那条。 */
       setPending((current) => current.filter((row) => row.localId !== localId));
@@ -1009,7 +803,6 @@ export function GroupWorkspace({
       // batch53：走同一个归并口径——它的 `sequence` 比手上任何一条都大，排在末尾；
       // 随后那次重取再把它取回来时，同序号以新的那份为准，不会多出一行。
       putTimeline(group.id, mergeGroupTimeline(held.current, { messages: [result.message] }));
-      onClearDirected();
     } catch (failure) {
       const message =
         failure instanceof SessionApiError ? failure.message : String((failure as Error)?.message ?? failure);
@@ -1029,7 +822,7 @@ export function GroupWorkspace({
     } finally {
       setSending(false);
     }
-  }, [directed, group.id, noRecipients, onClearDirected, open, sending, t, text]);
+  }, [group.id, noRecipients, open, sending, t, text]);
 
   useEffect(() => {
     const continueDraft = (event: Event) => {
@@ -1041,11 +834,7 @@ export function GroupWorkspace({
     return () => window.removeEventListener("kaus:coordinator-configured", continueDraft);
   }, [group.id, send, text]);
 
-  const targetNote = directed
-    ? t("group.compose.targetDirected", { title: directed.conversation?.title ?? directed.id })
-    : noRecipients
-      ? t("group.compose.targetsNone")
-      : null;
+  const targetNote = noRecipients ? t("group.compose.targetsNone") : null;
 
   /** 乐观占位排在**最底下**（batch45c）：正序里"还没发出去的那一条"就是最新的
    *  一条，它该在用户眼睛所在的那一端，而不是被顶到时间线开头去。 */
@@ -1256,7 +1045,6 @@ export function GroupWorkspace({
                 message={entry.message}
                 memberName={memberName}
                 memberEngineOf={memberEngineOf}
-                onCapture={isGroupOpen(group) ? (message) => { setCapture({ groupId: group.id, message }); setTab("packet"); } : undefined}
               />
             ),
           )}
@@ -1269,7 +1057,7 @@ export function GroupWorkspace({
           {timelineRows.map((row) => (
             <div className="kaus-group-message is-user" key={row.localId} data-testid={`group-message-${row.localId}`}>
               <div className="kaus-group-message-head">
-                <span className="kaus-group-tag">{t(`group.kind.${row.kind}` as DictKey)}</span>
+                <span className="kaus-group-tag">{t("group.kind.broadcast")}</span>
                 <span className={row.error ? "kaus-group-bad" : "kaus-group-dim"}>
                   {row.error ? t("group.timeline.sendFailed", { error: failureSummary(row.error) }) : t("group.timeline.pending")}
                 </span>
@@ -1283,13 +1071,7 @@ export function GroupWorkspace({
           </div>
         </div>
 
-        <GroupMaterialsPane key={group.id} group={group} members={members} changeToken={changeToken}
-          capture={capture?.groupId === group.id ? capture.message : null} onCaptured={() => setCapture(null)}>
-          <details className="kaus-group-overview">
-            <summary>{t("group.material.overview")}</summary>
-            <ContextPacketPane packet={packet} loading={packetLoading} error={packetError} onRefresh={() => void loadPacket()} />
-          </details>
-        </GroupMaterialsPane>
+        <GroupMaterialsPane key={group.id} group={group} members={members} changeToken={changeToken} />
       </div>
 
       {/* 广播输入框：与会话页 ComposerBar 同一视觉语汇（中性描边、等宽小标），
@@ -1299,11 +1081,6 @@ export function GroupWorkspace({
           <span className="kaus-group-dim" data-testid="group-composer-target">
             {targetNote}
           </span>
-          {directed && (
-            <button type="button" className="kaus-group-icon-btn" data-testid="group-clear-directed" aria-label={t("group.compose.clearTarget")} title={t("group.compose.clearTarget")} onClick={onClearDirected}>
-              <X size={13} aria-hidden />
-            </button>
-          )}
         </div>}
         {open ? (
           <div className="kaus-group-composer-row">

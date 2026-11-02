@@ -1,7 +1,7 @@
 /* 中文词典 = **键的真源**（`en.ts` 被钉成同一组键，漏一个就编译不过）。
  *
  * 批次十一：AD-100 兑现，`nav.*` 已按 IA §1.2 叫法表改成中文名（概览 / 项目 /
- * 仪表盘 / 任务板 / 资料库 / 仓库 / 设置）。flag 关闭时的导航标签也跟着变——
+ * 任务板 / 设置）。flag 关闭时的导航标签也跟着变——
  * 像素基线随之更新，这是 AD-100 说好的。
  */
 
@@ -36,6 +36,7 @@ export const zh = {
   "workbench.add": "添加模块",
   "workbench.open": "打开",
   "workbench.config": "模块设置",
+  "workbench.pickFolder": "选择模块文件夹",
   "workbench.pin": "固定到侧边栏",
   "workbench.unpin": "取消固定",
   "workbench.up": "上移",
@@ -120,7 +121,7 @@ export const zh = {
   "skillTree.inherited": "继承自 {name}",
   "skillTree.blocked": "已停用",
   "skillTree.actions": "{name} 的操作",
-  "skillTree.native": "{name} 专属技能",
+  "skillTree.native": "{name} 专属能力",
   "skillTree.empty": "暂无技能",
   "skillTree.noResults": "没有匹配项",
   "skillTree.move": "移到…",
@@ -149,6 +150,8 @@ export const zh = {
   "workspace.parent": "上一级",
   "workspace.hidden": "显示隐藏文件夹",
   "workspace.empty": "没有子文件夹",
+  "workspace.missing": "文件夹不存在",
+  "workspace.unavailable": "无法访问此文件夹",
   "workspace.truncated": "文件夹较多，可在上方输入完整路径",
   "workspace.select": "选择此文件夹",
   "bar.approval.unavailable": "当前不可更改",
@@ -162,6 +165,7 @@ export const zh = {
 
   "bar.model.unverified": "待确认",
   "bar.model.unverifiedHint": "引擎尚未确认当前账号可使用此模型",
+  "bar.model.unapplied": "默认模型 {model} 未生效，由引擎决定",
   "conversation.actions": "更多",
   "conversation.archive": "归档对话",
   "conversation.restore": "恢复对话",
@@ -202,10 +206,7 @@ export const zh = {
   "nav.home": "概览",
   "nav.agents": "项目",
   "nav.new": "New",
-  "nav.dash": "仪表盘",
   "nav.kanban": "任务板",
-  "nav.vault": "资料库",
-  "nav.warehouse": "仓库",
   "nav.config": "设置",
 
   /* ---- 通用 ---- */
@@ -263,13 +264,26 @@ export const zh = {
   "draft.sending": "发送中…",
 
   /* ---- 项目详情页 ---- */
-  "project.nav.aria": "子项目 / 上级",
-  "project.nav.title": "项目",
-  "project.nav.loading": "正在读取项目树…",
   "project.crumb.root": "项目",
   "project.status.active": "运行中",
   "project.status.archived": "已归档",
   "project.status.disabled": "已停用",
+  "project.deleted": "已删除的 Project",
+  "project.delete.running": "有对话正在运行，结束后再删除",
+  "project.delete.confirm": "删除「{name}」？其对话将移入“已归档”。",
+  "project.delete.cascadeConfirm": "删除「{name}」及其 {count} 个子项目（{names}）？所有对话将移入“已归档”。",
+  "project.delete.stopConfirm": "有 {count} 个对话正在运行，删除会先停止它们",
+  "project.delete.stopAndDelete": "停止并删除",
+  "project.restore": "恢复 Project",
+  "project.restore.parentMissing": "原上级 Project 已不存在",
+  "project.restore.archiveMissing": "没有可恢复的 Project 配置",
+  "project.restore.exists": "同名 Project 已存在",
+  "project.restore.anchorMoved": "原位置已变动",
+  "project.move": "移到其他 Project",
+  "project.move.target": "目标 Project",
+  "project.move.workspaceWarning": "目标 Project 的工作目录或原生配置不同，原生会话可能无法续接。",
+  "project.move.anyway": "仍然移动",
+  "project.move.continue": "用其他 Agent 继续",
   "project.action.newConversation": "新建对话",
   "project.action.openTerminal": "到终端打开",
   "project.action.settings": "设置",
@@ -306,17 +320,9 @@ export const zh = {
   "capabilities.footnote": "禁用项会应用到下级项目；下级可单独覆盖。",
 
   /* ---- 已接引擎面板 ---- */
-  "engines.loading": "正在读取已接引擎…",
   "engines.error": "引擎清单读取失败：{error}",
-  "engines.write.ok": "{label}已生效",
-  "engines.write.fail": "{label}失败：{error}",
   "engines.write.model": "改模型",
   "engines.write.reasoning": "改推理强度",
-  "engines.write.makeDefault": "设为默认",
-  "engines.write.detach": "解除挂载",
-  "engines.write.attach": "接入引擎",
-  "engines.detach.confirm": "解除挂载「{name}」？引擎会话与配置将保留。",
-  "engines.detach.ok": "解除",
 
   "engine.panel.title": "已接引擎",
   "engine.panel.empty": "尚未接入引擎",
@@ -451,6 +457,7 @@ export const zh = {
   "card.permission.fallbackTitle": "需要审批",
   "card.authentication.fallbackTitle": "需要认证",
   "card.answered": "已回答",
+  "card.expired": "已失效，本轮已结束",
   "card.answeredWith": "已回答：{answer}",
   "card.question.fallback": "引擎在等一个回答",
   "card.question.freeText": "直接回答…",
@@ -485,7 +492,6 @@ export const zh = {
 
   /* ---- 项目树（次级导航） ---- */
   "tree.twinModes": "分身模式",
-  "tree.noMatch": "没有匹配的项目",
 
   /* ---- 新建项目弹窗 ---- */
   "newAgent.title": "新建项目",
@@ -571,104 +577,7 @@ export const zh = {
   "graph.addChild": "添加项目",
   "graph.addChildUnder": "在 {name} 下新建",
 
-  /* ---- 仪表盘 ---- */
-  "dash.title": "仪表盘 · Dashboard",
-  "dash.sub": "系统状态 · 待处理 · 最近改动 · 更新于 {at}",
-  "dash.health.title": "系统健康",
-  "dash.health.unit": "个项目",
-  "dash.health.breakdown": "{main} 主 · {twin} 分身 · {sub} 子",
-  "dash.health.drafts": " · {count} 草稿",
-  "dash.row.disabled": "停用",
-  "dash.row.disabledValue": "{killed} 主动",
-  "dash.row.disabledCascade": " · {count} 级联",
-  "dash.row.hardLint": "必须修的技能问题",
-  "dash.row.softLint": "建议优化的技能",
-  "dash.row.mcp": "MCP 工具（主项目）",
-  "dash.row.mcpCount": "{count} 个",
-  "dash.row.mcpInherited": "已继承 MCP 的项目",
-  "dash.row.constitution": "指令与守则",
-  "dash.constitution.off": "未启用",
-  "dash.constitution.on": "已为 {count} 个启用",
-  "dash.review.title": "待你处理 · {count} 项",
-  "dash.review.empty": "✓ 全员合规 · 无需处理",
-  "dash.review.killed": "已停用",
-  "dash.review.hardLint": "{count} 个必须修的技能问题",
-  "dash.review.draft": "草稿待分配",
-  "dash.changes.title": "最近变更 · {count} 条",
-  "dash.changes.empty": "尚无任何变更记录",
-  "dash.lint.failed": "读取技能体检明细失败：{error}",
-  "dash.lint.title": "规范体检",
-  "dash.lint.hard": "{count} 必须修",
-  "dash.lint.soft": "{count} 建议",
-  "dash.lint.clean": "✓ 全部合规",
-
-  /* ---- 设置（原 Config 浮层） ---- */
-  "config.title": "设置 · Config",
-  "config.badge": "v{version} · {count} 类",
-  "config.sub": "主项目配置 · 只读 · 编辑来源：{source} · 更新于 {at}",
-
-  /* ---- 资料库（原 Vault 浮层） ---- */
-  "vault.title": "资料库 · Vault",
-  "vault.new": "新建笔记",
-  "vault.missing": "资料库路径不存在：{root} —— 去 dashboard/vault_config.json 改 root。",
-  "vault.sub": "全局资料库 · 浏览与编辑",
-  "vault.count": "{count} 篇",
-  "vault.openObsidian": "用 Obsidian 打开",
-  "vault.emptyTree": "空资料库",
-  "vault.openFailed": "打开失败：{error}",
-  "vault.view.md": "渲染",
-  "vault.view.raw": "原文",
-  "vault.view.edit": "编辑",
-  "vault.saved": "已保存 {path}",
-  "vault.saveFailed": "保存失败：{error}",
-  "vault.new.title": "新建笔记 · 全局资料库",
-  "vault.new.sub": "写到资料库根目录下的相对路径。示例：raw/inbox/2026-05-31.md 或 wiki/concepts/rag.md。",
-  "vault.new.placeholder": "如：raw/inbox/new-note.md",
-  "vault.new.bodyPlaceholder": "# 标题\n\n正文…",
-  "vault.new.pathRequired": "路径不能为空",
-  "vault.new.pathSuffix": "路径必须 .md 结尾",
-  "vault.new.created": "已创建",
-
-  /* ---- 仓库（原 Warehouse 浮层） ---- */
-  "warehouse.title": "仓库 · Warehouse",
-  "warehouse.badge": "{sources} 来源 · {items} 条目",
-  "warehouse.sub": "技能与 MCP 存档。选择项目以安装独立副本。",
-  "warehouse.search": "搜条目名 / 描述…",
-  "warehouse.filter.all": "全部 {count}",
-  "warehouse.filter.type": "{label} {count}",
-  "warehouse.type.skill": "技能",
-  "warehouse.type.mcp": "MCP",
-  "warehouse.type.config": "配置",
-  "warehouse.empty": "仓库为空。把「可能用得上但当下无场景」的技能 / 配置按来源放进 ~/.hermes/.warehouse/ 即可。",
-  "warehouse.item.noDesc": "（无描述）",
-  "warehouse.assign": "分配到项目（可多选）",
-  "warehouse.picker.title": "把「{name}」复制到哪些项目？",
-  "warehouse.picker.titleTyped": "把「{name}」（{type}）复制到哪些项目？",
-  "warehouse.picker.subConfig": "勾选的每个项目会把它合并进各自 config.yaml 的 {key}；可多选。",
-  "warehouse.picker.subSkill": "将独立副本安装到所选项目的 skills/{source}/。",
-  "warehouse.picker.treeFailed": "加载项目树失败：{error}",
-  "warehouse.picker.treeLoading": "加载项目树…",
-  "warehouse.picker.removeAfter": "安装后移除仓库存档",
-  "warehouse.picker.selected": "已选 {count} 个",
-  "warehouse.picker.copy": "复制到 {count} 个项目",
-  "warehouse.picker.copying": "复制中…",
-  "warehouse.removeConfirm": "安装后删除「{name}」的仓库存档？",
-  "warehouse.copied": "「{name}」已复制到 {copied}/{total} 个项目",
-  "warehouse.copiedSkipped": "（{count} 个跳过）",
-  "warehouse.copyFailedSome": "未成功：{list}",
-  "warehouse.allocFailed": "分配失败：{error}",
-  "warehouse.role.main": "主",
-  "warehouse.role.twin": "分身",
-  "warehouse.role.source": "源",
-  "warehouse.role.shared": "共享",
-  "warehouse.role.standalone": "独立",
-  "warehouse.node.skills": "{count} 技能",
-
-  /* ---- 旧终端启动器 / 实验室（flag 关闭时才出现） ---- */
-  "legacy.terminal.kicker": "真实终端",
-  "lab.kicker": "薄终端 · V1",
   /* ---- batch11-pages ---- */
-  "engines.write.saved": "已保存",
   "engine.field.save": "保存",
   "engine.field.cancel": "取消",
   "engine.field.saveFailed": "保存失败：{error}",
@@ -751,9 +660,15 @@ export const zh = {
   "surface.action.returnToCard": "切回 Kaus",
   "surface.external.banner": "正在外部终端运行",
   "surface.external.since": "启动于 {time}",
+  "surface.status.working": "运行中",
+  "surface.status.waiting": "等待你处理",
+  "surface.status.idle": "已回复",
+  "surface.action.focus": "切到终端",
   "surface.composer.placeholder": "终端运行中 · 输入暂不可用",
   "surface.sidebar.external": "在外部终端运行",
   "surface.degraded.title": "终端启动失败",
+  "surface.draft.copied": "草稿已复制，可粘贴到终端",
+  "surface.draft.kept": "草稿保留在输入框",
   "surface.degraded.copy": "复制",
   "surface.degraded.copied": "已复制",
   "surface.degraded.dismiss": "知道了",
@@ -765,10 +680,8 @@ export const zh = {
   "surface.owner.unknown": "另一处",
   "surface.reason.unknown": "未说明原因",
   "surface.history.group": "外部终端期间的 {count} 条记录",
+  "surface.preview.label": "终端中 · {count} 条新消息",
   "surface.history.incomplete": "部分记录无法恢复（{gaps}）",
-  "surface.launches.label": "历史",
-  "surface.launches.running": "仍在运行",
-  "surface.launches.exit": "退出码 {code}",
 
   /* ---- batch15 ---- */
   "project.crumb.wheel": "← 轮盘",
@@ -843,6 +756,7 @@ export const zh = {
   /* 第 2 件：右下角 Group 浮窗（DESIGN ★ J）。 */
   "group.pill": "协作组",
   "group.pill.count": "协作组 · {count}",
+  "group.awaiting": "「{title}」等你处理",
   "group.minimize": "最小化",
   "group.empty": "暂无协作组",
   "group.noMembers": "暂无成员",
@@ -853,11 +767,8 @@ export const zh = {
   "group.new.submit": "建组",
   /* 成员行与「…」菜单四动作。 */
   "group.member.actions": "成员操作",
-  "group.member.pause": "暂停",
-  "group.member.resume": "恢复",
   "group.member.rejoin": "重新加入",
   "group.member.remove": "移出组",
-  "group.member.promote": "提升为普通会话",
   "group.member.running": "正在运行",
   "group.member.conversationGone": "会话不存在",
   "group.state.active": "进行中",
@@ -875,30 +786,29 @@ export const zh = {
   "group.spawn.first": "首条消息",
   "group.spawn.firstPlaceholder": "首条消息（选填）",
   "group.spawn.submit": "启动",
-  /* 关闭组的处置弹窗：两个选项各写清楚后果（AD-148 ② 的三行表）。 */
-  "group.close": "关闭组",
-  "group.close.title": "关闭协作组",
-  "group.close.sub": "关闭「{title}」后不可调整成员；组与会话记录保留。",
-  "group.close.keep": "保留",
-  "group.close.keep.body": "保留组内新建会话，归档临时会话。原有长期会话保持不变。",
-  "group.close.archive": "归档",
-  "group.close.archive.body": "归档组内新建及临时会话，保留历史与原生会话。原有长期会话保持不变。",
-  "group.close.counts": "本组：长期保留 {persistent} 条 · 关组时再决定 {decide} 条 · 用完即弃 {ephemeral} 条",
-  "group.close.confirm": "关闭组",
+  /* 删除组的确认弹窗。 */
+  "group.delete": "删除组",
+  "group.delete.title": "删除协作组",
+  "group.delete.sub": "删除「{title}」会一并删除组内对话、资料、成员在组内的会话和组长记录，无法恢复。原会话不受影响。",
+  "group.delete.confirm": "删除",
+  "group.back": "返回",
+  "group.row.menu": "组菜单",
+  "group.row.menuFor": "{title} 组菜单",
+  "group.row.rename": "重命名",
+  "group.row.delete": "删除",
+  "group.coordinator.advanced": "高级",
   /* 第 3 件：侧栏那枚组图标；第 4 件：会话页页头那枚 chip。 */
-  "group.sidebar.title": "协作组：{title}",
   "group.chip": "协作组：{title}",
   /* 写操作的回执。 */
   "group.toast.created": "已建组「{title}」",
-  "group.toast.closed": "已关闭「{title}」",
-  "group.toast.paused": "已暂停该成员",
-  "group.toast.resumed": "已恢复该成员",
+  "group.toast.deleted": "已删除「{title}」",
   "group.toast.removed": "已移出组",
-  "group.toast.promoted": "已提升为普通会话",
+  "group.toast.rejoined": "已重新加入",
+  "group.toast.renamed": "已重命名为「{title}」",
   "group.toast.memberAdded": "已加入本组",
   /* batch42：拖进来的那一条回执点名标题（拖源顺手带了）。 */
   "group.drop.noGroup": "请先创建协作组",
-  "group.drop.pickGroup": "当前有 {count} 个组，请拖到目标组成员栏。",
+  "group.drop.pickGroup": "当前有 {count} 个组，请拖到目标组。",
   "group.toast.memberAddedNamed": "已加入 {title}",
   "group.toast.memberSpawned": "已启动新成员",
   /* batch43：把项目拖到组上 = 组里现有的「启动新成员」（路径 B）。 */
@@ -1002,18 +912,14 @@ export const zh = {
   "group.material.source": "来源",
   "group.material.note": "笔记",
   "group.material.busy": "停止讨论后可编辑",
-  "group.material.capture": "存入本组资料",
   "group.material.copy": "复制",
   "group.material.copied": "已复制",
   "group.material.fileError": "请选择 UTF-8 文本文件（TXT、MD、CSV、JSON），不超过 48 KB",
   "group.material.limit": "{used} / {max} 字符",
-  "group.material.overview": "成员近况",
   "group.material.loadFailed": "资料加载失败",
   "group.material.copyFailed": "复制失败",
-  "group.material.selection": "粘贴选定的内容",
   "group.tab.packet": "资料",
   /* 成员行菜单新增的第五个动作。 */
-  "group.member.directed": "定向发送",
   /* 时间线：一条消息的种类与状态。 */
   "group.kind.broadcast": "广播",
   "group.kind.directed": "定向",
@@ -1028,7 +934,6 @@ export const zh = {
   "group.turn.truncated": "正文过长，这里只留了前 4000 字",
   "group.timeline.loading": "正在取组时间线…",
   "group.timeline.empty": "暂无消息",
-  "group.timeline.failed": "组时间线取不到：{error}",
   "group.timeline.pending": "发送中…",
   "group.timeline.sendFailed": "发送失败：{error}",
   /* batch45c：时间线改正序之后的两枚（★J-6）。「加载更早」在顶，「回到最新」在底。 */
@@ -1051,27 +956,14 @@ export const zh = {
   "group.compose.send": "发送",
   "group.compose.sending": "发送中…",
   "group.compose.closed": "组已关闭",
-  "group.compose.targetDirected": "定向发给「{title}」",
-  "group.compose.clearTarget": "取消定向",
   /* batch52 第 2 件：这里的 `{name}` 是**后端算的显示名**（含重名后缀 `#2`），
      不再是会话标题——两条都叫 media 的会话入组之后，这枚勾选框的可访问名此前
      读出来是两个一样的「media」。 */
   // batch52
   /* batch28：勾选口径。勾了就照勾的发（含暂停成员），一个没勾中就拦住。 */
   "group.compose.targetsNone": "暂无可参与的成员",
-  "group.compose.clearTargets": "清除勾选（发给全部）",
   "group.toast.sendFailed": "发送失败：{error}",
   /* 第 1 件右栏：Context Packet（只读 + 复制 + 刷新）。 */
-  "group.packet.loading": "正在生成 Context Packet…",
-  "group.packet.failed": "Context Packet 取不到：{error}",
-  "group.packet.empty": "暂无共享上下文",
-  "group.packet.copy": "复制 Markdown",
-  "group.packet.copied": "已复制 Context Packet",
-  "group.packet.copyFailed": "复制失败：无剪贴板权限",
-  "group.packet.refresh": "刷新",
-  "group.packet.generatedAt": "生成于 {time}",
-  "group.packet.col.member": "成员",
-  "group.packet.col.last": "最近一句",
   /* 第 3 件：会话页换模型被引擎顶回来（400 model_rejected）。 */
   "conversation.model.rejected": "引擎没有接受 {model}：{reason}",
   /* 第 4 件：「接入引擎…」面板（内容与 docs/ops/backends.md §4 同源）。 */
@@ -1103,6 +995,7 @@ export const zh = {
   "engines.connect.manualPath": "指定 CLI",
   "engines.connect.savePath": "保存路径",
   "engines.connect.details": "详情",
+  "engines.connect.advanced": "高级",
   "engines.connect.pendingUpdate": "空闲后更新",
   "engines.connect.adapterSetup": "适配器安装",
   "engines.connect.adapterVersion": "适配器版本",
@@ -1157,6 +1050,27 @@ export const zh = {
   "timeline.modelAdopted": "模型已更新：{from} → {to}",
   /* 同上，但原快照缺席（旧事件 / 会话本来就没有快照）时不编一个出来。 */
   "timeline.modelAdopted.noFrom": "模型已更新：{to}",
+  "timeline.stopReason.maxTokens": "本轮达到输出长度上限",
+  "timeline.stopReason.maxTurns": "本轮达到步骤上限",
+  "timeline.stopReason.refusal": "引擎拒绝了这次请求",
+  "timeline.stopReason.other": "本轮提前结束",
+  "timeline.proxy.approved": "主 Agent 已代为批准：{subject}",
+  "timeline.proxy.denied": "主 Agent 已拒绝：{subject}",
+  "timeline.proxy.answered": "主 Agent 已代为回答：{subject}",
+  "timeline.proxy.cancelled": "主 Agent 已取消：{subject}",
+  "timeline.proxy.model": "主 Agent 已将模型改为：{value}",
+  "timeline.proxy.reasoning": "主 Agent 已将推理强度改为：{value}",
+  "timeline.proxy.approval": "主 Agent 已将权限改为：{value}",
+  "timeline.projectUnapplied": "Project {items}未生效",
+  "timeline.projectUnapplied.instructions": "指令",
+  "timeline.projectUnapplied.mcp": "MCP",
+  "timeline.projectUnapplied.skills": "技能",
+  "timeline.projectUnapplied.project": "配置",
+  "timeline.projectUnapplied.separator": "、",
+  "timeline.projectUnapplied.open": "打开 Project",
+  "timeline.projectUnapplied.reason.not_materialized": "未应用或已过期",
+  "timeline.projectUnapplied.reason.projection_failed": "启动时投射失败",
+  "timeline.projectUnapplied.reason.unsupported": "引擎不支持",
 
   /* ---- batch33：ACP 登录态与目录探测（AD-157） ---- */
   /* own-auth 的引擎（凭据归它自己管）：我们查不到登录态，只能转述它自己的说法。
@@ -1182,6 +1096,10 @@ export const zh = {
   "conversation.message.reason.attachments": "引擎不支持此附件",
   "conversation.message.reason.inactive": "引擎未运行",
   "conversation.message.reason.startFailed": "引擎启动失败",
+  "conversation.message.reason.auth": "需要先登录引擎",
+  "conversation.message.reason.driver": "引擎未接入",
+  "conversation.message.reason.archived": "对话已归档",
+  "conversation.message.reason.projectDeleted": "Project 已删除",
   "conversation.message.failed": "未发送 · {reason}",
   /* 后端没给人话时的兜底：只说事实，不编原因。 */
   "conversation.message.failed.noReason": "未发送",
@@ -1199,7 +1117,6 @@ export const zh = {
   "conversation.message.resend.wait": "任务结束后可重发",
   /* ---- batch40：信息密度收敛（DESIGN ★L） ---- */
   /* 第 2 条：导航里收着的那一组。名字要短——它自己也占一行。 */
-  "nav.more": "更多",
 
   /* 第 1 条：原概览页三段。batch42（用户裁决：概览页取消）把「继续」「项目」
      两段删了（侧栏的复印件），`overview.recent.*` / `overview.projects.*` /
@@ -1208,6 +1125,7 @@ export const zh = {
   /* 两档说人话：一档是"它停在那儿等你"，一档是"上一次没发出去"。 */
   "overview.attention.awaiting": "待处理",
   "overview.attention.failed": "上次发送失败",
+  "overview.attention.terminal": "终端里等你处理",
 
   /* 第 3 条：引擎卡默认只给两行摘要，其余收进「详情」。 */
   "engine.details.toggle": "详情",
@@ -1218,9 +1136,6 @@ export const zh = {
   /* 第 4 条：能力表的内容列改成人话摘要，原始 JSON 收进「展开」。 */
   "capabilities.value.view": "查看完整内容",
   /* ---- batch41：铭牌副行（DESIGN ★M）。三个数，为零的不写。batch42 起它在草稿页上。 ---- */
-  "overview.plate.attention": "{count} 条等你处理",
-  "overview.plate.running": "{count} 条运行中",
-  "overview.plate.projects": "{count} 个项目",
 
   /* ---- batch45b：房间循环（PRD §B4 / AD-168）。只有一枚新按钮：「停」。 ---- */
   /* 组头那一行只在房间**转着**的时候出现；停下来的四种结局各自在时间线上说话。 */
@@ -1234,7 +1149,6 @@ export const zh = {
   /* 「没有新内容」是发生过的事，但不该占三行——折成一行，点开看是哪几位。 */
   "group.turn.passed": "本轮 {count} 人略过",
   /* 广播框：用户做的事是「对这个房间说一句」，不是「广播给 N 个人」。 */
-  "group.compose.sendToRoom": "发送到组",
 
   /* ---- batch46：收口轮（PRD §B4 第二次修订）。 ----
      组头在收口时说的是「谁在收」，**不写轮数**——收口那一轮不计入 round，写
@@ -1250,8 +1164,6 @@ export const zh = {
      「设为组长」在成员的「…」菜单里，与暂停 / 移出并列——它是改一个字段，不是一次
      任命仪式。 */
   "group.member.leader": "组长",
-  "group.member.makeLeader": "设为组长",
-  "group.member.leaderFailed": "组长切换失败：{error}",
   "group.member.leaderDone": "{name} 是组长了",
   /* 输入框里打半角 @ 弹出的那枚浮层（Grok Bot 的做法，2026-09-17 截图）。
      第一项永远是「所有人」——它是一条「别按名字算」的指令，不是某几个人。 */
@@ -1282,73 +1194,6 @@ export const zh = {
   "group.runLog": "执行记录",
   "group.run.reconnecting": "连接中断，正在重试",
   "group.memberCount.one": "1 名成员",
-  "archives.title": "历史",
-  "archives.notes": "笔记",
-  "archives.import": "关联历史",
-  "archives.restoreBackup": "恢复备份",
-  "archives.backup": "导出备份",
-  "archives.trash": "回收站",
-  "archives.remove": "移至回收站",
-  "archives.restore": "恢复",
-  "archives.restoreToProject": "恢复到项目",
-  "archives.link": "关联项目",
-  "archives.project": "项目",
-  "archives.allProjects": "所有项目",
-  "archives.chooseProject": "选择项目",
-  "archives.source": "来源",
-  "archives.path": "原生历史位置",
-  "archives.chooseFolder": "选择目录",
-  "archives.scan": "扫描",
-  "archives.search": "搜索会话",
-  "archives.preview": "预览",
-  "archives.confirmImport": "关联",
-  "archives.cancel": "取消",
-  "archives.close": "关闭",
-  "archives.refresh": "刷新",
-  "archives.loading": "处理中…",
-  "archives.empty": "尚无历史记录",
-  "archives.noSessions": "未找到会话",
-  "archives.selectSessions": "选择会话",
-  "archives.imported": "已添加",
-  "archives.messages": "{count} 条消息",
-  "archives.files": "{count} 个附件",
-  "archives.selected": "已选 {count} 段",
-  "archives.done": "已关联 {count} 段会话",
-  "archives.recovered": "已恢复 {count} 段归档",
-  "archives.read": "对话",
-  "archives.raw": "原始记录",
-  "archives.more": "加载更多",
-  "archives.previous": "上一页",
-  "archives.next": "下一页",
-  "archives.reasoning": "已记录的推理",
-  "archives.user": "用户",
-  "archives.assistant": "助手",
-  "archives.system": "系统",
-  "archives.tool": "工具",
-  "archives.removeConfirm": "将此记录移到回收站？",
-  "archives.removeScope": "所有关联项目中均会隐藏，可从回收站恢复。",
-  "archives.linkDone": "已关联项目",
-  "archives.noProject": "请先创建一个项目",
-  "archives.continue": "换 Agent 继续",
-  "archives.warningTitle": "内容提示",
-  "archives.error.generic": "历史操作未完成，请重试",
-  "archives.error.changed": "来源已变化，请重新扫描并预览",
-  "archives.error.reopen": "来源已变化，请重新打开",
-  "archives.error.missing": "未找到来源记录",
-  "archives.error.corrupt": "来源记录损坏，操作未完成",
-  "archives.error.large": "文件超出处理限制",
-  "archives.error.unsupported": "此来源格式尚未支持",
-  "archives.error.backup": "备份无效或不完整，未恢复",
-  "archives.error.expired": "预览已失效，请重新预览",
-  "archives.warning.noMessages": "暂无可识别的对话正文",
-  "archives.warning.missing": "附件缺失",
-  "archives.warning.outside": "附件位于授权范围外",
-  "archives.warning.large": "附件超出大小限制",
-  "archives.warning.remote": "远程附件未下载",
-  "archives.warning.sensitive": "敏感或隐藏文件未复制",
-  "archives.warning.changed": "附件在读取时发生变化",
-  "archives.warning.unavailable": "附件无法读取",
-  "archives.warning.invalid": "附件格式无法识别",
   "skillTree.pendingAssignment": "待分配",
   "skillTree.assign": "分配到…",
 } as const;

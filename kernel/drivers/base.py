@@ -320,6 +320,10 @@ class ModelCatalog(_DriverModel):
     supports_reasoning: bool = False
     degraded: bool = False
     engine_default_available: bool = False
+    #: Whether a Kaus model selection (binding default or conversation model)
+    #: reaches the engine at session start. ``None`` = not known; ``False``
+    #: means the engine decides and a binding default is not in effect.
+    selection_applies: bool | None = None
     diagnostics: tuple[str, ...] = ()
 
 
@@ -715,6 +719,20 @@ class CreateSessionOptions(_DriverModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class UnappliedCapability(_DriverModel):
+    """One kind of effective Project capability that did not reach the engine (D-03).
+
+    ``kind`` is ``instructions`` / ``mcp`` / ``skills`` / ``project`` (the
+    effective set itself could not be read). ``names`` are capability ids only;
+    ``reason`` is a short code such as ``not_materialized``, ``unsupported``,
+    ``projection_failed`` or a :data:`ProjectionUnsupportedReason`.
+    """
+
+    kind: str
+    names: tuple[str, ...] = ()
+    reason: str = "unsupported"
+
+
 class SessionProjection(_DriverModel):
     """**建会话时一次性送进去**的项目能力（批次四十三）。
 
@@ -740,11 +758,14 @@ class SessionProjection(_DriverModel):
       回显「这一条会话到底把哪些东西送进了引擎」。**不许出现任何值**
       （命令行、URL、凭据一律不进来）；
     - ``warnings``：这一条没能送出去、为什么。同样只许有名字。
+    - ``unapplied``：effective capabilities that did not reach the engine, by
+      kind; the Session Host shows them on the timeline.
     """
 
     options: CreateSessionOptions = Field(default_factory=CreateSessionOptions)
     summary: dict[str, list[str]] = Field(default_factory=dict)
     warnings: tuple[str, ...] = ()
+    unapplied: tuple[UnappliedCapability, ...] = ()
 
 
 class NativeHistoryEntry(_DriverModel):
@@ -800,7 +821,7 @@ class RuntimeHandle(_DriverModel):
 class AttachmentRef(_DriverModel):
     """随消息发送的附件引用。"""
 
-    kind: Literal["file", "artifact", "context_packet"]
+    kind: Literal["file", "artifact"]
     ref: str
     mime_type: str | None = None
     name: str | None = None
@@ -864,6 +885,12 @@ class CliLaunchSpec(_DriverModel):
     #: v1.0 §8.7：用于把外部进程与本次启动确定性地关联起来。
     correlation_id: str | None = None
     resume: bool = False
+    #: ``(kind, config dir or None)``: trust record the launcher may prewrite for ``cwd``.
+    workspace_trust: tuple[str, str | None] | None = None
+    #: Native flag that fills the input box without submitting the draft.
+    draft_flag: str | None = None
+    #: Launch-scoped status hook kind (only reports working / waiting / idle).
+    status_hooks: str | None = None
 
     @field_validator("config_directory")
     @classmethod
@@ -943,6 +970,11 @@ class BackendDriver(Protocol):
     ) -> NativeHistory: ...
 
     # --- Card Runtime ------------------------------------------------------- #
+    # Optional: ``unapplied_project_capabilities(conversation, effective, *,
+    # workspace_root=None) -> tuple[UnappliedCapability, ...]`` reports kinds the
+    # driver delivers outside session options (for example workspace files)
+    # that will not reach this session. The Session Host calls it after
+    # ``session_options_for`` succeeds.
     async def session_options_for(
         self, conversation: Conversation, effective: EffectiveCapabilities
     ) -> SessionProjection | None:
@@ -1045,6 +1077,7 @@ __all__ = [
     "CliLaunchSpec",
     "CreateSessionOptions",
     "SessionProjection",
+    "UnappliedCapability",
     "DriftEntry",
     "DriftReport",
     "DriftState",

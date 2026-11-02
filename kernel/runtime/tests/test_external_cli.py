@@ -323,3 +323,86 @@ def test_iterm_quotes_unicode_script_path_without_unicode_escape_corruption(tmp_
     assert "中文项目" in source
     assert "\\u4e2d" not in source
     assert "create window with default profile command" in source
+
+
+async def test_launch_prewrites_workspace_trust_only_when_enabled(tmp_path: Path, monkeypatch) -> None:
+    calls: list = []
+    monkeypatch.setattr("runtime.external_cli.grant_workspace_trust",
+                        lambda kind, cwd, config: calls.append((kind, cwd, config)) or "granted")
+    enabled = [True]
+    launcher = TerminalLauncher(root=tmp_path / "launches", opener=lambda app, path: (True, None),
+                                pid_timeout=0.0, trust_provider=lambda: enabled[0])
+    spec = _spec(cwd=str(tmp_path), workspace_trust=("codex", "/synthetic/codex-home"))
+    result = await launcher.launch(spec, conversation_id=CONVERSATION)
+    assert calls == [("codex", str(tmp_path), "/synthetic/codex-home")]
+    assert result.launch.metadata["workspaceTrust"] == "granted"
+    enabled[0] = False
+    result = await launcher.launch(spec, conversation_id=CONVERSATION)
+    assert len(calls) == 1 and "workspaceTrust" not in result.launch.metadata
+    result = await launcher.launch(_spec(cwd=str(tmp_path)), conversation_id=CONVERSATION)
+    assert len(calls) == 1
+
+
+async def test_draft_reaches_native_prefill_flag_without_touching_script_or_record(tmp_path: Path) -> None:
+    processes: list[subprocess.Popen] = []
+
+    def sh_opener(app: str, script_path: Path) -> tuple[bool, str | None]:
+        processes.append(subprocess.Popen(["sh", str(script_path)]))
+        return True, None
+
+    out = tmp_path / "argv.txt"
+    draft = "继续完成这一步\n第二行 $(not-run) 'quoted'"
+    launcher = TerminalLauncher(root=tmp_path / "launches", opener=sh_opener, pid_timeout=5.0)
+    spec = _spec(command=("sh", "-c", 'printf "%s\\n" "$@" > "$0"', str(out)), draft_flag="--prefill")
+    result = await launcher.launch(spec, conversation_id=CONVERSATION, draft=draft)
+    processes[0].wait(timeout=10)
+    assert result.launched is True and result.draft_prefilled is True
+    assert out.read_text() == "--prefill\n" + draft + "\n"
+    assert "继续完成" not in result.script_path.read_text()
+    assert "继续完成" not in result.command_summary
+    assert "继续完成" not in result.launch.model_dump_json()
+
+
+async def test_draft_without_native_flag_is_not_injected(tmp_path: Path) -> None:
+    launcher = TerminalLauncher(root=tmp_path, opener=lambda app, path: (True, None), pid_timeout=0.0)
+    result = await launcher.launch(_spec(), conversation_id=CONVERSATION, draft="unsent")
+    assert result.draft_prefilled is False
+    oversized = await launcher.launch(_spec(draft_flag="--prefill"), conversation_id=CONVERSATION,
+                                      draft="x" * 16_001)
+    assert oversized.draft_prefilled is False
+
+
+async def test_launch_that_never_started_is_returned_after_grace(tmp_path: Path) -> None:
+    from runtime.external_cli import LAUNCH_START_GRACE
+    repositories = in_memory_repository_set()
+    leases = LeaseManager(repositories.leases, heartbeat_timeout=timedelta(seconds=90))
+    launcher = TerminalLauncher(root=tmp_path, opener=lambda app, path: (True, None), pid_timeout=0.0)
+    result = await launcher.launch(_spec(), conversation_id=CONVERSATION)
+    launch = result.launch.evolve(launched_at=T0)
+    await repositories.terminal_launches.save(launch)
+    await leases.try_acquire_external_cli(CONVERSATION, owner_id=launch.id, metadata={"launchId": launch.id}, at=T0)
+    now = [T0 + timedelta(seconds=30)]
+    seen: list = []
+    monitor = ExternalCliMonitor(leases=leases, terminal_launches=repositories.terminal_launches, root=tmp_path,
+                                 on_exit=lambda signal: _record(seen, signal), clock=lambda: now[0])
+    assert await monitor.poll_once() == ()
+    now[0] = T0 + LAUNCH_START_GRACE + timedelta(seconds=1)
+    signals = await monitor.poll_once()
+    assert [signal.source for signal in signals] == ["launch-never-started"]
+    assert (launch_dir(tmp_path, launch.id) / "revoked").exists()
+
+
+async def test_started_shell_without_pid_is_left_alone(tmp_path: Path) -> None:
+    from runtime.external_cli import LAUNCH_START_GRACE
+    repositories = in_memory_repository_set()
+    leases = LeaseManager(repositories.leases, heartbeat_timeout=timedelta(seconds=90))
+    launcher = TerminalLauncher(root=tmp_path, opener=lambda app, path: (True, None), pid_timeout=0.0)
+    result = await launcher.launch(_spec(), conversation_id=CONVERSATION)
+    launch = result.launch.evolve(launched_at=T0)
+    await repositories.terminal_launches.save(launch)
+    await leases.try_acquire_external_cli(CONVERSATION, owner_id=launch.id, metadata={"launchId": launch.id}, at=T0)
+    (launch_dir(tmp_path, launch.id) / "shell-started").mkdir()
+    monitor = ExternalCliMonitor(leases=leases, terminal_launches=repositories.terminal_launches, root=tmp_path,
+                                 on_exit=lambda signal: _record(seen, signal), clock=lambda: T0 + LAUNCH_START_GRACE * 3)
+    seen: list = []
+    assert await monitor.poll_once() == ()

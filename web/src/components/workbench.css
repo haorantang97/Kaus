@@ -54,3 +54,5 @@
 .workbench-intake footer{justify-content:space-between;gap:8px}
 .workbench-intake footer>.workbench-primary:last-child{margin-left:auto}
 @media(prefers-reduced-motion:reduce){.workbench-card,.workbench-card-open footer svg,.workbench-intake-row{transition:none}}
+.workbench-pin .shell-nav-icon{position:relative}
+.workbench-pin-dot{position:absolute;top:-2px;right:-3px;width:7px;height:7px;border-radius:50%;background:var(--accent-text)}

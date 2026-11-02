@@ -18,7 +18,6 @@ vi.mock("../lib/sessionApi", async () => {
     fetchEffectiveSettings: vi.fn(),
     fetchModelCatalog: vi.fn(),
     fetchSurface: vi.fn(),
-    fetchLaunches: vi.fn(),
   };
 });
 
@@ -133,7 +132,6 @@ beforeEach(() => {
   mocked.fetchEffectiveSettings.mockResolvedValue(api.emptyEffectiveSettings("binding:1"));
   mocked.fetchModelCatalog.mockResolvedValue({ bindingId: "binding:1", mode: "fixed", models: [], defaultModelId: null, defaultProviderId: null, supportsReasoning: false });
   mocked.fetchSurface.mockResolvedValue({ conversationId: "conversation:1", surface: "card", lease: null, launch: null });
-  mocked.fetchLaunches.mockResolvedValue({ conversationId: "conversation:1", launches: [], count: 0 });
 });
 
 describe("会话页与协作组显示分离", () => {

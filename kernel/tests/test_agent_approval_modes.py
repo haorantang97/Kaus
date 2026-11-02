@@ -24,7 +24,6 @@ CASES = [
      ["read_only", "native:workspace-write", "bypass"]),
     ("crush", ["ask", "bypass"], "_approval", ["ask", "bypass"]),
     ("commandcode", ["plan", "yolo"], None, ["plan", "bypass"]),
-    ("alma", ["chat", "tools"], None, ["read_only", "bypass"]),
     ("zcode", ["plan", "build", "edit", "yolo"], "mode", ["plan", "ask", "auto", "bypass"]),
 ]
 

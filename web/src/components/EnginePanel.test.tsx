@@ -439,6 +439,27 @@ describe("引擎卡的模型 / 推理强度 / 未就绪（第 4、5 件）", () 
     expect(screen.getByRole("option", { name: "mock-small" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("引擎选不了模型：显示引擎的值、写明默认模型未生效、不提供改 Binding 默认", async () => {
+    const engineDecides = {
+      ...settings,
+      model: { value: "engine-own", source: "engine" as const, unapplied: "mock-small" },
+    };
+    render(
+      <EnginePanel
+        rows={[{
+          binding: { ...binding, defaultModelId: "mock-small" }, backend, capabilities,
+          effectiveSettings: engineDecides,
+          catalog: { models: [], selectionApplies: false },
+        }]}
+        projectLabel={projectLabel}
+        onChangeModel={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("engine-model-value")).toHaveTextContent("engine-own");
+    expect(screen.getByText("默认模型 mock-small 未生效，由引擎决定")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "模型 · default" })).toBeNull();
+  });
+
   /* batch17 第 4 件（走查 F7）：登录状态与原生会话数的端点（AD-82）还没落地，
      那两行就整行不渲染——不摆「需后端补」的 chip。端点到了自动出现。 */
   it("端点缺席时「原生会话」「登录」两行整行不渲染", () => {

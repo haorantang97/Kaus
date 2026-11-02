@@ -101,8 +101,15 @@ def build_domain_router(
     _endpoint = json_error_endpoint(JSONResponse)
 
     @_endpoint
-    async def list_projects() -> dict[str, Any]:
-        projects = list(await repositories.projects.list_all())
+    async def list_projects(
+        include_disabled: bool = Query(False, alias="includeDisabled")
+    ) -> dict[str, Any]:
+        # A deleted Project is ``disabled``: not a choice for new work. Callers that
+        # resolve names of archived conversations ask for it explicitly.
+        projects = [
+            p for p in await repositories.projects.list_all()
+            if include_disabled or p.status != "disabled"
+        ]
         return {
             "projects": [project_to_wire(p) for p in projects],
             "roots": [p.id for p in projects if p.is_root],

@@ -6,9 +6,7 @@
    此前写的是**会话标题**，于是第二条同名会话加进来时时间线上写「media 加入了
    这个组」，而它在房间说明里被告知自己叫 ``media#2``。现在与成员栏、时间线
    气泡走同一张 :func:`resolve_display_names` 表。
-2. **Context Packet 跟上房间**（第 4 件 / 真机 UI-01、UI-02）：名字用同一张表，
-   两句「最近一句」改从**组时间线**取（成员自己的事件流里那条「用户消息」是
-   房间增量，装着别人的发言）。
+2. （Context Packet 那一件随端点在 2026-11-03 移除。）
 3. **组内改名**（第 5 件 / AD-173）：``PATCH …/members/{m}`` 写 ``roleLabel``，
    会话标题不动；改完重算显示名（撞名照旧 ``#2``），时间线一行「X 现在叫 Y」。
 
@@ -18,12 +16,7 @@
 
 from __future__ import annotations
 
-from typing import NamedTuple
-
 import pytest
-
-from app.api.group_views import packet_recent_lines
-from app.collaboration.room import RoomMember
 
 pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
@@ -120,124 +113,6 @@ async def test_leader_lines_carry_the_suffix_too(tmp_path) -> None:
             )
             # 接任的是最早加入的另一位 active 成员。
             assert member1["id"]
-    finally:
-        await built.aclose()
-
-
-# --------------------------------------------------------------------------- #
-# 第 4 件：Context Packet 的名字与「最近一句」
-# --------------------------------------------------------------------------- #
-
-
-ROSTER = (
-    RoomMember(member_id="member:a", raw_name="写手", engine="mock", listed=True),
-    RoomMember(member_id="member:b", raw_name="写手", engine="mock", listed=True),
-)
-
-
-class _Row(NamedTuple):
-    """时间线上的一行，只留 :func:`packet_recent_lines` 读的那四个字段。
-
-    与 ``member_turns`` 那几条纯函数的单测同一个做法：这个函数不碰仓储，也就
-    不必为了一句断言去凑一个合法的 uuid。端点那条路由下面那条用例守着。
-    """
-
-    kind: str
-    content: str
-    author_member_id: str | None = None
-    metadata: dict | None = None
-
-
-def _row(
-    kind: str,
-    content: str,
-    *,
-    author_member_id: str | None = None,
-    metadata: dict | None = None,
-) -> _Row:
-    return _Row(kind, content, author_member_id, metadata)
-
-
-def test_packet_recent_lines_reads_the_group_timeline() -> None:
-    """「最近一句」= 时间线上他最近一条 ``member_turn`` + 最近一条点到他的话。"""
-    lines = packet_recent_lines(
-        [
-            # 发给全体（没写目标、没点名）：两位都算被点到。
-            _row("broadcast", "你们先各自看一下"),
-            _row(
-                "member_turn",
-                "我看完了，问题在第三段。",
-                author_member_id="member:a",
-            ),
-            _row(
-                "member_turn",
-                "（略过）",
-                author_member_id="member:b",
-                metadata={"passed": True},
-            ),
-            # 勾选发送：只点了 b。
-            _row(
-                "directed",
-                "写手#2 你补一句",
-                metadata={"targetMemberIds": ["member:b"]},
-            ),
-        ],
-        ROSTER,
-    )
-    assert lines["member:a"] == {
-        "lastUserMessage": "你们先各自看一下",
-        "lastAssistantMessage": "我看完了，问题在第三段。",
-    }
-    # 略过的那一条不算他说过话（「（略过）」不是一句发言）；只有他被第二条点到。
-    assert lines["member:b"] == {"lastUserMessage": "写手#2 你补一句"}
-
-
-def test_packet_recent_lines_counts_a_mention_as_addressing() -> None:
-    """没写目标、但正文点了名 → 只算点到的那几位（用户那句认裸名）。"""
-    lines = packet_recent_lines(
-        [
-            _row("broadcast", "你们先各自看一下"),
-            _row("broadcast", "@写手#2 你单独说一下"),
-        ],
-        ROSTER,
-    )
-    # 长名优先：`@写手#2` 不该把 `写手` 也捎进去。
-    assert lines["member:a"]["lastUserMessage"] == "你们先各自看一下"
-    assert lines["member:b"]["lastUserMessage"] == "@写手#2 你单独说一下"
-
-
-async def test_context_packet_names_and_last_line_follow_the_group(tmp_path) -> None:
-    """端点上验两件事：名字带 ``#2``（UI-02），「最近一句」只算点到他的（UI-01）。"""
-    built = await _seeded(tmp_path)
-    try:
-        first = await _new_conversation(built, "media")
-        second = await _new_conversation(built, "media")
-        async with _api(built) as api:
-            group = await _new_group(api, "同名组")
-            member1 = await _join(api, group["id"], first.id)
-            member2 = await _join(api, group["id"], second.id)
-
-            # 只发给第二位（勾选发送就是这一条路）。
-            posted = await api.post(
-                f"/api/groups/{group['id']}/broadcast",
-                json={"text": "只问你一个人", "targetMemberIds": [member2["id"]]},
-            )
-            assert posted.status_code == 200, posted.text
-
-            packet = (
-                await api.get(f"/api/groups/{group['id']}/context-packet")
-            ).json()
-            by_id = {row["memberId"]: row for row in packet["members"]}
-            assert by_id[member1["id"]]["displayName"] == "media"
-            assert by_id[member2["id"]]["displayName"] == "media#2"
-            # 会话标题一个字没丢，只是不再当名字用。
-            assert by_id[member2["id"]]["title"] == "media"
-            # UI-01：没点到的那位这一格是空的，而不是别人那句话。
-            assert "lastUserMessage" not in by_id[member1["id"]]
-            assert by_id[member2["id"]]["lastUserMessage"] == "只问你一个人"
-            # markdown 与 members 同源，小标题用的是带后缀的名字。
-            assert "## 2. media#2" in packet["markdown"]
-            assert "最近一条点到它的话：只问你一个人" in packet["markdown"]
     finally:
         await built.aclose()
 

@@ -403,3 +403,77 @@ async def test_coordinator_lists_global_engines_without_project_binding(tmp_path
     finally:
         await api.aclose()
         await built.aclose()
+
+
+async def test_waiting_for_user_leaves_a_system_line(tmp_path):
+    from app.api.group_coordinator import WAITING_USER_NOTICE
+    b, api, gid, members = await setup(tmp_path)
+    try:
+        install_responder(b, lambda c, all: {'action': 'need_user'})
+        await api.post(f'/api/groups/{gid}/broadcast', json={'text': '需要补充什么？'})
+        group = await completed(b, gid)
+        assert group.thread.ended_reason == 'waiting_user'
+        rows = await b.repositories.group_messages.list_for_collaboration(gid)
+        assert [r.content for r in rows if r.kind == 'system'][-1] == WAITING_USER_NOTICE
+    finally:
+        await cleanup(b, api)
+
+
+async def test_message_sent_mid_task_supplements_it(tmp_path):
+    b, api, gid, members = await setup(tmp_path)
+    try:
+        calls = install_responder(b, lambda c, all: {'action': 'finish'})
+        inner, gate, entered = b.driver.send_message, asyncio.Event(), asyncio.Event()
+        async def gated(handle, content):
+            if not entered.is_set():
+                entered.set()
+                await gate.wait()
+            return await inner(handle, content)
+        b.driver.send_message = gated
+        await api.post(f'/api/groups/{gid}/broadcast', json={'text': '第一件事'})
+        async with asyncio.timeout(3):
+            await entered.wait()
+        epoch = (await b.repositories.collaborations.get(gid)).thread.epoch
+        added = await api.post(f'/api/groups/{gid}/broadcast', json={'text': '再补充一点'})
+        assert added.status_code == 200, added.text
+        assert (await b.repositories.collaborations.get(gid)).thread.epoch == epoch
+        gate.set()
+        group = await completed(b, gid)
+        assert group.thread.epoch == epoch and group.thread.ended_reason == 'task_completed'
+        # The first decision predates the supplement; the coordinator decides again with it.
+        assert len(calls) == 2
+        assert calls[1]['payload']['userSupplements'] == ['再补充一点']
+        rows = await b.repositories.group_messages.list_for_collaboration(gid)
+        assert not [r.content for r in rows if r.kind == 'system' and '停止' in r.content]
+        supplement = next(r for r in rows if r.content == '再补充一点')
+        assert supplement.metadata['supplement'] is True
+    finally:
+        await cleanup(b, api)
+
+async def test_supplement_without_a_coordinator_runs_next(tmp_path):
+    b, api, gid, members = await setup(tmp_path, configured=False)
+    try:
+        calls = install_responder(b, lambda c, all: {'action': 'answer_done'})
+        inner, gate, entered = b.driver.send_message, asyncio.Event(), asyncio.Event()
+        async def gated(handle, content):
+            if not entered.is_set():
+                entered.set()
+                await gate.wait()
+            return await inner(handle, content)
+        b.driver.send_message = gated
+        name = members[0]['displayName']
+        await api.post(f'/api/groups/{gid}/broadcast', json={'text': f'@{name} 第一件事'})
+        async with asyncio.timeout(3):
+            await entered.wait()
+        epoch = (await b.repositories.collaborations.get(gid)).thread.epoch
+        added = await api.post(f'/api/groups/{gid}/broadcast', json={'text': f'@{name} 顺便看看这个'})
+        assert added.status_code == 200, added.text
+        gate.set()
+        async with asyncio.timeout(5):
+            while len(calls) < 2:
+                await asyncio.sleep(.01)
+        group = await completed(b, gid)
+        assert group.thread.epoch == epoch + 1
+        assert '顺便看看这个' in calls[1]['payload']['task']
+    finally:
+        await cleanup(b, api)

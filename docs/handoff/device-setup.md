@@ -12,6 +12,7 @@ python3.11 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 cd web
 # 使用 .nvmrc 指定的 Node 版本；当前是 24.15.0
+# 用 Node 25 及以上运行测试时，先设 NODE_OPTIONS=--no-experimental-webstorage（内置 localStorage 会遮住 jsdom 的实现）
 npm ci
 npm run check
 cd ..

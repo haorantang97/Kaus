@@ -20,7 +20,6 @@
 | Pi、Command Code | 驱动原生扩展承接项目/会话 MCP，进入同一选择与控制权链 | 扩展、MCP、隔离有原生程序/本地服务验收；全套电脑业务实战仍待逐引擎补验 |
 | OpenClaw | Gateway 中 Kaus 持有的会话覆盖，唯一工具定义与控制权回执 | 本机 Gateway 路径有契约及生命周期验证；旧原生会话、远程 Gateway 与会话禁用字段有专门限制 |
 | 本地 Hermes HTTP | 可借已安装 Hermes ACP 运行时接入同一原生会话 | 要求本机运行时及原生状态可用；不把纯远程 HTTP 服务当成本机控制通道 |
-| Alma、Devin | 存量兼容代码 | 不在正式新增接入目录；不因通用工具可挂载就恢复核心范围支持 |
 | Windows/Linux | 通用架构/部分引擎协议可运行 | CuaDriver 托管安装及桌面总体链路未完成，不声明 macOS 同等支持 |
 
 上表源自 `AcpPreset.quirks.mcp_via_session_new`、`project_mcp_via_runtime` 与 `AcpDriver.session_options_for` / `start_runtime` 调用 `prepare_projection` 的实际接线。动态能力仍需运行探测，表中“接线”不表示用户已安装或登录。

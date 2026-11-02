@@ -108,4 +108,4 @@ Kaus 按 [GNU AGPL-3.0-only](LICENSE) 授权。闭源修改、嵌入其他产品
 
 [`sdk/`](sdk/LICENSE)、[`examples/`](examples/LICENSE)，以及 [模块接入说明](docs/workbench-modules.md) 中的清单格式和宿主协议，按 Apache-2.0 授权，第三方模块可以直接打包使用。详见 [NOTICE](NOTICE)。
 
-第三方组件沿用各自许可证，见 [第三方声明](web/public/THIRD_PARTY_NOTICES.txt)、字体目录中的许可证和 [xterm 声明](static/vendor/LICENSE-xterm.txt)。
+第三方组件沿用各自许可证，见 [第三方声明](web/public/THIRD_PARTY_NOTICES.txt) 和字体目录中的许可证。

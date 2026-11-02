@@ -174,10 +174,8 @@ export function QuotaConnections({ target, onClose, onChanged }: Props) {
   const visibleFields = provider?.fields.filter(field => !fixedKeys.has(field.key)) ?? [];
   const documentation = provider?.docsUrl?.startsWith("https://") ? provider.docsUrl : null;
   const title = removing ? (zh ? "断开额度查询？" : "Disconnect quota lookup?")
-    : target.recovery?.action === "configure" ? (zh ? "配置查询" : "Configure lookup")
     : connectionId ? (zh ? "编辑查询凭据" : "Edit query credentials")
-    : target.recovery?.action === "login" ? (zh ? "登录查询" : "Sign in for quotas")
-    : (zh ? "补充凭据" : "Provide credentials");
+    : (zh ? "连接额度查询" : "Connect quota lookup");
 
   return <Modal onClose={close} width={460}><section className="kaus-quota-connection-editor" role="dialog" aria-modal="true" aria-labelledby="quota-connection-title" aria-busy={!!busy}>
     <header><div><h2 id="quota-connection-title">{title}</h2><p className="kaus-quota-connection-context">{target.label}</p></div><button type="button" className="kaus-quota-refresh" onClick={close} disabled={busy === "save" || busy === "remove"} aria-label={zh ? "关闭" : "Close"}><X size={16} /></button></header>
