@@ -45,11 +45,11 @@ export function ConstitutionEditor({ name, onSaved }: { name: string; onSaved?: 
     <div className="flex flex-col gap-2">
       {d.inherited.length > 0 && (
         <div>
-          <div className="mb-1 text-[0.62rem] uppercase tracking-[0.14em]" style={{ color: cream(45) }}>继承自上级（只读 · rule_id 可被本级 override / disable）</div>
+          <div className="mb-1 text-[0.7rem] " style={{ color: cream(45) }}>继承自上级（只读 · rule_id 可被本级 override / disable）</div>
           <div className="flex flex-col gap-1.5">
             {d.inherited.map((l) => (
               <div key={l.node} className="rounded-md p-2" style={{ border: HAIR, background: cream(3) }}>
-                <div className="mb-0.5 text-[0.66rem] font-semibold" style={{ color: "var(--accent-text)" }}>⟦{l.label}⟧</div>
+                <div className="mb-0.5 text-[0.66rem] font-medium" style={{ color: "var(--accent-text)" }}>⟦{l.label}⟧</div>
                 <pre className="m-0 whitespace-pre-wrap text-[0.68rem] leading-snug" style={{ color: cream(55), fontFamily: "var(--theme-font-mono, monospace)" }}>{l.text}</pre>
               </div>
             ))}
@@ -57,7 +57,7 @@ export function ConstitutionEditor({ name, onSaved }: { name: string; onSaved?: 
         </div>
       )}
       <div className="mt-1 flex items-center gap-2">
-        <span className="text-[0.62rem] uppercase tracking-[0.14em]" style={{ color: cream(45) }}>本级守则 · {dname({ name })} 自己这层</span>
+        <span className="text-[0.7rem] " style={{ color: cream(45) }}>本级守则 · {dname({ name })} 自己这层</span>
         {d.governed ? <Pill tone="gold">已生效</Pill> : <Pill tone="muted">无内容</Pill>}
       </div>
       <div className="rounded-md p-2 text-[0.66rem] leading-relaxed" style={{ border: HAIR, background: cream(3), color: cream(50) }}>
@@ -77,13 +77,13 @@ export function ConstitutionEditor({ name, onSaved }: { name: string; onSaved?: 
       )}
       {d.effective && (
         <details className="rounded-md p-2" style={{ border: HAIR, background: cream(2) }}>
-          <summary className="cursor-pointer text-[0.62rem] uppercase tracking-[0.14em]" style={{ color: cream(45) }}>有效守则预览</summary>
+          <summary className="cursor-pointer text-[0.7rem] " style={{ color: cream(45) }}>有效守则预览</summary>
           <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap text-[0.66rem] leading-snug" style={{ color: cream(55), fontFamily: "var(--theme-font-mono, monospace)" }}>{d.effective}</pre>
         </details>
       )}
       <div className="flex items-center gap-2">
         <Button variant="primary" disabled={saving || !dirty} onClick={save}>{saving ? "保存中…" : "保存"}</Button>
-        {dirty && <span className="text-[0.62rem]" style={{ color: cream(45) }}>有未保存改动</span>}
+        {dirty && <span className="text-[0.7rem]" style={{ color: cream(45) }}>有未保存改动</span>}
       </div>
     </div>
   );

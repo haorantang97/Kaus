@@ -239,6 +239,8 @@
    the font stack, base size, and letter spacing without explicit calls. */
 html {
   font-family: var(--theme-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   font-size: var(--theme-base-size);
   line-height: var(--theme-line-height);
   letter-spacing: var(--theme-letter-spacing);

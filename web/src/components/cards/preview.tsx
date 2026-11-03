@@ -67,7 +67,7 @@ function Row({ title, note, children }: { title: string; note?: string; children
   return (
     <section className="mb-6">
       <div className="mb-2 flex items-baseline gap-2">
-        <h3 className="text-[0.7rem] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--midground-base)" }}>
+        <h3 className="text-[0.7rem] font-semibold " style={{ color: "var(--midground-base)" }}>
           {title}
         </h3>
         {note && (
@@ -189,7 +189,7 @@ export function CardsPreview() {
   return (
     <div className="min-h-dvh" style={{ background: "var(--background-base)", color: "var(--midground-base)" }}>
       <header className="flex flex-wrap items-center gap-3 px-6 py-4" style={{ borderBottom: `1px solid ${cream(13)}` }}>
-        <span className="text-sm font-bold uppercase tracking-[0.16em]">卡片预览 · /dev/cards</span>
+        <span className="text-sm font-semibold ">卡片预览 · /dev/cards</span>
         <span className="flex items-center gap-1.5">
           {Object.keys(PRESETS).map((key) => (
             <button

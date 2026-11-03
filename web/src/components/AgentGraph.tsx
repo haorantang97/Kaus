@@ -1,19 +1,21 @@
 import "./project-polish.css";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { CornerDownLeft, MessageSquare, MoreHorizontal, Plus } from "lucide-react";
+import { CornerDownLeft, MessageSquare, MoreHorizontal, Plus, X } from "lucide-react";
 import { type NetworkResp } from "../lib/api";
 import { useLocale } from "../i18n";
 import { Button, cream, dname, Overlay } from "./ui";
 import { ReparentModal } from "./ReparentModal";
 import { ProjectSkillTree } from "./ProjectSkillTree";
-import { wheelAnchor, wheelNodeTransform, wheelTransformCss } from "../lib/wheelGeometry";
+import { wheelAnchor, wheelFling, wheelNodeTransform, wheelSnapDuration, wheelSnapEase, wheelTransformCss } from "../lib/wheelGeometry";
 import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
 
 /** 每列末尾那个「+ 添加项目」虚节点的 id（不是真 profile，`nodes[]` 里查不到）。 */
 export const ADD_NODE_ID = "__add-child__";
 const PROJECT_ENTER_SHAPE = "M .57 .01 H .97 Q .997 .01 .997 .096 V .904 Q .997 .99 .97 .99 H .03 Q .003 .99 .003 .904 V .649 Q .003 .563 .03 .563 H .51 Q .54 .563 .54 .477 V .096 Q .54 .01 .57 .01 Z";
 type AgentGraphMode = "chat" | "governance";
-type WheelColumnState = { current: number; target: number; selected: number; key: string };
+/** `snap`：吸附 / 点击定位时的定时缓动段；滚动中为空，节点只跟一阶弹簧走。 */
+type WheelSnap = { from: number; to: number; start: number; duration: number };
+type WheelColumnState = { current: number; target: number; selected: number; key: string; snap?: WheelSnap };
 type ColumnGeometry = { left: number; centerY: number; items: { id: string; width: number }[] };
 type WheelGeometry = { columns: ColumnGeometry[]; statics: Record<string, { l: { x: number; y: number }; r: { x: number; y: number } }> };
 
@@ -55,8 +57,15 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
   const initialFocus = focusName && nodes[focusName] ? focusName : "default";
   const [path, setPath] = useState<string[]>(() => focusPath(initialFocus));
   const [sel, setSel] = useState<string>(initialFocus);
+  /* 右侧详情面板的开合（初版就有，9 月 28 日快照时被删掉）：选中任何节点都打开；
+     再点一次已选中的节点、点画布空白、Esc、面板上的关闭钮都收起。面板留在 DOM 里
+     只做 transform 滑动，收起时 inert，焦点回到选中的节点。 */
+  const [panelOpen, setPanelOpen] = useState(true);
+  const panelOpenRef = useRef(panelOpen);
+  const panelRef = useRef<HTMLElement>(null);
   const pathRef = useRef<string[]>(path);
   const selRef = useRef<string>(sel);
+  const pendingDomFocus = useRef<string | null>(null);
   const [drag, setDrag] = useState<string | null>(null);
   const [reparent, setReparent] = useState<{ node: string; target: string | null } | null>(null);
   const colsRef = useRef<HTMLDivElement>(null);
@@ -75,6 +84,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
   const wheelInteracting = useRef<number | null>(null);
   pathRef.current = path;
   selRef.current = sel;
+  panelOpenRef.current = panelOpen;
 
   const isDesc = (anc: string, x: string) => { let c: string | undefined = x; const seen = new Set<string>(); while (c && !seen.has(c)) { if (c === anc) return true; seen.add(c); c = nodes[c]?.parent || undefined; } return false; };
   function focusNode(id: string, columnIndex?: number, animate = true) {
@@ -87,9 +97,52 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     pathRef.current = nextPath;
     pendingFocus.current = { id, animate };
     if (animate && typeof columnIndex === "number") pointWheelAt(columnIndex, id);
+    setPanelOpen(true);
     setSel(id);
     setPath(nextPath);
   }
+  const nodeElement = (id: string): HTMLElement | null =>
+    colsRef.current?.querySelector<HTMLElement>(id === "default" ? ".ag-root" : `.ag-node[data-id="${CSS.escape(id)}"]`) ?? null;
+  /** 收起面板。焦点在面板里（关闭钮）时必须挪走（面板随即 inert）；键盘关的（Esc）
+      也把焦点交给选中的节点，方向键接着能用。鼠标点空白 / 点节点关的不碰焦点，免得凭空冒出焦点环。 */
+  const closePanel = (restoreFocus = false) => {
+    if (!panelOpenRef.current) return;
+    panelOpenRef.current = false;
+    setPanelOpen(false);
+    const active = document.activeElement;
+    const inPanel = !!active && !!panelRef.current?.contains(active);
+    if (inPanel || (restoreFocus && (!active || active === document.body))) nodeElement(selRef.current)?.focus();
+  };
+  /** 点击 / 回车一个节点：没选中就选中并打开面板，已选中就开合面板。 */
+  const activateNode = (id: string, columnIndex?: number) => {
+    if (!nodes[id]) return;
+    if (id === selRef.current && wheelInteracting.current === null) {
+      if (panelOpenRef.current) closePanel();
+      else { panelOpenRef.current = true; setPanelOpen(true); }
+      return;
+    }
+    focusNode(id, columnIndex, true);
+  };
+  /** 方向键：上下在本列换节点，左右在上下级之间走；焦点跟着选中走。 */
+  const handleNodeArrow = (key: string, id: string, columnIndex: number): boolean => {
+    let next: string | null;
+    let nextColumn = columnIndex;
+    if (key === "ArrowUp" || key === "ArrowDown") {
+      const siblings = columnIndex === 0 ? ["default"] : domainKids(pathRef.current[columnIndex - 1] ?? "");
+      const index = siblings.indexOf(id);
+      next = siblings[index + (key === "ArrowDown" ? 1 : -1)] ?? null;
+    } else if (key === "ArrowRight") {
+      if (id !== selRef.current && !pathRef.current.includes(id)) { next = id; }
+      else { next = pathRef.current[columnIndex + 1] ?? domainKids(id)[0] ?? null; nextColumn = columnIndex + 1; }
+    } else if (key === "ArrowLeft") {
+      next = nodes[id]?.parent || null;
+      nextColumn = columnIndex - 1;
+    } else return false;
+    if (!next || !nodes[next]) return false;
+    pendingDomFocus.current = next;
+    focusNode(next, nextColumn >= 1 ? nextColumn : undefined, true);
+    return true;
+  };
   const activeIdForColumn = (columnIndex: number) => columnIndex === 0 ? "default" : (pathRef.current[columnIndex] || selRef.current);
   const stateKeyForColumn = (columnIndex: number) => columnIndex === 0 ? "__root__" : (pathRef.current[columnIndex - 1] || "__missing__");
   const commitWheelSelection = (columnIndex: number, items: HTMLElement[], index: number) => {
@@ -127,14 +180,26 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     state.target = Math.min(items.length - 1, Math.max(0, target));
     if (commit) {
       const nextIndex = Math.min(items.length - 1, Math.max(0, Math.round(state.target)));
+      state.target = nextIndex;
       if (nextIndex !== state.selected) commitWheelSelection(columnIndex, items, nextIndex);
       if (prefersReducedMotion()) {
         state.current = state.target;
+        state.snap = undefined;
         redraw();
         return;
       }
+      beginSnap(state);
+    } else {
+      // 手还在动：回到一阶弹簧跟手，吸附段作废。
+      state.snap = undefined;
     }
     startWheelAnimation();
+  };
+  /** 从当前位置到 `state.target` 走一段定时缓动（见 wheelSnapEase）。 */
+  const beginSnap = (state: WheelColumnState) => {
+    const distance = state.target - state.current;
+    if (Math.abs(distance) < 0.001) { state.current = state.target; state.snap = undefined; return; }
+    state.snap = { from: state.current, to: state.target, start: performance.now(), duration: wheelSnapDuration(distance) };
   };
 
   // 列:col0=[default];colK = 当前 path 上一层的"域子级"(分身已排除)
@@ -167,11 +232,24 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     svg.setAttribute("height", String(cols.scrollHeight));
     const base = cols.getBoundingClientRect();
     const statics: Record<string, { l: { x: number; y: number }; r: { x: number; y: number } }> = {};
+    /* 右端点贴着**可见内容**（名字 / 停用标 / 子级数）的右缘，不是布局盒的右缘：
+       节点有 330px 的 min-width，按盒子量会让连线从名字后面一大截空白里长出来，
+       到下一列只剩 20px 的小钩。命中面、⋯ 与进入钮不算内容（后两者只在悬停 /
+       选中时出现，算进去端点会在提交那一刻跳 40px）。 */
+    const contentWidth = (item: HTMLElement) => {
+      let right = 0;
+      for (const child of Array.from(item.children)) {
+        if (!(child instanceof HTMLElement)) continue;
+        if (child.classList.contains("ag-node-hit") || child.classList.contains("ag-dots") || child.classList.contains("ag-node-enter")) continue;
+        right = Math.max(right, child.offsetLeft + child.offsetWidth);
+      }
+      return right > 0 ? right : item.offsetWidth;
+    };
     const columns: ColumnGeometry[] = [...cols.querySelectorAll<HTMLElement>(".graph-col")].map((column) => {
       const rect = column.getBoundingClientRect();
       const items = [...column.querySelectorAll<HTMLElement>(".ag-node")].map((item) => ({
         id: item.dataset.id ?? "",
-        width: item.offsetWidth,
+        width: contentWidth(item),
       }));
       return { left: rect.left - base.left, centerY: rect.top - base.top + rect.height / 2, items };
     });
@@ -221,7 +299,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
         if (!b) continue;
         const active = item.id === activeId;
         const mx = (a.x + b.x) / 2;
-        html += `<path d="M${a.x},${a.y} C${mx},${a.y} ${mx},${b.y} ${b.x},${b.y}" fill="none" stroke="${active ? "var(--gold-deep)" : "var(--graph-link-idle)"}" stroke-width="${active ? 1.7 : 1}"/>`;
+        html += `<path d="M${a.x.toFixed(1)},${a.y.toFixed(1)} C${mx.toFixed(1)},${a.y.toFixed(1)} ${mx.toFixed(1)},${b.y.toFixed(1)} ${b.x.toFixed(1)},${b.y.toFixed(1)}" fill="none" stroke="${active ? "var(--gold-deep)" : "var(--graph-link-idle)"}" stroke-width="${active ? 1.7 : 1.1}" stroke-linecap="round"/>`;
       }
     }
     svg.innerHTML = html;
@@ -275,6 +353,15 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     const spring = 1 - Math.exp(-dt / 86);
     let moving = false;
     Object.values(wheelState.current).forEach((state) => {
+      const snap = state.snap;
+      if (snap) {
+        // 吸附段：定时缓动，到时精确落位；期间 target 不会变（变了 setWheelTarget 会清掉 snap）。
+        const p = Math.min(1, (now - snap.start) / snap.duration);
+        state.current = snap.from + (snap.to - snap.from) * wheelSnapEase(p);
+        if (p >= 1) { state.current = snap.to; state.snap = undefined; }
+        else moving = true;
+        return;
+      }
       const distance = state.target - state.current;
       if (Math.abs(distance) < 0.001) {
         state.current = state.target;
@@ -311,6 +398,8 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     };
     state.target = targetIndex;
     state.selected = targetIndex;
+    if (prefersReducedMotion()) { state.current = targetIndex; state.snap = undefined; }
+    else beginSnap(state);
     startWheelAnimation();
   };
   const alignWheelToPath = (animated = true) => {
@@ -330,21 +419,49 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
       const key = stateKeyForColumn(columnIndex);
       const state = wheelState.current[columnIndex] = currentState?.key === key ? currentState : { current: fallbackIndex, target: fallbackIndex, selected: Math.round(fallbackIndex), key };
       state.target = targetIndex;
+      // 正在往别处吸附的那段作废；往同一处的继续走完。
+      if (state.snap && state.snap.to !== targetIndex) state.snap = undefined;
       if (!animated) {
         state.current = targetIndex;
         state.selected = targetIndex;
+        state.snap = undefined;
       }
     });
     if (animated) startWheelAnimation();
     else redraw();
   };
+  /** 选中后把最深那一列（选中项的子级）挪进画布可见区：三层以上时它会落到面板底下。只滚最少的距离。 */
+  const revealDeepestColumn = () => {
+    const canvas = canvasRef.current, cols = colsRef.current;
+    if (!canvas || !cols) return;
+    const columnEls = cols.querySelectorAll<HTMLElement>(".graph-col");
+    const last = columnEls[columnEls.length - 1];
+    if (!last) return;
+    const view = canvas.getBoundingClientRect();
+    const rect = last.getBoundingClientRect();
+    if (view.width === 0 || rect.width === 0) return;
+    const pad = 24;
+    let delta = 0;
+    if (rect.right > view.right - pad) delta = rect.right - (view.right - pad);
+    if (rect.left - delta < view.left + pad) delta = rect.left - (view.left + pad);
+    if (Math.abs(delta) < 1) return;
+    if (typeof canvas.scrollBy === "function") canvas.scrollBy({ left: delta, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    else canvas.scrollLeft += delta;
+  };
   useLayoutEffect(redraw);
+  useLayoutEffect(() => {
+    const id = pendingDomFocus.current;
+    if (!id) return;
+    pendingDomFocus.current = null;
+    nodeElement(id)?.focus();
+  });
   useLayoutEffect(() => {
     if (colsRef.current) colsRef.current.style.transform = "";
     const pending = pendingFocus.current;
     const animated = wheelHydrated.current && pending?.animate === true;
     // 用户手还在轮盘上时不要对齐:那会把 target 拽回 path 说的位置。
     if (wheelInteracting.current === null) alignWheelToPath(animated);
+    if (wheelHydrated.current && pending) revealDeepestColumn();
     wheelHydrated.current = true;
     pendingFocus.current = null;
   }, [path, sel, canGovern]); // eslint-disable-line
@@ -418,7 +535,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     const canvas = canvasRef.current;
     const columns = colsRef.current;
     if (!canvas || !columns) return;
-    let gesture: { pointerId: number; columnIndex: number; startX: number; startY: number; startTarget: number; startScrollLeft: number; mode: "pending" | "wheel" | "pan"; moved: boolean; captured: boolean } | null = null;
+    let gesture: { pointerId: number; columnIndex: number; startX: number; startY: number; startTarget: number; startScrollLeft: number; mode: "pending" | "wheel" | "pan"; moved: boolean; captured: boolean; samples: { t: number; y: number }[] } | null = null;
     const columnAt = (clientX: number) => {
       const columnEls = [...columns.querySelectorAll<HTMLElement>(".graph-col")];
       const pointerColumn = columnEls.findIndex((column) => {
@@ -439,7 +556,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
       const key = stateKeyForColumn(columnIndex);
       const currentState = wheelState.current[columnIndex];
       const state = wheelState.current[columnIndex] = currentState?.key === key ? currentState : { current: initialIndex, target: initialIndex, selected: initialIndex, key };
-      gesture = { pointerId: event.pointerId, columnIndex, startX: event.clientX, startY: event.clientY, startTarget: state.target, startScrollLeft: canvas.scrollLeft, mode: "pending", moved: false, captured: false };
+      gesture = { pointerId: event.pointerId, columnIndex, startX: event.clientX, startY: event.clientY, startTarget: state.target, startScrollLeft: canvas.scrollLeft, mode: "pending", moved: false, captured: false, samples: [{ t: event.timeStamp, y: event.clientY }] };
     };
     const onPointerMove = (event: PointerEvent) => {
       if (!gesture || gesture.pointerId !== event.pointerId) return;
@@ -459,6 +576,9 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
         return;
       }
       const delta = -dy / 76;
+      // 只留最近 100ms 的采样，松手时据此算速度（惯性）。
+      gesture.samples.push({ t: event.timeStamp, y: event.clientY });
+      while (gesture.samples.length > 1 && event.timeStamp - gesture.samples[0].t > 100) gesture.samples.shift();
       wheelInteracting.current = gesture.columnIndex;
       setWheelTarget(gesture.columnIndex, gesture.startTarget + delta);
     };
@@ -469,7 +589,14 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
         if (gesture.mode === "wheel") {
           wheelInteracting.current = null;
           const live = wheelState.current[gesture.columnIndex];
-          if (live) setWheelTarget(gesture.columnIndex, Math.round(live.target), true);
+          if (live) {
+            const first = gesture.samples[0];
+            const last = gesture.samples[gesture.samples.length - 1];
+            const elapsed = last.t - first.t;
+            // 像素 / ms → 节点 / ms（76px 一格，方向与拖动相反），再按弹簧常数外推。
+            const velocity = elapsed > 8 ? -((last.y - first.y) / elapsed) / 76 : 0;
+            setWheelTarget(gesture.columnIndex, Math.round(live.target + wheelFling(velocity)), true);
+          }
         }
         window.setTimeout(() => { suppressNodeClick.current = false; }, 120);
       }
@@ -499,38 +626,65 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
   // ---- pan (drag empty canvas) ----
   useEffect(() => {
     const c = canvasRef.current; if (!c) return;
-    let pan = false, sx = 0, sy = 0, sl = 0, st = 0;
+    let pan = false, moved = false, sx = 0, sy = 0, sl = 0, st = 0;
     const down = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest(".ag-node,.ag-root,.ag-dots,.ag-panel,.ag-draft,.ag-droptop,button,a,input,textarea,select")) return;
-      pan = true; sx = e.clientX; sy = e.clientY; sl = c.scrollLeft; st = c.scrollTop; c.classList.add("ag-panning");
+      pan = true; moved = false; sx = e.clientX; sy = e.clientY; sl = c.scrollLeft; st = c.scrollTop; c.classList.add("ag-panning");
       e.preventDefault();
     };
-    const move = (e: MouseEvent) => { if (!pan) return; c.scrollLeft = sl - (e.clientX - sx); c.scrollTop = st - (e.clientY - sy); };
-    const up = () => { if (pan) { pan = false; c.classList.remove("ag-panning"); } };
+    const move = (e: MouseEvent) => {
+      if (!pan) return;
+      if (!moved && Math.max(Math.abs(e.clientX - sx), Math.abs(e.clientY - sy)) > 4) { moved = true; suppressNodeClick.current = true; }
+      c.scrollLeft = sl - (e.clientX - sx); c.scrollTop = st - (e.clientY - sy);
+    };
+    const up = () => {
+      if (!pan) return;
+      pan = false; c.classList.remove("ag-panning");
+      // 拖过画布的那次松手不算「点空白」：click 紧跟在 mouseup 后面，等它过去再放开。
+      if (moved) window.setTimeout(() => { suppressNodeClick.current = false; }, 120);
+    };
     c.addEventListener("mousedown", down); window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
     return () => { c.removeEventListener("mousedown", down); window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
   }, [canGovern]);
 
   const node = nodes[sel];
   const drafts = net.drafts || [];
-  const handleColumnClick = (event: React.MouseEvent<HTMLDivElement>, columnIndex: number) => {
-    if (columnIndex < 1) return;
+  /* 画布上的一次点击（没拖动过）：落在某个节点的矩形里就当点了那个节点——
+     节点本体只有 20px 高，列空白处按矩形再判一次；哪个节点都没碰到就是点空白，收起面板。 */
+  const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (suppressNodeClick.current) return;
-    if ((event.target as HTMLElement).closest(".ag-node,.ag-dots")) return;
-    const items = [...event.currentTarget.querySelectorAll<HTMLElement>(".ag-node")];
-    const hit = items.find((item) => {
-      const rect = item.getBoundingClientRect();
-      return (
-        event.clientX >= rect.left &&
-        event.clientX <= rect.right &&
-        event.clientY >= rect.top &&
-        event.clientY <= rect.bottom
-      );
-    });
-    const id = hit?.dataset.id;
-    if (!id || !nodes[id]) return;
-    focusNode(id, columnIndex, true);
+    if ((event.target as HTMLElement).closest(".ag-node,.ag-dots,.ag-root,.ag-panel,.ag-draft,.ag-droptop,button,a,input,textarea,select")) return;
+    const columnEls = [...(colsRef.current?.querySelectorAll<HTMLElement>(".graph-col") ?? [])];
+    for (let columnIndex = 1; columnIndex < columnEls.length; columnIndex++) {
+      const items = [...columnEls[columnIndex].querySelectorAll<HTMLElement>(".ag-node")];
+      const hit = items.find((item) => {
+        const rect = item.getBoundingClientRect();
+        return (
+          rect.width > 0 && rect.height > 0 &&
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom
+        );
+      });
+      const id = hit?.dataset.id;
+      if (id && nodes[id]) { activateNode(id, columnIndex); return; }
+    }
+    closePanel();
   };
+  // Esc 收起面板。弹窗 / 菜单开着时 Esc 归它们（App 层也在听 Esc 关菜单），输入框里不管。
+  useEffect(() => {
+    if (!embedded || canGovern) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (document.querySelector("[role='dialog'], [role='menu']")) return;
+      closePanel(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [embedded, canGovern]); // eslint-disable-line
 
   const renderNode = (id: string, ci: number): ReactNode => {
     const n = nodes[id]; if (!n) return null;
@@ -547,7 +701,8 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
         aria-pressed={id === sel}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
-          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); focusNode(id, ci, true); }
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activateNode(id, ci); return; }
+          if (handleNodeArrow(event.key, id, ci)) event.preventDefault();
         }}
         draggable={canGovern && id !== "default"}
         /* batch43 第 2 件（★J-4 追加）：同一次拖拽现在有两个去处，互不打架——
@@ -567,7 +722,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
         onClick={(e) => {
           if (suppressNodeClick.current) return;
           if ((e.target as HTMLElement).closest(".ag-dots")) return;
-          focusNode(id, ci, true);
+          activateNode(id, ci);
         }}
         onDoubleClick={() => onGoProfile(id)}
         style={{ opacity: dead ? 0.5 : 1 }}
@@ -602,19 +757,32 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
           className={embedded ? "agent-browser-body" : "flex"}
           style={embedded ? undefined : { height: "70vh" }}
         >
-        <div className="ag-canvas" ref={canvasRef}>
-          <svg className="ag-edges" ref={svgRef} />
+        <div className="ag-canvas" ref={canvasRef} onClick={handleCanvasClick}>
+          <svg className="ag-edges" ref={svgRef} aria-hidden="true" />
           <div className="ag-cols" ref={colsRef}>
             {columns.map((ids, ci) => (
               <div
                 className={`graph-col ${ci > 0 ? "ag-wheel-col" : ""}`}
                 data-column={ci}
                 key={`${ci}:${ci === 0 ? "__root__" : path[ci - 1]}`}
-                onClick={(event) => handleColumnClick(event, ci)}
               >
                 {ci === 0 ? (
                   <>
-                    <div className="ag-root" data-id="default" onClick={() => focusNode("default")} {...dropProps("default")}>
+                    <div
+                      className="ag-root"
+                      data-id="default"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={displayName("default")}
+                      aria-pressed={sel === "default"}
+                      onClick={() => activateNode("default")}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activateNode("default"); return; }
+                        if (handleNodeArrow(event.key, "default", 0)) event.preventDefault();
+                      }}
+                      {...dropProps("default")}
+                    >
                       <div className="ag-rootline" />
                       <div className="ag-rootnm">{displayName("default")}</div>
                       <div className="ag-rootsub">{t("graph.rootSub")}</div>
@@ -647,13 +815,22 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
           </div>
         </div>
 
-        {/* 项目摘要和稳定可见的主操作。 */}
-        <aside className="ag-panel">
+        {/* 项目摘要和稳定可见的主操作。收起时留在 DOM 里只做位移，inert 挡住焦点。 */}
+        <aside
+          className={`ag-panel ${panelOpen ? "" : "is-hidden"}`}
+          ref={panelRef}
+          data-open={panelOpen ? "true" : "false"}
+          inert={!panelOpen}
+          onTransitionEnd={(event) => { if (event.target === event.currentTarget) redraw(); }}
+        >
           {node && (
             <>
               <div className="ag-panel-head">
                 <div className="ag-ptag">
                   <span>{t("graph.head.title")}</span>
+                  <button type="button" className="ag-panel-close" title={t("common.close")} aria-label={t("common.close")} onClick={() => closePanel()}>
+                    <X size={14} aria-hidden="true" />
+                  </button>
                 </div>
                 <h2 className="ag-ph2">{dname(node)}</h2>
                 <div className="ag-prole">{sel === "default" ? t("graph.value.mainAgent") : t("graph.value.project")}{(node.killed || node.effective_killed) ? ` · ${t("graph.value.disabled")}` : ""}</div>

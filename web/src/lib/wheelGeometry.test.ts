@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { wheelAnchor, wheelNodeTransform, wheelTransformCss } from "./wheelGeometry";
+import { wheelAnchor, wheelFling, wheelNodeTransform, wheelSnapDuration, wheelSnapEase, wheelTransformCss } from "./wheelGeometry";
 
 /* 对拍用的**独立参考实现**：把 CSS transform 真的当成 4×4 矩阵乘出来，
  * 再做 perspective(900) 的透视除法，最后按 transform-origin: left center 平移回去。
@@ -114,5 +114,37 @@ describe("轮盘几何", () => {
     expect(wheelTransformCss(wheelNodeTransform(2))).toBe(
       "translateY(calc(-50% + 116.0px)) translateX(-18.0px) rotateX(-14.00deg) scale(0.800)",
     );
+  });
+});
+
+describe("轮盘吸附", () => {
+  it("吸附缓动两端落在 0 与 1，中途只过冲一次且不超过 4%", () => {
+    expect(wheelSnapEase(0)).toBeCloseTo(0, 9);
+    expect(wheelSnapEase(1)).toBeCloseTo(1, 9);
+    let peak = 0;
+    let crossings = 0;
+    let above = false;
+    for (let i = 0; i <= 200; i++) {
+      const v = wheelSnapEase(i / 200);
+      peak = Math.max(peak, v);
+      const nowAbove = v > 1 + 1e-9;
+      if (nowAbove !== above) { crossings++; above = nowAbove; }
+    }
+    expect(peak).toBeGreaterThan(1.02);
+    expect(peak).toBeLessThan(1.04);
+    expect(crossings).toBe(2);
+  });
+  it("吸附时长：半格以内 180ms，封顶 320ms，满足 ≤ 200ms 的常规吸附", () => {
+    expect(wheelSnapDuration(0.3)).toBe(180);
+    expect(wheelSnapDuration(0.5)).toBe(180);
+    expect(wheelSnapDuration(1)).toBe(210);
+    expect(wheelSnapDuration(9)).toBe(320);
+  });
+  it("甩动：慢速松手不外推，快速按时间常数外推并封顶", () => {
+    expect(wheelFling(0)).toBe(0);
+    expect(wheelFling(0.0004)).toBe(0);
+    expect(wheelFling(0.01)).toBeCloseTo(0.86, 6);
+    expect(wheelFling(-1)).toBe(-2.5);
+    expect(wheelFling(Number.NaN)).toBe(0);
   });
 });

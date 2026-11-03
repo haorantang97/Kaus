@@ -5,13 +5,40 @@
 /* Overrides the DS LENS_0 (teal) tokens.                                  */
 /* Loaded after index.css.                                              */
 /* ------------------------------------------------------------------ */
+/* Wheel CJK: map the wheel's heavy weights to lighter PingFang faces, CJK only. */
+@font-face {
+  font-family: "Kaus Wheel CJK";
+  src: local("PingFangSC-Regular"), local("PingFang SC Regular");
+  font-weight: 100 600;
+  unicode-range: U+2E80-2FDF, U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
+}
+@font-face {
+  font-family: "Kaus Wheel CJK";
+  src: local("PingFangSC-Medium"), local("PingFang SC Medium");
+  font-weight: 700 900;
+  unicode-range: U+2E80-2FDF, U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
+}
+
 :root {
   /* UI, brand and code each retain a dedicated type role. */
+  /* 2026-11-03: light system type, in line with Claude / Codex desktop.
+     Anton stays only on the brand wordmark. */
   --theme-font-sans:
-    "Inter", "PingFang SC", ui-sans-serif, system-ui, sans-serif;
-  --theme-font-display: "Anton", Impact, "PingFang SC", sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "PingFang SC",
+    "Inter", "Segoe UI", sans-serif;
+  --theme-font-display: var(--theme-font-sans);
+  --theme-font-brand: "Anton", Impact, "PingFang SC", sans-serif;
+  /* Wheel Chinese uses PingFang Regular / Medium via "Kaus Wheel CJK" (2026-11-03);
+     Latin keeps Anton / Space Mono / Inter at the original weights. */
+  --theme-font-wheel-display: "Anton", "Kaus Wheel CJK", Impact, "PingFang SC", sans-serif;
+  --theme-font-wheel-sans: "Inter", "Kaus Wheel CJK", "PingFang SC", sans-serif;
+  /* The project wheel keeps its original type (Anton + Space Mono). */
+  --theme-font-wheel-mono: "Space Mono", "Kaus Wheel CJK", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Page-level titles only (draft greeting, page heads), as in the Claude
+     desktop client; everything else stays sans. CJK falls back to PingFang. */
+  --theme-font-serif: ui-serif, "New York", Georgia, "PingFang SC", serif;
   --theme-font-mono:
-    "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 
   /* 侧栏宽度：主区被「推」开时要平移这么多（批次七 d 第 1 条）。 */
   --kaus-rail-width: 280px;
@@ -136,7 +163,7 @@ body,
 .md-body h2,
 .md-body h3 {
   margin: 12px 0 6px;
-  font-weight: 600;
+  font-weight: 400;
 }
 .md-body h1 {
   font-size: 16px;
@@ -289,7 +316,7 @@ body,
    投影属于铭牌那块深底；燕麦底上的投影只会显脏（浅色主题下尤其）。 */
 .brand-wordmark {
   display: inline-block;
-  font: 400 28px/1 var(--theme-font-display);
+  font: 400 28px/1 var(--theme-font-brand);
   letter-spacing: 0.02em;
   color: var(--accent-text);
   transform: skewX(-7deg);
@@ -308,7 +335,7 @@ body,
   cursor: pointer;
   background: transparent;
   color: color-mix(in srgb, var(--midground-base) 72%, transparent);
-  font: 500 10px/1.4 var(--theme-font-sans);
+  font: 400 10px/1.4 var(--theme-font-sans);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -382,14 +409,13 @@ body.dark .shell-nav-item.is-active .shell-nav-icon {
 }
 
 .shell-nav-label {
-  font: 600 12.5px/1 var(--theme-font-sans);
+  font: 400 12.5px/1 var(--theme-font-sans);
 }
 
 .shell-nav-en {
   margin-left: auto;
-  font: 700 8px/1 var(--theme-font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font: 400 11px/1 var(--theme-font-sans);
+  letter-spacing: 0;
   opacity: 0.45;
 }
 
@@ -443,7 +469,7 @@ body.dark .shell-nav-item.is-active .shell-nav-icon {
 .sidebar-context-title {
   margin: 0 4px 8px;
   color: color-mix(in srgb, var(--midground-base) 58%, transparent);
-  font: 500 11px/1.5 var(--theme-font-sans);
+  font: 400 11px/1.5 var(--theme-font-sans);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -479,6 +505,7 @@ body.dark input {
 
 /* ===== AgentGraph / AGENTS browse — demo-21 exact interaction shell ===== */
 .agent-browser {
+  font-family: var(--theme-font-wheel-sans);
   display: flex;
   height: 100%;
   min-height: 0;
@@ -495,13 +522,13 @@ body.dark input {
 }
 
 .agent-browser-head h1 {
-  font: 400 32px/0.9 var(--theme-font-display);
+  font: 400 32px/0.9 var(--theme-font-wheel-display);
   text-transform: uppercase;
 }
 
 .agent-browser-head > div {
   color: color-mix(in srgb, var(--midground-base) 52%, transparent);
-  font: 11px/1 var(--theme-font-mono);
+  font: 11px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -527,7 +554,7 @@ body.dark input {
   color: color-mix(in srgb, var(--midground-base) 65%, transparent);
   background: transparent;
   cursor: pointer;
-  font: 500 12px/1.5 var(--theme-font-sans);
+  font: 500 12px/1.5 var(--theme-font-wheel-sans);
 }
 
 .agent-browser-modes button:hover { background: var(--surface-hover); }
@@ -541,6 +568,8 @@ body.dark input {
   display: flex;
   min-height: 0;
   flex: 1;
+  /* 面板收起时滑到右边界外，别让它撑出页面级横向滚动条。 */
+  overflow: hidden;
 }
 
 .agent-browser-body .ag-canvas {
@@ -607,6 +636,10 @@ body.dark input {
   inset: 0;
   pointer-events: none;
   z-index: 1;
+  overflow: visible;
+}
+.ag-edges path {
+  shape-rendering: geometricPrecision;
 }
 .ag-cols {
   position: relative;
@@ -625,6 +658,11 @@ body.dark input {
   gap: 14px;
   justify-content: center;
   flex: 0 0 auto;
+}
+/* 根节点 X 与第一列之间多留一段：第一列远端节点往左缩 27px，再加上列间距只剩
+   56px，从 X 扇出的四五条线只剩 20px 的横向余地，弯成一排竖钩。 */
+.graph-col[data-column="0"] {
+  margin-right: 40px;
 }
 .ag-wheel-col {
   position: relative;
@@ -671,12 +709,12 @@ body.dark input {
 }
 .ag-rootnm {
   color: var(--midground-base);
-  font: 400 60px/0.86 var(--theme-font-display);
+  font: 400 60px/0.86 var(--theme-font-wheel-display);
 }
 .ag-rootsub {
   margin-top: 9px;
   color: color-mix(in srgb, var(--midground-base) 52%, transparent);
-  font: 700 9px/1 var(--theme-font-mono);
+  font: 700 9px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
@@ -697,6 +735,18 @@ body.dark input {
     color 0.15s;
   padding-left: 12px;
   position: relative;
+}
+
+/* 键盘焦点：全站给 [role=button] 的是整盒按下色（inset box-shadow），落在轮盘节点上
+   会把 330px 的 min-width 盒子整条涂亮；这里改成只给名字描一圈。 */
+body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible :is(.ag-nm, .ag-rootnm) {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 4px;
+  border-radius: 2px;
 }
 
 /* 「+ 添加项目」虚节点:沿用 .ag-node 的排布与轮盘变换,只换描边与色度。 */
@@ -748,6 +798,10 @@ body.dark input {
   .ag-node {
     transition: none;
   }
+  .ag-panel,
+  .ag-panel.is-hidden {
+    transition: none;
+  }
 }
 .ag-node.current-front .ag-nm {
   font-weight: 700;
@@ -758,14 +812,14 @@ body.dark input {
 }
 .ag-nm {
   color: color-mix(in srgb, var(--midground-base) 88%, transparent);
-  font: 600 18px/1 var(--theme-font-mono);
+  font: 600 18px/1 var(--theme-font-wheel-mono);
 }
 /* 角色小字：36% → 55%（批次十一第 6 件）。乘上轮盘 0.72 的地板仍到不了 4.5:1，
    但把它提到那个档次就得和节点名一样黑，那是另一种坏——名字才是要读的那行。
    只调透明度、不换色（AD-78）。 */
 .ag-rl {
   color: color-mix(in srgb, var(--midground-base) 55%, transparent);
-  font: 9.5px/1 var(--theme-font-mono);
+  font: 9.5px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -778,7 +832,7 @@ body.dark input {
 }
 .ag-cn {
   color: var(--accent-text);
-  font: 9.5px/1 var(--theme-font-mono);
+  font: 9.5px/1 var(--theme-font-wheel-mono);
   opacity: 0.8;
 }
 .ag-dots {
@@ -799,36 +853,69 @@ body.dark input {
 .ag-dots:hover {
   color: var(--midground-base);
 }
-/* detail panel */
+/* detail panel：开合只动 transform（与 AD-79 侧栏同一做法），margin-right 让画布
+   在同一段时间里接管面板的宽度；收起态 visibility: hidden + inert，焦点与读屏都进不去。 */
 .ag-panel {
   width: 344px;
   flex: none;
   overflow: auto;
   background: var(--background-secondary);
   border-left: 1px solid var(--border-subtle);
+  will-change: transform;
+  transition:
+    transform 200ms cubic-bezier(0.2, 0, 0, 1),
+    margin-right 200ms cubic-bezier(0.2, 0, 0, 1),
+    visibility 0s;
+}
+.ag-panel.is-hidden {
+  transform: translateX(100%);
+  margin-right: -344px;
+  visibility: hidden;
+  transition:
+    transform 200ms cubic-bezier(0.4, 0, 1, 1),
+    margin-right 200ms cubic-bezier(0.4, 0, 1, 1),
+    visibility 0s linear 200ms;
 }
 .ag-panel-head {
   padding: 22px 22px 16px;
 }
 .ag-ptag {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  min-height: 24px;
   color: var(--accent-text);
-  font: 700 9px/1 var(--theme-font-mono);
+  font: 700 9px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.2em;
   text-transform: uppercase;
+}
+.ag-panel-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: -6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  cursor: pointer;
+}
+.ag-panel-close:hover {
+  background: var(--surface-hover);
+  color: var(--midground-base);
 }
 .ag-ph2 {
   margin: 10px 0 5px;
   color: var(--midground-base);
-  font: 400 36px/0.9 var(--theme-font-display);
+  font: 400 36px/0.9 var(--theme-font-wheel-display);
 }
 .ag-prole {
   display: flex;
   align-items: center;
   gap: 7px;
   color: color-mix(in srgb, var(--midground-base) 52%, transparent);
-  font: 10px/1 var(--theme-font-mono);
+  font: 10px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -845,7 +932,7 @@ body.dark input {
   border-left: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
-  font: 700 11px/1 var(--theme-font-mono);
+  font: 700 11px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -865,7 +952,7 @@ body.dark input {
 .ag-panel-section h3 {
   margin-bottom: 12px;
   color: color-mix(in srgb, var(--midground-base) 62%, transparent);
-  font: 500 12px/1.5 var(--theme-font-sans);
+  font: 500 12px/1.5 var(--theme-font-wheel-sans);
 }
 .ag-prow {
   display: flex;
@@ -873,7 +960,7 @@ body.dark input {
   justify-content: space-between;
   gap: 14px;
   padding: 5px 0;
-  font: 12.5px var(--theme-font-mono);
+  font: 12.5px var(--theme-font-wheel-mono);
 }
 .ag-prow span:first-child {
   flex: none;
@@ -897,12 +984,12 @@ body.dark input {
 }
 .ag-stat-row strong {
   color: var(--midground-base);
-  font: 400 30px/1 var(--theme-font-display);
+  font: 400 30px/1 var(--theme-font-wheel-display);
 }
 .ag-stat-row span {
   margin-top: 5px;
   color: color-mix(in srgb, var(--midground-base) 52%, transparent);
-  font: 8.5px var(--theme-font-mono);
+  font: 8.5px var(--theme-font-wheel-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -911,9 +998,15 @@ body.dark input {
   .ag-panel {
     width: 290px;
   }
-  .agent-browser-head > div {
-    display: none;
+  .ag-panel.is-hidden {
+    margin-right: -290px;
   }
+  .agent-browser-head > div {
+  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  font: 11px/1 var(--theme-font-wheel-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
   .agent-browser-head .agent-browser-modes {
     display: inline-flex;
   }
@@ -1026,9 +1119,8 @@ body.dark input {
   color: color-mix(in srgb, var(--midground-base) 55%, transparent);
   cursor: pointer;
   text-align: left;
-  font: 700 9.5px/1 var(--theme-font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 400 11px/1 var(--theme-font-sans);
+  letter-spacing: 0;
 }
 
 .kaus-sidebar-group-head:hover {
@@ -1093,8 +1185,8 @@ body.dark input {
 
 .kaus-draft-empty h1 {
   margin-bottom: 8px;
-  font: 700 20px/1.3 var(--theme-font-sans);
-  letter-spacing: 0.02em;
+  font: 500 26px/1.25 var(--theme-font-serif);
+  letter-spacing: normal;
 }
 
 .kaus-draft-empty p {
@@ -1143,7 +1235,7 @@ body.dark input {
   background: var(--midground-base);
   color: var(--background-base);
   cursor: pointer;
-  font: 600 12px/1 var(--theme-font-sans);
+  font: 400 12px/1 var(--theme-font-sans);
 }
 
 /* H-3：停止只在悬停时才带 --danger 边框（平时与发送同形，不喊）。 */
@@ -1222,7 +1314,7 @@ body.dark input {
 }
 
 .kaus-conversation-title {
-  font: 700 16px/1.3 var(--theme-font-sans);
+  font: 500 16px/1.3 var(--theme-font-sans);
 }
 
 /* batch52 第 5 件：标题本身就是改名入口。它现在是一枚 button（或改名时的
@@ -1691,7 +1783,7 @@ button.kaus-conversation-title:hover {
   color: color-mix(in srgb, var(--midground-base) 72%, transparent);
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 500 12px/1.4 var(--theme-font-sans);
+  font: 400 12px/1.4 var(--theme-font-sans);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -1759,7 +1851,7 @@ button.kaus-conversation-title:hover {
 .kaus-bar-pop-head {
   padding: 8px 8px 4px;
   color: color-mix(in srgb, var(--midground-base) 60%, transparent);
-  font: 500 11px/1.4 var(--theme-font-sans);
+  font: 400 11px/1.4 var(--theme-font-sans);
   letter-spacing: 0;
   text-transform: none;
   white-space: nowrap;
@@ -1865,9 +1957,8 @@ button.kaus-conversation-title:hover {
   box-shadow: var(--shadow-lg);
   cursor: pointer;
   color: color-mix(in srgb, var(--midground-base) 70%, transparent);
-  font: 9.6px/1.4 var(--theme-font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 11px/1.4 var(--theme-font-sans);
+  letter-spacing: 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1903,9 +1994,8 @@ button.kaus-conversation-title:hover {
   align-items: center;
   gap: 4px;
   color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 10px/1.4 var(--theme-font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 11px/1.4 var(--theme-font-sans);
+  letter-spacing: 0;
 }
 
 .kaus-project-crumbs button {
@@ -1927,7 +2017,7 @@ button.kaus-conversation-title:hover {
 }
 
 .kaus-project-title h1 {
-  font: 600 20px/1.2 var(--theme-font-sans);
+  font: 500 24px/1.3 var(--theme-font-serif);
 }
 
 .kaus-project-conversation {
@@ -1972,7 +2062,7 @@ button.kaus-conversation-title:hover {
   padding: 6px 12px;
   border-radius: 7px;
   color: color-mix(in srgb, var(--midground-base) 62%, transparent);
-  font: 550 13px/1.4 var(--theme-font-sans);
+  font: 400 13px/1.4 var(--theme-font-sans);
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
 }
@@ -2001,10 +2091,10 @@ button.kaus-conversation-title:hover {
 .kaus-cap-icon-button svg { transition: transform 150ms ease; }
 .kaus-cap-icon-button:hover svg { transform: none; }
 .kaus-cap-value-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.kaus-cap-value-head h3 { font: 600 15px/1.5 var(--theme-font-sans); overflow-wrap: anywhere; }
+.kaus-cap-value-head h3 { font: 400 15px/1.5 var(--theme-font-sans); overflow-wrap: anywhere; }
 .kaus-cap-raw { max-height: 60vh; overflow: auto; padding: 14px; border-radius: 8px; background: var(--surface-raised); font: 12px/1.7 var(--theme-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .kaus-cap-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
-.kaus-cap-name strong { font-weight: 550; }
+.kaus-cap-name strong { font-weight: 400; }
 .kaus-cap-name small { font-size: 11px; color: color-mix(in srgb, var(--midground-base) 50%, transparent); }
 .kaus-config-value-scroll { display: block; max-height: 144px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; scrollbar-width: thin; }
 
@@ -2028,7 +2118,7 @@ button.kaus-conversation-title:hover {
 .kaus-cap-row.is-head {
   border-top: 0;
   color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 500 11px/1.4 var(--theme-font-sans);
+  font: 400 11px/1.4 var(--theme-font-sans);
 }
 
 .kaus-cap-row.is-blocked {
@@ -2088,7 +2178,7 @@ button.kaus-conversation-title:hover {
   padding: 12px;
   border-radius: 9px;
   color: color-mix(in srgb, var(--midground-base) 75%, transparent);
-  font: 550 13px/1.4 var(--theme-font-sans);
+  font: 400 13px/1.4 var(--theme-font-sans);
   list-style: none;
   transition: background 150ms ease;
 }
@@ -2336,9 +2426,8 @@ body.dark .kaus-cap-row.is-head {
   box-shadow: var(--shadow-lg);
   cursor: pointer;
   color: color-mix(in srgb, var(--midground-base) 62%, transparent);
-  font: 9.6px/1.4 var(--theme-font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 11px/1.4 var(--theme-font-sans);
+  letter-spacing: 0;
 }
 
 .kaus-group-pill:hover {
@@ -2378,9 +2467,8 @@ body.dark .kaus-cap-row.is-head {
 .kaus-group-head-title {
   margin-right: auto;
   color: var(--midground-base);
-  font: 9.6px/1.4 var(--theme-font-mono);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font: 11px/1.4 var(--theme-font-sans);
+  letter-spacing: 0;
 }
 
 .kaus-group-icon-btn {
@@ -2477,9 +2565,8 @@ body.dark .kaus-cap-row.is-head {
   border-radius: 1px;
   padding: 0 4px;
   color: color-mix(in srgb, var(--midground-base) 55%, transparent);
-  font: 9px/1.6 var(--theme-font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 11px/1.6 var(--theme-font-sans);
+  letter-spacing: 0;
 }
 
 .kaus-group-dim {
@@ -2548,7 +2635,7 @@ body.dark .kaus-cap-row.is-head {
 .kaus-group-choice b {
   display: block;
   color: var(--midground-base);
-  font: 600 12.5px/1.5 var(--theme-font-sans);
+  font: 400 12.5px/1.5 var(--theme-font-sans);
 }
 
 .kaus-group-choice em {
@@ -2654,9 +2741,8 @@ body.dark .kaus-cap-row.is-head {
   padding: 8px 0 6px;
   background: var(--panel);
   color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 9.6px/1.4 var(--theme-font-mono);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font: 11px/1.4 var(--theme-font-sans);
+  letter-spacing: 0;
 }
 
 .kaus-group-pane-head > span:first-child {
@@ -2684,9 +2770,8 @@ body.dark .kaus-cap-row.is-head {
   padding: 3px 8px;
   cursor: pointer;
   color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 9.6px/1.4 var(--theme-font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 11px/1.4 var(--theme-font-sans);
+  letter-spacing: 0;
 }
 
 .kaus-group-tab.is-current {
@@ -2729,7 +2814,7 @@ body.dark .kaus-cap-row.is-head {
 }
 
 .kaus-group-turn.is-final .kaus-group-message-text {
-  font-weight: 500;
+  font-weight: 400;
 }
 
 /* 组头那一行：房间在转的时候才有（运行点 + 「第 k/N 轮 · 轮到 B」 + 「停」）。 */
@@ -2748,7 +2833,7 @@ body.dark .kaus-cap-row.is-head {
 /* 成员名是这一行的第一眼，所以它比周围的小字重一档（但仍不上强调色，★H）。 */
 .kaus-group-turn .kaus-group-member-title {
   color: var(--midground-base);
-  font: 500 10.5px/1.4 var(--theme-font-sans);
+  font: 400 10.5px/1.4 var(--theme-font-sans);
 }
 
 .kaus-group-message-text {
@@ -3015,11 +3100,11 @@ body.dark .kaus-cap-row.is-head {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   min-height: 34px; padding: 7px 13px; border: 1px solid color-mix(in srgb, var(--midground-base) 18%, transparent);
   border-radius: 9px; background: var(--surface-raised); color: var(--midground-base);
-  font: 500 12px/1.4 var(--theme-font-sans); white-space: nowrap; cursor: pointer;
+  font: 400 12px/1.4 var(--theme-font-sans); white-space: nowrap; cursor: pointer;
 }
 .kaus-button--primary {
   background: var(--midground-base);
-  color: var(--background-base); border-color: var(--midground-base); font-weight: 600;
+  color: var(--background-base); border-color: var(--midground-base); font-weight: 400;
 }
 .kaus-button--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 .kaus-button:focus-visible, .kaus-project-conversation:focus-visible, .ag-node-enter:focus-visible, .ag-node:focus-visible { outline: none; }
@@ -3027,7 +3112,7 @@ body.dark .kaus-cap-row.is-head {
 .kaus-project-primary, .kaus-project-secondary { min-height: 42px; padding: 10px 16px; font-size: 13px; }
 .ag-node-enter { position: relative; z-index: 1; display: inline-grid; place-items: center; align-self: center; width: 30px; height: 30px; margin-left: 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent-text) 25%, transparent); color: var(--accent-text); background: var(--surface-raised); cursor: pointer; }
 .ag-node-enter:hover { background: var(--gold-soft); }
-.kaus-project-conversation { min-height: 48px; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; font: 500 13px/1.5 var(--theme-font-sans); cursor: pointer; }
+.kaus-project-conversation { min-height: 48px; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; font: 400 13px/1.5 var(--theme-font-sans); cursor: pointer; }
 .kaus-project-conversation:hover { background: var(--surface-hover); }
 .kaus-project-conversation-icon { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; color: color-mix(in srgb, var(--midground-base) 65%, transparent); background: transparent; }
 body.dark .kaus-project-conversation-icon { color: var(--accent-text); }

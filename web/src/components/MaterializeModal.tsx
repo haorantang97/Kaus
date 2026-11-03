@@ -91,7 +91,7 @@ export function MonoValue({ value }: { value: unknown }) {
 /** 分段头：小号大写标题 + 计数，与卡片里的折叠头同一档。 */
 function SectionHead({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-1 mt-3 text-[0.62rem] uppercase tracking-[0.16em]" style={{ color: cream(45) }}>
+    <div className="mb-1 mt-3 text-[0.7rem] " style={{ color: cream(45) }}>
       {children}
     </div>
   );
@@ -483,7 +483,7 @@ function UnchangedSection({ entries }: { entries: ProjectionEntryWire[] }) {
           onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
           disabled={entries.length === 0}
-          className="text-[0.62rem] uppercase tracking-[0.16em]"
+          className="text-[0.7rem] "
           style={{ color: cream(45) }}
           data-testid="materialize-unchanged-toggle"
         >

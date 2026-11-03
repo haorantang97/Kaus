@@ -33,7 +33,7 @@ export function ReparentModal({ node, target, onClose, onDone }: { node: string;
   };
   return (
     <Modal onClose={onClose} width={560}>
-      <h3 className="mb-1 text-sm font-semibold uppercase tracking-[0.12em]">{t("reparent.title", { name: String(lb(node)) })}</h3>
+      <h3 className="mb-1 text-sm font-medium ">{t("reparent.title", { name: String(lb(node)) })}</h3>
       {err ? <div className="py-4 text-sm" style={{ color: "var(--danger)" }}>{t("reparent.previewFailed", { error: err })}</div>
         : d === null ? <div className="flex items-center gap-2 py-4 text-sm" style={{ color: cream(50) }}><Spinner /> {t("reparent.previewing")}</div>
         : (

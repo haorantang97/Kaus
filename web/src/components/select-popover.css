@@ -4,7 +4,7 @@
   width: 100%; min-height: 36px; padding: 7px 10px;
   border: 1px solid transparent; border-radius: 8px;
   background: transparent; color: var(--midground-base);
-  font: 500 13px/1.5 var(--theme-font-sans); text-align: left; cursor: pointer;
+  font: 400 13px/1.5 var(--theme-font-sans); text-align: left; cursor: pointer;
 }
 .kaus-select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kaus-select-value.is-placeholder { color: color-mix(in srgb, var(--midground-base) 56%, transparent); }
@@ -30,7 +30,7 @@ body .kaus-select-menu .kaus-select-search input:focus-visible { outline: none; 
 .kaus-select-options { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; outline: none; }
 .kaus-select-option { display: flex; align-items: center; gap: 12px; min-height: 36px; box-sizing: border-box; padding: 8px 9px; border-radius: 7px; cursor: pointer; }
 .kaus-select-option[data-active="true"] { background: color-mix(in srgb, var(--midground-base) 7%, transparent); }
-.kaus-select-option[aria-selected="true"] .kaus-select-option-copy > span { font-weight: 600; }
+.kaus-select-option[aria-selected="true"] .kaus-select-option-copy > span { font-weight: 400; }
 .kaus-select-option[aria-disabled="true"] { opacity: .36; cursor: default; }
 .kaus-select-option-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
 .kaus-select-option-copy > small { color: color-mix(in srgb, var(--midground-base) 55%, transparent); font-size: 11px; line-height: 1.45; }

@@ -1,5 +1,5 @@
-.agent-browser .agent-browser-head h1 { font-family:var(--theme-font-sans); font-size:22px; font-weight:600; letter-spacing:-.02em; }
-.agent-browser .ag-ph2 { font-family:var(--theme-font-sans); font-size:27px; font-weight:600; line-height:1.25; letter-spacing:-.03em; overflow-wrap:anywhere; }
+.agent-browser .agent-browser-head h1 { font-family:var(--theme-font-sans); font-size:22px; font-weight: 400; letter-spacing:-.02em; }
+.agent-browser .ag-ph2 { font-family:var(--theme-font-sans); font-size:27px; font-weight: 400; line-height:1.25; letter-spacing:-.03em; overflow-wrap:anywhere; }
 .agent-browser .ag-ptag { font-size:11px; letter-spacing:.04em; }
 /* Preserve the original cutout project-entry shape; reveal its edge on interaction. */
 .ag-panel .ag-pactions { position:relative; display:block; height:94px; margin-top:24px; }
@@ -17,7 +17,7 @@
 @media (prefers-reduced-motion:reduce) { .ag-panel .kaus-project-enter-shape > path { transition:none; } }
 .agent-browser .ag-prow { gap:18px; align-items:start; font-size:12px; line-height:1.6; }
 .agent-browser .ag-prow span:last-child { text-align:right; min-width:0; overflow-wrap:anywhere; }
-.agent-browser .ag-stat-row strong { font-family:var(--theme-font-sans); font-size:23px; font-weight:600; line-height:1.5; }
+.agent-browser .ag-stat-row strong { font-family:var(--theme-font-sans); font-size:23px; font-weight: 400; line-height:1.5; }
 .agent-browser .ag-stat-row span { letter-spacing:0; font-size:11px; }
 .agent-browser .ag-panel-section { padding-top:20px; padding-bottom:20px; }
 .agent-browser .ag-panel-section h3 { font-family:var(--theme-font-sans); letter-spacing:0; font-size:12px; margin-bottom:12px; }

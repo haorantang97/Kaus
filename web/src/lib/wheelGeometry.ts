@@ -74,3 +74,28 @@ export function wheelAnchor({ columnLeft, columnCenterY, width, offset, side }: 
     y: columnCenterY + t.y,
   };
 }
+
+/* ---- 吸附 ----
+ * 滚动中节点跟手靠一阶弹簧 `1 − e^(−dt/86)`（AD-81 的常数不动）。吸附是另一段：
+ * 从吸附开始时的位置到最近节点走一条定时的缓动曲线，末端带一次很小的回弹
+ * （最大过冲 ≈ 3.7%，一次回正、不来回震荡），到时即落位——时长可预期，
+ * 不像弹簧那样尾巴拖很长。
+ */
+
+/** 吸附缓动：f(0)=0、f(1)=1，中途在 p≈2/3 处过冲约 3.7% 后回正。 */
+export function wheelSnapEase(p: number): number {
+  const u = Math.min(1, Math.max(0, p)) - 1;
+  return 1 + 2 * u * u * u + u * u;
+}
+
+/** 吸附时长（ms）：半格以内 180ms，更远的点击 / 甩动按距离加长，封顶 320ms。 */
+export function wheelSnapDuration(distance: number): number {
+  const extra = Math.max(0, Math.abs(distance) - 0.5) * 60;
+  return Math.min(320, 180 + extra);
+}
+
+/** 拖拽松手的惯性：把当前速度（节点 / ms）按弹簧时间常数外推，封顶 ±2.5 格。 */
+export function wheelFling(velocity: number): number {
+  if (!Number.isFinite(velocity) || Math.abs(velocity) < 0.0006) return 0;
+  return Math.max(-2.5, Math.min(2.5, velocity * 86));
+}

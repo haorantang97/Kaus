@@ -493,7 +493,7 @@ export function EngineConfigSection({
           type="button"
           onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
-          className="text-[0.6rem] uppercase tracking-[0.14em]"
+          className="text-[0.7rem] "
           style={{ color: cream(45) }}
         >
           {t("engine.config.toggle", { count: rows.length })} {open ? "▾" : "▸"}
@@ -621,7 +621,7 @@ export function CapabilityList({ detail }: { detail: DetailCapabilityTree }) {
               <span className="ml-1" style={{ color: cream(45) }}>
                 {tDynamic(`capValue.${state.value}`, state.value)}
               </span>
-              <span className="ml-1 text-[0.6rem]" style={{ color: cream(38) }}>
+              <span className="ml-1 text-[0.7rem]" style={{ color: cream(38) }}>
                 · {tDynamic(`capValue.${state.verification}`, state.verification)}
               </span>
               {/* AD-71：note 只出现在这里（和 GET /api/backends/{id} 的输出里）。 */}
@@ -789,13 +789,13 @@ export function EngineCard({
     <div style={{ background: cream(2), border: `1px solid ${cream(16)}`, borderRadius: 8 }}>
       <div className="flex flex-wrap items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${cream(16)}` }}>
         <span
-          className="grid size-6 shrink-0 place-items-center rounded-[2px] text-[0.65rem] font-bold"
+          className="grid size-6 shrink-0 place-items-center rounded-[2px] text-[0.65rem] font-semibold"
           style={{ background: cream(7), color: cream(70), border: `1px solid ${cream(14)}` }}
           title={backendDisplay(backend.preset?.id ?? backend.id, backend.displayName).displayName}
         >
           <EngineIcon engine={backend.preset?.id ?? backend.key ?? backend.id} size={18} />
         </span>
-        <span className="text-sm font-semibold" style={{ color: "var(--midground-base)" }}>
+        <span className="text-sm font-medium" style={{ color: "var(--midground-base)" }}>
           {bindingDisplayName(backend.preset?.id ?? binding.backendId, binding.displayName)}
         </span>
         {/* batch40（★L 第 3 条）：摘要第一行 = 引擎名 · 版本 · 状态 · 默认。
@@ -884,7 +884,7 @@ export function EngineCard({
         )}
         <button
           type="button"
-          className="ml-auto text-[0.6rem] uppercase tracking-[0.14em]"
+          className="ml-auto text-[0.7rem] "
           style={{ color: cream(45) }}
           data-testid="engine-details-toggle"
           aria-expanded={showDetails}
@@ -970,7 +970,7 @@ export function EngineCard({
             type="button"
             onClick={() => setShowCapabilities((value) => !value)}
             aria-expanded={showCapabilities}
-            className="mb-2 text-[0.6rem] uppercase tracking-[0.14em]"
+            className="mb-2 text-[0.7rem] "
             style={{ color: cream(45) }}
           >
             {t("engine.caps.toggle", { count: capabilityRowCount })} {showCapabilities ? "▾" : "▸"}
