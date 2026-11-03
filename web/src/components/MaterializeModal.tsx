@@ -175,6 +175,7 @@ const REASON_ORDER = [
   "no_workspace_root",
   "workspace_shared",
   "workspace_denied",
+  "target_linked",
   "no_convention",
   "invalid_config",
   "not_mapped",

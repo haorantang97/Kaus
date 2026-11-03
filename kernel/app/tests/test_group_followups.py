@@ -58,7 +58,7 @@ async def test_recent_index_flags_a_pending_approval(tmp_path, monkeypatch):
     try:
         conversation = await _new_conversation(b, '等审批')
         pending = SimpleNamespace(run_state='running')
-        monkeypatch.setattr('app.api.session_router.awaiting_input', lambda state: state is pending)
+        monkeypatch.setattr('app.api.session_routes.conversations.awaiting_input', lambda state: state is pending)
         monkeypatch.setattr(b.host, 'timeline', lambda cid: pending if cid == conversation.id else None)
         rows = (await api.get('/api/conversations')).json()['conversations']
         flagged = {row['id'] for row in rows if row.get('awaitingInput')}

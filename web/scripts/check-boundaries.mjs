@@ -41,7 +41,6 @@ const ALLOWED = [
    要防的事：新写的页面/卡片不许再长出引擎名分支。清完一个就从这里删一行。 */
 const LEGACY = [
   "ConfigOverlay.tsx",
-  "KanbanOverlay.tsx",
   "ProfileDrawer.tsx",
   "UpdateHealthAlert.tsx",
   "WarehouseOverlay.tsx",

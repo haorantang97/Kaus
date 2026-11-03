@@ -1,14 +1,11 @@
-import { AttachmentFilename } from "../components/AttachmentFilename";
-import { useComposerAutosize, useComposerInputGuard } from "../hooks/useComposerInput";
-import { useScrollInputCooldown } from "../hooks/useConversationPinning";
 import { ConversationJumpRail } from "../components/ConversationJumpRail";
 import { ContinuationDialog } from "../components/ContinuationDialog";
 import { readableContinuationDraft } from "../lib/continuations";
 import { FileReference } from "../components/cards/ArtifactPreview";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Ellipsis, Square, Terminal, FileText, X, LoaderCircle, Paperclip, GitBranch } from "lucide-react";
+import { ArrowDown, ArrowUp, Square, FileText, X, LoaderCircle, GitBranch } from "lucide-react";
 import { useLocale } from "../i18n";
-import { confirmAsync, cream, toast } from "../components/ui";
+import { cream, toast } from "../components/ui";
 import {
   DegradedLaunchPanel,
   ExternalBanner,
@@ -17,101 +14,83 @@ import {
   ReturnToAppDialog,
   TerminalPreview,
 } from "../components/ExternalSurface";
-import { ComposerBar, type BarMenuOption } from "../components/ComposerBar";
+import { Composer, type ComposerChip } from "../components/Composer";
 import { useConversationDraft } from "../lib/conversationDrafts";
 import { conversationJumpEntries } from "../lib/conversationJumpEntries";
 import { isConfirmedMessageRejection } from "../lib/messageDelivery";
 import { uploadConversationAttachment, attachmentName, fileSizeLabel, ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, type ConversationAttachment } from "../lib/attachmentsApi";
 import "./conversationWorkspace.css";
 import { CardRenderer } from "../components/cards/CardRenderer";
-import { MessageDeliveryStatus } from "../components/cards/MessageDeliveryStatus";
 import { RowGroup } from "../components/cards/RowCard";
 import { ToolGroup } from "../components/cards/ToolCard";
-import { UsagePill } from "../components/cards/UsageBar";
-import { hasCapability, type UiCapabilities } from "../components/cards/capabilities";
+import { hasCapability } from "../components/cards/capabilities";
 import type { EngineLabel } from "../components/cards/CardShell";
-import { composerReasoning, observeComposerSettings, readComposerSettings } from "../lib/composerSettings";
 import { backendDisplay } from "../lib/backend-display";
 import {
-  conversationEventsUrl,
   archiveConversation,
-  emptyEffectiveSettings,
   fetchBinding,
   fetchBindingStatus,
   fetchConversation,
-  fetchEventsSnapshot,
   fetchMessageReceipt,
-  fetchSurface,
   interruptConversation,
-  openExternalSurface,
   focusExternalSurface,
   // batch52
   patchConversation,
   setConversationBookmark,
   patchProject,
   resolveInteraction,
-  returnToCardSurface,
   sendConversationMessage,
   SessionApiError,
   type BackendWire,
   type BindingWire,
   type ConversationDetailWire,
-  type EffectiveSettingsWire,
-  type ModelCatalogWire,
-  type SurfaceLeaseWire,
-  type TerminalLaunchWire,
   describeFailure,
   failureClientRef,
-  modelRejection,
 } from "../lib/sessionApi";
 import {
   parseBackendRunState,
   resolveRunState,
   type RunStateSnapshot,
 } from "../lib/runState";
-import { HISTORY_REPLAY_GRACE_MS, resolveHistoryView } from "../lib/historyReplay";
-import { EventTransport } from "../lib/eventTransport";
-import {
-  consumeExternalHandoff,
-  parseSurfaceEvent,
-  readExternalHistory,
-  setExternalSurface,
-  writeExternalHistory,
-  type ExternalHistoryGroup as HistoryGroup,
-  type SurfaceEvent,
-  type SurfaceKind,
-  useTerminalPreview,
-} from "../lib/externalSurface";
+import { resolveHistoryView } from "../lib/historyReplay";
+import { parseSurfaceEvent, useTerminalPreview } from "../lib/externalSurface";
 import { parseGroupChange } from "../lib/groupsApi";
-import { catalogForBinding, hasModelCatalog, modelOptionsFor, modelSelection, modelValue } from "../lib/modelCatalogView";
+import { modelValue } from "../lib/modelCatalogView";
 import { refreshGroups } from "../lib/groupStore";
 import type { MessageActions } from "../components/cards/TextCard";
 import {
-  initialTimelineState,
   messageDeliveryStatus,
   messageText,
-  reduceEvent,
   type AgentEventEnvelope,
   type InteractionItem,
   type TimelineItem,
-  type FileChangeItem,
-  type TimelineState,
-  type ToolItem,
 } from "../lib/timeline/reducer";
 import { isHiddenTimelineItem } from "../lib/timeline/extensionCards";
+import { newClientRef, writePendingMessages, type PendingMessage } from "../lib/pendingMessages";
 import {
-  mergePendingMessages,
-  newClientRef,
-  pendingReducer,
-  readPendingMessages,
-  userMessageClientRef,
-  writePendingMessages,
-  type PendingAction,
-  type PendingMessage,
-} from "../lib/pendingMessages";
+  FALLBACK_CAPS,
+  STOP_CONFIRM_TIMEOUT_MS,
+  clockTime,
+  engineLabel,
+  groupRows,
+  handoffPending,
+  initialPageState,
+  itemSeconds,
+  pageReducer,
+  type HandoffPending,
+} from "./conversation/pageState";
+import { ConversationHeader } from "./conversation/ConversationHeader";
+import { PendingMessageRows } from "./conversation/PendingMessageRows";
+import { useConversationEvents } from "./conversation/useConversationEvents";
+import { useConversationSettings } from "./conversation/useConversationSettings";
+import { useConversationSurface } from "./conversation/useConversationSurface";
+import { useTimelineFollow } from "./conversation/useTimelineFollow";
+
+export { FOLLOW_THRESHOLD_PX, STOP_CONFIRM_TIMEOUT_MS, atBottom, groupRows } from "./conversation/pageState";
 
 /* 对话页（IA §4；版式按 ★ 定稿 G 重做）。事件进来只走一条路——
- * `reduceEvent(state, envelope)`（内核 `event_reducer.py` 的镜像），渲染只走一条路——
+ * `reduceEvent(state, envelope)`（内核 `event_reducer.py` 的镜像，包在
+ * `conversation/pageState.ts` 的 `pageReducer` 里），渲染只走一条路——
  * `<CardRenderer item …>`。**本文件不按事件类型分支**：要加卡片就给 reducer 加 kind、
  * 给 CardRenderer 加 case。
  *
@@ -121,14 +100,16 @@ import {
  *  ③ 只读能力的 **ui 层**：`fetchBackendUiCapabilities` 的返回类型里没有 detail，
  *    因此任何 note / verification 不可能出现在这棵子树里。
  *
- * 页面自己（而不是 reducer / 卡片）负责五件事：
- *  - itemId → 首次 / 末次 occurredAt（reducer 是纯镜像，不存展示用时间）：
- *    时间戳与「思考了 4s」「1.2s」这类耗时都从这张表算；
- *  - 用量：G-8 之后它在页头，折成一枚 Pill；
- *  - 占位气泡（AD-94）：发送时先本地插一条，事件按 `clientRef` 回来后撤掉。
- *    状态住在 `lib/pendingMessages.ts`，**不进 reducer**——reducer 是内核镜像；
- *  - 连续工具行的分组（G-3）：分组是版式，不是事件语义，所以不进 reducer；
- *  - 自动跟随（G-9）。
+ * 页面拆成几块各管各的（`./conversation/`）：
+ *  - `pageState.ts`：页面层 reducer（时间 / 耗时 / 占位 / 分组，纯函数）；
+ *  - `useConversationEvents`：SSE / 轮询运输层与重放窗口；
+ *  - `useConversationSurface`：双表面（站内卡片 / 外部终端）与两条交接路径；
+ *  - `useConversationSettings`：有效设置 / 模型目录 / 能力矩阵的读与改；
+ *  - `useTimelineFollow`：自动跟随（G-9）与未读计数；
+ *  - `ConversationHeader` / `PendingMessageRows`：页头与占位气泡；
+ *  - 输入区用 `components/Composer`（与草稿页共用）。
+ * 本文件自己留下的是：会话详情与设置、投递（首发 / 重发 / 停止）、消息动作、
+ * 交互卡回答，以及把这些拼成页面。
  */
 
 export interface ConversationPageProps {
@@ -141,241 +122,9 @@ export interface ConversationPageProps {
   /** 从 URL 带进来的重放起点：`?after=<sequence>`。 */
   after?: number | null;
   /** 草稿页的首句：会话是在那一刻建的，占位跟着跳转一起过来（AD-94）。 */
-  initialPending?: { clientRef: string; text: string; attachments?: ConversationAttachment[] } | null;
+  initialPending?: HandoffPending | null;
   /** 测试/预览可以替换渲染器；不传就是 CardRenderer。 */
   renderTimelineItem?: (item: TimelineItem, context: { engine?: EngineLabel; time?: string }) => React.ReactNode;
-}
-
-/** 一条目的时间跨度：首次与末次信封时间（毫秒）。耗时 = end − start。 */
-interface Span {
-  start: number;
-  end: number;
-}
-
-interface PageState {
-  timeline: TimelineState;
-  /** itemId → 首次出现时信封上的 occurredAt。只记第一次，后续更新不改时间。 */
-  times: Record<string, string>;
-  /** itemId → 时间跨度，用来算「思考了 4s」「1.2s」。 */
-  spans: Record<string, Span>;
-  /** 还没等到回声的本地占位（AD-94）。 */
-  pending: PendingMessage[];
-  /* 第 1 件：最后一条**父 run** 的 `run.*` 事件的 sequence。它是"SSE 这一路有多新"
-     的尺子，用来和后端快照的 lastSequence 比新旧（见 lib/runState.ts）。 */
-  runSequence: number | null;
-  /* batch21 前端：耗时不可信的那些 run。引擎中途没了（`run.failed{runtime_lost}`）
-     或这一轮是被中断收尾的（`run.interrupted`）时，末条事件的信封时间来自后端
-     自愈/补终态的那一刻，不是工具真正跑完的时刻——按它算出来的是 `20447.1s`
-     这种数（真机见过）。这类 run 里的条目一律不给耗时，只留状态词。 */
-  untimedRuns: ReadonlySet<string>;
-}
-
-type PageAction =
-  | { type: "event"; envelope: AgentEventEnvelope }
-  | { type: "pending"; action: PendingAction }
-  | { type: "receipt"; clientRef: string; envelopes: AgentEventEnvelope[] }
-  | { type: "reset"; conversationId: string; after: number | null; pending: PendingMessage[] };
-
-function initialPageState(
-  conversationId: string,
-  after: number | null = null,
-  pending: PendingMessage[] = [],
-): PageState {
-  const timeline = initialTimelineState(conversationId);
-  return {
-    timeline: after === null ? timeline : { ...timeline, lastSequence: after },
-    times: {},
-    spans: {},
-    pending,
-    runSequence: null,
-    untimedRuns: EMPTY_RUN_SET,
-  };
-}
-
-/** 共享的空集合：绝大多数会话一条"耗时不可信"的 run 都没有，不必每次新建。 */
-const EMPTY_RUN_SET: ReadonlySet<string> = new Set<string>();
-
-/** 这条信封是不是"让本轮耗时不可信"的终态事件？是的话给出它收尾的 runId。
- *
- *  两种：`run.failed{error.code === "runtime_lost"}`（引擎中途没了，后端补的那条）
- *  与 `run.interrupted`（停止收尾，含 batch21 后端合成的那条）。子 run 也算——
- *  它自己那些条目的耗时同样不可信。runId 依次取信封头、事件体、当前活动 run。 */
-function untimedRunId(envelope: AgentEventEnvelope, timeline: TimelineState): string | null {
-  const event = envelope.event as { type?: string; runId?: string | null; error?: { code?: string } };
-  const type = event?.type ?? "";
-  if (type !== "run.interrupted" && type !== "run.failed") return null;
-  if (type === "run.failed" && event.error?.code !== "runtime_lost") return null;
-  return (envelope as { runId?: string | null }).runId ?? event.runId ?? timeline.activeRunId ?? null;
-}
-
-/** 这条信封是不是**父 run** 的生命周期事件（子 run 不改顶层 runState，见 reducer AD-08）。 */
-function parentRunSequence(envelope: AgentEventEnvelope): number | null {
-  const type = (envelope.event as { type?: string })?.type ?? "";
-  if (!type.startsWith("run.")) return null;
-  if ((envelope as { parentRunId?: string | null }).parentRunId) return null;
-  return envelope.sequence;
-}
-
-function pageReducer(state: PageState, action: PageAction): PageState {
-  if (action.type === "reset") {
-    return initialPageState(action.conversationId, action.after, action.pending);
-  }
-  if (action.type === "pending") {
-    const pending = pendingReducer(state.pending, action.action);
-    return pending === state.pending ? state : { ...state, pending };
-  }
-  if (action.type === "receipt") {
-    let repaired = state;
-    for (const envelope of action.envelopes) {
-      const event = envelope.event as { type?: string; namespace?: string; name?: string; data?: { clientRef?: string } };
-      if (envelope.conversationId !== state.timeline.conversationId || event.type !== "extension.event"
-        || event.namespace !== "kaus" || !["user.message", "user.message.failed"].includes(event.name || "")
-        || event.data?.clientRef !== action.clientRef) continue;
-      // A rejection may have arrived before its missing user receipt. Reapply
-      // that small event now that its message exists, removing the orphan row.
-      if (event.name === "user.message.failed") {
-        const seen = new Set(repaired.timeline.seenEventIds);
-        seen.delete(envelope.eventId);
-        repaired = { ...repaired, timeline: { ...repaired.timeline, seenEventIds: seen,
-          items: repaired.timeline.items.filter(item => item.itemId !== `extension:${envelope.eventId}`) } };
-      }
-      repaired = pageReducer(repaired, { type: "event", envelope });
-    }
-    return { ...repaired, timeline: { ...repaired.timeline,
-      items: [...repaired.timeline.items].sort((left, right) => left.order - right.order) } };
-  }
-  /* 占位的撤销点：编号对上就撤，**不比文本**（连发两句一样的话时文本对不出谁是谁）。
-     这一步在页面层做，reducer 依旧只认内核那 30 条事件。 */
-  const confirmed = userMessageClientRef(action.envelope);
-  const pending = confirmed
-    ? pendingReducer(state.pending, { type: "confirm", clientRef: confirmed })
-    : state.pending;
-  const timeline = reduceEvent(state.timeline, action.envelope);
-  const runAt = parentRunSequence(action.envelope);
-  const runSequence =
-    runAt !== null && (state.runSequence === null || runAt > state.runSequence)
-      ? runAt
-      : state.runSequence;
-  /* batch21 前端：终态先记账，再谈耗时。`run.interrupted` / `run.failed{runtime_lost}`
-     本身只加一条 lifecycle 条目，走的是下面 `items` 没变的那条早退路径，所以这一步
-     必须在早退之前做。 */
-  const untimed = untimedRunId(action.envelope, state.timeline);
-  const untimedRuns =
-    untimed !== null && !state.untimedRuns.has(untimed)
-      ? new Set([...state.untimedRuns, untimed])
-      : state.untimedRuns;
-  if (timeline.items === state.timeline.items) {
-    return { ...state, timeline, pending, runSequence, untimedRuns };
-  }
-  // reduceEvent 之外的一层：新出现的条目盖上信封时间，已有的只延长跨度。
-  const at = Date.parse(action.envelope.occurredAt);
-  let times = state.times;
-  let spans = state.spans;
-  for (const item of timeline.items) {
-    if (times[item.itemId] === undefined) {
-      if (times === state.times) times = { ...times };
-      times[item.itemId] = action.envelope.occurredAt;
-    }
-    if (!Number.isNaN(at)) {
-      const existing = spans[item.itemId];
-      if (existing === undefined) {
-        if (spans === state.spans) spans = { ...spans };
-        spans[item.itemId] = { start: at, end: at };
-      } else if (at > existing.end) {
-        if (spans === state.spans) spans = { ...spans };
-        spans[item.itemId] = { start: existing.start, end: at };
-      }
-    }
-  }
-  return { timeline, times, spans, pending, runSequence, untimedRuns };
-}
-
-/** 初始占位 = 草稿页交接过来的首句 + `sessionStorage` 里上次没等到回声的那些
- *  （第 5 件：刷新后失败消息不丢，恢复后照旧按 `clientRef` 对账）。 */
-function handoffPending(
-  conversationId: string,
-  initial: { clientRef: string; text: string; attachments?: ConversationAttachment[] } | null | undefined,
-): PendingMessage[] {
-  const handoff: PendingMessage[] = initial
-    ? [{ clientRef: initial.clientRef, text: initial.text, attachments: initial.attachments, status: "sending", sentAt: Date.now() }]
-    : [];
-  return mergePendingMessages(handoff, readPendingMessages(conversationId));
-}
-
-/** 信封时间 → 悬停才显示的 `HH:MM`。解析不了就不显示时间（不编一个）。 */
-function clockTime(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return undefined;
-  return `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
-}
-
-/** 一条目要跑够这么久才谈得上"耗时"。低于它显示状态词，不写 `0.0s`——
- *  信封时间的精度只到毫秒，几个事件挤在同一刻时算出来的 0 是噪音不是信息。 */
-const MIN_DURATION_MS = 200;
-
-/** 跨度 → 秒。太短就当作"没有耗时"，让调用方显示状态词。 */
-function spanSeconds(span: Span | undefined): number | undefined {
-  if (!span) return undefined;
-  const ms = span.end - span.start;
-  return ms >= MIN_DURATION_MS ? ms / 1000 : undefined;
-}
-
-/** batch21 前端：这条目该显示的耗时。所属 run 以 `run.interrupted` 或
- *  `run.failed{runtime_lost}` 收尾时返回 `undefined`——工具行/推理行于是退回状态词
- *  （「完成」/「思考」…）。宁可不写耗时，也不写一个从自愈时刻算出来的假数。 */
-function itemSeconds(state: PageState, item: TimelineItem): number | undefined {
-  const runId = (item as { runId?: string | null }).runId ?? null;
-  if (runId !== null && state.untimedRuns.has(runId)) return undefined;
-  return spanSeconds(state.spans[item.itemId]);
-}
-
-function engineLabel(displayName: string | null): EngineLabel | undefined {
-  return displayName ? { name: displayName } : undefined;
-}
-
-/** 第 1 件：发出中断后等引擎确认的上限。超时不改状态，只把按钮放开并补一句提示。 */
-export const STOP_CONFIRM_TIMEOUT_MS = 8_000;
-
-/** 自动跟随的判定门槛（G-9）：距底部 ≤ 120px 算"还在底部"。 */
-export const FOLLOW_THRESHOLD_PX = 40;
-
-export function atBottom(el: { scrollHeight: number; scrollTop: number; clientHeight: number }): boolean {
-  return el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD_PX;
-}
-
-/** 渲染行：单条，或一组连续的工具 / 文件条目（G-3，批次十三加上文件）。 */
-type Row =
-  | { key: string; kind: "item"; item: TimelineItem }
-  | { key: string; kind: "tools"; items: ToolItem[] }
-  | { key: string; kind: "files"; items: FileChangeItem[] };
-
-/** 连续 ≥2 个工具项 / 文件项各自合并成一组；单个照旧一行。 */
-export function groupRows(items: TimelineItem[]): Row[] {
-  const rows: Row[] = [];
-  let run: TimelineItem[] = [];
-  let runKind: "tool" | "file" | null = null;
-  const flush = () => {
-    if (run.length === 0) return;
-    if (run.length === 1) rows.push({ key: run[0].itemId, kind: "item", item: run[0] });
-    else if (runKind === "tool")
-      rows.push({ key: `tools:${run[0].itemId}`, kind: "tools", items: run as ToolItem[] });
-    else rows.push({ key: `files:${run[0].itemId}`, kind: "files", items: run as FileChangeItem[] });
-    run = [];
-    runKind = null;
-  };
-  for (const item of items) {
-    if (item.kind === "tool" || item.kind === "file") {
-      if (runKind !== null && runKind !== item.kind) flush();
-      runKind = item.kind;
-      run.push(item);
-      continue;
-    }
-    flush();
-    rows.push({ key: item.itemId, kind: "item", item });
-  }
-  flush();
-  return rows;
 }
 
 export function ConversationPage({
@@ -400,22 +149,12 @@ export function ConversationPage({
   }, [conversationId, metadataRefreshToken]);
   const archived = Boolean(detail?.conversation?.archivedAt);
   const [archiveBusy, setArchiveBusy] = useState(false);
-  const [actionsOpen, setActionsOpen] = useState(false);
   const [continuationOpen, setContinuationOpen] = useState(false);
-  const actionsRef = useRef<HTMLSpanElement | null>(null);
-  /** batch52 第 5 件：正在就地改会话标题（null = 没在改）。 */
-  // batch52
-  const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [binding, setBinding] = useState<BindingWire | null>(null);
-  const [catalog, setCatalog] = useState<ModelCatalogWire | null>(null);
-  /* Defaults, live choices and capability flags come from the same settings snapshot. */
-  const [settings, setSettings] = useState<EffectiveSettingsWire | null>(null);
-  const [caps, setCaps] = useState<UiCapabilities | null>(null);
   /* 第 6 件：引擎的探测态。页头状态多一档「引擎离线」（中性），发送按钮照旧可用——
      真发出去会拿到后端的人话错误，比在这里先把人拦住有用。 */
   const [probe, setProbe] = useState<{ probeState: BackendWire["probeState"]; message: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [disconnected, setDisconnected] = useState(false);
   const { draft, update: updateDraft, storageFailed } = useConversationDraft(conversationId);
   const text = draft.text;
   const setText = useCallback((value: string) => updateDraft({ text: value }), [updateDraft]);
@@ -430,14 +169,10 @@ export function ConversationPage({
     }
   }, [conversationId, detail, text, updateDraft]);
   const [uploading, setUploading] = useState<string[]>([]);
-  const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadCountRef = useRef(0);
   const sendLockRef = useRef(false);
-  const [settingsBusy, setSettingsBusy] = useState(false);
   const [sending, setSending] = useState(false);
-  const [follow, setFollow] = useState(true);
-  const [showJump, setShowJump] = useState(false);
   /* 第 1 件：停止是一个**过程**。`stopping` = 已经发出中断、还在等引擎的事件；
      `stopUnconfirmed` = 等了 8 秒还没等到，把按钮放开并补一句中性提示。
      两者都**不**改 runState——那是内核镜像，本地不许冒充。 */
@@ -455,47 +190,11 @@ export function ConversationPage({
   /* 第 1 件：**先 GET 一次再附着 SSE**。这一帧之前不订阅，免得重放里的旧
      `run.started` 抢在快照前面把页面钉成"运行中"。 */
   const [snapshotReady, setSnapshotReady] = useState(false);
-  /* 第 7 件：上翻期间到达的新条目数，用在「回到最新 · N 条新消息」上。 */
-  const [unread, setUnread] = useState(0);
-  /* batch18 第 1 件：`GET` 回来了没有（成功或失败都算），以及重放窗口过了没有。
-     两者一起决定首屏是骨架、空态还是「历史没到」（见 lib/historyReplay.ts）。 */
+  /* batch18 第 1 件：`GET` 回来了没有（成功或失败都算）。与重放窗口一起决定首屏
+     是骨架、空态还是「历史没到」（见 lib/historyReplay.ts）。 */
   const [detailLoaded, setDetailLoaded] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [graceElapsed, setGraceElapsed] = useState(false);
-  /* batch20 第 1 件：附着 SSE 之后**收到过几条事件**。在 onmessage 里数，所以
-     表面事件、坏帧之外被 reducer 丢掉的重复/过期帧也算——它们同样证明"重放到了"。 */
-  const [replayEventCount, setReplayEventCount] = useState(0);
-  /* batch30 第 1 件：这条会话现在靠什么在收事件。`polling` = SSE 到不了（隧道下
-     真机 P1 的现象），已经改成 `GET /events/snapshot` 轮询——它是一个**中性**的
-     事实，不是错误（★H），所以只在输入区上方一句小字，不上红、不加图标。 */
-  /* 切到轮询之后、第一次快照有结果之前：「历史没有随重放到达」那句话得先忍住。
-     它只有在**两条路都失败**的时候才是实话。 */
-  const [fallbackPending, setFallbackPending] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  useComposerAutosize(composerRef, text);
-  const composerInput = useComposerInputGuard();
-  const scrollInput = useScrollInputCooldown();
-  /* ---- 双表面（Phase 4）。这一组状态**只住在页面层**：reducer 是内核镜像，
-     "谁在写"不是时间线内容（见 lib/externalSurface.ts 顶部）。 ---- */
-  const [surface, setSurface] = useState<SurfaceKind>("card");
-  const [launch, setLaunch] = useState<TerminalLaunchWire | null>(null);
-  /* A terminal lease remains authoritative until verified handoff completes. */
-  const [lease, setLease] = useState<SurfaceLeaseWire | null>(null);
-  const [returnOpen, setReturnOpen] = useState(false);
-  /** `launched=false` 时那个小面板：降级原因 + 可复制的命令。 */
-  const [degraded, setDegraded] = useState<{ reason: string | null } | null>(null);
-  /** 接管提示（5s 自动收起）。 */
-  const [notice, setNotice] = useState<string | null>(null);
-  const [handoffBusy, setHandoffBusy] = useState(false);
-  /* 折叠历史组跟着会话走：换会话时**在渲染期**重置（用 effect 会先用旧值把新会话
-     那把存储覆盖掉）。历史落盘只在新增那一刻写，不挂 effect，理由同上。 */
-  const [history, setHistory] = useState<{ id: string; groups: HistoryGroup[] }>(() => ({
-    id: conversationId,
-    groups: readExternalHistory(conversationId),
-  }));
-  if (history.id !== conversationId) {
-    setHistory({ id: conversationId, groups: readExternalHistory(conversationId) });
-  }
   const [page, dispatch] = useReducer(pageReducer, undefined, () =>
     initialPageState(conversationId, after, handoffPending(conversationId, initialPending)),
   );
@@ -504,28 +203,35 @@ export function ConversationPage({
   const handoffRef = useRef(initialPending);
   handoffRef.current = initialPending;
   const timeline = page.timeline;
-  const lastSequenceRef = useRef<number | null>(after);
+  const items = useMemo(
+    () => [...timeline.items].sort((a, b) => a.order - b.order),
+    [timeline.items],
+  );
   /* batch30：轮询周期要看"现在在不在跑"（跑着 2s、空闲 8s）。传输层活在 effect
      里、拿不到每一帧的 `running`，所以经一个 ref 每次渲染把最新值放过去。 */
   const runningRef = useRef(false);
-  /* batch39 第 1 件：`send()` 定义在 `running` 算出来之前（TDZ），所以运行态经
-     `runningRef` 进去；`stopping` 是本地 state，直接进依赖。 */
+  /* 第 1 件：运行态只有这一个真源（三来源按新鲜度取舍，见 lib/runState.ts）。
+     页头状态、停止按钮、"正在回复"行、消息动作全部读它——走查里"页面说运行中、
+     后端没有 runtime"的那一半假象就是从各看各的来的。 */
+  const resolved = resolveRunState({
+    timelineRunState: timeline.runState,
+    timelineRunSequence: page.runSequence,
+    snapshot,
+  });
+  const running = resolved.running;
+  runningRef.current = running;
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const jumpIntent = useRef(false);
-  const userScrollIntent = useRef(false);
-  const beginBookmarkJump = useCallback(() => { jumpIntent.current = true; setFollow(false); setShowJump(true); }, []);
+  const {
+    follow, setFollow, showJump, unread, setUnread, scrollRef, beginBookmarkJump, scrollToBottom, onScroll, markUserScroll,
+  } = useTimelineFollow({
+    conversationId,
+    lastSequence: timeline.lastSequence,
+    pendingCount: page.pending.length,
+    itemCount: items.length,
+  });
   const engineName = binding ? backendDisplay(binding.backendId).displayName : null;
 
   useEffect(() => {
-    jumpIntent.current = false;
-    userScrollIntent.current = false;
-    setFollow(true);
-    setUnread(0);
-  }, [conversationId]);
-
-  useEffect(() => {
-    lastSequenceRef.current = after;
     dispatch({ type: "reset", conversationId, after, pending: handoffPending(conversationId, handoffRef.current) });
   }, [conversationId, after]);
 
@@ -573,420 +279,67 @@ export function ConversationPage({
     };
   }, [conversationId, reloadKey]);
 
-  const reloadSettings = useCallback(async (bindingId: string) => {
-    if (!binding || binding.id !== bindingId) return;
-    const next = await readComposerSettings(binding, conversationId);
-    setSettings(next.settings);
-    setCatalog(next.catalog);
-    setCaps(next.caps);
-    return next.settings;
-  }, [binding, conversationId]);
+  /* 有效设置与能力矩阵（读 / 改 / 折成工具栏取值）。 */
+  const {
+    catalog, caps, settingsBusy, reloadSettings, changeModel, changeSessionSetting,
+    bar, conversationControls, reasoning, approval, modelOptions, modelCatalogPresent, modelDiagnostic, modelDegraded,
+  } = useConversationSettings({ conversationId, binding, detail, setDetail, setError, running, runningRef, sendLockRef });
 
-  useEffect(() => {
-    setSettings(null);
-    setCatalog(null);
-    setCaps(null);
-    if (!binding) return;
-    return observeComposerSettings(binding, next => {
-      setSettings(next.settings);
-      setCatalog(next.catalog);
-      setCaps(next.caps);
-    }, { conversationId });
-  }, [binding, conversationId]);
+  /* 双表面：状态、事件、两条交接路径（任务书第 1—4 件）。 */
+  const {
+    surface, launch, returnOpen, setReturnOpen, degraded, setDegraded, notice, setNotice, handoffBusy, history,
+    applySurface, dispatchSurfaceEvent, toExternal, toCard, requestReturn,
+  } = useConversationSurface({ conversationId, archived, archiveBusy, draftText: text, caps, onActivity, setError, setDetail });
 
-  /* ------------------------------------------------------------------ *
-   * 双表面：状态、事件、两条交接路径（任务书第 1—4 件）
-   * ------------------------------------------------------------------ */
-
-  /** 表面切换的唯一入口：**以事件/接口返回为准**，不做本地推测（第 4 件）。
-   *  顺手登记给侧栏那枚小终端图标。 */
-  const applySurface = useCallback(
-    (next: SurfaceKind) => {
-      setSurface(next);
-      setExternalSurface(conversationId, next === "external-cli");
-      if (next === "card") {
-        setDegraded(null);
-        setLease(null);
-        // The first-load owner is only a fallback; once the card has the writer it must not keep the page read-only.
-        setDetail(current => current?.runtime?.owner?.ownerType === "external-cli"
-          ? { ...current, runtime: { ...current.runtime, owner: null } } : current);
-      }
-    },
-    [conversationId],
-  );
-
-  /* 刷新恢复（第 2 件最后一句）：`GET /surface` 说了算。端点不在就是站内。 */
-  useEffect(() => {
-    let cancelled = false;
-    setDegraded(null);
-    setNotice(null);
-    fetchSurface(conversationId)
-      .then((state) => {
-        if (cancelled) return;
-        setLaunch(state.launch);
-        setLease(state.lease);
-        setSurface(state.surface);
-        setExternalSurface(conversationId, state.surface === "external-cli");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setSurface("card");
-        setLaunch(null);
-        setLease(null);
-        setExternalSurface(conversationId, false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [conversationId]);
-
-  /** 新增一组折叠历史（回站校准的产物）。同一组重复到达时按 id 覆盖，不叠加。 */
-  const addHistoryGroup = useCallback(
-    (group: HistoryGroup) => {
-      setHistory((current) => {
-        const groups = [...current.groups.filter((item) => item.id !== group.id), group];
-        writeExternalHistory(current.id, groups);
-        return { id: current.id, groups };
-      });
-    },
-    [],
-  );
-
-  const handleSurfaceEvent = useCallback(
-    (event: SurfaceEvent) => {
-      if (event.kind === "surface.changed") {
-        // 终端自己退出时监视器也走这一条：页面不区分"谁触发的"。
-        applySurface(event.surface);
-        /* 第 2 件：租约跟着表面走一次真源（进外部态时它才有意义）。 */
-        if (event.surface === "external-cli") {
-          fetchSurface(conversationId)
-            .then((state) => setLease(state.lease))
-            .catch(() => setLease(null));
-        }
-        return;
-      }
-      if (event.kind === "history.reconciled") {
-        if (event.entries.length === 0 && event.complete) return;
-        addHistoryGroup({
-          id: `reconciled:${event.entries[0]?.entryId ?? "empty"}:${event.entries.length}`,
-          entries: event.entries,
-          complete: event.complete,
-          gaps: event.gaps,
-        });
-        return;
-      }
-      setNotice(
-        t("surface.notice.takenOver", {
-          owner: event.previousOwnerLabel ?? event.previousOwner ?? t("surface.owner.unknown"),
-          reason: event.reason ?? t("surface.reason.unknown"),
-        }),
-      );
-    },
-    [addHistoryGroup, applySurface, conversationId, t],
-  );
-
-  /* SSE 订阅只按 conversationId 建一次，所以处理函数走 ref——换了它不该重连。 */
-  const surfaceHandlerRef = useRef(handleSurfaceEvent);
-  surfaceHandlerRef.current = handleSurfaceEvent;
-
-  /* 接管提示 5s 自动收起（第 4 件）。 */
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(null), 5_000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
-
-  /** 409 `lease_held` / `external_active` 的 detail：`{owner, ownerId, acquiredAt, launchId}`。 */
-  const conflictDetail = (failure: unknown, code: string): Record<string, unknown> | null => {
-    if (!(failure instanceof SessionApiError)) return null;
-    if (failure.status !== 409 || failure.code !== code) return null;
-    const detail = failure.detailFields.detail;
-    return detail && typeof detail === "object" && !Array.isArray(detail)
-      ? (detail as Record<string, unknown>)
-      : {};
-  };
-
-  useEffect(() => {
-    if (!actionsOpen) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!actionsRef.current?.contains(event.target as Node)) setActionsOpen(false);
-    };
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setActionsOpen(false); };
-    document.addEventListener("mousedown", dismiss);
-    document.addEventListener("keydown", escape);
-    return () => { document.removeEventListener("mousedown", dismiss); document.removeEventListener("keydown", escape); };
-  }, [actionsOpen]);
-
-  const changeArchive = useCallback(async (next: boolean) => {
-    if (archiveBusy || sendLockRef.current || runningRef.current) return;
+  const changeArchive = useCallback((next: boolean): boolean => {
+    if (archiveBusy || sendLockRef.current || runningRef.current) return false;
     setArchiveBusy(true);
-    setActionsOpen(false);
-    try {
-      const result = await archiveConversation(conversationId, next);
-      setDetail(current => current ? { ...current, conversation: result.conversation } : current);
-      setError(null);
-      onActivity?.();
-      if (next) onArchived?.(result.conversation.projectId);
-    } catch (failure) { setError(describeFailure(failure)); }
-    finally { setArchiveBusy(false); }
+    void (async () => {
+      try {
+        const result = await archiveConversation(conversationId, next);
+        setDetail(current => current ? { ...current, conversation: result.conversation } : current);
+        setError(null);
+        onActivity?.();
+        if (next) onArchived?.(result.conversation.projectId);
+      } catch (failure) { setError(describeFailure(failure)); }
+      finally { setArchiveBusy(false); }
+    })();
+    return true;
   }, [archiveBusy, conversationId, onActivity, onArchived]);
 
-  /** 到终端打开（第 1 件）。`lease_held` → 二次确认后带 `force=1` 重试一次。 */
-  const toExternal = useCallback(async () => {
-    if (archived || archiveBusy) return;
-    setHandoffBusy(true);
-    try {
-      for (let force = false; ; force = true) {
-        try {
-          const unsent = text.trim() ? text : undefined;
-          const result = await openExternalSurface(conversationId, { ...(force ? { force: true } : {}), draft: unsent });
-          setError(null);
-          // 草稿留在 Kaus；原生不支持预填时复制到剪贴板，不往终端注入按键。
-          if (unsent && result.launched && !result.draftPrefilled) {
-            const copied = await navigator.clipboard?.writeText(unsent).then(() => true, () => false);
-            setNotice(t(copied ? "surface.draft.copied" : "surface.draft.kept"));
-          }
-          setLaunch(result.launch);
-          applySurface(result.launched && result.surface === "external-cli" ? "external-cli" : "card");
-          setLease(result.lease);
-          setDegraded(
-            result.launched
-              ? null
-              : {
-                  reason: result.reason,
-                },
-          );
-          onActivity?.();
-          return;
-        } catch (failure) {
-          const held = conflictDetail(failure, "lease_held");
-          if (held && !force) {
-            const ok = await confirmAsync(
-              t("surface.confirm.leaseHeld", {
-                owner: String(held.owner ?? t("surface.owner.unknown")),
-                acquiredAt: String(held.acquiredAt ?? t("surface.reason.unknown")),
-              }),
-              { okLabel: t("surface.confirm.takeover"), danger: true },
-            );
-            if (!ok) return;
-            continue;
-          }
-          // 501 与其余错误：原样显示后端 message（前端不改写）。
-          setError(describeFailure(failure));
-          return;
-        }
-      }
-    } finally {
-      setHandoffBusy(false);
-    }
-  }, [applySurface, archived, archiveBusy, conversationId, onActivity, t, text]);
-
-  /** 回到站内（第 3 件）。`external_active` → 确认后 `force=1`。
-   *  折叠历史组由 SSE 的 `history.reconciled` 送来，这里只负责切态。 */
-  const toCard = useCallback(async (options: { force?: boolean } = {}) => {
-    setReturnOpen(false);
-    setHandoffBusy(true);
-    try {
-      for (let force = options.force ?? false; ; force = true) {
-        try {
-          await returnToCardSurface(conversationId, force ? { force: true } : {});
-          setError(null);
-          applySurface("card");
-          onActivity?.();
-          return;
-        } catch (failure) {
-          const active = conflictDetail(failure, "external_active");
-          if (active && !force) {
-            const ok = await confirmAsync(t("surface.confirm.externalActive"), {
-              okLabel: t("surface.confirm.reclaim"),
-              danger: true,
-            });
-            if (!ok) return;
-            continue;
-          }
-          setError(describeFailure(failure));
-          return;
-        }
-      }
-    } finally {
-      setHandoffBusy(false);
-    }
-  }, [applySurface, conversationId, onActivity, t]);
-
-  /* Confirm before stopping an active terminal; ordinary page viewing needs no handoff. */
-  const externalActive = lease?.owner === "external-cli";
-  const requestReturn = useCallback(() => {
-    if (externalActive) {
-      setReturnOpen(true);
+  /* 一条事件到手之后做什么，两条路（SSE / 轮询）完全一样——运输层在
+     `useConversationEvents` 里；这里只决定它进不进 reducer。 */
+  const consumeEnvelope = useCallback((envelope: AgentEventEnvelope) => {
+    /* `kaus` 的三条表面事件在**页面层**处理，不进 reducer（AD-83）：
+       它们说的是"谁在写"，不是时间线内容，折进镜像会让重放 ≠ 实时。 */
+    const surfaceEvent = parseSurfaceEvent(envelope);
+    if (surfaceEvent) {
+      dispatchSurfaceEvent(surfaceEvent);
       return;
     }
-    void toCard();
-  }, [externalActive, toCard]);
-
-  /* 第 5 件：项目页那枚「到终端打开」把用户送到这里之后，接着触发第 1 件。
-     标记读一次即焚；能力没声明就什么也不做（AD-71）。 */
-  useEffect(() => {
-    if (!caps || !hasCapability(caps.externalCli.supported)) return;
-    const consume = () => {
-      if (!consumeExternalHandoff(conversationId)) return;
-      void toExternal();
-    };
-    consume();
-    // Group actions can target the conversation that is already on screen.
-    window.addEventListener("kaus:external-handoff", consume);
-    return () => window.removeEventListener("kaus:external-handoff", consume);
-  }, [caps, conversationId, toExternal]);
-
-  useEffect(() => {
-    // 第 1 件：快照没落地就不订阅（附着 SSE 前先 GET 一次）。
-    if (!snapshotReady) return;
-    // batch20：换会话 / 重新附着时这把尺子归零。
-    setReplayEventCount(0);
-    // batch30：换会话时模式也归零——上一条会话走轮询，不代表这一条也走。
-    setFallbackPending(false);
-
-    /* 一条事件到手之后做什么，两条路（SSE / 轮询）完全一样——这正是这一件的
-       要点：轮询不是第二套渲染逻辑，只是同一批信封的另一种运输方式。 */
-    const consume = (envelope: AgentEventEnvelope) => {
-      lastSequenceRef.current = Math.max(lastSequenceRef.current ?? -1, envelope.sequence);
-      /* batch20 第 1 件：先数一笔再分流。表面事件不进 reducer、重复/过期帧会被
-         reducer 丢掉，但它们都证明重放到了——「历史没到」只能是**零条**。 */
-      setReplayEventCount((count) => count + 1);
-      /* `kaus` 的三条表面事件在**页面层**处理，不进 reducer（AD-83）：
-         它们说的是"谁在写"，不是时间线内容，折进镜像会让重放 ≠ 实时。 */
-      const surfaceEvent = parseSurfaceEvent(envelope);
-      if (surfaceEvent) {
-        surfaceHandlerRef.current(surfaceEvent);
-        return;
-      }
-      /* batch23 第 4 件：`kaus/group.changed` 走**同一条路**——页面层拦下，
-         不进 reducer（AD-83：那份镜像只认冻结的核心事件）。这条事件对页面的
-         唯一后果是右下角组视图过期了，所以重取组列表。 */
-      if (parseGroupChange(envelope)) {
-        void refreshGroups();
-        return;
-      }
-      dispatch({ type: "event", envelope });
-    };
-
-    const transport = new EventTransport<AgentEventEnvelope>(
-      {
-        openStream: ({ after: cursor, onEvent, onOpen, onError }) => {
-          const Ctor = globalThis.EventSource;
-          // 没有 EventSource（老浏览器 / 测试环境没打桩）：直接判这条路不通，
-          // 由传输层去走轮询——不是静默什么都不做。
-          if (!Ctor) {
-            const timer = window.setTimeout(onError, 0);
-            return { close: () => window.clearTimeout(timer) };
-          }
-          const source = new Ctor(conversationEventsUrl(conversationId, cursor));
-          source.onopen = () => onOpen();
-          source.onmessage = (message: MessageEvent) => {
-            try {
-              onEvent(JSON.parse(message.data as string) as AgentEventEnvelope);
-            } catch {
-              /* 坏帧丢掉，不让一行 JSON 打断整条流 */
-            }
-          };
-          // AD-61：断流只关订阅，Runtime 照跑；重连必须带最新的 ?after=，否则重复。
-          source.onerror = () => onError();
-          return { close: () => source.close() };
-        },
-        /* 信封在 API 层是"带 sequence 的任意对象"（那一层不认识时间线的形状）；
-           进 reducer 之前就是 `AgentEventEnvelope`，与 SSE 那条路一字不差。 */
-        fetchSnapshot: async (since) => {
-          const page = await fetchEventsSnapshot(conversationId, since);
-          return { ...page, events: page.events as unknown as AgentEventEnvelope[] };
-        },
-        onEvent: (envelope) => consume(envelope),
-        sequenceOf: (envelope) => envelope.sequence,
-        onDisconnected: setDisconnected,
-        onMode: (mode) => {
-          // 切到轮询的那一刻答案还没回来：先别把「历史没到」摆出来。
-          if (mode === "polling") setFallbackPending(true);
-        },
-        onPollSettled: () => setFallbackPending(false),
-        onRunState: (state) => {
-          /* 快照带回来的运行态就是后端的那份镜像（SSE 那条路由事件自己推）。
-             拼不认识就当没有（AD-71），不猜。 */
-          const parsed = parseBackendRunState(state);
-          if (parsed) setSnapshot({ state: parsed, sequence: lastSequenceRef.current });
-        },
-        isRunActive: () => runningRef.current,
-      },
-      { after: lastSequenceRef.current },
-    );
-    transport.start();
-    return () => transport.stop();
-  }, [conversationId, snapshotReady]);
-
-  /* batch18 第 1 件：重放窗口。从**附着 SSE 的那一刻**起算（在那之前一条事件都
-     不可能到，从挂载起算会把 GET 的耗时算进去）。窗口过完还是零条，首屏就从骨架
-     换成一句「历史没有随重放到达」——那句话是实话，"还没有消息"不是。 */
-  useEffect(() => {
-    if (!snapshotReady) return;
-    setGraceElapsed(false);
-    const timer = window.setTimeout(() => setGraceElapsed(true), HISTORY_REPLAY_GRACE_MS);
-    return () => window.clearTimeout(timer);
-  }, [conversationId, snapshotReady]);
+    /* batch23 第 4 件：`kaus/group.changed` 走**同一条路**——页面层拦下，
+       不进 reducer（AD-83：那份镜像只认冻结的核心事件）。这条事件对页面的
+       唯一后果是右下角组视图过期了，所以重取组列表。 */
+    if (parseGroupChange(envelope)) {
+      void refreshGroups();
+      return;
+    }
+    dispatch({ type: "event", envelope });
+  }, [dispatchSurfaceEvent]);
+  const { disconnected, graceElapsed, replayEventCount, fallbackPending, lastSequenceRef } = useConversationEvents({
+    conversationId,
+    snapshotReady,
+    after,
+    onEnvelope: consumeEnvelope,
+    onRunState: setSnapshot,
+    runningRef,
+  });
 
   /* 占位落盘（第 5 件）：每次变动写一次当前会话的那把。已确认的条目此前已被
      `pendingReducer` 从数组里摘掉，所以这一写同时也是"从存储里删"。 */
   useEffect(() => {
     writePendingMessages(conversationId, page.pending);
   }, [conversationId, page.pending]);
-
-  const pinTimelineToEnd = useCallback(() => {
-    const pane = scrollRef.current;
-    if (!pane) return;
-    if (typeof pane.scrollTo === "function") pane.scrollTo({ top: pane.scrollHeight, behavior: "auto" });
-    else pane.scrollTop = pane.scrollHeight;
-  }, []);
-  useEffect(() => { if (follow) setShowJump(false); }, [follow]);
-
-  /* 自动跟随（G-9）：在底部附近才跟；用户上翻后不打扰，只亮「回到最新 ↓」。 */
-  const scrollToBottom = useCallback(() => {
-    jumpIntent.current = false;
-    userScrollIntent.current = false;
-    scrollInput.reset();
-    // Scroll only the timeline so its growing bottom buffer does not move the page.
-    pinTimelineToEnd();
-    setFollow(true);
-    setUnread(0);
-  }, []);
-
-  useEffect(() => {
-    if (!follow || jumpIntent.current || !scrollInput.canFollow()) return;
-    pinTimelineToEnd();
-  }, [follow, timeline.lastSequence, page.pending.length]);
-
-  useEffect(() => {
-    const flow = scrollRef.current?.firstElementChild;
-    if (!follow || !flow || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      if (!jumpIntent.current && scrollInput.canFollow()) pinTimelineToEnd();
-    });
-    observer.observe(flow);
-    return () => observer.disconnect();
-  }, [follow]);
-
-  const onScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const bottom = atBottom(el);
-    // Explicit navigation keeps following off until a real scroll gesture or
-    // “latest”. Layout/resize callbacks during the animation can revisit bottom.
-    if (jumpIntent.current && !userScrollIntent.current) return;
-    // Content growth and history replay also emit scroll events. Only a user's
-    // navigation may turn following off; automatic reflow must keep it on.
-    if (bottom) setFollow(true);
-    else if (userScrollIntent.current || jumpIntent.current) setFollow(false);
-    jumpIntent.current = false;
-    userScrollIntent.current = false;
-    setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 120);
-    // 回到底部就把未读清零：那些消息现在正看着。
-    if (bottom) setUnread(0);
-  }, []);
 
   /* 一次投递（首发与重发共用）。POST 成功不撤占位——撤占位的是**事件**：
      内核把这句话作为 `kaus` / `user.message` 落库并广播，带着同一个 clientRef，
@@ -1151,51 +504,6 @@ export function ConversationPage({
     [archived, archiveBusy, surface, settingsBusy, stopping, submit],
   );
 
-  /* Model choice belongs to this conversation. A catalog alone does not imply a writable runtime. */
-  const changeModel = useCallback(
-    async (next: string) => {
-      if (!binding || !hasCapability(caps?.models.conversationScoped) || runningRef.current || settingsBusy) return;
-      const selection = modelSelection(next);
-      if (selection.modelId === detail?.conversation?.modelId && (!selection.providerId || selection.providerId === detail?.conversation?.providerId)) return;
-      const selected = catalog?.models.find(item => item.modelId === selection.modelId && (!selection.providerId || item.providerId === selection.providerId));
-      const label = selected?.displayName || selection.modelId;
-      setSettingsBusy(true);
-      try {
-        const result = await patchConversation(conversationId, { ...selection, providerId: selection.providerId ?? selected?.providerId ?? undefined });
-        setDetail(current => current ? { ...current, conversation: result.conversation } : current);
-        await reloadSettings(binding.id);
-      } catch (failure) {
-        /* batch26：引擎自己把这个模型顶回来了（400 `model_rejected`）。**快照没写**，
-           所以这里一个字都不改本地状态——下拉显示的一直是服务端那份有效设置，
-           于是它自己就拨回去了；用户看到的是引擎给的那句理由，不是一句"失败了"。 */
-        const rejected = modelRejection(failure);
-        setError(
-          rejected
-            ? t("conversation.model.rejected", { model: rejected.modelId || label, reason: rejected.agentReason })
-            : t("conversation.model.failed", { error: describeFailure(failure) }),
-        );
-      } finally {
-        setSettingsBusy(false);
-      }
-    },
-    [binding, caps?.models.conversationScoped, catalog, conversationId, detail?.conversation?.modelId, detail?.conversation?.providerId, reloadSettings, settingsBusy, t],
-  );
-
-  const changeSessionSetting = useCallback(async (patch: { reasoningMode?: string; approvalMode?: string; executionMode?: string; configOptions?: Record<string, string | boolean> }) => {
-    if (!binding || runningRef.current || sendLockRef.current || settingsBusy) return;
-    setSettingsBusy(true);
-    setError(null);
-    try {
-      const result = await patchConversation(conversationId, patch);
-      setDetail(current => current ? { ...current, conversation: result.conversation } : current);
-      await reloadSettings(binding.id);
-    } catch (failure) {
-      setError(describeFailure(failure));
-    } finally {
-      setSettingsBusy(false);
-    }
-  }, [binding, conversationId, settingsBusy, reloadSettings]);
-
   /** 改工作目录：`PATCH /api/projects/{id}`，body 只有 `workspaceRoot` 一个键。
    *  失败**往上抛**——工具栏那枚小输入框要把错误显示在原地并保留用户输入。 */
   const changeWorkspaceRoot = useCallback(
@@ -1247,10 +555,6 @@ export function ConversationPage({
     [conversationId],
   );
 
-  const items = useMemo(
-    () => [...timeline.items].sort((a, b) => a.order - b.order),
-    [timeline.items],
-  );
   const engine = useMemo(() => engineLabel(engineName), [engineName]);
   /* 引擎标签只给**第一张看得见的**卡（DESIGN §6.1）。生命周期条目在会话页里
      一律不渲染（showLifecycle 缺省 false），把标签发给它等于谁也没拿到；用户自己
@@ -1268,16 +572,6 @@ export function ConversationPage({
   const external = surface === "external-cli" || owner?.ownerType === "external-cli";
   const terminalPreview = useTerminalPreview(conversationId, external);
   const readOnly = external || archived || archiveBusy;
-  /* 第 1 件：运行态只有这一个真源（三来源按新鲜度取舍，见 lib/runState.ts）。
-     页头状态、停止按钮、"正在回复"行、消息动作全部读它——走查里"页面说运行中、
-     后端没有 runtime"的那一半假象就是从各看各的来的。 */
-  const resolved = resolveRunState({
-    timelineRunState: timeline.runState,
-    timelineRunSequence: page.runSequence,
-    snapshot,
-  });
-  const running = resolved.running;
-  runningRef.current = running;
   const sidebarRunState = useRef<string | null>(null);
   useEffect(() => {
     const previous = sidebarRunState.current;
@@ -1317,14 +611,6 @@ export function ConversationPage({
     if (!running && !stopping) setSendBlocked(false);
   }, [running, stopping]);
 
-  /* 第 7 件：上翻期间到达的新条目累计成未读数；回到底部清零。 */
-  const itemCountRef = useRef(items.length);
-  useEffect(() => {
-    const previous = itemCountRef.current;
-    itemCountRef.current = items.length;
-    if (items.length > previous && !follow) setUnread((count) => count + (items.length - previous));
-  }, [items.length, follow]);
-
   /* 第 4 件：重发一段已有正文（走的还是首发那条路：新编号 + 占位 + POST）。 */
   const resendText = useCallback(
     async (body: string, attachments: ConversationAttachment[] = []) => {
@@ -1352,23 +638,6 @@ export function ConversationPage({
   // answers clearly if the engine cannot interrupt.
   const canInterrupt = caps === null || hasCapability(effectiveCaps.card.interrupt);
   const canAttach = hasCapability(effectiveCaps.card.attachments);
-  const settingsRunRef = useRef(false);
-  useEffect(() => {
-    const wasRunning = settingsRunRef.current;
-    settingsRunRef.current = running;
-    if (!binding || (!running && !wasRunning)) return;
-    let cancelled = false;
-    // Initialization and a completed turn can both change the session's options.
-    // Keep session discoveries together instead of replacing them with the
-    // installation's older capability snapshot.
-    void readComposerSettings(binding, conversationId).then(next => {
-      if (cancelled) return;
-      setSettings(next.settings);
-      setCatalog(next.catalog);
-      setCaps(next.caps);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [binding, conversationId, running]);
   const lastItemId = items.length > 0 ? items[items.length - 1].itemId : null;
   /* 第 4 件（走查 F4）：助手消息给「复制 / 重发上一条」，用户消息给「复制 / 编辑
      重发」。运行中与外部态下一枚都不给——那两种状态下再发一句只会打架。
@@ -1449,39 +718,6 @@ export function ConversationPage({
   });
   const nativeSourceUnavailable = detail?.conversation?.id === conversationId && detail.historyStorage?.status === "source_unavailable";
   const loading = historyView === "skeleton" && !nativeSourceUnavailable;
-  /* 工具栏的四项取值：端点还没来（或返回 404）时按"四项都没有"渲染，也就是一枚都不出。 */
-  const baseBar = settings ?? emptyEffectiveSettings(binding?.id ?? "");
-  const bar = {
-    ...baseBar,
-    ...(detail?.conversation?.modelId ? { model: { value: detail.conversation.modelId, source: "engine" as const } } : {}),
-    ...(detail?.runtime?.workspaceRoot ? { workspaceRoot: { value: detail.runtime.workspaceRoot, source: "engine" as const } } : {}),
-  };
-  const selectedModel = catalogForBinding(catalog, binding)?.models.find(model => model.modelId === bar.model.value && (!detail?.conversation?.providerId || model.providerId === detail.conversation.providerId));
-  const conversationControls = settings?.conversationControls;
-  const reasoning = composerReasoning(bar, selectedModel, detail?.conversation?.reasoningMode);
-  const approval = {
-    ...bar.approvalMode,
-    ...(conversationControls?.approvalDefault ? { value: conversationControls.approvalDefault, source: "catalog" as const } : {}),
-    ...(detail?.conversation?.approvalMode ? { value: detail.conversation.approvalMode, source: "engine" as const } : {}),
-    options: conversationControls?.approvalModes ?? [],
-    choices: conversationControls?.approvalOptions,
-  };
-  /* batch27 第 5 件（真机 D4 / DESIGN ★I）：下拉**只列本引擎目录里的模型**。
-     认领与过滤都在 `lib/modelCatalogView.ts` 里（纯函数，直接受测）：目录的
-     `bindingId` 对不上就当没有目录，模型自带 `backendId` 时按它过滤。 */
-  const modelOptions: BarMenuOption[] = useMemo(
-    () => modelOptionsFor(catalog, binding, bar.model.value),
-    [binding, catalog, bar.model.value],
-  );
-  /* 没有目录（端点不在 / 取不到 / 那份目录不是这条 Binding 的）时不给写回调，
-     工具栏那枚模型 Pill 于是是**只读的当前模型一项**。目录在但空着是另一回事
-     （批次十五第 5 件）：菜单照旧点得开，里面写「引擎未报告可用模型」。 */
-  const modelCatalogPresent = hasModelCatalog(catalog, binding);
-  /* `degraded` 时下拉底部垫一行小字（DESIGN ★ I）。没有 diagnostics 就不垫——
-     "降级了但说不出原因"这句话对用户没有用（AD-71 的同一条精神）。 */
-  const ownCatalog = catalogForBinding(catalog, binding);
-  const modelDiagnostic = ownCatalog?.diagnostics?.[0] ?? null;
-  const modelDegraded = Boolean(ownCatalog?.degraded);
 
   const renderCard = (item: TimelineItem) => {
     const context = {
@@ -1507,108 +743,52 @@ export function ConversationPage({
     );
   };
 
+  const renameTitle = useCallback((title: string) => {
+    void patchConversation(conversationId, { title })
+      .then(() =>
+        setDetail((current) =>
+          current
+            ? { ...current, conversation: { ...current.conversation, title } }
+            : current,
+        ),
+      )
+      .catch((failure) =>
+        setError(t("conversation.title.failed", { error: describeFailure(failure) })),
+      );
+  }, [conversationId, t]);
+
+  const attachmentChips: ComposerChip[] = draft.attachments.map(file => ({
+    key: file.ref,
+    title: file.name,
+    icon: <FileText size={17} aria-hidden />,
+    name: attachmentName(file),
+    detail: typeof file.size === "number" ? fileSizeLabel(file.size) : t("conversation.attach.ready"),
+    removeLabel: t("conversation.attach.remove", { name: attachmentName(file) }),
+    onRemove: () => updateDraft(current => ({ ...current, attachments: current.attachments.filter(candidate => candidate.ref !== file.ref) })),
+  }));
+
   return (
     <div className="kaus-conversation-page">
-      {/* 页头背景横跨全宽，内容对齐 760 栏（G-1）。 */}
-      <header className="kaus-conversation-header">
-        <div className="kaus-thread kaus-conversation-headline">
-          {/* batch52 第 5 件：会话标题**此前没有任何界面入口**（侧栏 ⋯ 菜单里那条
-              「改名」走的是 `POST /api/agent/{name}/rename`，改的是项目的显示名）。
-              入口就放在标题本身上：点一下就地改，Enter 存、Esc 收——页头不因此多一枚
-              按钮（★H：这一片是中性的工作区，强调色只给运行点）。 */}
-          {titleDraft === null ? (
-            <button
-              type="button"
-              className="kaus-conversation-title"
-              data-testid="conversation-title"
-              title={t("conversation.title.rename")}
-              onClick={() => setTitleDraft(detail?.conversation?.title ?? "")}
-            >
-              {detail?.conversation?.title ?? t("conversation.title.fallback")}
-            </button>
-          ) : (
-            <input
-              autoFocus
-              className="kaus-conversation-title kaus-conversation-title-input"
-              aria-label={t("conversation.title.field")}
-              data-testid="conversation-title-input"
-              value={titleDraft}
-              onChange={(event) => setTitleDraft(event.target.value)}
-              onBlur={() => setTitleDraft(null)}
-              onKeyDown={(event) => {
-                if (event.nativeEvent.isComposing) return;
-                if (event.key === "Escape") {
-                  setTitleDraft(null);
-                  return;
-                }
-                if (event.key !== "Enter") return;
-                event.preventDefault();
-                const title = titleDraft.trim();
-                setTitleDraft(null);
-                // 空标题不发：后端会 400 `empty_title`，但用户按 Enter 想要的是
-                // 「算了」，不是一条错误提示。
-                if (!title || title === detail?.conversation?.title) return;
-                void patchConversation(conversationId, { title })
-                  .then(() =>
-                    setDetail((current) =>
-                      current
-                        ? { ...current, conversation: { ...current.conversation, title } }
-                        : current,
-                    ),
-                  )
-                  .catch((failure) =>
-                    setError(t("conversation.title.failed", { error: describeFailure(failure) })),
-                  );
-              }}
-            />
-          )}
-          <div className="kaus-conversation-meta">
-            <span
-              className={`kaus-status ${running ? "is-running" : ""}`}
-              data-testid="conversation-status"
-              /* 离线原因是人话，挂在 title 上（页头不因此多一枚 chip）。 */
-              title={engineOffline && probe?.message ? probe.message : undefined}
-            >
-              {/* H-1：强调色在会话页只剩两处，这是其一（运行状态点）。 */}
-              {running && <span className="kaus-run-dot kaus-accent" data-accent="run" />}
-              {archived ? t("conversation.archived") : statusText}
-            </span>
-            {/* G-8：用量折成一枚 Pill，挂在页头右侧；没有 usage 能力就不渲染。 */}
-            {hasCapability(effectiveCaps.card.usage) && <UsagePill usage={timeline.usage} />}
-            {canOpenExternal && (
-              <button
-                type="button"
-                className="kaus-chat-icon-action"
-                data-testid="open-external"
-                /* 运行中是**禁用**不是报错（第 1 件）：提示挂在 title 上。 */
-                disabled={running || handoffBusy}
-                title={running ? t("surface.action.stopFirst") : t("surface.action.openExternal")}
-                aria-label={t("surface.action.openExternal")}
-                onClick={() => void toExternal()}
-              >
-                <Terminal size={16} aria-hidden />
-              </button>
-            )}
-            {archived ? (
-              <button type="button" className="kaus-chat-icon-action" title={t("conversation.restore")} aria-label={t("conversation.restore")}
-                disabled={archiveBusy} onClick={() => void changeArchive(false)}><ArchiveRestore size={16} aria-hidden /></button>
-            ) : (
-              <span className="kaus-conversation-actions" ref={actionsRef}>
-                <button type="button" className="kaus-chat-icon-action" title={t("conversation.actions")} aria-label={t("conversation.actions")}
-                  aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen(value => !value)}><Ellipsis size={17} aria-hidden /></button>
-                {actionsOpen && <span className="kaus-bar-pop" role="menu" aria-label={t("conversation.actions")}>
-                  {onContinue && <button type="button" role="menuitem" className="kaus-bar-pop-item" disabled={running || sending || handoffBusy}
-                    onClick={() => { setActionsOpen(false); setContinuationOpen(true); }}><GitBranch size={14} aria-hidden />{t("continuation.title")}</button>}
-                  <button type="button" role="menuitem" className="kaus-bar-pop-item" disabled={running || stopping || sending || handoffBusy || archiveBusy || external}
-                    title={running || external ? t("surface.action.stopFirst") : undefined} onClick={() => void changeArchive(true)}>
-                    <Archive size={14} aria-hidden />{t("conversation.archive")}
-                  </button>
-                </span>}
-              </span>
-            )}
-          </div>
-        </div>
-      </header>
+      <ConversationHeader
+        title={detail?.conversation?.title}
+        onRename={renameTitle}
+        running={running}
+        archived={archived}
+        statusText={statusText}
+        /* 离线原因是人话，挂在 title 上（页头不因此多一枚 chip）。 */
+        statusTitle={engineOffline && probe?.message ? probe.message : undefined}
+        showUsage={hasCapability(effectiveCaps.card.usage)}
+        usage={timeline.usage}
+        canOpenExternal={canOpenExternal}
+        handoffBusy={handoffBusy}
+        onOpenExternal={() => void toExternal()}
+        archiveBusy={archiveBusy}
+        onChangeArchive={changeArchive}
+        onOpenContinuation={onContinue ? () => setContinuationOpen(true) : undefined}
+        continuationDisabled={running || sending || handoffBusy}
+        archiveDisabled={running || stopping || sending || handoffBusy || archiveBusy || external}
+        archiveTitle={running || external ? t("surface.action.stopFirst") : undefined}
+      />
       {continuationOpen && detail && onContinue && <ContinuationDialog
         source={{ kind: "conversation", id: conversationId, projectId: detail.conversation.projectId }}
         onClose={() => setContinuationOpen(false)} onCreated={onContinue} />}
@@ -1642,10 +822,10 @@ export function ConversationPage({
 
       <div className="kaus-timeline-shell">
       <div className="kaus-timeline" data-testid="timeline" ref={scrollRef} onScroll={onScroll}
-        onWheelCapture={() => { userScrollIntent.current = true; scrollInput.markInput(); }}
-        onTouchStart={() => { userScrollIntent.current = true; scrollInput.markInput(); }}
-        onPointerDown={event => { if (event.target === event.currentTarget) { userScrollIntent.current = true; scrollInput.markInput(); } }}
-        onKeyDownCapture={event => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) { userScrollIntent.current = true; scrollInput.markInput(); } }}>
+        onWheelCapture={markUserScroll}
+        onTouchStart={markUserScroll}
+        onPointerDown={event => { if (event.target === event.currentTarget) markUserScroll(); }}
+        onKeyDownCapture={event => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) markUserScroll(); }}>
         <div className="kaus-thread kaus-thread-flow">
           {loading && (
             <div data-testid="timeline-skeleton" aria-label={t("conversation.loading")}>
@@ -1685,32 +865,14 @@ export function ConversationPage({
               <div key={row.key} data-message-anchor={row.item.kind === "message" && row.item.role === "user" ? row.item.itemId : undefined}>{renderCard(row.item)}</div>
             ),
           )}
-          {/* Local submissions and persisted messages share receipt controls. */}
-          {page.pending.map((item) => (
-            <div
-              key={item.clientRef}
-              data-testid="pending-message"
-              data-status={item.status}
-              className={`kaus-msg kaus-content-message is-user ${item.status === "failed" ? "is-failed is-undelivered" : item.status === "sending" ? "is-pending" : "is-delivery-unconfirmed"}`}
-            >
-              <div className="kaus-msg-body">{item.text}</div>
-              {!!item.attachments?.length && <div className="kaus-pending-attachments">{item.attachments.map(file => <span key={file.ref}><FileText size={14} />{attachmentName(file)}</span>)}</div>}
-              {item.status !== "sending" && <div className="kaus-msg-footer">
-                <MessageDeliveryStatus state={item.status}
-                  label={t(item.status === "failed" ? "conversation.pending.failed" : "conversation.pending.unconfirmed")}
-                  recovery={item.status === "failed" ? {
-                    label: t("conversation.pending.retry"),
-                    title: t(running || stopping ? "conversation.message.resend.wait" : "conversation.pending.retry"),
-                    disabled: running || stopping || settingsBusy || readOnly,
-                    onClick: () => void resend(item),
-                  } : {
-                    label: t("conversation.pending.check"),
-                    disabled: checkingDelivery === item.clientRef,
-                    onClick: () => void checkDelivery(item.clientRef),
-                  }} />
-              </div>}
-            </div>
-          ))}
+          <PendingMessageRows
+            pending={page.pending}
+            retryDisabled={running || stopping || settingsBusy || readOnly}
+            retryWaiting={running || stopping}
+            checkingDelivery={checkingDelivery}
+            onResend={item => void resend(item)}
+            onCheckDelivery={clientRef => void checkDelivery(clientRef)}
+          />
           {/* 第 3 件：回站后折叠的历史组，接在消息流末尾。 */}
           {detailLoaded && detail?.conversation?.id === conversationId && !nativeSourceUnavailable && history.groups.map((group) => (
             <ExternalHistoryGroup key={group.id} group={group} />
@@ -1776,49 +938,32 @@ export function ConversationPage({
             {unread > 0 && <span>{unread}</span>}
           </button>
         )}
-        <div
-          className={`kaus-composer is-stacked${dragging ? " is-dragging" : ""}`}
-          onDragOver={event => {
-            if (!event.dataTransfer.types.includes("Files") || readOnly) return;
-            event.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={event => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
-          }}
-          onDrop={event => {
-            if (!event.dataTransfer.files.length || readOnly) return;
-            event.preventDefault();
-            setDragging(false);
-            void addFiles(Array.from(event.dataTransfer.files));
-          }}
-        >
-          <ComposerBar
-            contextKey={conversationId}
-            engineName={engineName}
-            engineId={binding?.backendId}
-            workspaceRoot={bar.workspaceRoot}
-            onChangeWorkspaceRoot={readOnly || running || settingsBusy ? undefined : changeWorkspaceRoot}
-            model={{ ...bar.model, value: modelValue(bar.model.value, detail?.conversation?.providerId ?? catalog?.defaultProviderId, catalog) }}
-            modelOptions={modelOptions}
-            modelDiagnostic={modelDiagnostic}
-            modelDegraded={modelDegraded}
-            onChangeModel={
-              readOnly || running || settingsBusy || !modelCatalogPresent || !hasCapability(effectiveCaps.models.conversationScoped) ? undefined : (next) => void changeModel(next)
-            }
-            reasoning={reasoning}
-            onChangeReasoning={!readOnly && !running && !settingsBusy && conversationControls?.reasoning ? (level) => void changeSessionSetting({ reasoningMode: level }) : undefined}
-            approval={approval}
-            onChangeApproval={!readOnly && !running && !settingsBusy && approval.options.length ? (mode) => void changeSessionSetting({ approvalMode: mode }) : undefined}
-            executionMode={detail?.conversation?.executionMode ?? conversationControls?.executionDefault}
-            executionOptions={conversationControls?.executionModes?.map(option => ({ value: option.id, label: option.name }))}
-            onChangeExecutionMode={!readOnly && !running && !settingsBusy ? (mode) => void changeSessionSetting({ executionMode: mode }) : undefined}
-            configOptions={conversationControls?.configOptions}
-            configValues={detail?.conversation?.configOptions}
-            onChangeConfig={!readOnly && !running && !settingsBusy ? (key, value) => void changeSessionSetting({ configOptions: { [key]: value } }) : undefined}
-            attachments={readOnly ? null : effectiveCaps.card.attachments ?? null}
-            onAttach={canAttach && !readOnly ? () => fileInputRef.current?.click() : undefined}
-            actions={
+        <Composer
+          bar={{
+            contextKey: conversationId,
+            engineName,
+            engineId: binding?.backendId,
+            workspaceRoot: bar.workspaceRoot,
+            onChangeWorkspaceRoot: readOnly || running || settingsBusy ? undefined : changeWorkspaceRoot,
+            model: { ...bar.model, value: modelValue(bar.model.value, detail?.conversation?.providerId ?? catalog?.defaultProviderId, catalog) },
+            modelOptions,
+            modelDiagnostic,
+            modelDegraded,
+            onChangeModel:
+              readOnly || running || settingsBusy || !modelCatalogPresent || !hasCapability(effectiveCaps.models.conversationScoped) ? undefined : (next) => void changeModel(next),
+            reasoning,
+            onChangeReasoning: !readOnly && !running && !settingsBusy && conversationControls?.reasoning ? (level) => void changeSessionSetting({ reasoningMode: level }) : undefined,
+            approval,
+            onChangeApproval: !readOnly && !running && !settingsBusy && approval.options.length ? (mode) => void changeSessionSetting({ approvalMode: mode }) : undefined,
+            executionMode: detail?.conversation?.executionMode ?? conversationControls?.executionDefault,
+            executionOptions: conversationControls?.executionModes?.map(option => ({ value: option.id, label: option.name })),
+            onChangeExecutionMode: !readOnly && !running && !settingsBusy ? (mode) => void changeSessionSetting({ executionMode: mode }) : undefined,
+            configOptions: conversationControls?.configOptions,
+            configValues: detail?.conversation?.configOptions,
+            onChangeConfig: !readOnly && !running && !settingsBusy ? (key, value) => void changeSessionSetting({ configOptions: { [key]: value } }) : undefined,
+            attachments: readOnly ? null : effectiveCaps.card.attachments ?? null,
+            onAttach: canAttach && !readOnly ? () => fileInputRef.current?.click() : undefined,
+            actions:
               /* G-6：运行中主按钮变「停止」；`interrupt` 能力缺失时不显示停止，
                  只把发送禁掉（AD-71：不留占位、不写备注）。 */
               running && canInterrupt && !external ? (
@@ -1846,57 +991,23 @@ export function ConversationPage({
                 >
                   <ArrowUp size={18} aria-hidden />
                 </button>
-              )
-            }
-          >
-          <input ref={fileInputRef} type="file" multiple hidden aria-label={t("bar.attach")} accept={effectiveCaps.card.attachments === "images" ? "image/png,image/jpeg,image/webp,image/gif" : undefined} onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ""; void addFiles(files); }} />
-          {(draft.attachments.length > 0 || uploading.length > 0) && (
-            <div className="kaus-attachment-tray" aria-label={t("conversation.attach.list")}>
-              {draft.attachments.map(file => (
-                <div className="kaus-attachment-chip" key={file.ref} title={file.name}>
-                  <FileText size={17} aria-hidden />
-                  <span><strong><AttachmentFilename name={attachmentName(file)} /></strong><small>{typeof file.size === "number" ? fileSizeLabel(file.size) : t("conversation.attach.ready")}</small></span>
-                  <button type="button" onClick={() => updateDraft(current => ({ ...current, attachments: current.attachments.filter(candidate => candidate.ref !== file.ref) }))} aria-label={t("conversation.attach.remove", { name: attachmentName(file) })}><X size={14} /></button>
-                </div>
-              ))}
-              {uploading.map(id => <div className="kaus-attachment-chip is-uploading" key={id}><LoaderCircle size={16} /><span>{t("conversation.attach.uploading")}</span></div>)}
-            </div>
-          )}
-          {dragging && <div className="kaus-drop-hint"><Paperclip size={18} />{t("conversation.attach.drop")}</div>}
-          <div className="kaus-composer-row">
-            <textarea
-              ref={composerRef}
-              aria-label={t("conversation.message.label")}
-              rows={2}
-              /* 第 2 件：外部态下输入框禁用，占位文字换成"回到站内后可继续"。 */
-              disabled={readOnly}
-              placeholder={
-                archived ? t("conversation.archived") : external ? t("surface.composer.placeholder") : t("conversation.composer.placeholder")
-              }
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              onPaste={event => {
-                if (!event.clipboardData.files.length || readOnly) return;
-                event.preventDefault();
-                void addFiles(Array.from(event.clipboardData.files));
-              }}
-              /* 第 4 件①：与草稿页同一套键位——Enter 发送、Shift+Enter 换行，
-                 ⌘/Ctrl+Enter 继续可用；输入法组字期间的 Enter 是选词，不发送。 */
-              onCompositionStart={composerInput.onCompositionStart}
-              onCompositionEnd={composerInput.onCompositionEnd}
-              onKeyDown={(event) => {
-                if (composerInput.guardKeyDown(event)) return;
-                if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
-                event.preventDefault();
-                /* batch39 第 1 件：这里**不**再判一次运行态——规矩住在 `send()` 里，
-                   按钮和 Enter 才不会各说各的。运行中它会原样退回并打开下面那句提示。 */
-                void send();
-              }}
-            />
-          </div>
-
-          </ComposerBar>
-        </div>
+              ),
+          }}
+          onFiles={files => void addFiles(files)}
+          filesBlocked={readOnly}
+          accept={effectiveCaps.card.attachments === "images" ? "image/png,image/jpeg,image/webp,image/gif" : undefined}
+          fileInputRef={fileInputRef}
+          chips={attachmentChips}
+          extraChips={uploading.map(id => <div className="kaus-attachment-chip is-uploading" key={id}><LoaderCircle size={16} /><span>{t("conversation.attach.uploading")}</span></div>)}
+          textareaRef={composerRef}
+          text={text}
+          onTextChange={setText}
+          /* 第 2 件：外部态下输入框禁用，占位文字换成"回到站内后可继续"。 */
+          disabled={readOnly}
+          placeholder={archived ? t("conversation.archived") : external ? t("surface.composer.placeholder") : t("conversation.composer.placeholder")}
+          rows={2}
+          onSend={() => void send()}
+        />
         {storageFailed && <div className="kaus-composer-caption" role="status">{t("conversation.draft.failed")}</div>}
         {/* batch39 第 1 件：运行中按了 Enter 之后的那一句。中性到底（★H）——它说的是
             "现在还轮不到这一句"，不是一个错误，所以不上红、没有图标、也没有关闭键：
@@ -1919,27 +1030,3 @@ export function ConversationPage({
     </div>
   );
 }
-
-/** 能力未知时的兜底：全部按 supported 渲染（见上面 effectiveCaps 处的理由）。 */
-const FALLBACK_CAPS: UiCapabilities = {
-  structuredEvents: "supported",
-  sessions: { list: "unknown", create: "unknown", resume: "unknown", history: "unknown", branch: "unknown" },
-  card: {
-    streaming: "supported",
-    tools: { calls: "supported", output: "supported" },
-    terminal: "supported",
-    fileChanges: "supported",
-    artifacts: "supported",
-    plan: "supported",
-    reasoning: "supported",
-    permissions: "supported",
-    questions: "supported",
-    authentication: "supported",
-    usage: "supported",
-    interrupt: "unknown",
-    attachments: "unknown",
-  },
-  externalCli: { supported: "unknown", resume: "unknown" },
-  models: { mode: "fixed", reasoning: "unknown", providers: "unknown" },
-  capabilityProjection: {},
-};

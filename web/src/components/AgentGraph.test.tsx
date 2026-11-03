@@ -31,19 +31,11 @@ const node = (name: string, overrides: Partial<OrgNode> = {}): OrgNode => ({
   name,
   label: "",
   is_pinned: false,
-  model: null,
-  role: "none",
-  in_network: true,
-  gateway: null,
-  skill_count: 0,
-  symlinks: [],
   parent: null,
   killed: false,
   effective_killed: false,
-  main_twin: false,
   is_draft: false,
   children: [],
-  twins: [],
   ...overrides,
 });
 
@@ -54,7 +46,6 @@ const net: NetworkResp = {
   },
   roots: ["default"],
   drafts: [],
-  source: "test",
 };
 
 function renderGraph() {
@@ -196,11 +187,7 @@ describe("轮盘项目节点的两种拖拽（★J-4，batch43）", () => {
     api.apiPost.mockResolvedValue({
       from: { parent: "default" },
       to: { parent: null },
-      config_diff: { items: [] },
-      skill_diff: { skill_inherit_on: false, converted: false },
-      constitution: { subscribed: false },
       descendants: [],
-      is_main_twin: false,
       warnings: [],
     });
     renderGraph();

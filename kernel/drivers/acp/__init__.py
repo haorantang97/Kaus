@@ -11,7 +11,13 @@
 - :mod:`drivers.acp.client`：stdio JSON-RPC 客户端（标准库 asyncio subprocess）；
 - :mod:`drivers.acp.translator`：ACP 通知 → :class:`AgentEventEnvelope`；
 - :mod:`drivers.acp.capabilities`：``initialize`` 结果 → :class:`BackendCapabilities`；
-- :mod:`drivers.acp.driver`：:class:`BackendDriver` 实现，``driver_kind="acp"``；
+- :mod:`drivers.acp.driver`：:class:`BackendDriver` 实现，``driver_kind="acp"``，由下列
+  模块的 mixin 组合而成：:mod:`~drivers.acp.handshake`（起进程 / initialize / probe）、
+  :mod:`~drivers.acp.catalog`（模型目录与登录态）、:mod:`~drivers.acp.session_config`
+  （模型 / 推理 / 权限 / 运行模式映射）、:mod:`~drivers.acp.projection`（项目能力投影）、
+  :mod:`~drivers.acp.sessions`（原生会话）、:mod:`~drivers.acp.card_runtime`（运行时启停）、
+  :mod:`~drivers.acp.turns`（prompt / 中断）、:mod:`~drivers.acp.inbound`（入站回调与客户端 fs）、
+  :mod:`~drivers.acp.external_cli`（站外终端）；共享数据结构在 :mod:`~drivers.acp.runtime_state`；
 - :mod:`drivers.acp.testing`：假 ACP agent 与契约测试夹具（仅测试用）。
 
 纯净性

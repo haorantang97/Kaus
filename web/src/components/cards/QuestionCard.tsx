@@ -7,7 +7,7 @@
 import { useState } from "react";
 
 import { useLocale } from "../../i18n";
-import { Button, cream, inputStyle } from "../ui";
+import { Button, inputStyle } from "../ui";
 import { CardShell, type EngineLabel } from "./CardShell";
 import type { InteractionItem } from "./timelineReducer";
 

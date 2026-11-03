@@ -1,6 +1,6 @@
 # Project 配置通用化（设计稿）
 
-2026-11-02，待项目负责人确认。未实现。取代 [project-instructions-design.md](project-instructions-design.md)。
+2026-11-02 起草，2026-11-03 项目负责人确认（记忆按第 5 节、分期按下文，原生 MCP 隔离并入第一期）。未实现。取代 [project-instructions-design.md](project-instructions-design.md)。
 
 ## 目标
 
@@ -31,7 +31,7 @@ Project 树、指令、记忆、技能、MCP、插件只存在 SQLite（`project
 - Hermes 驱动在启动时从数据库生成它要读的文件（`SOUL.md` 的托管段等），和其他 Agent 的指令文件同一机制。这属于驱动适配。
 - 去掉默认自动接入 Hermes：空环境不再创建 `binding:default:hermes`，新会话页按已安装的 Agent 选默认值。
 - 删除 `system_prompt_suffix`。
-- 迁移完成后删除 `server.py` 里围绕 `~/.hermes` 的后台任务：配置继承物化（`_config_sync_tick`）、用量汇总到主 Agent、索引同步、守则同步，以及 `MAIN_AGENT` / 主 Agent 孪生档案逻辑；接手时登记的相关问题随之复核。
+- 迁移完成后删除 `server.py` 里围绕 `~/.hermes` 的后台任务：配置继承物化（`_config_sync_tick`）、用量汇总到主 Agent、索引同步、守则同步，以及 `MAIN_AGENT` / 主 Agent 孪生档案逻辑；接手时登记的相关问题随之复核。（2026-11-03 removed：以上连同任务板、`selfcheck.py`、`scripts/ops`、默认 Hermes Binding 已删除。）
 - Hermes 运行配置（提供方、记忆、委派）：能对应通用项的并入（记忆并入第 5 节，委派并入通用 `delegation`），其余只在 Hermes 驱动里保留；其他 Agent 的项目页对这些项显示「未生效」。
 - 原生 Hermes 反复「应用」导致指令越写越长：迁移时统一改成托管段，重复写入只替换不追加。
 
@@ -55,6 +55,21 @@ Project 树、指令、记忆、技能、MCP、插件只存在 SQLite（`project
 3. **都没有**：逐个实测启动参数后接入，之前显示「未生效」。
 
 没有工作目录的 Project，开第一个对话时要求选目录。
+
+### 3a. 原生 MCP 隔离
+
+接入时读到的 Agent 全局 MCP 已能分配到 Project（2026-11-03 起），但源 Agent 仍加载自己全部的全局 MCP。每次启动时，驱动算出「该 Agent 自带、但未分配给当前 Project」的 MCP 名称，用该 Agent 自己的机制只在本次启动中排除，不改用户配置文件，不保存密钥：
+
+| Agent | 机制 | 状态 |
+| --- | --- | --- |
+| Copilot | 启动参数 `--disable-mcp-server=<名称>`（可重复） | 官方文档有，需实测 |
+| Codex | 启动配置覆盖 `mcp_servers.<名称>.enabled=false` | 需实测 |
+| Gemini、Qwen | `--allowed-mcp-server-names`（列出允许的），或配置中的排除名单 | 新旧键名不一，需实测 |
+| OpenCode | `OPENCODE_CONFIG_CONTENT` 传入 `enabled: false` | 部分条目能否通过校验需实测 |
+| Claude Code | 无按名禁用参数；用严格模式只加载 Kaus 传入的 MCP：启动时读原配置，把已分配的完整定义在内存里传给子进程 | 需实测，注意用户在 `~/.claude.json` 手动禁用的项 |
+| Cursor | 未找到按会话禁用的方式 | 标「未隔离」 |
+
+未实测通过的 Agent，项目页在其 MCP 分组上标「未隔离」。
 
 ### 4. 接入已有文件夹
 
@@ -92,6 +107,8 @@ Project 树、指令、记忆、技能、MCP、插件只存在 SQLite（`project
 
 **协作组**：组员写入的是组内资料，不进 Project 记忆。
 
+**项目概述**：记忆里固定有一条「项目概述」（这个 Project 做什么、当前目标），和其他条目一样由 Agent 静默维护；新建 Project 时填写的描述作为初始值。控制 MCP 的 `kaus_overview` 把它作为各 Project 的职责描述返回，供主 Agent 选择派给谁。
+
 ### 6. 插件
 
 格式以外部为准，Kaus 不自定义：
@@ -106,11 +123,16 @@ Project 树、指令、记忆、技能、MCP、插件只存在 SQLite（`project
 
 ## 分期
 
-1. 唯一存储与迁移、指令编辑器、自动送达（Claude、Codex 注入，其余写文件）、去掉默认 Hermes、删死设置。
+1. 第一期，按顺序：
+   1. 唯一存储：建表与读写接口，一次性迁移档案目录（守则、人设、技能、MCP、树结构），原目录改名备份；`create-empty` 等写入改走数据库，解决测试隔离缺口。
+   2. 指令编辑器：项目页「配置」一栏，分节、继承标记、本级改写 / 屏蔽、每个 Agent 的送达状态；守则编辑器并入后删除。
+   3. 自动送达：Claude、Codex 启动时注入；其余写托管段；没有工作目录时开对话先选目录；接入已有文件夹时默认导入。
+   4. 原生 MCP 隔离（第 3a 节）。
+   5. 收尾：去掉默认接入 Hermes、删 `system_prompt_suffix`、删 `~/.hermes` 后台任务与主 Agent 孪生逻辑、Hermes 运行配置按第 1 节处理、「应用项目配置」按钮删除。
+   每一步单独可测、可提交；真实 Agent 的验收在隔离环境（`discovery_scope`）里做，按已安装的 Agent 逐个进行。
 2. Project 记忆与原生记忆改向。
 3. 插件与能力库。
 
-## 待确认
+## 确认结果
 
-1. 第 5 节：整理放在日常写入里、手动整理靠对话，可以吗？
-2. 分期顺序可以吗？
+2026-11-03：第 5 节记忆方案与分期顺序确认；原生 MCP 隔离并入第一期。

@@ -275,7 +275,7 @@ export class EventTransport<E> {
 
   private async pollOnce(): Promise<void> {
     if (this.stopped || !this.polling) return;
-    let delay = this.pollDelay();
+    let delay: number;
     try {
       const page = await this.deps.fetchSnapshot(this.last);
       if (this.stopped || !this.polling) return;

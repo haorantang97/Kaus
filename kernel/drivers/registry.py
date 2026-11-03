@@ -208,7 +208,7 @@ class BackendDriverRegistry:
             return False
         try:
             return normalize_backend_id(backend_id) in self._drivers
-        except Exception:  # noqa: BLE001 - 非法 id 视为不存在
+        except ValueError:  # 非法 id（InvalidIdentifierError）视为不存在
             return False
 
     def __len__(self) -> int:

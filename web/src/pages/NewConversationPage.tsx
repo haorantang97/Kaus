@@ -1,12 +1,10 @@
-import { AttachmentFilename } from "../components/AttachmentFilename";
-import { useComposerAutosize, useComposerInputGuard } from "../hooks/useComposerInput";
 import { engineAcceptsNewWork } from "../lib/engineAvailability";
 import { EngineIcon } from "../components/EngineIcon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileText, LoaderCircle, Paperclip, ArrowUp, X } from "lucide-react";
+import { FileText, LoaderCircle, ArrowUp } from "lucide-react";
 import { useLocale } from "../i18n";
-import { cream } from "../components/ui";
-import { BarMenu, ComposerBar, type BarMenuOption } from "../components/ComposerBar";
+import { BarMenu, type BarMenuOption } from "../components/ComposerBar";
+import { Composer, type ComposerChip } from "../components/Composer";
 import { AttentionBlock } from "../components/AttentionBlock";
 import { useModuleAttention } from "../lib/moduleAttention";
 import { backendDisplay, engineBrand, engineFamily } from "../lib/backend-display";
@@ -150,7 +148,6 @@ export function NewConversationPage({
   const [files, setFiles] = useState<File[]>([]);
   const filesRef = useRef<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
   const [uploadingName, setUploadingName] = useState<string | null>(null);
   const sendLockRef = useRef(false);
   const createdDraftsRef = useRef(new Map<string, { id: string; modelId: string | null; uploads: Map<File, ConversationAttachment> }>());
@@ -332,9 +329,6 @@ export function NewConversationPage({
     writeDraftText(text);
   }, [text]);
 
-  useComposerAutosize(textareaRef, text);
-  const composerInput = useComposerInputGuard();
-
   const bar = settings ?? emptyEffectiveSettings(bindingId);
   const modelOptions: BarMenuOption[] = useMemo(
     () =>
@@ -453,21 +447,25 @@ export function NewConversationPage({
   }, [binding, bindingId, currentOptions, bar.model.value, canAttach, canChooseModel, caps?.card.attachments, onCreated, projectId, selectedModelId, selectedReasoning, selectedApproval, selectedExecution, selectedConfig, settingsPending, text, t]);
 
   /* 第 4 件①：`Enter` 发送、`Shift+Enter` 换行，⌘/Ctrl+Enter 继续可用。
-     中文输入法组字期间的 Enter 是"选词"，绝不能当发送（`isComposing`）。 */
-  const onComposerKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (composerInput.guardKeyDown(event)) return;
-      if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
-      event.preventDefault();
-      void send();
-    },
-    [send],
-  );
+     中文输入法组字期间的 Enter 是"选词"，绝不能当发送——键位住在 `Composer` 里。 */
+  const onSend = useCallback(() => { void send(); }, [send]);
 
   const projectName = projects.find((item) => item.id === projectId)?.displayName ?? projectId;
   /* 第 5 件：项目菜单按项目树排（父在前、子跟着，`depth` 只用来缩进）。
      父不在这份清单里的（被过滤 / 权限外）当作顶层，不让它整枝消失。 */
   const projectOptions: BarMenuOption[] = useMemo(() => projectMenuOptions(projects, bindings ?? []), [projects, bindings]);
+
+  /* 草稿页先攒 `File[]`，发送时才上传：chip 的图标与小字跟着 `uploadingName` 走。 */
+  const fileChips: ComposerChip[] = files.map((file, index) => ({
+    key: `${file.name}:${file.lastModified}:${index}`,
+    title: file.name,
+    icon: uploadingName === file.name ? <LoaderCircle size={17} /> : <FileText size={17} />,
+    name: file.name,
+    detail: uploadingName === file.name ? t("conversation.attach.uploading") : fileSizeLabel(file.size),
+    removeLabel: t("conversation.attach.remove", { name: file.name }),
+    removeDisabled: sending,
+    onRemove: () => updateFiles(files.filter((_, itemIndex) => itemIndex !== index)),
+  }));
 
   return (
     <div className="kaus-draft-page" data-testid="draft-page">
@@ -487,15 +485,10 @@ export function NewConversationPage({
         </div>}
 
         {/* 批次十三：草稿页接会话页那条工具栏（DESIGN ★ I），项目下拉保留在最左。 */}
-        <div
-          className={`kaus-composer is-stacked${dragging ? " is-dragging" : ""}`}
-          onDragOver={(event) => { if (!event.dataTransfer.types.includes("Files") || sending) return; event.preventDefault(); setDragging(true); }}
-          onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
-          onDrop={(event) => { if (!event.dataTransfer.files.length) return; event.preventDefault(); setDragging(false); addFiles(Array.from(event.dataTransfer.files)); }}
-        >
-          <ComposerBar
-            contextKey={projectId ?? "draft"}
-            leading={
+        <Composer
+          bar={{
+            contextKey: projectId ?? "draft",
+            leading: (
               <>
                 <BarMenu
                   label={t("draft.field.project")}
@@ -521,27 +514,27 @@ export function NewConversationPage({
                   onSelect={(next) => { void selectEngine(next); }}
                 />
               </>
-            }
-            workspaceRoot={bar.workspaceRoot}
-            onChangeWorkspaceRoot={changeWorkspaceRoot}
-            model={{ ...bar.model, value: selectedValue }}
-            modelOptions={modelOptions}
-            modelDiagnostic={modelDiagnostic}
-            modelDegraded={modelDegraded}
-            onChangeModel={canChooseModel && !sending ? (value) => { setSelectedModelId(value); setSelectedReasoning(null); } : undefined}
-            reasoning={reasoning}
-            onChangeReasoning={controls?.reasoning && !sending && !settingsPending ? setSelectedReasoning : undefined}
-            approval={approval}
-            onChangeApproval={approval.options.length && !sending ? setSelectedApproval : undefined}
-            executionMode={selectedExecution ?? controls?.executionDefault}
-            executionOptions={controls?.executionModes?.map(option => ({ value: option.id, label: option.name }))}
-            onChangeExecutionMode={!sending ? setSelectedExecution : undefined}
-            configOptions={controls?.configOptions}
-            configValues={selectedConfig}
-            onChangeConfig={!sending ? (key, value) => setSelectedConfig(current => ({ ...current, [key]: value })) : undefined}
-            attachments={caps?.card.attachments}
-            onAttach={canAttach && !sending ? () => fileInputRef.current?.click() : undefined}
-            actions={
+            ),
+            workspaceRoot: bar.workspaceRoot,
+            onChangeWorkspaceRoot: changeWorkspaceRoot,
+            model: { ...bar.model, value: selectedValue },
+            modelOptions,
+            modelDiagnostic,
+            modelDegraded,
+            onChangeModel: canChooseModel && !sending ? (value) => { setSelectedModelId(value); setSelectedReasoning(null); } : undefined,
+            reasoning,
+            onChangeReasoning: controls?.reasoning && !sending && !settingsPending ? setSelectedReasoning : undefined,
+            approval,
+            onChangeApproval: approval.options.length && !sending ? setSelectedApproval : undefined,
+            executionMode: selectedExecution ?? controls?.executionDefault,
+            executionOptions: controls?.executionModes?.map(option => ({ value: option.id, label: option.name })),
+            onChangeExecutionMode: !sending ? setSelectedExecution : undefined,
+            configOptions: controls?.configOptions,
+            configValues: selectedConfig,
+            onChangeConfig: !sending ? (key, value) => setSelectedConfig(current => ({ ...current, [key]: value })) : undefined,
+            attachments: caps?.card.attachments,
+            onAttach: canAttach && !sending ? () => fileInputRef.current?.click() : undefined,
+            actions: (
               <button
                 type="button"
                 className="kaus-send"
@@ -552,34 +545,23 @@ export function NewConversationPage({
               >
                 {sending ? <LoaderCircle size={18} aria-hidden /> : <ArrowUp size={18} aria-hidden />}
               </button>
-            }
-          >
-          <input ref={fileInputRef} type="file" multiple hidden aria-label={t("bar.attach")} accept={caps?.card.attachments === "images" ? "image/png,image/jpeg,image/webp,image/gif,image/avif" : undefined} disabled={sending} onChange={(event) => { const selected = Array.from(event.target.files || []); event.target.value = ""; addFiles(selected); }} />
-          {!!files.length && <div className="kaus-attachment-tray" aria-label={t("conversation.attach.list")}>
-            {files.map((file, index) => <div className="kaus-attachment-chip" key={`${file.name}:${file.lastModified}:${index}`} title={file.name}>
-              {uploadingName === file.name ? <LoaderCircle size={17} /> : <FileText size={17} />}
-              <span><strong><AttachmentFilename name={file.name} /></strong><small>{uploadingName === file.name ? t("conversation.attach.uploading") : fileSizeLabel(file.size)}</small></span>
-              <button type="button" disabled={sending} onClick={() => updateFiles(files.filter((_, itemIndex) => itemIndex !== index))} aria-label={t("conversation.attach.remove", { name: file.name })}><X size={14} /></button>
-            </div>)}
-          </div>}
-          {dragging && <div className="kaus-drop-hint"><Paperclip size={18} />{t("conversation.attach.drop")}</div>}
-          <div className="kaus-composer-row">
-            <textarea
-              ref={textareaRef}
-              aria-label={t("conversation.message.label")}
-              placeholder={t("draft.composer.placeholder")}
-              value={text}
-              disabled={sending}
-              rows={3}
-              onChange={(event) => setText(event.target.value)}
-              onCompositionStart={composerInput.onCompositionStart}
-              onCompositionEnd={composerInput.onCompositionEnd}
-              onKeyDown={onComposerKeyDown}
-              onPaste={(event) => { if (!event.clipboardData.files.length) return; event.preventDefault(); addFiles(Array.from(event.clipboardData.files)); }}
-            />
-          </div>
-          </ComposerBar>
-        </div>
+            ),
+          }}
+          onFiles={addFiles}
+          /* 发送中不接拖放 / 粘贴（`addFiles` 自己也会因 `sendLockRef` 退回）。 */
+          filesBlocked={sending}
+          accept={caps?.card.attachments === "images" ? "image/png,image/jpeg,image/webp,image/gif,image/avif" : undefined}
+          fileInputRef={fileInputRef}
+          fileInputDisabled={sending}
+          chips={fileChips}
+          textareaRef={textareaRef}
+          text={text}
+          onTextChange={setText}
+          placeholder={t("draft.composer.placeholder")}
+          rows={3}
+          disabled={sending}
+          onSend={onSend}
+        />
       </div>
     </div>
   );

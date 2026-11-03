@@ -115,12 +115,11 @@ const catalog = {
 
 const net: NetworkResp = {
   nodes: {
-    default: { name: "default", label: "X", is_pinned: false, model: null, role: "root", in_network: true, gateway: null, skill_count: 1, symlinks: [], parent: null, killed: false, effective_killed: false, main_twin: false, is_draft: false, children: ["pronto"] },
-    pronto: { name: "pronto", label: "Pronto", is_pinned: false, model: null, role: "none", in_network: true, gateway: null, skill_count: 0, symlinks: [], parent: "default", killed: false, effective_killed: false, main_twin: false, is_draft: false, children: [] },
+    default: { name: "default", label: "X", is_pinned: false, parent: null, killed: false, effective_killed: false, is_draft: false, children: ["pronto"] },
+    pronto: { name: "pronto", label: "Pronto", is_pinned: false, parent: "default", killed: false, effective_killed: false, is_draft: false, children: [] },
   },
   roots: ["default"],
   drafts: [],
-  source: "test",
 } as unknown as NetworkResp;
 
 function baseProps(): React.ComponentProps<typeof ProjectDetailPage> {

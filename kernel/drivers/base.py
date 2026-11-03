@@ -513,6 +513,7 @@ ProjectionUnsupportedReason = Literal[
     "no_convention",
     "workspace_denied",
     "invalid_config",
+    "target_linked",
 ]
 """一条能力**为什么**没被写下去（批次二十四 / AD-149）。
 
@@ -538,6 +539,8 @@ ProjectionUnsupportedReason = Literal[
                               下某个程序自己的隐藏目录里）。
 ``invalid_config``            这条能力的 config 形状不对，没有可写的内容
                               （例如一条没有正文的项目指令）。
+``target_linked``             目标文件是一个链接。原子写会把链接换成普通文件，
+                              等于悄悄断开它指向的来源，所以报冲突、不写。
 ============================  =================================================
 """
 

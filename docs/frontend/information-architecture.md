@@ -1,5 +1,7 @@
 # Kaus 前端信息架构
 
+> 2026-11-03 removed：任务板（`KanbanOverlay.tsx`、`/kanban`、`/api/kanban*`）与轮盘上的分身/网关/技能链接/角色标记已删除；下文相关条目为历史记录。
+
 **日期：** 2026-09-02
 **性质：** 规范。Phase 2「Project-centric UI 与 Group Shell」的施工依据。与 `docs/frontend/DESIGN.md`（视觉规范，另一分支产出）、`docs/frontend/component-boundaries.md`（组件边界）配套。
 **范围：** 有哪些页面、每个页面给谁看、显示什么、六种状态各长什么样、URL 怎么定、数据从哪来。**不写**像素级视觉（那是 DESIGN.md 的事），**不写**组件实现（那是 component-boundaries.md 的事）。

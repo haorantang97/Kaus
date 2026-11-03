@@ -30,13 +30,13 @@ export function Spinner({ className = "" }: { className?: string }) {
 /* Shared async-fetch states (spinner-while-loading / inline error line). */
 export const Loading = () => <div className="flex items-center gap-2 py-1 text-xs" style={{ color: cream(45) }}><Spinner /> {t("ui.loading")}</div>;
 export function ErrorNotice({ error, className = "" }: { error: unknown; className?: string }) {
-  const { locale } = useLocale();
+  useLocale(); // re-render on locale switch; `t` is the module-level lookup
   const summary = failureSummary(error);
   const diagnostic = failureDiagnostic(error);
   return <div role="alert" className={className} style={{ color: "var(--danger)" }}>
     <span>{summary}</span>
     {diagnostic && diagnostic !== summary && <details className="mt-1">
-      <summary className="cursor-pointer text-xs" style={{ color: cream(55) }}>{locale === "zh" ? "详情" : "Details"}</summary>
+      <summary className="cursor-pointer text-xs" style={{ color: cream(55) }}>{t("graph.details")}</summary>
       <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all text-xs" style={{ color: cream(60) }}>{diagnostic}</pre>
     </details>}
   </div>;
@@ -226,7 +226,7 @@ export function FieldRow({ label, children }: { label: string; children: ReactNo
 }
 
 /* Centered modal (declarative: render when open).
-   z-[70]:必须压过 Kanban 任务详情抽屉(z-[61]),否则从抽屉里弹的确认框会被盖住、按钮看似失灵。
+   z-[70]:必须压过抽屉层(z-[61]),否则从抽屉里弹的确认框会被盖住、按钮看似失灵。
    Esc 只由「最顶层」modal 消费并 stopImmediatePropagation——防止一次 Esc 级联关掉底下的 overlay/抽屉。 */
 export function Modal({ onClose, children, width = 520 }: { onClose: () => void; children: ReactNode; width?: number }) {
   const { rootRef, contentRef } = useModalLayer(onClose);
@@ -283,7 +283,7 @@ export function ToastHost() {
     () => _toasts,
   );
   return createPortal(
-    /* z-[80]:toast 是最高层反馈,必须压过一切抽屉/弹窗(Kanban 详情 z-61、Modal z-70),否则操作提示被盖住看不见 */
+    /* z-[80]:toast 是最高层反馈,必须压过一切抽屉/弹窗(抽屉 z-61、Modal z-70),否则操作提示被盖住看不见 */
     <div className="pointer-events-none fixed bottom-5 right-5 z-[80] flex flex-col gap-2">
       {items.map((t) => (
         <div

@@ -31,7 +31,7 @@ export function CtxMenu({
   /** Called after a confirmed delete, e.g. to leave the deleted Project's page. */
   onDeleted?: (name: string) => void;
 }) {
-  const { locale, t } = useLocale();
+  const { t } = useLocale();
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -151,7 +151,7 @@ export function CtxMenu({
             <button role="menuitem" className={item} onClick={() => {
               window.dispatchEvent(new CustomEvent(ADD_EXISTING_CONVERSATIONS, { detail: { projectRef: node.name } }));
               onClose();
-            }}><MessageSquarePlus className="size-3.5" />{locale === "zh" ? "添加已有对话" : "Add existing conversations"}</button>
+            }}><MessageSquarePlus className="size-3.5" />{t("project.history.add")}</button>
             <button role="menuitem" disabled={busy} className={item} onClick={() => run(() => setPin(node.name, !node.is_pinned))}>
               {node.is_pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
               {node.is_pinned ? "取消置顶" : "置顶"}
@@ -217,7 +217,7 @@ export function CtxMenu({
                 ? t("project.delete.cascadeConfirm", {
                     name: dname(node),
                     count: descendants.length,
-                    names: descendants.slice(0, NAMED_DESCENDANTS).join(locale === "zh" ? "、" : ", ")
+                    names: descendants.slice(0, NAMED_DESCENDANTS).join(t("common.listSeparator"))
                       + (descendants.length > NAMED_DESCENDANTS ? "…" : ""),
                   })
                 : t("project.delete.confirm", { name: dname(node) })}

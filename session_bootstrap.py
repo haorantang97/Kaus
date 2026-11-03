@@ -1168,6 +1168,12 @@ def open_session_runtime(
         # `project:default` 在 /conversations 上就是「未知 Project」。
         # 领域 flag 也开着时 `repositories` 是传进来的，那边已经补过，不走这里。
         asyncio.run(domain_bootstrap.ensure_root_project(repositories))
+        # 旧 Project 文件的一次性导入（只在默认库上；自定义库写 skipped 标记）。
+        import project_file_import
+        project_file_import.auto_import(
+            database=unit_of_work.database, db_path=resolved, state_root=domain_bootstrap.REPO_ROOT,
+            hermes_home=project_file_import.legacy_native_home(),
+            log=LOGGER.info)
 
     # D-17：token 文件在装配时就建出来（0600），而不是等第一个请求——
     # 这样「服务起来了」与「鉴权就位了」是同一个时刻，中间没有裸奔的窗口。
@@ -1523,9 +1529,10 @@ def install_legacy_write_auth(
     两份 policy 读的是同一个 token 文件，但**同一个对象**才能保证 Origin 白名单
     这类取值不会哪天在两处配出两个答案。
 
-    返回装好的 policy（测试与自检要用），装不上时返回 ``None`` 并记一行日志——
-    但这条日志是 **WARNING 级的事故**，不是「旁路设施跳过」：它意味着写接口
-    现在没有闸。
+    返回装好的 policy（测试与自检要用），装不上时返回 ``None``、记一行日志，并改装
+    :func:`install_fail_closed_write_gate`：鉴权不可用时写接口一律 503
+    ``auth_unavailable``，而不是默认放行。这条日志仍是 **WARNING 级的事故**，
+    不是「旁路设施跳过」：它意味着写接口此刻对谁都不可用。
     """
     if policy is None:
         try:
@@ -1538,10 +1545,12 @@ def install_legacy_write_auth(
             )
             load_or_create_token(resolved)
         except Exception as exc:  # noqa: BLE001
+            # 闸装不上不等于不设闸：写接口在鉴权就绪之前一律 503，不默认放行。
             log(
-                "[legacy_write_auth] 装不上本地鉴权，旧写接口目前没有闸："
+                "[legacy_write_auth] 装不上本地鉴权，写接口一律 503 直到鉴权就绪："
                 f"{exc!r}"
             )
+            install_fail_closed_write_gate(fastapi_app)
             return None
 
     _ensure_kernel_on_path()
@@ -1576,6 +1585,28 @@ def install_legacy_write_auth(
         return await call_next(request)
 
     return policy
+
+
+def install_fail_closed_write_gate(
+    fastapi_app: Any,
+    *,
+    message: str = "本地鉴权未就绪，写接口暂不可用。",
+) -> None:
+    """鉴权装不上时的闸：``/api/`` 下的写请求一律 503 ``auth_unavailable``。
+
+    与 :meth:`app.api.session_auth.SessionAuthPolicy.current_token` 在「没有 token」
+    时的口径一致：宁可整段写接口不可用，也不要「装不上 = 不鉴权」。读接口照旧
+    不动。不依赖内核 import——它正是在装配失败的路径上被调用的。
+    """
+    from fastapi.responses import JSONResponse
+
+    body = {"error": {"code": "auth_unavailable", "message": message}}
+
+    @fastapi_app.middleware("http")
+    async def _legacy_write_auth_unavailable(request: Any, call_next: Any) -> Any:
+        if not _is_mutating_api_path(request.method, request.url.path):
+            return await call_next(request)
+        return JSONResponse(status_code=503, content=body)
 
 
 def unprotected_mutating_routes(fastapi_app: Any) -> tuple[str, ...]:

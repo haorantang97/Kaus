@@ -2,18 +2,13 @@ import "./project-polish.css";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { CornerDownLeft, MessageSquare, MoreHorizontal, Plus } from "lucide-react";
 import { type NetworkResp } from "../lib/api";
-import { t, useLocale, type DictKey } from "../i18n";
+import { useLocale } from "../i18n";
 import { Button, cream, dname, Overlay } from "./ui";
 import { ReparentModal } from "./ReparentModal";
 import { ProjectSkillTree } from "./ProjectSkillTree";
 import { wheelAnchor, wheelNodeTransform, wheelTransformCss } from "../lib/wheelGeometry";
 import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
 
-/* 角色名走词典（批次十一第 4 件）：以前这里写死英文，进项目页语言就突变。 */
-const roleFull = (role: string | null | undefined): string =>
-  role === "source" || role === "shared" || role === "none"
-    ? t(`graph.role.${role}` as DictKey)
-    : t("graph.value.standalone");
 /** 每列末尾那个「+ 添加项目」虚节点的 id（不是真 profile，`nodes[]` 里查不到）。 */
 export const ADD_NODE_ID = "__add-child__";
 const PROJECT_ENTER_SHAPE = "M .57 .01 H .97 Q .997 .01 .997 .096 V .904 Q .997 .99 .97 .99 H .03 Q .003 .99 .003 .904 V .649 Q .003 .563 .03 .563 H .51 Q .54 .563 .54 .477 V .096 Q .54 .01 .57 .01 Z";
@@ -24,7 +19,7 @@ type WheelGeometry = { columns: ColumnGeometry[]; statics: Record<string, { l: {
 
 /* Agents · 下钻图。
    保留旧版全部能力:拖拽改父级(+ReparentModal 影响预览)/ 顶层拖放区 / 草稿暂存 /
-   ⋯菜单(置顶·改名·fork·删除,经 onOpenMenu→CtxMenu)/ 分身挂 X(非下属)/ 停用·gateway·角色元信息 /
+   ⋯菜单(置顶·改名·fork·删除,经 onOpenMenu→CtxMenu)/ 停用标记 /
    默认是对话浏览;治理模式才启用组织维护动作。 */
 export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onNewConversation, onOpenMenu, onAddChild, embedded = false, focusName = null, mode = "governance", onModeChange }: {
   net: NetworkResp;
@@ -47,14 +42,13 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
   const canGovern = !embedded || mode === "governance";
   const displayName = (id: string) => dname(nodes[id] ?? { name: id });
   const domainKids = (id: string) =>
-    (nodes[id]?.children || []).filter((c) => !(nodes[id]?.twins || []).includes(c)).slice().sort((a, b) => a.localeCompare(b));
+    (nodes[id]?.children || []).slice().sort((a, b) => a.localeCompare(b));
   const lineage = (id: string): string[] => {
     const a: string[] = []; let c: string | undefined = id; const seen = new Set<string>();
     while (c && !seen.has(c)) { seen.add(c); a.unshift(c); c = nodes[c]?.parent || undefined; }
     return a;
   };
   const focusPath = (id: string) => {
-    if (nodes[id]?.main_twin) return ["default"];
     const nextPath = lineage(id);
     return nextPath.length ? nextPath : ["default"];
   };
@@ -151,7 +145,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     if (!canGovern) return;
     if (!node || node === target) return;
     if (node === "default") return;                       // X 不可移
-    if (nodes[node]?.main_twin) return;                   // 分身不可移(模式,非下属)
     if (target && isDesc(node, target)) return;           // 防环:不能移到自己的后代下
     setReparent({ node, target });
   };
@@ -182,8 +175,8 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
       }));
       return { left: rect.left - base.left, centerY: rect.top - base.top + rect.height / 2, items };
     });
-    // 非轮盘元素（X 根节点、分身）不受 transform 影响，直接记它们量到的端点。
-    cols.querySelectorAll<HTMLElement>(".ag-root[data-id], .ag-twin[data-id]").forEach((el) => {
+    // 非轮盘元素（X 根节点）不受 transform 影响，直接记它量到的端点。
+    cols.querySelectorAll<HTMLElement>(".ag-root[data-id]").forEach((el) => {
       const rect = el.getBoundingClientRect();
       const y = rect.top - base.top + rect.height / 2;
       statics[el.dataset.id ?? ""] = {
@@ -435,7 +428,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
       return pointerColumn >= 1 ? pointerColumn : -1;
     };
     const onPointerDown = (event: PointerEvent) => {
-      if ((event.target as HTMLElement).closest(".ag-dots,.ag-root,.ag-twincluster,.ag-panel")) return;
+      if ((event.target as HTMLElement).closest(".ag-dots,.ag-root,.ag-panel")) return;
       const columnIndex = columnAt(event.clientX);
       if (columnIndex < 1) return;
       const column = columns.querySelectorAll<HTMLElement>(".graph-col")[columnIndex];
@@ -508,7 +501,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     const c = canvasRef.current; if (!c) return;
     let pan = false, sx = 0, sy = 0, sl = 0, st = 0;
     const down = (e: MouseEvent) => {
-      if ((e.target as HTMLElement).closest(".ag-node,.ag-twin,.ag-root,.ag-dots,.ag-twincluster,.ag-panel,.ag-draft,.ag-droptop,button,a,input,textarea,select")) return;
+      if ((e.target as HTMLElement).closest(".ag-node,.ag-root,.ag-dots,.ag-panel,.ag-draft,.ag-droptop,button,a,input,textarea,select")) return;
       pan = true; sx = e.clientX; sy = e.clientY; sl = c.scrollLeft; st = c.scrollTop; c.classList.add("ag-panning");
       e.preventDefault();
     };
@@ -543,8 +536,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
     const n = nodes[id]; if (!n) return null;
     const kids = domainKids(id);
     const dead = n.killed || n.effective_killed;
-    const sl = (n.symlinks || []).filter((s) => s.target_profile);
-    const roleLabel = id === "default" ? t("graph.value.mainAgent") : roleFull(n.role);
     return (
       <div
         key={id}
@@ -583,9 +574,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
       >
         {/* 命中区：至少 32×32 的透明面，点它冒泡到节点自己的 onClick（第 6 件）。 */}
         <span className="ag-node-hit" aria-hidden />
-        <span className={`ag-dot ${n.gateway === "running" ? "on" : "idle"}`} title={`gateway ${n.gateway || "?"}`} />
         <span className="ag-nm">{dname(n)}</span>
-        <span className="ag-rl">{roleLabel} · {n.skill_count}{sl.length ? ` · 🔗${sl.length}` : ""}</span>
         {dead && <span className="ag-bad">{t("graph.value.disabled")}</span>}
         {kids.length > 0 && <span className="ag-cn">▸{kids.length}</span>}
         {id === sel && <button type="button" className="ag-node-enter" title={t("graph.openProject")} aria-label={t("graph.openProject")}
@@ -628,23 +617,8 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
                     <div className="ag-root" data-id="default" onClick={() => focusNode("default")} {...dropProps("default")}>
                       <div className="ag-rootline" />
                       <div className="ag-rootnm">{displayName("default")}</div>
-                      <div className="ag-rootsub">{nodes["default"]?.twin_mode || t("graph.rootSub")}</div>
+                      <div className="ag-rootsub">{t("graph.rootSub")}</div>
                     </div>
-                    {(nodes["default"]?.twins || []).length > 0 && (
-                      <div className="ag-twincluster">
-                        <div className="ag-twinh">{t("tree.twinModes")}</div>
-                        {(nodes["default"]?.twins || []).map((tn) => {
-                          const twin = nodes[tn]; if (!twin) return null;
-                          return (
-                            <div key={tn} className={`ag-twin ${tn === sel ? "sel" : ""}`} onClick={() => focusNode(tn)} onDoubleClick={() => onGoProfile(tn)}>
-                              <span className="ag-tdot" /><span className="ag-nm">{dname(twin)}</span>
-                              {twin.twin_mode && <span className="ag-tmode">{twin.twin_mode}</span>}
-                              {canGovern && <button className="ag-dots" title={t("common.more")} onClick={(e) => { e.stopPropagation(); onOpenMenu(tn, (e.currentTarget as HTMLElement).getBoundingClientRect()); }}><MoreHorizontal className="size-3.5" /></button>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </>
                 ) : (
                   <>
@@ -679,10 +653,10 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
             <>
               <div className="ag-panel-head">
                 <div className="ag-ptag">
-                  <span>{node.main_twin ? t("graph.tag.twin") : t("graph.head.title")}</span>
+                  <span>{t("graph.head.title")}</span>
                 </div>
                 <h2 className="ag-ph2">{dname(node)}</h2>
-                <div className="ag-prole"><span className={`ag-status ${node.gateway === "running" ? "" : "idle"}`} />{(sel === "default" ? t("graph.value.mainAgent") : roleFull(node.role))}{node.twin_mode ? ` · ${node.twin_mode}` : ""}{(node.killed || node.effective_killed) ? ` · ${t("graph.value.disabled")}` : ""}</div>
+                <div className="ag-prole">{sel === "default" ? t("graph.value.mainAgent") : t("graph.value.project")}{(node.killed || node.effective_killed) ? ` · ${t("graph.value.disabled")}` : ""}</div>
                 <div className="ag-pactions">
                   <Button variant="primary" className="kaus-project-primary" onClick={() => (onNewConversation ?? onGoProfile)(sel)}>
                     <MessageSquare size={17} /><span>{t(onNewConversation ? "graph.newConversation" : "graph.openChat")}</span>
@@ -699,21 +673,18 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
               </div>
               <div className="ag-panel-section">
                 <h3>{t("graph.section.identity")}</h3>
-                <div className="ag-prow"><span>{t("graph.row.type")}</span><span>{node.main_twin ? t("graph.value.twinShared") : sel === "default" ? t("graph.value.apexRoot") : roleFull(node.role)}</span></div>
+                <div className="ag-prow"><span>{t("graph.row.type")}</span><span>{sel === "default" ? t("graph.value.apexRoot") : t("graph.value.project")}</span></div>
                 <div className="ag-prow"><span>{t("graph.row.parent")}</span><span>{node.parent ? displayName(node.parent) : t("graph.value.topLevel")}</span></div>
               </div>
               <div className="ag-panel-section">
-                <h3>{t("graph.section.capabilities")}</h3>
+                <h3>{t("graph.section.structure")}</h3>
                 <div className="ag-stat-row">
-                  <div><strong>{node.skill_count}</strong><span>{t("graph.stat.skills")}</span></div>
-                  <div><strong>{(node.symlinks || []).length}</strong><span>{t("graph.stat.links")}</span></div>
                   <div><strong>{domainKids(sel).length}</strong><span>{t("graph.stat.children")}</span></div>
                 </div>
               </div>
               <div className="ag-panel-section">
                 <h3>{t("graph.section.inheritance")}</h3>
                 <div className="ag-prow"><span>{t("graph.row.parentConfig")}</span><span>{node.parent ? t("graph.value.fromParent", { name: displayName(node.parent) }) : t("graph.value.localBaseline")}</span></div>
-                {node.main_twin && <div className="ag-note">{t("graph.note.twin")}</div>}
               </div>
             </>
           )}

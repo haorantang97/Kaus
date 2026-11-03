@@ -1,5 +1,7 @@
 # 上下文索引层（Context Index Layer）架构设计
 
+> 2026-11-03 removed：`index_builder.py`、`selfcheck.py` 与 `server.py` 里的 INDEX.md 同步、`/api/index/rebuild` 已删除（Hermes 个人仪表盘遗留）。本文仅作历史记录。
+
 > 状态：设计稿 v1（2026-07-21），未实施。
 > 目标：补齐 Hermes 组织树的**语义索引层**，让 36 个 agent 从"信息孤岛 + 两条没人知道的隧道"变成"一张有地图的上下文网络"。
 > 灵感来源：Jeff Su Cowork 体系中根 CLAUDE.md 的 Routing Map（索引即灵魂）；但 Hermes 是多 agent 架构，需要把"单大脑 + 共享文件系统"的免费共享，重造为"索引 + 横向管道"的受治理共享。

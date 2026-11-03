@@ -30,8 +30,7 @@ const ABOUT_LINKS = [
 ] as const;
 
 export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThemeChange }: { onClose: () => void; refreshKey?: number; theme?: "light" | "dark"; onThemeChange?: (theme: "light" | "dark") => void }) {
-  const { t, locale, pref, setPref } = useLocale();
-  const zh = locale === "zh";
+  const { t, pref, setPref } = useLocale();
   const navigate = useNavigate();
   const [section, setSection] = useState<Section>("general");
   const [error, setError] = useState<string | null>(null);
@@ -114,34 +113,34 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThem
     return { project, retired, label: deleted ? (name ? `${name} · ${t("project.deleted")}` : t("project.deleted")) : name ?? "" };
   };
   const sections = [
-    { id: "general" as const, icon: Settings2, label: zh ? "通用" : "General" },
+    { id: "general" as const, icon: Settings2, label: t("capabilities.scope.common") },
     { id: "agents" as const, icon: Bot, label: "Agent" },
-    { id: "usage" as const, icon: Gauge, label: zh ? "账号额度" : "Account limits" },
-    { id: "coordinator" as const, icon: Bot, label: zh ? "组长" : "Coordinator" },
-    { id: "archive" as const, icon: Archive, label: zh ? "已归档" : "Archived" },
+    { id: "usage" as const, icon: Gauge, label: t("settings.usage") },
+    { id: "coordinator" as const, icon: Bot, label: t("group.coordinator.label") },
+    { id: "archive" as const, icon: Archive, label: t("conversation.archived") },
     { id: "about" as const, icon: Info, label: t("settings.about") },
   ];
 
-  return <Overlay title={zh ? "设置" : "Settings"} onClose={onClose}>
+  return <Overlay title={t("nav.config")} onClose={onClose}>
     <div className="kaus-settings">
-      <nav className="kaus-settings-nav" aria-label={zh ? "设置分类" : "Settings sections"}>
+      <nav className="kaus-settings-nav" aria-label={t("settings.sections")}>
         {sections.map(({ id, icon: Icon, label }) => <button key={id} type="button" className={section === id ? "is-active" : ""}
           aria-current={section === id ? "page" : undefined} onClick={() => setSection(id)}><Icon size={16} aria-hidden="true" />{label}</button>)}
       </nav>
       <section className="kaus-settings-content" aria-label={sections.find(s => s.id === section)?.label}>
         {section === "general" && <>
-          <h2 className="kaus-settings-page-title">{zh ? "通用" : "General"}</h2>
+          <h2 className="kaus-settings-page-title">{t("capabilities.scope.common")}</h2>
           <div className="kaus-settings-preferences">
             {onThemeChange && <div className="kaus-settings-preference-row">
-              <label htmlFor="settings-theme"><Moon size={16} aria-hidden="true" />{zh ? "外观" : "Appearance"}</label>
-              <SelectPopover id="settings-theme" label={zh ? "外观" : "Appearance"} value={theme} searchable={false}
-                options={[{ value: "light", label: zh ? "浅色" : "Light" }, { value: "dark", label: zh ? "深色" : "Dark" }]}
+              <label htmlFor="settings-theme"><Moon size={16} aria-hidden="true" />{t("settings.appearance")}</label>
+              <SelectPopover id="settings-theme" label={t("settings.appearance")} value={theme} searchable={false}
+                options={[{ value: "light", label: t("settings.theme.light") }, { value: "dark", label: t("settings.theme.dark") }]}
                 onChange={value => onThemeChange(value as "light" | "dark")} />
             </div>}
             <div className="kaus-settings-preference-row">
-              <label htmlFor="settings-language"><Languages size={16} aria-hidden="true" />{zh ? "语言" : "Language"}</label>
-              <SelectPopover id="settings-language" label={zh ? "语言" : "Language"} value={pref} searchable={false}
-                options={[{ value: "system", label: zh ? "跟随系统" : "System" }, { value: "zh", label: "简体中文" }, { value: "en", label: "English" }]}
+              <label htmlFor="settings-language"><Languages size={16} aria-hidden="true" />{t("settings.language")}</label>
+              <SelectPopover id="settings-language" label={t("settings.language")} value={pref} searchable={false}
+                options={[{ value: "system", label: t("settings.language.system") }, { value: "zh", label: "简体中文" }, { value: "en", label: "English" }]}
                 onChange={value => setPref(value as LocalePref)} />
             </div>
             <TerminalSettings key={reload} />
@@ -149,25 +148,25 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThem
         </>}
         {section === "agents" && <><AgentConnections refreshKey={`${refreshKey}:${reload}`} /><ComputerUseSettings refreshKey={`${refreshKey}:${reload}`} /></>}
         {section === "usage" && <AccountQuotaSettings key={`${refreshKey}:${reload}`} />}
-        {section === "coordinator" && <div className="kaus-settings-section"><h2>{zh ? "默认组长" : "Default coordinator"}</h2><CoordinatorSettings global /></div>}
+        {section === "coordinator" && <div className="kaus-settings-section"><h2>{t("group.coordinator.default")}</h2><CoordinatorSettings global /></div>}
         {section === "archive" && <>
-          <h2>{zh ? "已归档对话" : "Archived conversations"}</h2>
+          <h2>{t("settings.archive.title")}</h2>
           {error && archived && <ErrorNotice error={error} className="text-xs" />}
-          <AsyncState data={archived} err={archived ? null : error}>{items => items.length === 0 ? <p className="kaus-settings-empty">{zh ? "暂无归档" : "No archived conversations"}</p> :
+          <AsyncState data={archived} err={archived ? null : error}>{items => items.length === 0 ? <p className="kaus-settings-empty">{t("settings.archive.empty")}</p> :
             <div className="kaus-archive-list">{items.map(item => { const owner = archivedProject(item.projectId); const confirming = confirmDelete === item.id; return <div key={item.id} className="kaus-archive-row">
               <div><strong>{item.backendId && <EngineIcon engine={item.backendId} size={13} />}{item.title}</strong><span>{owner.label}{item.backendId ? ` · ${backendDisplay(item.backendId).displayName}` : ""}</span></div>
-              <button type="button" title={zh ? "查看" : "View"} aria-label={`${zh ? "查看" : "View"} ${item.title}`}
+              <button type="button" title={t("drift.view")} aria-label={`${t("drift.view")} ${item.title}`}
                 onClick={() => navigate(conversationPath(item.id))}><ArrowUpRight size={16} /></button>
               {owner.retired && owner.project ? <>
                 <button type="button" disabled={busyId !== null} title={t("project.restore")} aria-label={`${t("project.restore")} ${item.title}`}
                   onClick={() => void restoreProject(item, owner.project!)}><ArchiveRestore size={16} /></button>
                 <button type="button" disabled={busyId !== null || !item.backendId} title={t("project.move")} aria-label={`${t("project.move")} ${item.title}`}
                   onClick={() => setMoving({ item })}><FolderInput size={16} /></button>
-              </> : <button type="button" disabled={busyId !== null} title={zh ? "恢复" : "Restore"} aria-label={`${zh ? "恢复" : "Restore"} ${item.title}`}
+              </> : <button type="button" disabled={busyId !== null} title={t("settings.archive.restore")} aria-label={`${t("settings.archive.restore")} ${item.title}`}
                 onClick={() => void restore(item)}><ArchiveRestore size={16} /></button>}
               <button type="button" disabled={busyId !== null} className={confirming ? "is-danger" : undefined}
-                title={confirming ? (zh ? "确认删除" : "Confirm delete") : zh ? "删除" : "Delete"}
-                aria-label={`${confirming ? (zh ? "确认删除" : "Confirm delete") : zh ? "删除" : "Delete"} ${item.title}`}
+                title={confirming ? t("settings.archive.confirmDelete") : t("group.row.delete")}
+                aria-label={`${confirming ? t("settings.archive.confirmDelete") : t("group.row.delete")} ${item.title}`}
                 onBlur={() => { if (confirming) setConfirmDelete(null); }}
                 onClick={() => void remove(item)}>{confirming ? <Check size={16} /> : <Trash2 size={16} />}</button>
             </div>; })}</div>}

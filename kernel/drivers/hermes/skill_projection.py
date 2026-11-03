@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 import uuid
@@ -73,6 +74,65 @@ def _nested_skill(root: Path) -> bool:
     return False
 
 
+ARCHIVE_DIR = ".archive"
+_ARCHIVE_SUFFIX = re.compile(r"-\d{14}$")
+
+
+def _frontmatter_name(path: Path) -> str | None:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")[:4000]
+    except OSError:
+        return None
+    if not text.startswith("---\n"):
+        return None
+    parsed = yaml.safe_load(text[4:].split("\n---", 1)[0]) if "\n---" in text[4:] else None
+    return str(parsed["name"]) if isinstance(parsed, dict) and parsed.get("name") else None
+
+
+def engine_archive_of(source: Path | None, name: str) -> Path | None:
+    """Where the engine's curator parked a missing source skill, if it did.
+
+    The archive is a flat ``<skills root>/.archive/<name>`` (or ``<dir>-<stamp>``
+    on collision), so ancestors of the original directory are checked.
+    """
+    if source is None or not name:
+        return None
+    directory = source.parent if source.name == "SKILL.md" else source
+    if directory.exists():
+        return None
+    for ancestor in list(directory.parents)[:6]:
+        archive = ancestor / ARCHIVE_DIR
+        try:
+            if not archive.is_dir():
+                continue
+            exact = archive / name / "SKILL.md"
+            if exact.is_file():
+                return exact.parent
+            for candidate in sorted(archive.iterdir(), reverse=True):
+                if not candidate.is_dir() or not (candidate / "SKILL.md").is_file():
+                    continue
+                stamped = _ARCHIVE_SUFFIX.sub("", candidate.name)
+                if stamped in {name, directory.name} or _frontmatter_name(candidate / "SKILL.md") == name:
+                    return candidate
+        except OSError:
+            continue
+    return None
+
+
+def archived_skills(effective) -> tuple[str, ...]:
+    """Names of selected skills whose source the engine moved into its archive."""
+    selection = selection_of(effective)
+    if selection is None:
+        return ()
+    names = []
+    for asset in selection.config.get("assets", []):
+        source = Path(asset["sourcePath"]).expanduser() if asset.get("sourcePath") else None
+        name = str(asset.get("name") or "")
+        if name and engine_archive_of(source, name) is not None and name not in names:
+            names.append(name)
+    return tuple(names)
+
+
 def _ensure_name(path: Path, name: str):
     text = path.read_text(encoding="utf-8")
     if text.startswith("---\n"):
@@ -108,6 +168,8 @@ def project_skills(*, home: Path, binding, effective, dry_run: bool):
             reason = "技能不适用于此引擎"
         elif not source or not asset.get("available", True) or not source.is_file() or source.name != "SKILL.md":
             reason = "技能来源不可用"
+            if engine_archive_of(source, str(asset.get("name") or "")) is not None:
+                reason = "技能已被引擎归档，需在引擎中恢复：" + str(asset.get("name"))
         else:
             try:
                 source = source.resolve()

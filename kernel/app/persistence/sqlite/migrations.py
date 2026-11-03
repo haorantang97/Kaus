@@ -533,6 +533,16 @@ MIGRATIONS: Final[tuple[Migration, ...]] = (
     Migration(version=20, name="delete_context_packet_messages", statements=(
         "DELETE FROM collaboration_messages WHERE kind = 'context_packet'",
     )),
+    # Deleted Projects keep an archive record (tree position for restore, a
+    # snapshot of rows cleared when the slug is reused). DDL only; the tree
+    # store writes the rows.
+    Migration(version=21, name="project_archives", statements=(
+        "CREATE TABLE project_archives (id TEXT PRIMARY KEY, project_id TEXT NOT NULL,"
+        " batch_id TEXT, batch_root TEXT, archived_at TEXT NOT NULL,"
+        " record_json TEXT NOT NULL DEFAULT '{}', snapshot_json TEXT NOT NULL DEFAULT '{}',"
+        " restored_at TEXT)",
+        "CREATE INDEX project_archives_by_project ON project_archives(project_id, archived_at DESC)",
+    )),
 )
 """按版本升序排列的全部迁移。新的往后追加，旧的一律不动。"""
 
@@ -556,6 +566,7 @@ EXPECTED_TABLES: Final[frozenset[str]] = frozenset(
         "projection_results",
         "app_settings",
         "conversation_bookmarks",
+        "project_archives",
     }
 )
 

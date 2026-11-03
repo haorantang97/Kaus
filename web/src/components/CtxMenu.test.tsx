@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { CtxMenu } from "./CtxMenu";
 import type { OrgNode } from "../lib/api";
 
-const node: OrgNode = { name:"sample", label:"Sample", is_pinned:false, model:null, role:"", in_network:false, gateway:null, skill_count:0, symlinks:[], parent:null, killed:false, effective_killed:false, main_twin:false, is_draft:false, children:[] };
+const node: OrgNode = { name:"sample", label:"Sample", is_pinned:false, parent:null, killed:false, effective_killed:false, is_draft:false, children:[] };
 it("uses keyboard navigation and restores focus when closed", async () => {
   const user = userEvent.setup();
   const close = vi.fn();

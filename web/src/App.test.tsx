@@ -36,23 +36,15 @@ const network = {
       name: "default",
       label: "X",
       is_pinned: false,
-      model: null,
-      role: "root",
-      in_network: true,
-      gateway: null,
-      skill_count: 3,
-      symlinks: [],
       parent: null,
       killed: false,
       effective_killed: false,
-      main_twin: false,
       is_draft: false,
       children: [],
     },
   },
   roots: ["default"],
   drafts: [],
-  source: "test",
 };
 
 function stubFetch(bootstrapStatus: number) {
@@ -271,11 +263,10 @@ describe("每个视图一个真 URL", () => {
     });
   }
 
-  it("/kanban 已屏蔽，回到首页", async () => {
+  it("/kanban 不再是视图：按未知地址渲染 404", async () => {
     stubFetch(200);
     renderApp("/kanban");
-    await waitFor(() => expect(screen.getByTestId("pathname")).toHaveTextContent(/^\/$/));
-    expect(screen.queryByText("Hermes 任务板")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("not-found")).toBeInTheDocument());
   });
 
   /* `/` and `/new` both open the conversation composer. */
@@ -365,9 +356,7 @@ describe("从项目页回到轮盘（第 3 件）", () => {
         ...network.nodes.default,
         name: "pronto",
         label: "Pronto",
-        role: "none",
         parent: "default",
-        skill_count: 0,
         children: [],
       },
     };

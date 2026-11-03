@@ -12,10 +12,8 @@
 全部端点都解析成 `project:default`」固化成了回归用例，只要那一行**在库里**，
 每个端点都正常。
 
-真正的缺口是那一行可能根本不存在：产出它的唯一路径是导入器，而导入器只在能
-枚举到根目录时才把根列进节点集合（`scripts/migrate_profiles_readonly.py` 的
-`scan_profiles`：目录不存在 → `hermes_home_missing` 告警 + 节点集合里没有它）。
-端到端测试用的是全新的空 sqlite，冒烟环境也没有那个目录，于是
+真正的缺口是那一行可能根本不存在：产出它的路径是一次性导入器，而没有旧文件时
+它什么都不产出。端到端测试用的是全新的空 sqlite，冒烟环境也没有旧文件，于是
 `project:default` 只活在前端的「默认去向」出厂值与计划的 `meta.root_project_id`
 里。修法：装配领域库时保证根 Project 存在（幂等）。
 
@@ -67,11 +65,10 @@ def make_state(tmp_path: Path) -> Path:
 def open_runtime(tmp_path: Path, db_name: str = "domain.sqlite3"):
     return domain_bootstrap.open_domain_runtime(
         state_root=make_state(tmp_path),
-        # 刻意指向一个不存在的目录：导入器会报 `hermes_home_missing` 并且**不**
+        # 刻意指向一个不存在的目录：导入器读不到任何旧文件，也**不**
         # 产出根 Project，这正是要兜住的情形。
         hermes_home=tmp_path / "does-not-exist",
         db_path=tmp_path / db_name,
-        capability_reconciliation=False,
     )
 
 
@@ -85,7 +82,8 @@ def test_root_project_exists_even_when_the_importer_produced_nothing(tmp_path):
     try:
         projects = asyncio.run(runtime.unit_of_work.repositories.projects.list_all())
         assert [p.id for p in projects] == ["project:default"]
-        assert runtime.root_project_created is True
+        # Whether the importer or the fallback wrote it, the root row is there and is the only one.
+        assert runtime.root_project_created is False
     finally:
         runtime.close()
 

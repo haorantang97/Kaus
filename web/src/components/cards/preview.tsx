@@ -175,7 +175,7 @@ export function CardsPreview() {
       enabled: key !== "unverified-approval",
       isDefault: index === 0,
       defaultModelId: key === "unprobed" ? null : "mock-large",
-      runtimeConfig: { reasoning_effort: "medium", twin_mode: index === 1 ? "架构师模式 · 高权限" : "" },
+      runtimeConfig: { reasoning_effort: "medium" },
       compatibilityState: "unknown",
     };
     return {

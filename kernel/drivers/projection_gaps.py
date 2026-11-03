@@ -37,7 +37,7 @@ def _kind_of(entry: EffectiveCapability) -> str | None:
     try:
         if is_skill_entry(entry):
             return SKILLS
-    except Exception:  # noqa: BLE001 - a malformed type is not a skill
+    except ValueError:  # a malformed type (CapabilityTypeError) is not a skill
         return None
     return None
 

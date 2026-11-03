@@ -15,7 +15,7 @@ import "../styles/conversation-polish.css";
 import { GroupMaterialsPane, GroupMessageActions } from "./GroupMaterialsPane";
 
 import { useLocale, type DictKey } from "../i18n";
-import { Button, toast } from "./ui";
+import { toast } from "./ui";
 import {
   broadcastGroup,
   fetchGroupMessages,

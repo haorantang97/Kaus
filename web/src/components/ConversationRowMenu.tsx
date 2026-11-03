@@ -104,15 +104,14 @@ export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, on
   onRename: () => void;
   onArchive: () => void;
 }) {
-  const { locale } = useLocale();
-  const zh = locale === "zh";
+  const { t } = useLocale();
   return <RowMenu busy={busy}
-    triggerLabel={zh ? `${title} 对话菜单` : `${title} conversation menu`}
-    menuLabel={zh ? "对话菜单" : "Conversation menu"}
+    triggerLabel={t("conversation.menuFor", { title })}
+    menuLabel={t("conversation.menu")}
     items={[
-      { id: "pin", icon: pinned ? <PinOff size={16} aria-hidden /> : <Pin size={16} aria-hidden />, label: zh ? pinned ? "取消置顶" : "置顶" : pinned ? "Unpin" : "Pin", onSelect: onPin, restoreFocus: true },
-      { id: "rename", icon: <Pencil size={16} aria-hidden />, label: zh ? "重命名" : "Rename", onSelect: onRename },
-      { id: "archive", icon: <Archive size={16} aria-hidden />, label: zh ? "归档" : "Archive", onSelect: onArchive, separated: true,
-        disabled: !canArchive, title: !canArchive ? (zh ? "停止运行后归档" : "Stop the run before archiving") : undefined },
+      { id: "pin", icon: pinned ? <PinOff size={16} aria-hidden /> : <Pin size={16} aria-hidden />, label: pinned ? t("conversation.row.unpin") : t("conversation.row.pin"), onSelect: onPin, restoreFocus: true },
+      { id: "rename", icon: <Pencil size={16} aria-hidden />, label: t("conversation.title.rename"), onSelect: onRename },
+      { id: "archive", icon: <Archive size={16} aria-hidden />, label: t("conversation.row.archive"), onSelect: onArchive, separated: true,
+        disabled: !canArchive, title: !canArchive ? t("conversation.row.archiveBlocked") : undefined },
     ]} />;
 }

@@ -35,6 +35,7 @@ const REASON_KEYS: Record<string, DictKey> = {
   no_convention: "materialize.reason.no_convention",
   workspace_denied: "materialize.reason.workspace_denied",
   invalid_config: "materialize.reason.invalid_config",
+  target_linked: "materialize.reason.target_linked",
 };
 
 export function projectUnappliedItems(data: unknown): UnappliedItem[] {

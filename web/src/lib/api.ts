@@ -1,5 +1,5 @@
-// Typed client for our existing FastAPI backend (server.py). Mirrors hermes's
-// web/src/lib/api.ts pattern: one typed wrapper per endpoint.
+// Typed client for the legacy tree endpoints of the FastAPI backend (server.py):
+// one typed wrapper per endpoint.
 //
 // batch38 第 1 件（批次三十七 R5 的前端另一半）：**写请求一律带本地 Bearer token**。
 // 后端那道闸从会话接口扩到了所有 `/api/` 下的 POST/PUT/PATCH/DELETE，而这份旧客户端
@@ -53,28 +53,17 @@ export interface OrgNode {
   name: string;
   label: string;
   is_pinned: boolean;
-  model: string | null;
-  role: string;
-  in_network: boolean;
-  gateway: string | null;
-  skill_count: number;
-  symlinks: { name: string; target_profile: string }[];
   parent: string | null;
   killed: boolean;
   effective_killed: boolean;
-  main_twin: boolean;
-  twin_mode?: string;        // 分身的模式语义标（architect 模式·高权限 / steward 模式·低权限）
   is_draft: boolean;
-  native_engine?: string | null;
-  children: string[];        // 全部下级（含分身，供遍历用）
-  twins?: string[];          // 其中的分身 = 主 agent 的"模式"，渲染时挂在本体上、不当分叉子节点
+  children: string[];
 }
 
 export interface NetworkResp {
   nodes: Record<string, OrgNode>;
   roots: string[];
   drafts: string[];
-  source: string;
 }
 
 async function getJSON<T>(url: string): Promise<T> {

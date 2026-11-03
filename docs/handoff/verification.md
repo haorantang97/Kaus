@@ -2,6 +2,32 @@
 
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
+## 11 月 3 日结构重构（Fable，effort high）
+
+后端：`kernel/drivers/acp/driver.py` 3,381 → 249 行，按职责拆成 10 个模块（方法体逐字搬移，公开 API 与子类覆写不变）；`kernel/app/api/session_router.py` 2,557 → 235 行，端点移入 `session_routes/` 11 个模块，路由与 payload 不变；`server.py` 1,107 → 876 行（抽出 `dashboard_events.py`、`constitution_rules.py`）；新增 `conversation_settings.py` 统一会话级模型目录与控件读取（各入口的错误处理差异保留并写进文档）；收窄 3 处宽捕获、静默吞错处补日志。早期问题：写闸建立失败改为对写请求 503 `auth_unavailable`（fail-closed）；会话 API 挂载失败记 ERROR 并在 `/api/health` 的 `attachFailures` 显示；审批重复提交不可复现，补回归测试。
+
+前端：`ConversationPage.tsx` 1,945 → 1,032 行，拆出 `pages/conversation/` 5 个 hook 与 2 个组件；新会话页与会话页共用 `components/Composer.tsx`；`GroupDock.tsx` 1,224 → 723 行；`App.tsx` 抽出 `hooks/useDashboardEvents.ts`；159 条硬编码文案移入中英文词典（含组长配置、额度设置）；新增 ESLint（`npm run lint:eslint`，并入 `npm run check`）并修 12 处违规。
+
+结果（合并后统一跑）：内核 4,276 通过、124 跳过（+22 为纯净性测试按新文件参数化，+2 新测试）；宿主 `tests/` 382 通过（+3 写闸与挂载失败测试）；`npm run check` 115 个文件 1,072 项通过，含 ESLint，构建通过；隔离检查通过。隔离数据目录加 Mock 引擎在 8899 端口实走：新会话页选引擎、发送、跳转会话页、工具调用、权限批准、提问回答、进入认证请求，控制台无错误。重构前的完整改动快照在本地 `~/Data/Projects/kaus/.tmp/pre-refactor-20261103-1355/`。
+
+## 11 月 3 日 Hermes 驱动防御
+
+范围：`kernel/drivers/hermes/` 新增用量回写（`skill_usage_sync.py`）、归档技能错误码 `skill_archived_by_engine`、执行目录关闭 curator、复制 `SOUL.md` 时剥离旧宪法块；`workspace_projection.py` 与 Hermes 投射器遇软链接目标报 `target_linked`。新增 `kernel/drivers/hermes/tests/test_engine_defenses.py` 11 项（合成目录，未启动真实 Hermes）。
+
+结果：内核 4,252 通过、124 跳过；宿主 `tests/` 379 通过；`npm run check` 115 个文件 1,072 项通过，构建通过；隔离检查通过。未用真实 Hermes 验证回写与归档提示。
+
+## 11 月 3 日清除 Hermes 个人仪表盘遗留
+
+范围见 `current-state.md` 11 月 3 日条目。`server.py` 3,533 → 1,107 行；删除 `index_builder.py`、`selfcheck.py`、`domain_apply.py`、`test_dashboard.py`、`test_regressions.py`、`scripts/migrate_profiles_readonly.py`、`scripts/ops/`、Hermes 任务板前后端。
+
+结果：内核 4,241 通过、124 跳过（删 1 个从旧 `server.py` 抠死代码的测试）；宿主 `tests/` 379 通过（删计划器、档案物化、对账、任务板相关 95 项，新增分类与存储用例 6 项）；`npm run check` 115 个文件 1,071 项通过，构建通过（差额为任务板组件测试）。隔离检查通过，临时 HERMES_HOME 未被写入。隔离数据目录加 Mock 引擎在 8899 端口实看：轮盘只显示库里的 Project，无网关、分身、技能数标记，控制台无错误；新会话页默认显示「选择引擎」，不再默认 Hermes；工作树没有新增文件。
+
+## 11 月 3 日 Project 唯一存储（配置通用化第一期第 1 步）
+
+范围：迁移 v21 `project_archives`；通用存储 `kernel/app/projects/tree_store.py`；宿主导入器 `project_file_import.py`、守则解析 `project_instructions.py`、手动脚本 `scripts/import_project_files.py`；`server.py` 的树、名称、草稿、置顶、停用、守则、归档改为读写数据库，删除 `_save_*`；`project_config_sync.py` 只保留删除守卫与对话归档；导入后 `/api/_domain/diff` 返回 503。
+
+结果：内核 4,242 通过、124 跳过；宿主 `tests/` 468 通过（删 8 个旧文件存储测试，加 13 个存储与导入测试、2 个配对与 503 测试）；`npm run check` 116 个文件 1,075 项通过（前端未改）。隔离检查：`DASH_DOMAIN_DB`、`HERMES_HOME` 指向临时目录，走完新建、移动、置顶、改名、复制、级联删除、恢复，工作树 `git status --ignored` 前后无变化，临时 HERMES_HOME 只多出读取用的配置。用本机真实数据库的副本加真实 `~/.hermes` 只读试跑导入（`--dry-run --keep-files`）：没有旧格式文件，数据库只有 `project:default`、无指令行，无需导入；试跑后 `~/.hermes` 与真实 `state/` 无新改动（此前用 `sqlite3 .backup` 复制真实库时触发了一次 WAL 检查点，数据完整性检查通过）。
+
 ## 11 月 3 日接入时能力分配、去掉项目页项目树与成员提升
 
 范围：删除自行弹出的 `SkillOnboardingHost`，接入弹窗登录成功后进入「能力分配」步骤（`CapabilityOnboardingStep.tsx`，`GET /api/skill-tree/onboarding/{id}`）；新增 `kernel/drivers/mcp_inventory.py` 与 `native_mcp_sources.json`，只读发现 Claude Code、Codex、Gemini、Qwen、OpenCode、Cursor、Copilot 的全局 MCP（只存名称、命令、去敏参数、URL、变量名与请求头名），记为 `<agent>:mcp`，投射时排除以免重复；项目详情页去掉顶部项目树，页头加 ⋯（改名、删除）；删除协作组 `promote_member` 端点与菜单项。

@@ -3,15 +3,13 @@
 覆盖
 ----
 1. **拆分是数据驱动的**：Hermes `delegation` 段按 Driver 里的映射表拆成
-   「通用策略行 + `hermes:delegation-extras` 行」；映射表当前**全部未验证**，
-   所以真实导入里整段进 extras，通用行不产生（任务规格：不编造键名）；
+   「通用策略行 + `hermes:delegation-extras` 行」；
 2. **换上一张已验证的表**（测试自造）时，拆分/投影/单位换算都成立，且两个方向
-   互为逆——这证明「补取证只需要把 verified 改成 True」；
-3. **导入**：root 的 `delegation` / `curator` 落到新落点；
-4. **迁移**：批次四形态的库（`hermes:delegation` / `hermes:curator`）启动后变成
-   新形态，`/api/_domain/diff` 仍 `inSync`，且第二次启动一行都不写（幂等）。
+   互为逆；
+3. **迁移**：旧形态的库（`hermes:delegation` / `hermes:curator`）启动后变成
+   新形态，且第二次启动一行都不写（幂等）。
 
-隔离：全部用 `tmp_path` 造的假 HERMES_HOME + 状态目录，绝不碰真实 `~/.hermes`。
+隔离：全部用 `tmp_path` 里的领域库，不读任何 Agent 目录。
 
 运行：``python3 -m pytest tests/test_delegation_capability.py -q``
 """
@@ -20,8 +18,6 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-import json
-import os
 import sys
 from pathlib import Path
 
@@ -35,28 +31,21 @@ for _path in (str(REPO_ROOT), str(KERNEL_ROOT)):
 
 pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
-yaml = pytest.importorskip("yaml")
-
-from fastapi import FastAPI  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
 
 import capability_import  # noqa: E402
 import capability_migrations  # noqa: E402
-import domain_apply  # noqa: E402
 import domain_bootstrap  # noqa: E402
 
-os.environ.setdefault("HERMES_HOME", "/nonexistent/hermes-home-for-tests")
-server = pytest.importorskip("server")
-
 from app.capabilities.delegation import DelegationPolicy  # noqa: E402
+from app.persistence.sqlite import SqliteDatabase  # noqa: E402
+from app.projects.tree_store import ProjectTreeStore  # noqa: E402
 from drivers.hermes import delegation_map  # noqa: E402
 
 # --------------------------------------------------------------------------- #
-# fixture：root → kid，root 上有 delegation 与 curator
+# fixture：root → kid，root 上有 delegation 与 curator（新形态的行）
 # --------------------------------------------------------------------------- #
 
-#: 一份「像 Hermes 会写的」委派段。键名取自 Dashboard 现有配置目录（旁证），
-#: 在授权取证来源里查不到 → 映射表里全部标未验证 → 整段进 extras。
+#: 一份「像 Hermes 会写的」委派段。
 DELEGATION_SECTION = {
     "orchestrator_enabled": True,
     "max_concurrent_children": 3,
@@ -65,55 +54,19 @@ DELEGATION_SECTION = {
     "subagent_auto_approve": False,
 }
 CURATOR_SECTION = {"prune_builtins": False, "max_skills": 40}
-
-ROOT_CONFIG = {
-    "compression": {"enabled": True, "trigger_tokens": 100000},
-    "delegation": DELEGATION_SECTION,
-    "curator": CURATOR_SECTION,
-}
+COMPRESSION_SECTION = {"enabled": True, "trigger_tokens": 100000}
 
 
-def make_tree(tmp_path: Path) -> tuple[Path, Path]:
-    home = tmp_path / "hermes-home"
-    (home / "memories").mkdir(parents=True)
-    (home / "profiles" / "kid").mkdir(parents=True)
-    (home / "profiles" / "kid" / "skills").mkdir()
-    _write_yaml(home / "config.yaml", ROOT_CONFIG)
-    _write_yaml(home / "profiles" / "kid" / "config.yaml", {})
-
-    state = tmp_path / "state"
-    state.mkdir()
-    _write_json(state / "hierarchy.json", {"kid": "default"})
-    _write_json(state / "labels.json", {"default": "根", "kid": "娃"})
-    for name in ("pinned.json", "killed.json", "drafts.json"):
-        _write_json(state / name, [])
-    _write_json(state / "skill_inherit_off.json", [])
-    _write_json(state / capability_import.CONFIG_BLOCK_FILE_NAME, {})
-
-    with capability_import.bound_server(server, state_root=state, hermes_home=home):
-        server._materialize_config("kid", {}, dry_run=False)
-    return state, home
-
-
-def _write_yaml(path: Path, data) -> None:
-    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-
-
-def _write_json(path: Path, data) -> None:
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def apply_once(state: Path, home: Path, db: Path):
-    from app.persistence.sqlite import SqliteUnitOfWork
-
-    plan = domain_bootstrap.build_plan(state_root=state, hermes_home=home)
-    capability_plan = domain_bootstrap.build_capability_plan(
-        plan, state_root=state, hermes_home=home
-    )
-    with SqliteUnitOfWork(db) as uow:
-        return asyncio.run(
-            domain_apply.apply_plan(uow.repositories, plan, capability_plan=capability_plan)
-        )
+def seed_tree(db: Path) -> None:
+    """A root with `delegation` / `curator` / `compression` rows in the current shape and a child."""
+    store = ProjectTreeStore(SqliteDatabase(db))
+    store.ensure_root("根")
+    store.create("kid", display_name="娃", draft=False, parent="default")
+    for key, value in (("delegation", DELEGATION_SECTION), ("curator", CURATOR_SECTION),
+                       ("compression", COMPRESSION_SECTION)):
+        for capability_type, capability_id, config in capability_import.capability_rows_for_key(key, value)[0]:
+            store.put_row("default", capability_type, capability_id, "local", config)
+    store.db.close()
 
 
 def rows_of(db: Path) -> dict[tuple[str, str, str], dict]:
@@ -128,7 +81,7 @@ def rows_of(db: Path) -> dict[tuple[str, str, str], dict]:
 
 
 # --------------------------------------------------------------------------- #
-# 1. 映射表：当前一条都没验证
+# 1. 映射表
 # --------------------------------------------------------------------------- #
 
 
@@ -175,6 +128,14 @@ def test_real_section_splits_into_policy_and_extras():
     assert split.policy == EXPECTED_POLICY
     assert split.extras == EXPECTED_EXTRAS
     assert split.unverified_keys == ()
+
+
+def test_capability_rows_for_key_lands_delegation_in_two_rows_and_curator_in_runtime_config():
+    emitted, _notes = capability_import.capability_rows_for_key("delegation", DELEGATION_SECTION)
+    assert emitted == [("delegation", "delegation", {"value": EXPECTED_POLICY}),
+                       ("hermes:delegation-extras", "delegation", {"value": EXPECTED_EXTRAS})]
+    emitted, _notes = capability_import.capability_rows_for_key("curator", CURATOR_SECTION)
+    assert emitted == [("hermes:runtime-config", "curator", {"value": CURATOR_SECTION})]
 
 
 def test_empty_model_string_means_engine_default():
@@ -268,46 +229,12 @@ def test_policy_omits_unset_fields():
 
 
 # --------------------------------------------------------------------------- #
-# 3. 导入：新落点
-# --------------------------------------------------------------------------- #
-
-
-def test_import_lands_delegation_in_extras_and_curator_in_runtime_config(tmp_path):
-    state, home = make_tree(tmp_path)
-    db = tmp_path / "domain.sqlite3"
-    apply_once(state, home, db)
-    rows = rows_of(db)
-
-    # 已验证键 → 通用行；其余 → extras。
-    assert rows[("project:default", "delegation", "delegation")] == {"value": EXPECTED_POLICY}
-    assert rows[("project:default", "hermes:delegation-extras", "delegation")] == {
-        "value": EXPECTED_EXTRAS
-    }
-    # curator 并回 runtime-config，整块继承。
-    assert rows[("project:default", "hermes:runtime-config", "curator")] == {
-        "value": CURATOR_SECTION
-    }
-    # 老类型一条都不产生。
-    assert not [key for key in rows if key[1] in {"hermes:delegation", "hermes:curator"}]
-
-
-def test_import_plan_carries_the_delegation_mapping_table(tmp_path):
-    state, home = make_tree(tmp_path)
-    plan = domain_bootstrap.build_plan(state_root=state, hermes_home=home)
-    capability_plan = domain_bootstrap.build_capability_plan(
-        plan, state_root=state, hermes_home=home
-    )
-    mapping = capability_plan["meta"]["delegation_mapping"]
-    assert mapping and all(row["status"] == "已验证" for row in mapping)
-
-
-# --------------------------------------------------------------------------- #
-# 4. 迁移：批次四形态的库 → 新形态
+# 3. 迁移：旧形态的库 → 新形态
 # --------------------------------------------------------------------------- #
 
 
 def downgrade_to_batch4(db: Path) -> list[str]:
-    """把库改回批次四形态：新落点的行换成 `hermes:delegation` / `hermes:curator`。
+    """把库改回旧形态：新落点的行换成 `hermes:delegation` / `hermes:curator`。
 
     `delegation` 现在拆成通用行 + extras 两行，回退时把两行的值合回一段
     （按映射表把通用字段翻回引擎键名），再落成一条旧行。
@@ -365,25 +292,24 @@ def downgrade_to_batch4(db: Path) -> list[str]:
     return written
 
 
-def test_batch4_database_is_rewritten_on_boot_and_stays_in_sync(tmp_path):
-    state, home = make_tree(tmp_path)
+def open_runtime(tmp_path: Path, db: Path):
+    return domain_bootstrap.open_domain_runtime(
+        state_root=tmp_path / "state", hermes_home=tmp_path / "no-native-home", db_path=db, auto_import=False
+    )
+
+
+def test_batch4_database_is_rewritten_on_boot(tmp_path):
     db = tmp_path / "domain.sqlite3"
-    apply_once(state, home, db)
-    assert downgrade_to_batch4(db), "fixture 应该确实产生了批次四形态的行"
+    seed_tree(db)
+    assert downgrade_to_batch4(db), "fixture 应该确实产生了旧形态的行"
 
     before = rows_of(db)
     assert ("project:default", "hermes:delegation", "delegation") in before
     assert ("project:default", "hermes:curator", "curator") in before
 
-    runtime = domain_bootstrap.open_domain_runtime(
-        state_root=state, hermes_home=home, db_path=db
-    )
+    runtime = open_runtime(tmp_path, db)
     try:
         assert runtime.migrated_on_start is True
-        app = FastAPI()
-        app.include_router(runtime.router)
-        with TestClient(app) as client:
-            body = client.get("/api/_domain/diff").json()
     finally:
         runtime.close()
 
@@ -403,23 +329,17 @@ def test_batch4_database_is_rewritten_on_boot_and_stays_in_sync(tmp_path):
     for key, value in untouched.items():
         assert after[key] == value
 
-    assert body["capabilities"]["inSync"] is True
-    assert body["capabilities"]["unexpectedInDb"] == []
-    assert body["capabilities"]["missingInDb"] == []
-    assert body["inSync"] is True
-
 
 def test_migration_is_idempotent(tmp_path):
-    state, home = make_tree(tmp_path)
     db = tmp_path / "domain.sqlite3"
-    apply_once(state, home, db)
+    seed_tree(db)
     downgrade_to_batch4(db)
 
-    first = domain_bootstrap.open_domain_runtime(state_root=state, hermes_home=home, db_path=db)
+    first = open_runtime(tmp_path, db)
     first.close()
     snapshot = rows_of(db)
 
-    second = domain_bootstrap.open_domain_runtime(state_root=state, hermes_home=home, db_path=db)
+    second = open_runtime(tmp_path, db)
     try:
         assert second.migrated_on_start is False
         assert second.imported_on_start is False
@@ -431,9 +351,8 @@ def test_migration_is_idempotent(tmp_path):
 def test_migration_on_a_clean_database_does_nothing(tmp_path):
     from app.persistence.sqlite import SqliteUnitOfWork
 
-    state, home = make_tree(tmp_path)
     db = tmp_path / "domain.sqlite3"
-    apply_once(state, home, db)
+    seed_tree(db)
     with SqliteUnitOfWork(db) as uow:
         result = asyncio.run(
             capability_migrations.migrate_retired_capability_types(uow.repositories)
@@ -447,9 +366,8 @@ def test_migration_leaves_unexpected_config_shapes_alone(tmp_path):
     from app.capabilities.models import ProjectCapability
     from app.persistence.sqlite import SqliteUnitOfWork
 
-    state, home = make_tree(tmp_path)
     db = tmp_path / "domain.sqlite3"
-    apply_once(state, home, db)
+    seed_tree(db)
 
     weird_id = "capability:" + capability_import.assignment_uuid(
         "project:kid", "hermes:curator", "curator"

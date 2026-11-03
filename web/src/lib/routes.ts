@@ -10,14 +10,12 @@
 export type ShellViewName =
   | "overview"
   | "agents"
-  | "kanban"
   | "config";
 
 /** 视图 ↔ 路径（IA §6.2 的表；`/` 是概览，其余一段路径）。 */
 const VIEW_PATHS: Record<ShellViewName, string> = {
   overview: "/",
   agents: "/agents",
-  kanban: "/kanban",
   config: "/config",
 };
 
@@ -38,7 +36,7 @@ export type KausRoute =
   | { name: "workbench"; moduleId: string | null }
   | { name: "unknown"; pathname: string };
 
-/** 这条路由是不是"某个视图"（概览 / 轮盘 / 设置 / 已屏蔽的任务板）。 */
+/** 这条路由是不是"某个视图"（概览 / 轮盘 / 设置）。 */
 export function routeView(route: KausRoute): ShellViewName | null {
   return route.name in VIEW_PATHS ? (route.name as ShellViewName) : null;
 }

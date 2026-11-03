@@ -99,7 +99,7 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
   const models = catalog?.models.filter(isSelectableModel) ?? [];
   const engineDefault = models.length === 0 && catalog?.engineDefaultAvailable === true && catalog.degraded !== true;
   const catalogReady = !settingsPending && !!catalog && (models.length > 0 || engineDefault);
-  const catalogError = catalog && !catalogReady ? catalog.diagnostics?.[0] ?? "引擎未提供可用模型" : "";
+  const catalogError = catalog && !catalogReady ? catalog.diagnostics?.[0] ?? t("group.coordinator.noModels") : "";
   const modelOptions = modelOptionsFor(catalog, selectedBinding, draft.modelId ?? undefined);
   const selected = models.find(m => m.modelId === draft.modelId && (!draft.providerId || m.providerId === draft.providerId));
   const reasoning = selected?.reasoningLevels?.length ? selected.reasoningLevels : effective?.conversationControls?.reasoningLevels ?? effective?.reasoningEffort.levels ?? [];
@@ -124,13 +124,13 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
     finally { setBusy(false); }
   };
   return <>
-    <button type="button" className="kaus-bar-pill kaus-coordinator-trigger" onClick={() => setOpen(true)} aria-label={global ? "默认组长" : "组长配置"} title={groupConfig?.modelId ? `组长 · ${groupConfig.modelId}` : global ? "默认组长" : "组长配置"}>
-      <Settings2 size={14} aria-hidden /><span>{global ? "默认组长" : "组长"}</span>
+    <button type="button" className="kaus-bar-pill kaus-coordinator-trigger" onClick={() => setOpen(true)} aria-label={global ? t("group.coordinator.default") : t("group.coordinator.settings")} title={groupConfig?.modelId ? t("group.coordinator.withModel", { model: groupConfig.modelId }) : global ? t("group.coordinator.default") : t("group.coordinator.settings")}>
+      <Settings2 size={14} aria-hidden /><span>{global ? t("group.coordinator.default") : t("group.coordinator.label")}</span>
     </button>
     {open && <Modal onClose={() => !busy && setOpen(false)} width={520}>
-      <ModalTitle>{global ? "默认组长" : "组长配置"}</ModalTitle>
+      <ModalTitle>{global ? t("group.coordinator.default") : t("group.coordinator.settings")}</ModalTitle>
       <div className="kaus-coordinator-settings kaus-settings-sheet" aria-busy={loading}>
-        {loading && <span role="status" className="kaus-group-dim">读取配置…</span>}
+        {loading && <span role="status" className="kaus-group-dim">{t("group.coordinator.loading")}</span>}
         <div className="kaus-coordinator-grid">
         <CoordinatorField label={t("draft.field.project")} wide><BarMenu floating label={t("draft.field.project")} value={projectId}
           display={projects.find(p => p.id === projectId)?.displayName ?? t("draft.project.choose")}
@@ -142,24 +142,24 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
             setBindings(current => [...current.filter(b => b.id !== binding.id), { ...binding, projectName: projects.find(p => p.id === binding.projectId)?.displayName ?? binding.projectId }]);
             setDraft(current => current.bindingId === binding.id ? current : { bindingId: binding.id, callCap: current.callCap, timeLimitMinutes: current.timeLimitMinutes });
           }} /></CoordinatorField>
-        <CoordinatorField label="模型" wide><BarMenu floating label="模型" value={draft.modelId ? modelKey(draft.modelId, draft.providerId) : engineDefault ? engineDefaultKey : null}
-          display={selected?.displayName ?? draft.modelId ?? (engineDefault ? "引擎默认" : "选择模型")}
-          options={engineDefault ? [{ value: engineDefaultKey, label: "引擎默认" }] : modelOptions.map(m => ({ ...m, value: modelKey(modelSelection(m.value).modelId, m.providerId) }))}
-          emptyNote={catalogError || "读取模型…"}
+        <CoordinatorField label={t("bar.model")} wide><BarMenu floating label={t("bar.model")} value={draft.modelId ? modelKey(draft.modelId, draft.providerId) : engineDefault ? engineDefaultKey : null}
+          display={selected?.displayName ?? draft.modelId ?? (engineDefault ? t("workbench.default") : t("group.coordinator.chooseModel"))}
+          options={engineDefault ? [{ value: engineDefaultKey, label: t("workbench.default") }] : modelOptions.map(m => ({ ...m, value: modelKey(modelSelection(m.value).modelId, m.providerId) }))}
+          emptyNote={catalogError || t("group.coordinator.loadingModels")}
           onSelect={value => {
             if (value === engineDefaultKey) { set({ modelId: null, providerId: null }); return; }
             const [providerId, modelId] = JSON.parse(value);
             set({ modelId, providerId, reasoningMode: null });
           }} /></CoordinatorField>
-        {effective?.conversationControls?.reasoning && reasoning.length > 0 && <CoordinatorField label="推理强度"><BarMenu floating label="推理强度" value={draft.reasoningMode ?? null}
-          display={draft.reasoningMode ?? "默认推理强度"} options={[{ value: "", label: "默认" }, ...reasoning.map(value => ({ value, label: value }))]}
+        {effective?.conversationControls?.reasoning && reasoning.length > 0 && <CoordinatorField label={t("bar.reasoning")}><BarMenu floating label={t("bar.reasoning")} value={draft.reasoningMode ?? null}
+          display={draft.reasoningMode ?? t("group.coordinator.reasoningDefault")} options={[{ value: "", label: t("draft.reasoning.default") }, ...reasoning.map(value => ({ value, label: value }))]}
           onSelect={reasoningMode => set({ reasoningMode: reasoningMode || null })} /></CoordinatorField>}
-        {approval.length > 0 && <CoordinatorField label="权限"><BarMenu floating label="权限" value={draft.approvalMode ?? null} display={draft.approvalMode ? approvalLabel(draft.approvalMode, t, effective?.conversationControls?.approvalOptions) : "默认权限"}
-          options={[{ value: "", label: "默认" }, ...approval.map(value => ({ value, label: approvalLabel(value, t, effective?.conversationControls?.approvalOptions), title: effective?.conversationControls?.approvalOptions?.find(option => option.id === value)?.description }))]}
+        {approval.length > 0 && <CoordinatorField label={t("group.coordinator.approval")}><BarMenu floating label={t("group.coordinator.approval")} value={draft.approvalMode ?? null} display={draft.approvalMode ? approvalLabel(draft.approvalMode, t, effective?.conversationControls?.approvalOptions) : t("group.coordinator.approvalDefault")}
+          options={[{ value: "", label: t("bar.defaults.prefix") }, ...approval.map(value => ({ value, label: approvalLabel(value, t, effective?.conversationControls?.approvalOptions), title: effective?.conversationControls?.approvalOptions?.find(option => option.id === value)?.description }))]}
           onSelect={approvalMode => set({ approvalMode: approvalMode || null })} /></CoordinatorField>}
         {execution.length > 0 && <CoordinatorField label={t("bar.execution")}><BarMenu floating label={t("bar.execution")} value={draft.executionMode ?? null}
-          display={execution.find(option => option.id === draft.executionMode)?.name ?? "默认模式"}
-          options={[{ value: "", label: "默认" }, ...execution.map(option => ({ value: option.id, label: option.name }))]}
+          display={execution.find(option => option.id === draft.executionMode)?.name ?? t("group.coordinator.executionDefault")}
+          options={[{ value: "", label: t("bar.defaults.prefix") }, ...execution.map(option => ({ value: option.id, label: option.name }))]}
           onSelect={executionMode => set({ executionMode: executionMode || null })} /></CoordinatorField>}
         </div>
         <button type="button" className="kaus-coordinator-more" data-testid="coordinator-advanced" onClick={() => setMore(!more)} aria-expanded={more}><ChevronDown size={13} aria-hidden className={more ? "is-expanded" : ""} />{t("group.coordinator.advanced")}</button>
@@ -167,18 +167,18 @@ export function CoordinatorSettings({ group, global = false }: { group?: GroupWi
           {!!effective?.conversationControls?.configOptions?.length && <div className="is-wide"><EngineConfigFields
             options={effective.conversationControls.configOptions} values={draft.configOptions}
             onChange={!busy ? (key, value) => set({ configOptions: { ...draft.configOptions, [key]: value } }) : undefined} /></div>}
-          {bindings.find(b => b.id === draft.bindingId) && <a className="kaus-coordinator-project-link" href={projectPath(bindings.find(b => b.id === draft.bindingId)!.projectId)} target="_blank" rel="noreferrer">插件与规则<ArrowUpRight size={13} aria-hidden /></a>}
+          {bindings.find(b => b.id === draft.bindingId) && <a className="kaus-coordinator-project-link" href={projectPath(bindings.find(b => b.id === draft.bindingId)!.projectId)} target="_blank" rel="noreferrer">{t("group.coordinator.projectLink")}<ArrowUpRight size={13} aria-hidden /></a>}
           <div className="is-wide"><WorkspacePill setting={{ value: draft.workspaceRoot ?? effective?.workspaceRoot.value ?? null, source: draft.workspaceRoot ? "binding" : "project" }} onSave={async workspaceRoot => { set({ workspaceRoot }); }} /></div>
-          <label>调用上限<input style={inputStyle()} type="number" min={2} max={200} value={draft.callCap ?? 40} onChange={e => set({ callCap: Number(e.target.value) })} /></label>
-          <label>运行时限（分钟）<input style={inputStyle()} type="number" min={1} max={240} value={draft.timeLimitMinutes ?? 30} onChange={e => set({ timeLimitMinutes: Number(e.target.value) })} /></label>
+          <label>{t("group.coordinator.callCap")}<input style={inputStyle()} type="number" min={2} max={200} value={draft.callCap ?? 40} onChange={e => set({ callCap: Number(e.target.value) })} /></label>
+          <label>{t("group.coordinator.timeLimit")}<input style={inputStyle()} type="number" min={1} max={240} value={draft.timeLimitMinutes ?? 30} onChange={e => set({ timeLimitMinutes: Number(e.target.value) })} /></label>
         </div>}
-        {running && <span className="kaus-group-dim">下次任务生效</span>}
+        {running && <span className="kaus-group-dim">{t("group.coordinator.nextTask")}</span>}
         {(error || catalogError) && <ErrorNotice error={error || catalogError} className="kaus-group-error" />}
         <div className="kaus-coordinator-actions">
-          {!global && defaults && bindings.some(binding => binding.id === defaults.bindingId && engineAcceptsNewWork(binding)) && <Button onClick={() => { const source = bindings.find(b => b.id === defaults.bindingId); if (source) setProjectId(source.projectId); setDraft({ ...defaults, revision: Math.max(1, revision), sourceRevision: defaults.revision }); }}>应用默认</Button>}
-          {!global && <Button disabled={busy || loading || !draft.bindingId || !catalogReady || !engineAcceptsNewWork(selectedBinding)} onClick={() => void save(true)}>设为默认</Button>}
-          {running && <Button disabled={busy || loading || !draft.bindingId || !catalogReady} onClick={() => void save(false, true)}>停止并接管</Button>}
-          <Button disabled={busy || loading || !draft.bindingId || !catalogReady || (global && !engineAcceptsNewWork(selectedBinding))} onClick={() => void save()}>{busy ? "保存中…" : "保存"}</Button>
+          {!global && defaults && bindings.some(binding => binding.id === defaults.bindingId && engineAcceptsNewWork(binding)) && <Button onClick={() => { const source = bindings.find(b => b.id === defaults.bindingId); if (source) setProjectId(source.projectId); setDraft({ ...defaults, revision: Math.max(1, revision), sourceRevision: defaults.revision }); }}>{t("group.coordinator.applyDefault")}</Button>}
+          {!global && <Button disabled={busy || loading || !draft.bindingId || !catalogReady || !engineAcceptsNewWork(selectedBinding)} onClick={() => void save(true)}>{t("engine.action.makeDefault")}</Button>}
+          {running && <Button disabled={busy || loading || !draft.bindingId || !catalogReady} onClick={() => void save(false, true)}>{t("group.coordinator.handoff")}</Button>}
+          <Button disabled={busy || loading || !draft.bindingId || !catalogReady || (global && !engineAcceptsNewWork(selectedBinding))} onClick={() => void save()}>{busy ? t("group.coordinator.saving") : t("common.save")}</Button>
         </div>
       </div>
     </Modal>}

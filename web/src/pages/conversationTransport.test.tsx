@@ -4,8 +4,7 @@ import userEvent from "@testing-library/user-event";
 
 import { ConversationPage } from "./ConversationPage";
 import * as api from "../lib/sessionApi";
-import { resetExternalSurfaces, setExternalSurface } from "../lib/externalSurface";
-import { pendingStorageKey } from "../lib/pendingMessages";
+import { resetExternalSurfaces } from "../lib/externalSurface";
 import { HISTORY_REPLAY_GRACE_MS } from "../lib/historyReplay";
 
 /* batch30 第 1 件（真机 P1）：SSE 到不了时的轮询兜底，在**页面这一层**的样子。
@@ -179,15 +178,6 @@ function replayWholeRun(options: { completed: boolean }) {
   push(envelope(5, { type: "message.started", messageId: "m1", role: "assistant" }));
   push(envelope(6, { type: "message.completed", messageId: "m1", text: "目录里有两个文件。" }));
   if (options.completed) push(envelope(7, { type: "run.completed", runId: "run:1" }));
-}
-
-/** 重放之后这四样必须都在——少一样就是"重开为空"的前身。 */
-async function expectWholeRunRendered() {
-  expect(await screen.findByText("请列出当前目录")).toBeInTheDocument();
-  expect(await screen.findByText("目录里有两个文件。")).toBeInTheDocument();
-  expect(screen.getByTestId("tool-row")).toBeInTheDocument();
-  expect(screen.queryByText("发第一条消息开始。")).toBeNull();
-  expect(screen.queryByTestId("history-missing")).toBeNull();
 }
 
 beforeEach(() => {

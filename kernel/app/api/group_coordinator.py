@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 from tempfile import gettempdir
 
+from app.api.conversation_settings import conversation_controls_of, scoped_model_catalog
 from app.conversations.configuration import validate_config_values
 from app.api.api_errors import ApiError
 from app.api.backend_facets import require_new_work
@@ -70,7 +71,7 @@ class GroupCoordinator:
             if not existing:
                 require_new_work(driver, backend_id=binding.backend_id)
             await register_binding_snapshot(driver, binding, self.repos.projects)
-            catalog = await driver.get_model_catalog(binding)
+            catalog = await scoped_model_catalog(driver, binding)
             hook = getattr(driver, 'group_context_isolation', None)
             if not hook or not hook():
                 raise ApiError(400, 'coordinator_isolation_unavailable', '该引擎尚未支持组长上下文隔离，请选择已支持的引擎')
@@ -79,8 +80,7 @@ class GroupCoordinator:
         except Exception as exc:
             raise ApiError(400, 'coordinator_unavailable', '暂时无法读取所选引擎的模型与能力') from exc
         snapshot = await register_binding_snapshot(driver, binding, self.repos.projects)
-        controls_hook = getattr(driver, 'conversation_controls', None)
-        controls = controls_hook(binding) if controls_hook else {}
+        controls = conversation_controls_of(driver, binding, default={})
         if not catalog.models:
             # A successful native session may expose controls without a model
             # catalog. The driver explicitly attests that case; an empty result

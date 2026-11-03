@@ -28,6 +28,7 @@ state.db schema **26**）。
 | `engine_settings.py` | 批次十三 | 只读 `<HERMES_HOME>/config.yaml` 的 model / 推理强度 / 审批档 / provider 名 |
 | `approval_map.py` | 批次十三 / AD-106 | 通用 `ask\|auto\|deny` ↔ `approvals.mode` 的 `manual\|smart\|off` |
 | `projector.py` | §2.4 | 能力投射（Phase 5 骨架：只归类，不写 `config.yaml`） |
+| `project_scope.py` / `skill_projection.py` / `skill_usage_sync.py` | 2026-11-03 | 独立执行目录、托管技能副本与用量回写（见下文「防御」一节） |
 | `driver.py` | §2 | 15 个契约方法的编排 |
 | `testing/` | — | 假 API server + `FakeHermesHarness`（只被测试与冒烟脚本导入） |
 
@@ -79,6 +80,39 @@ state.db schema **26**）。
 - `NativeHistoryEntry.metadata`（`toolCalls` / `toolCallId` / `reasoning` / …）
 - `AgentBinding.runtime_config_json.api_server`（只许 `host/port/profile/hermes_home/key_ref/mode` 六个键）
 - `extension.event`，namespace 固定 `"hermes"`
+
+## 独立执行目录对引擎自维护的防御（2026-11-03）
+
+Kaus 为新 Binding 准备的执行目录 `~/.hermes/.kaus-scopes/<hash>/`（`project_scope.py`）
+把来源档案的 `skills/` 软链接进来；托管技能模式再把选中的技能**复制**成私有副本
+（`skill_projection.py`）。Hermes 自带的 curator（`hermes gateway run` / `hermes chat`
+空闲时跑，只读 `HERMES_HOME/config.yaml`）会把约 30 天无用量的 agent 创建技能归档到
+来源的 `skills/.archive/`，而副本的用量只记在执行目录里。四条防御都只在 Hermes 接入、
+且只对 Kaus 启动的进程生效：
+
+| 防御 | 模块 | 行为 |
+|---|---|---|
+| 关掉执行目录里的 curator | `project_scope.disable_native_curator` | 生成执行目录 `config.yaml` 时写 `curator.enabled: false`（Hermes `agent/curator.py::is_enabled` 的键）。托管/原生技能模式都写；**不写进任何非执行目录（老档案）的配置**。 |
+| 用量回写 | `skill_usage_sync.py`，由 `driver.events`（顶层 run 终态）与 `driver.stop_runtime` 触发 | 见下。 |
+| 归档技能的明确错误 | `skill_projection.engine_archive_of` / `archived_skills`、`failure_hints.skill_archived_by_engine` | 来源缺失且在 `<skills root>/.archive/` 里找得到同名（或 `<目录名>-<14 位时间戳>`、frontmatter 同名）目录时，`session_options_for` 抛 `UnsupportedCapabilityError`，`failure.code = skill_archived_by_engine`，`hint` 给出 `hermes curator restore <name>`。接入层回 `409 skill_archived_by_engine`，前端按码本地化。 |
+| 剥离旧宪法块 | `project_scope.strip_legacy_constitution` | 复制 `SOUL.md` 进执行目录时去掉旧仪表盘写的 `<!-- ⚖ HERMES CONSTITUTION … -->` 块（标记常量与仓库根 `project_instructions.py` 逐字相同，Driver 不 import 宿主模块）。来源文件不动。 |
+
+**用量回写是 Kaus 唯一一处写进用户原生 Hermes 目录的地方**，范围如下，不得扩大：
+
+- 只写 `<来源 HERMES_HOME>/skills/.usage.json` 这一个文件；文件不存在就什么都不做（不创建）。
+- 只改该文件里**已有**的记录，且只限 `.kaus-skills.json` 里列出的被选技能（键 = Hermes 自己的技能名）：
+  `last_used_at` / `last_viewed_at` 取较新值，`use_count` / `view_count` 加上尚未回写的增量
+  （增量基线记在执行目录的 `.kaus-usage-merged.json`，所以重复回写幂等）。不新增、不删除记录，
+  不碰 `state` / `pinned` / `created_by` 等生命周期字段，不读写任何技能文件。
+- 读改写全程持有 Hermes 自己的 `skills/.usage.json.lock`（`flock`），写法是临时文件 + `os.replace`、
+  `indent=2, sort_keys=True, ensure_ascii=False`，与 `tools/skill_usage.py` 一致。
+- 原生技能模式（执行目录的 `skills/` 仍是软链接）不回写：Hermes 本来就直接记在来源里。
+- 站外 CLI（`hermes chat`）由用户自己结束，Kaus 不在它退出时回写；下一次任何 Kaus 启动的运行结束或停止时
+  会把执行目录里累计的用量一并补上。
+
+投射层另加一条通用规则（`drivers/workspace_projection.py` 与本目录 `projector.py`）：
+目标 `config.yaml` / 指令文件是软链接时不做原子替换，改在投射报告里以 `reason=target_linked`
+报冲突，链接与其指向的文件原样保留。
 
 ## 跑测试
 

@@ -17,7 +17,7 @@ export function WorkspacePicker({ initialPath, onSelect, onClose, title }: {
   /** 默认是"选择工作目录"；其他用途（如添加模块）传自己的标题。 */
   title?: string;
 }) {
-  const { t, locale } = useLocale();
+  const { t } = useLocale();
   const heading = title ?? t("bar.workspace.choose");
   const [location, setLocation] = useState(initialPath || "");
   const [editingPath, setEditingPath] = useState(false);
@@ -72,7 +72,7 @@ export function WorkspacePicker({ initialPath, onSelect, onClose, title }: {
         <button type="button" className="kaus-chat-icon-action" title={t("workspace.home")} aria-label={t("workspace.home")} disabled={saving} onClick={() => browse(data?.home ?? "")}><Home size={16} /></button>
         <button type="button" className="kaus-chat-icon-action" title={t("workspace.parent")} aria-label={t("workspace.parent")} disabled={!data?.parent || saving || loading} onClick={() => browse(data!.parent!)}><ArrowUp size={16} /></button>
         {editingPath ? <input autoFocus ref={pathRef} aria-label={t("bar.workspace")} value={draft} disabled={saving} onChange={event => setDraft(event.target.value)} /> :
-          <button type="button" className="flex min-w-0 flex-1 items-center gap-2 truncate text-left" disabled={saving} aria-label={locale === "zh" ? "输入文件夹位置" : "Enter folder location"} onClick={() => setEditingPath(true)}>
+          <button type="button" className="flex min-w-0 flex-1 items-center gap-2 truncate text-left" disabled={saving} aria-label={t("workspace.enterPath")} onClick={() => setEditingPath(true)}>
             <span className="min-w-0 flex-1 truncate">{(data?.path || initialPath || "").replace(/\\/g, "/").split("/").filter(Boolean).at(-1) || t("workspace.home")}</span><Pencil size={13} />
           </button>}
         <button type="button" className="kaus-chat-icon-action" aria-label={t("workspace.hidden")} title={t("workspace.hidden")} aria-pressed={hidden} disabled={saving} onClick={() => setHidden(value => !value)}>{hidden ? <Eye size={16} /> : <EyeOff size={16} />}</button>

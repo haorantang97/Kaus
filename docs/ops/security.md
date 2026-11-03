@@ -74,11 +74,13 @@ curl -s -H 'Origin: http://127.0.0.1:5174' -H 'Sec-Fetch-Site: same-origin' \
 
 # 1) 跨站 Origin 的写请求 → 403，且不应有任何副作用
 curl -s -o /dev/null -w '%{http_code}\n' -X POST \
-  -H 'Origin: https://evil.example' http://127.0.0.1:8877/api/kanban/daemon/start
+  -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{"name":"probe"}' \
+  http://127.0.0.1:8877/api/agent/create-empty
 # 期望 403
 
 # 2) 本机、无 token → 401
-curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8877/api/kanban/daemon/start
+curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{"name":"probe"}' \
+  http://127.0.0.1:8877/api/agent/create-empty
 # 期望 401
 
 # 3) 读接口照旧

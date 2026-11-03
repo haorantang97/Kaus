@@ -646,3 +646,37 @@ async def test_close_before_resume_is_silent_when_the_engine_has_no_such_method(
         assert not driver.warnings
     finally:
         await driver.stop_runtime(runtime)
+
+
+async def test_resolving_a_permission_twice_raises_while_the_turn_runs(harness: FakeAcpHarness) -> None:
+    """同一个 request_id 第二次提交必须被拒：回执只发一次，agent 那边不会收到两个答案。"""
+    from drivers.base import InteractionNotFoundError
+
+    driver = make_driver("permission")
+    project = harness.make_project()
+    binding = harness.make_binding(project, driver)
+    conversation = harness.make_conversation(project, binding)
+    runtime = await driver.start_runtime(conversation, "card")
+    rejected: list[str] = []
+    try:
+        async def resolve(envelope) -> None:
+            request_id = envelope.event.request.request_id
+            await driver.resolve_interaction(
+                runtime, request_id, InteractionResponse(kind="permission", option_id="deny")
+            )
+            with pytest.raises(InteractionNotFoundError):
+                await driver.resolve_interaction(
+                    runtime, request_id, InteractionResponse(kind="permission", option_id="allow")
+                )
+            rejected.append(request_id)
+
+        await driver.send_message(runtime, MessageInput(text="run something"))
+        envelopes = await collect_until_run_terminal(
+            driver, runtime, on_interaction=resolve, timeout=30.0
+        )
+    finally:
+        await driver.stop_runtime(runtime)
+
+    resolved = [e for e in envelopes if e.event.type == "permission.resolved"]
+    assert len(rejected) == 1 and len(resolved) == 1
+    assert resolved[0].event.decision == "deny"

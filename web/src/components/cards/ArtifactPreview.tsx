@@ -117,7 +117,7 @@ export function ArtifactPreview({ source, conversationId, onClose, loadBlob, dis
   onGallerySelect?: (index: number) => void;
 }) {
   const c = useContentText();
-  const { locale } = useLocale();
+  const { t } = useLocale();
   const titleId = useId();
   const { rootRef, contentRef: dialog } = useModalLayer(onClose);
   const imageViewer = useRef<ImageLightboxHandle>(null);
@@ -217,7 +217,7 @@ export function ArtifactPreview({ source, conversationId, onClose, loadBlob, dis
         <header className="kaus-preview-header">
           <div className="kaus-preview-heading">
             <strong id={titleId}>{title}</strong>
-            {!hasInlineData && <details><summary className="text-xs opacity-60">{locale === "zh" ? "位置" : "Location"}</summary><small>{displayPath ?? source.uri}</small></details>}
+            {!hasInlineData && <details><summary className="text-xs opacity-60">{t("card.artifact.location")}</summary><small>{displayPath ?? source.uri}</small></details>}
           </div>
           <div className="kaus-preview-actions">
             {isImagePreview && gallery && gallery.length > 1 && onGallerySelect && <>

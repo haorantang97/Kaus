@@ -6,18 +6,17 @@ describe("路由解析", () => {
   it("每个视图各解析成自己那条路由", () => {
     expect(parseRoute("/")).toEqual({ name: "overview" });
     expect(parseRoute("/agents")).toEqual({ name: "agents" });
-    expect(parseRoute("/kanban")).toEqual({ name: "kanban" });
     expect(parseRoute("/config")).toEqual({ name: "config" });
   });
 
-  it("已移除的运行概况、资料库、仓库不再是视图", () => {
-    for (const path of ["/dashboard", "/vault", "/warehouse"]) {
+  it("已移除的运行概况、资料库、仓库、任务板不再是视图", () => {
+    for (const path of ["/dashboard", "/vault", "/warehouse", "/kanban"]) {
       expect(parseRoute(path)).toEqual({ name: "unknown", pathname: path });
     }
   });
 
   it("视图 ↔ 路径互为逆运算，非视图路由 routeView 返回 null", () => {
-    for (const view of ["overview", "agents", "kanban", "config"] as const) {
+    for (const view of ["overview", "agents", "config"] as const) {
       expect(routeView(parseRoute(shellViewPath(view)))).toBe(view);
     }
     expect(routeView(parseRoute("/new"))).toBeNull();

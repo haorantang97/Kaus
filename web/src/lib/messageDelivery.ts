@@ -18,6 +18,9 @@ const REJECTION_REASON_KEYS: Readonly<Record<string, DictKey>> = {
   driver_not_registered: "conversation.message.reason.driver",
   conversation_archived: "conversation.message.reason.archived",
   project_deleted: "conversation.message.reason.projectDeleted",
+  // Session projection refused before start: a selected skill was archived by
+  // the engine's own maintenance (session_router.send_message).
+  skill_archived_by_engine: "conversation.message.reason.skillArchived",
 };
 
 // Historical events retain their original diagnostics. Render the current copy
