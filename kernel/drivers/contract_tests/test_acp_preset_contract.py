@@ -89,7 +89,7 @@ def test_the_catalog_has_explicitly_reviewed_presets() -> None:
     assert set(PRESET_IDS) == {
         "claude-code", "codex", "opencode", "gemini", "antigravity", "qwen",
         "openclaw", "pi", "hermes-acp", "dsh", "deepseek-acp", "kilo",
-        "goose", "cursor", "copilot", "devin", "omp", "grok", "crush", "commandcode", "alma", "zcode",
+        "goose", "cursor", "copilot", "omp", "grok", "crush", "commandcode", "zcode",
     }
 
 

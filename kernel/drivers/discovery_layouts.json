@@ -227,14 +227,5 @@
       "provider_config.json",
       "settings.json"
     ]
-  },
-  "devin": {
-    "folder": ".config/devin",
-    "files": [
-      "config.json",
-      "config.local.json",
-      "mcp_config.json",
-      "mcp_config.local.json"
-    ]
   }
 }

@@ -5,7 +5,7 @@ import { useLocale } from "../i18n";
 import { addGroupMember, isGroupOpen, spawnGroupMember } from "../lib/groupsApi";
 import { groupDropTarget, useGroupDrop, type GroupDropPayload } from "../lib/groupDrop";
 import { matchProjectId } from "../lib/projectRef";
-import { minimizeGroupDock, openGroupDock, refreshGroups, useDockState, useGroupState } from "../lib/groupStore";
+import { minimizeGroupDock, openGroupDock, refreshGroups, showGroupList, useDockState, useGroupState } from "../lib/groupStore";
 import { fetchProjects } from "../lib/sessionApi";
 import { describeGroupFailure } from "./GroupDock";
 import { toast } from "./ui";
@@ -16,7 +16,7 @@ import { toast } from "./ui";
  * 规则与胶囊一致（★J-4）：
  *   ① 浮窗记着一个展开的组 → 加入它；
  *   ② 没有展开的组但只开着一个组 → 就是它；
- *   ③ 开着多个组 → 打开浮窗摊开第一个组，提示拖到具体那个组的成员栏上；
+ *   ③ 开着多个组 → 打开浮窗停在组列表，提示拖到具体那个组上；
  *   ④ 一个组都没有 → 提示先建组，不给虚线框。
  * 拖会话 = `addGroupMember`；拖项目 = `spawnGroupMember`（只传 projectId，用默认绑定）。 */
 export function GroupNavItem() {
@@ -63,7 +63,7 @@ export function GroupNavItem() {
           toast(t("group.drop.noGroup"), "bad");
           return;
         }
-        openGroupDock(openGroups[0].id);
+        showGroupList();
         toast(t("group.drop.pickGroup", { count: openGroups.length }), "bad");
       },
       [dock.expandedGroupId, openGroups, join, t],

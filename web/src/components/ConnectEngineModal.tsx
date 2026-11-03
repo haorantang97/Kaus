@@ -9,6 +9,8 @@ import { Button, ErrorNotice, Modal, ModalTitle, cream, inputStyle, toast } from
 import type { AttachableBackend } from "./EnginePanel";
 import { chooseNativeExecutable, connectEngine, fetchEngineCatalog, groupEnginePresets, openEngineLogin, refreshEngineConnections, type EnginePreset } from "../lib/enginePresets";
 import { describeFailure } from "../lib/sessionApi";
+import { finishSkillOnboarding, type CapabilityInvitation } from "../lib/skillOnboarding";
+import { CapabilityOnboardingStep } from "./CapabilityOnboardingStep";
 
 function statusKey(preset: EnginePreset): DictKey {
   if (preset.probeState === "available") return "engines.connect.available";
@@ -75,6 +77,7 @@ export function ConnectEngineModal({
   const [paths, setPaths] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Record<string, boolean>>({});
   const [pendingLogin, setPendingLogin] = useState<string | null>(null);
+  const [step, setStep] = useState<{ invitation: CapabilityInvitation; backendId: string } | null>(null);
 
   useEffect(() => {
     if (!pendingLogin) return;
@@ -150,9 +153,13 @@ export function ConnectEngineModal({
     setBusy(true);
     setError(null);
     try {
-      const result = pathChanged ? await connectEngine(preset.id, path.trim()) : preset.registered ? { backendId: preset.backendId } : await connectEngine(preset.id);
+      const result: { backendId: string; onboarding?: CapabilityInvitation } = pathChanged ? await connectEngine(preset.id, path.trim()) : preset.registered ? { backendId: preset.backendId } : await connectEngine(preset.id);
       setCatalog((rows) => rows.map((row) => row.id === preset.id ? { ...row, backendId: result.backendId, registered: true, ...(pathChanged ? { nativePath: path.trim(), detected: true } : {}) } : row));
-      if (onAttach) onAttach(result.backendId);
+      if (result.onboarding) {
+        // First connection of this product: allocate its native capabilities before leaving the flow.
+        if (!onAttach) toast(t("engines.connect.registered"), "ok");
+        setStep({ invitation: result.onboarding, backendId: result.backendId });
+      } else if (onAttach) onAttach(result.backendId);
       else { toast(t("engines.connect.registered"), "ok"); if (!preset.registered) onClose(); }
     } catch (failure) {
       setError(describeFailure(failure));
@@ -160,6 +167,28 @@ export function ConnectEngineModal({
       setBusy(false);
     }
   };
+
+  const finishStep = () => {
+    const done = step;
+    setStep(null);
+    if (done && onAttach) onAttach(done.backendId);
+    else onClose();
+  };
+  const closeModal = () => {
+    // Leaving the flow keeps the default allocation (everything stays in the root Project).
+    if (step) void finishSkillOnboarding(step.invitation.id, "skipped").catch(() => undefined);
+    onClose();
+  };
+
+  if (step) return (
+    <Modal onClose={closeModal} width={820}>
+      <div data-testid="connect-engine-modal">
+        {error && <ErrorNotice error={error} className="mb-3 text-xs" />}
+        <CapabilityOnboardingStep key={step.invitation.id} invitation={step.invitation} onFinish={finishStep}
+          footerStart={preset?.loginAvailable && preset.backendId === step.backendId ? <Button disabled={busy} aria-label={t("engines.connect.openLogin")} title={t("engines.connect.openLogin")} onClick={() => void login()}><Terminal size={16} /></Button> : undefined} />
+      </div>
+    </Modal>
+  );
 
   return (
     <Modal onClose={onClose} width={720}>
@@ -246,17 +275,7 @@ export function ConnectEngineModal({
                     <button type="button" disabled={busy} aria-label={t("engines.connect.chooseExecutable")} title={t("engines.connect.chooseExecutable")} onClick={() => void choosePath()}><FolderOpen size={15} /></button>
                   </div></details>}
                 </div>}
-                {showDetails && <details className="mt-4 text-xs" style={{ color: cream(58) }}>
-                  <summary className="cursor-pointer">{t("engines.connect.details")}</summary>
-                  <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
-                    {preset.nativePath && <><dt>{t("engines.connect.executable")}</dt><dd className="break-all">{preset.nativePath}</dd></>}
-                    {preset.runtimeIdentity?.engineVersion && <><dt>{t("engines.connect.engineVersion")}</dt><dd>{preset.runtimeIdentity.engineVersion}</dd></>}
-                    {(preset.runtimeIdentity?.adapterVersion || preset.version) && <><dt>{t("engines.connect.adapterVersion")}</dt><dd>{preset.runtimeIdentity?.adapterVersion || preset.version}</dd></>}
-                    {preset.runtimeIdentity?.protocolVersion != null && <><dt>{t("engines.connect.protocolVersion")}</dt><dd>{preset.runtimeIdentity.protocolVersion}</dd></>}
-                  </dl>
-                </details>}
                 {preset.installCommand && !preset.detected && <details className="mt-4 text-xs" style={{ color: cream(58) }}><summary className="cursor-pointer">{t("engines.connect.install")}</summary><CommandRow key={`${preset.id}:install`} label={t("engines.connect.install")} command={preset.installCommand} /></details>}
-                {preset.adapterInstallCommand && <details className="mt-4 text-xs" style={{ color: cream(58) }}><summary className="cursor-pointer">{t("engines.connect.adapterSetup")}</summary><RuntimeVersions key={preset.id} presetId={preset.id} /><CommandRow label={t("engines.connect.install")} command={preset.adapterInstallCommand} /></details>}
                 {preset.loginCommand && <details className="mt-4 text-xs" style={{ color: cream(58) }}><summary className="cursor-pointer">{t("engines.connect.auth")}</summary><CommandRow key={`${preset.id}:login`} label={t("engines.connect.auth")} command={preset.loginCommand} /></details>}
                 <div className="mt-5 flex items-center gap-2">
                   <Button variant="primary" disabled={busy || (!!onAttach && !engineAcceptsNewWork(preset)) || (attached && !pathChanged) || (!onAttach && preset.registered && !pathChanged)} onClick={() => void connect()}>
@@ -264,6 +283,16 @@ export function ConnectEngineModal({
                   </Button>
                   {preset.registered && preset.loginAvailable && <Button disabled={busy || pathChanged} aria-label={t("engines.connect.openLogin")} title={t("engines.connect.openLogin")} onClick={() => void login()}><Terminal size={16} /></Button>}
                 </div>
+                {(showDetails || preset.adapterInstallCommand) && <details className="mt-4 text-xs" style={{ color: cream(58) }} data-testid="connect-advanced">
+                  <summary className="cursor-pointer">{t("engines.connect.advanced")}</summary>
+                  {showDetails && <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
+                    {preset.nativePath && <><dt>{t("engines.connect.executable")}</dt><dd className="break-all">{preset.nativePath}</dd></>}
+                    {preset.runtimeIdentity?.engineVersion && <><dt>{t("engines.connect.engineVersion")}</dt><dd>{preset.runtimeIdentity.engineVersion}</dd></>}
+                    {(preset.runtimeIdentity?.adapterVersion || preset.version) && <><dt>{t("engines.connect.adapterVersion")}</dt><dd>{preset.runtimeIdentity?.adapterVersion || preset.version}</dd></>}
+                    {preset.runtimeIdentity?.protocolVersion != null && <><dt>{t("engines.connect.protocolVersion")}</dt><dd>{preset.runtimeIdentity.protocolVersion}</dd></>}
+                  </dl>}
+                  {preset.adapterInstallCommand && <><RuntimeVersions key={preset.id} presetId={preset.id} /><CommandRow label={t("engines.connect.adapterSetup")} command={preset.adapterInstallCommand} /></>}
+                </details>}
               </div>
             )}
           </div>

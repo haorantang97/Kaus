@@ -238,11 +238,13 @@ def background_enabled(
 
 #: 访问日志里 `?token=...` / `&token=...` 的匹配。值一律换成 REDACTED。
 _TOKEN_IN_QUERY_RE = re.compile(r"([?&]token=)[^&\s\"']+", re.IGNORECASE)
+#: 模块页面的访问凭据是路径段（`/api/workbench/assets/<id>/~<token>/…`、`/frames/<token>`）。
+_FRAME_TOKEN_IN_PATH_RE = re.compile(r"(/api/workbench/(?:assets/[^/\s]+/~|modules/[^/\s]+/frames/))[A-Za-z0-9_-]+")
 
 
 def redact_token_query(text: str) -> str:
-    """把任意文本里的 `token=<值>` 抹掉。给日志用，不改语义只改可见性。"""
-    return _TOKEN_IN_QUERY_RE.sub(r"\1REDACTED", text)
+    """把任意文本里的 `token=<值>` 与模块页面凭据抹掉。给日志用，不改语义只改可见性。"""
+    return _FRAME_TOKEN_IN_PATH_RE.sub(r"\1REDACTED", _TOKEN_IN_QUERY_RE.sub(r"\1REDACTED", text))
 
 
 class _AccessLogTokenFilter(logging.Filter):
@@ -255,7 +257,7 @@ class _AccessLogTokenFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if isinstance(record.msg, str) and "token=" in record.msg:
+        if isinstance(record.msg, str) and ("token=" in record.msg or "/api/workbench/" in record.msg):
             record.msg = redact_token_query(record.msg)
         args = record.args
         if isinstance(args, tuple):
@@ -1144,6 +1146,8 @@ def open_session_runtime(
     from app.api.session_router import build_session_router
     from runtime.event_store import EventStore
     from runtime.external_cli import ExternalCliMonitor, TerminalLauncher
+    from runtime.terminal_status import TerminalStatusBoard
+    from drivers.terminals.launcher import macos_notify
     from runtime.lease_manager import LeaseManager
     from runtime.session_host import DEFAULT_IDLE_TIMEOUT, SessionHost
     from runtime.surface_handoff import SurfaceCoordinator
@@ -1164,6 +1168,12 @@ def open_session_runtime(
         # `project:default` 在 /conversations 上就是「未知 Project」。
         # 领域 flag 也开着时 `repositories` 是传进来的，那边已经补过，不走这里。
         asyncio.run(domain_bootstrap.ensure_root_project(repositories))
+        # 旧 Project 文件的一次性导入（只在默认库上；自定义库写 skipped 标记）。
+        import project_file_import
+        project_file_import.auto_import(
+            database=unit_of_work.database, db_path=resolved, state_root=domain_bootstrap.REPO_ROOT,
+            hermes_home=project_file_import.legacy_native_home(),
+            log=LOGGER.info)
 
     # D-17：token 文件在装配时就建出来（0600），而不是等第一个请求——
     # 这样「服务起来了」与「鉴权就位了」是同一个时刻，中间没有裸奔的窗口。
@@ -1227,6 +1237,11 @@ def open_session_runtime(
         root=resolved_token_path.parent / LAUNCHES_DIRNAME,
         app=resolve_terminal_app(config),
         app_provider=terminal_preferences.selected,
+        trust_provider=terminal_preferences.trust_workspace,
+        status_board=TerminalStatusBoard(on_waiting=lambda status: macos_notify(
+            "Kaus", status.message or "终端中的 Agent 需要你处理")),
+        # The backend serves on loopback (server.py); a preview server may override.
+        status_url=os.environ.get("KAUS_LOCAL_URL", "http://127.0.0.1:8877"),
     )
     surface_coordinator = SurfaceCoordinator(
         session_host=session_host,
@@ -1267,7 +1282,7 @@ def open_session_runtime(
     )
     router.routes.extend(build_workbench_router(service=workbench, auth_policy=auth_policy).routes)
     router.routes.extend(build_workbench_intakes_router(intakes=module_intakes, auth_policy=auth_policy).routes)
-    router.routes.extend(build_workbench_assets_router(service=workbench).routes)
+    router.routes.extend(build_workbench_assets_router(service=workbench, auth_policy=auth_policy).routes)
     router.routes.extend(build_module_backend_router(manager=module_backends, auth_policy=auth_policy).routes)
     router.routes.extend(build_module_callback_router(manager=module_backends).routes)
     # Shares the same authentication and launcher with exact-session handoff.
@@ -1311,8 +1326,15 @@ def open_session_runtime(
 
         skill_tree = SkillTreeService(skill_database, inventory_ready=skill_inventory_ready,
                                       onboarding_enabled=skill_onboarding_enabled)
-        skill_tree.discover = lambda: discover_skills(configured_roots(
-            registry, *skill_tree.inventory_context()))
+        from drivers.mcp_inventory import configured_mcp_sources, discover_mcp
+
+        def discover_capabilities():
+            context = skill_tree.inventory_context()
+            # Native MCP definitions are catalogue records only (`<agent>:mcp`);
+            # the source Agent keeps loading them itself.
+            return [*discover_skills(configured_roots(registry, *context)),
+                    *discover_mcp(configured_mcp_sources(registry, *context))]
+        skill_tree.discover = discover_capabilities
         router.routes.extend(build_skill_tree_router(skill_tree, auth_policy=auth_policy).routes)
     from native_archives import NativeArchiveStore, NativeArchiveService
     from app.api.native_archives import build_native_archive_router
@@ -1456,8 +1478,15 @@ MUTATING_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 API_PATH_PREFIX: str = "/api/"
 
 
+#: Hook reports from external terminals. They cannot hold the session token (that
+#: would hand full API access to the agent process); the route instead checks a
+#: random token issued for that one launch. See ``terminal_settings``.
+TERMINAL_STATUS_PATH_PREFIX = "/api/terminal-status/"
+
+
 def _is_mutating_api_path(method: str, path: str) -> bool:
-    return method.upper() in MUTATING_METHODS and path.startswith(API_PATH_PREFIX)
+    return (method.upper() in MUTATING_METHODS and path.startswith(API_PATH_PREFIX)
+            and not path.startswith(TERMINAL_STATUS_PATH_PREFIX))
 
 
 def install_legacy_write_auth(
@@ -1500,9 +1529,10 @@ def install_legacy_write_auth(
     两份 policy 读的是同一个 token 文件，但**同一个对象**才能保证 Origin 白名单
     这类取值不会哪天在两处配出两个答案。
 
-    返回装好的 policy（测试与自检要用），装不上时返回 ``None`` 并记一行日志——
-    但这条日志是 **WARNING 级的事故**，不是「旁路设施跳过」：它意味着写接口
-    现在没有闸。
+    返回装好的 policy（测试与自检要用），装不上时返回 ``None``、记一行日志，并改装
+    :func:`install_fail_closed_write_gate`：鉴权不可用时写接口一律 503
+    ``auth_unavailable``，而不是默认放行。这条日志仍是 **WARNING 级的事故**，
+    不是「旁路设施跳过」：它意味着写接口此刻对谁都不可用。
     """
     if policy is None:
         try:
@@ -1515,10 +1545,12 @@ def install_legacy_write_auth(
             )
             load_or_create_token(resolved)
         except Exception as exc:  # noqa: BLE001
+            # 闸装不上不等于不设闸：写接口在鉴权就绪之前一律 503，不默认放行。
             log(
-                "[legacy_write_auth] 装不上本地鉴权，旧写接口目前没有闸："
+                "[legacy_write_auth] 装不上本地鉴权，写接口一律 503 直到鉴权就绪："
                 f"{exc!r}"
             )
+            install_fail_closed_write_gate(fastapi_app)
             return None
 
     _ensure_kernel_on_path()
@@ -1553,6 +1585,28 @@ def install_legacy_write_auth(
         return await call_next(request)
 
     return policy
+
+
+def install_fail_closed_write_gate(
+    fastapi_app: Any,
+    *,
+    message: str = "本地鉴权未就绪，写接口暂不可用。",
+) -> None:
+    """鉴权装不上时的闸：``/api/`` 下的写请求一律 503 ``auth_unavailable``。
+
+    与 :meth:`app.api.session_auth.SessionAuthPolicy.current_token` 在「没有 token」
+    时的口径一致：宁可整段写接口不可用，也不要「装不上 = 不鉴权」。读接口照旧
+    不动。不依赖内核 import——它正是在装配失败的路径上被调用的。
+    """
+    from fastapi.responses import JSONResponse
+
+    body = {"error": {"code": "auth_unavailable", "message": message}}
+
+    @fastapi_app.middleware("http")
+    async def _legacy_write_auth_unavailable(request: Any, call_next: Any) -> Any:
+        if not _is_mutating_api_path(request.method, request.url.path):
+            return await call_next(request)
+        return JSONResponse(status_code=503, content=body)
 
 
 def unprotected_mutating_routes(fastapi_app: Any) -> tuple[str, ...]:

@@ -2,6 +2,12 @@
 
 **日期：** 2026-09-02
 **性质：** 规范。与 `docs/frontend/information-architecture.md`（页面与状态）、`docs/frontend/DESIGN.md`（视觉）配套。信息架构说"有哪些页面"，本文说"这些页面由哪些组件拼成、每个组件管什么、**不许**碰什么"。
+> **2026-11 移除：** `DashboardOverlay`、`DriftAlert`、`UpdateHealthAlert`、`VaultOverlay`、`WarehouseOverlay` 及 `ConfigOverlay` 的只读原生配置分区已删除（个人 Hermes 配置遗留）；下文对应的组件行与冻结域说明仅作历史记录。
+
+> **2026-11-03 结构整理（行为不变）：** 对话页拆成 `pages/ConversationPage.tsx` + `pages/conversation/`（`pageState.ts` 页面层 reducer、`useConversationEvents` 运输层、`useConversationSurface` 双表面、`useConversationSettings` 有效设置、`useTimelineFollow` 自动跟随、`ConversationHeader` / `PendingMessageRows`）；会话页与草稿页的输入区统一为 `components/Composer.tsx`（差异全走 props，`ComposerBar` 仍是它的工具栏）；`GroupDock.tsx` 的成员行 / 拖放容器 / 添加成员表单 / 对话框移到 `components/groupDock/`；`App.tsx` 的 `/api/events` 订阅提成 `hooks/useDashboardEvents.ts`。见 §2.5。
+
+> **2026-11-02 移除：** `Conversation.tsx`、`TerminalLab.tsx` 与 `/terminal-lab`、旧 PTY/WebSocket 终端（`/ws/chat`、`/ws/terminal-lab`、`/api/pty/*`）、`NativeArchivePanel`、`ProfileDrawer` 抽屉本体及其记忆 / 运行设置 / 技能 / 子任务分区、`static/` 旧界面已删除；项目详情页仍复用人格、协作影响面与备份三个分区。
+
 **为什么要有这份文档：** 现在的前端有两个具体毛病——一个 717 行的组件同时管会话列表、模型设置、健康度和终端启动（`web/src/components/Conversation.tsx`），以及一个 536 行的抽屉塞了八个不相干的分区（`ProfileDrawer.tsx`）。这类组件改哪儿都会碰坏别处。更要紧的是：Phase 3A 之后要接多个 AI 引擎，如果组件里出现了"如果是 Hermes 就这么显示"的判断，第二个引擎接进来时就得把所有页面重写一遍。**边界写在前面，是为了让第二个引擎接入时前端一行不用改。**
 
 ---
@@ -109,13 +115,19 @@ App                                     应用外壳
 
 | 组件 | 管什么 | 数据从哪来 | 不许碰什么 |
 |---|---|---|---|
-| `ConversationPage` | 建立/关闭 SSE、持有 reducer 状态、拼装 | `GET /api/conversations/{id}` + SSE | **不许**读能力的 `detail` 层，只读 `ui` |
-| `ConversationHeader` | 标题、引擎/模型/推理/界面、状态文字、次级动作 | props | 不许写设置（跳转到项目详情页去改） |
+| `ConversationPage` | 会话详情、投递（首发 / 重发 / 停止）、消息动作、交互卡回答，把下面几块拼成页面 | `GET /api/conversations/{id}` + 各 hook | **不许**读能力的 `detail` 层，只读 `ui` |
+| `pages/conversation/pageState.ts` | 页面层 reducer（纯函数）：时间 / 耗时 / 占位 / 工具行分组 | `reduceEvent` 的输出 | 不认识 React；不发明内核没有的条目类型 |
+| `useConversationEvents` | SSE / 轮询运输层、重放窗口、`lastSequence` | `conversationEventsUrl` + `GET /events/snapshot` | 不决定信封进不进 reducer（交 `onEnvelope`） |
+| `useConversationSurface` | 双表面状态与租约、三条表面事件、到终端 / 回站内 | `GET /surface` + `openExternalSurface` / `returnToCardSurface` | 不碰时间线 |
+| `useConversationSettings` | 有效设置 / 模型目录 / 能力矩阵的读与改，折成工具栏取值 | `lib/composerSettings` + `PATCH /conversations/{id}` | 不读 `detail` 层 |
+| `useTimelineFollow` | 自动跟随（G-9）、「回到最新 · N」未读数 | 滚动容器 | 不读事件内容 |
+| `ConversationHeader` | 标题（就地改名）、状态文字、用量 Pill、到终端、⋯ 菜单 | props | 不请求接口（改名回调由页面实现） |
+| `PendingMessageRows` | 占位气泡与其回执控件 | props（`PendingMessage[]`） | 不碰 reducer |
 | `AdvisoryBar` | 带外写入软提示 | `advisory`（`GET /api/conversations/{id}` 返回，`runtime_view` 旁的 `advisory_to_wire`） | **不许**据此禁用 `Composer`（基线 §13.4 明令） |
 | `MessageTimeline` | 列表容器、滚动锚定、虚拟化 | props（时间线条目数组） | 不认识任何具体卡片类型 |
 | `TimelineItemRenderer` | **唯一**的类型分发点 | props（一个条目） | 见硬边界② |
 | 各 `*Card` | 一种条目的显示 | props（该条目） | 不请求接口、不认识兄弟卡片、不认识引擎 |
-| `Composer` | 输入与发送；有待答交互时变形 | props（`pendingInteractions`） | 不许因"引擎不支持中断"而禁用；不许因软提示而禁用 |
+| `Composer`（`components/Composer.tsx`） | 拖放区 + `ComposerBar` 工具栏 + 隐藏文件选择框 + 附件托盘 + 文本框；Enter / 输入法键位；会话页与草稿页共用 | props（`bar` 透传 `ComposerBar`；`chips` / `extraChips` / `filesBlocked` / `accept` / `rows` / `placeholder` / `disabled` 说出两页的差别） | 不持有附件的生命周期（草稿页攒 `File[]`、会话页立刻上传，各在页面里）；不许因"引擎不支持中断"而禁用；不许因软提示而禁用 |
 | `OpenInCliAction` | 启动外部终端、显示接管选项 | CLI 启动接口（待补，见 IA §8） | 不许直接拼 `hermes …` 命令串（那是 Driver 的事，基线 §8.7） |
 
 **小组**
@@ -194,6 +206,23 @@ switch (item.kind) {
 
 **为什么这条值得单独立一条：** 这是用户亲自拍的板（AD-71）。产品判断是：对话界面上写"本引擎不支持 X"，等于每次对话都在提醒用户"你选的工具是残缺的"，而这个信息对当下这句话没有任何帮助。想知道原因的人会去查，那时给他完整的 `detail`。
 
+### 2.5 2026-11-03 的文件级拆分（行为不变）
+
+这次只拆文件、不改渲染结果：DOM、`data-testid`、文案与测试结果与拆前一致。拆法与理由：
+
+| 原文件 | 拆出 | 留下 |
+|---|---|---|
+| `pages/ConversationPage.tsx`（1,945 行） | `pages/conversation/pageState.ts`（reducer 与纯函数）、`useConversationEvents.ts`、`useConversationSurface.ts`、`useConversationSettings.ts`、`useTimelineFollow.ts`、`ConversationHeader.tsx`、`PendingMessageRows.tsx` | 会话详情与投递（`submit` / `send` / `resend` / `resendText` / `stop` / `checkDelivery`）、消息动作、交互卡回答、拼装（约 1,030 行） |
+| `pages/NewConversationPage.tsx` + `ConversationPage.tsx` 各一份输入区 | `components/Composer.tsx` | 两页各自的附件生命周期与发送逻辑 |
+| `components/GroupDock.tsx`（1,224 行） | `components/groupDock/MemberRow.tsx`（`useDismiss` / `MemberActions` / `MemberRow`）、`MembersPane.tsx`（`GroupDropItem` / `MembersPane`）、`AddMemberForms.tsx`（`SpawnForm` / `ExistingPicker`）、`GroupDialogs.tsx`（`CloseGroupDialog` / `RenameMemberDialog`） | 浮窗本体与组级动作（约 720 行） |
+| `App.tsx` | `hooks/useDashboardEvents.ts`（`/api/events` 订阅、180ms 防抖、可见时对账、`refreshKey`） | 外壳 |
+
+**没拆的、为什么：** `ConversationPage` 剩下的投递一组（`submit` / `send` / `resend` / `resendText` / `stop`）与 `readOnly` / `settingsBusy` / `stopping` / `sendLockRef` / 草稿 / 表面互相缠着，硬拆要把十几个状态当参数传来传去，不如留在页面里；`AgentGraph.tsx` 是一整个轮盘物理模型，几十个闭包共用同一组 ref，拆开只会把 ref 当参数到处传；`GroupWorkspace.tsx` / `EnginePanel.tsx` 的子组件与纯函数已经在文件内分好区，测试直接从这两个文件 import，这次没动。
+
+**规则不变：** 新拆出来的文件照旧受 `scripts/check-boundaries.mjs` 三条规则约束；`pages/conversation/` 属于对话页子树（边界③）。
+
+**ESLint（2026-11-03 起）：** `web/eslint.config.js`，`npm run lint:eslint`，已并入 `npm run check`。只开到现有代码本来就满足的那一档：`@eslint/js` recommended、`typescript-eslint` recommended（含 `no-explicit-any`）、`react-hooks/rules-of-hooks`、`@typescript-eslint/no-unused-vars`（`_` 前缀豁免）。刻意关掉：`react-hooks/exhaustive-deps` 与 React Compiler 那一组（`refs` / `set-state-in-effect` / `purity` …，按现状会报百余处、要求另一种写法）、`no-control-regex`（ANSI 清洗正则）、`preserve-caught-error`。
+
 ---
 
 ## 3. 现有组件处置表
@@ -205,7 +234,7 @@ switch (item.kind) {
 | `App.tsx`（在 `src/`） | 457 | 外壳、导航、全局状态、SSE、快捷键、localStorage 持久化 | **拆分** | `App` + `AppShell` + `NavRail` + `Router` + `useDashboardEvents()` |
 | `main.tsx` | 112 | 挂载、错误边界、`/terminal-lab` 分流 | **保留 + 删分流** | `main.tsx`（错误边界保留） |
 | `Backdrop.tsx` | 13 | 背景 | 保留（视觉随 DESIGN.md） | `Backdrop` |
-| `Sidebar.tsx` | 239 | 紧凑树（只在进入对话页时显示） | **合并**进常驻树 | `ProjectTree` + `ProjectTreeNode` |
+| `Sidebar.tsx` | 239 | 紧凑树（只在进入对话页时显示） | **合并**进常驻树 | `ProjectTree` + `ProjectTreeNode`（2026-11-03 removed：文件已删除，项目页不再渲染页内树） |
 | `AgentGraph.tsx` | 619 | 主区大图，轮盘/图谱两模式（`chat` / `governance`） | **拆分 + 降级**（见 §3.1） | `ProjectRelationGraph`（可选）；导航职责交给 `ProjectTree` |
 | `Conversation.tsx` | 717 | 会话列表、模型/推理/审批下拉、会话健康度、终端命令与启动 | **拆分**（见 §3.2） | `ConversationPage` / `BindingSettings` / `SessionHealthPanel` / `OpenInCliAction` |
 | `ProfileDrawer.tsx` | 536 | 抽屉：详情、停用、灵魂、记忆、控制杆、技能、影响面、备份、子任务 | **拆分**（见 §3.3） | `ProjectDetailPage` 的各分区 |
@@ -259,6 +288,8 @@ switch (item.kind) {
 
 ### 3.3 `ProfileDrawer.tsx`（536 行）怎么拆
 
+> 2026-11-03 removed：人格、协作影响面、备份恢复三个分区及其 `/soul`、`/impact`、`/backups`、`/restore` 接口已删除，`ProfileDrawer.tsx` 不再存在；项目页只保留守则编辑。
+
 它已经内部分好了区（`PersonaSection` / `MemorySection` / `LeversSection` / `SkillsSection` / `ImpactSection` / `BackupsSection` / `SubtasksSection`，各自独立请求，靠 `refreshKey` prop 重拉）。拆的工作量不大：把每个 `*Section` 提成独立文件，挂到 `ProjectDetailPage` 下，`LeversSection` 并入 `BindingSettings`（它和 `Conversation.tsx` 里的控制杆是**同一份数据的两个副本**，读同一个 `/api/agent/{name}/levers`——这次要合成一处）。
 
 `SkillsSection` 要重写：它现在是 Hermes 技能的安装/卸载 + 继承转换（`/api/agent-skills/*`、`/api/skills/convert-inherit/*`），目标是通用的 `CapabilitiesSection`，读 `GET /api/projects/{id}/effective-capabilities`。**这次改动最容易出错的地方是 Block 语义**：旧界面的"取消勾选 = 脱钩保留本地副本"在新库里变成"禁止"（AD-45 改判），文案必须跟着改，否则用户会按旧直觉点出他不想要的结果。
@@ -311,7 +342,7 @@ web/src/lib/api/
 ├─ backends.ts      /api/backends*         （新域；ui / detail 两个函数分开，边界③）
 ├─ conversations.ts /api/conversations*、SSE 连接管理（新域）
 ├─ groups.ts        小组（接口待补，先只放类型）
-└─ legacy.ts        /api/agent*、/api/kanban*、/api/vault*、/api/warehouse* …（冻结域）
+└─ legacy.ts        /api/agent*、/api/vault*、/api/warehouse* …（冻结域；/api/kanban* 已于 2026-11-03 删除）
 ```
 
 **`legacy.ts` 这个名字是故意的**：它是一份"待还的债"的清单，谁 import 它谁心里有数。新页面除了冻结域（看板/资料库/仓库/宪法）不许 import 它。

@@ -7,7 +7,7 @@
 import { useState } from "react";
 
 import { useLocale } from "../../i18n";
-import { Button, cream, inputStyle } from "../ui";
+import { Button, inputStyle } from "../ui";
 import { CardShell, type EngineLabel } from "./CardShell";
 import type { InteractionItem } from "./timelineReducer";
 
@@ -35,6 +35,16 @@ export function QuestionCard({
   const request = item.question;
   const resolved = item.status === "resolved";
   const prompt = request?.prompt ?? t("card.question.fallback");
+
+  if (item.status === "expired") {
+    return (
+      <div className="kaus-permission-done" data-testid="question-expired">
+        <span className="kaus-permission-mark">–</span>
+        <span>{t("card.expired")}</span>
+        <span className="kaus-permission-subject">{questionDigest(prompt)}</span>
+      </div>
+    );
+  }
 
   /* G-5：回答后收成一行（与审批卡同一套 class，不新造样式）。 */
   if (resolved) {

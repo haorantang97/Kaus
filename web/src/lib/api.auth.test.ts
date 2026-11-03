@@ -85,7 +85,7 @@ describe("旧写接口的鉴权（batch38 第 1 件 / R5）", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(apiPost("/api/vault/note", { path: "a", content: "b" })).resolves.toEqual({
+    await expect(apiPost("/api/agent/a/rename", { display: "b" })).resolves.toEqual({
       ok: true,
     });
     expect(bootstraps).toBe(2);
@@ -116,7 +116,7 @@ describe("旧写接口的鉴权（batch38 第 1 件 / R5）", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(apiPost("/api/reconcile", {})).resolves.toEqual({ ok: true });
+    await expect(apiPost("/api/kill", {})).resolves.toEqual({ ok: true });
     const [, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
   });

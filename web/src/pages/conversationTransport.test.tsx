@@ -4,8 +4,7 @@ import userEvent from "@testing-library/user-event";
 
 import { ConversationPage } from "./ConversationPage";
 import * as api from "../lib/sessionApi";
-import { resetExternalSurfaces, setExternalSurface } from "../lib/externalSurface";
-import { pendingStorageKey } from "../lib/pendingMessages";
+import { resetExternalSurfaces } from "../lib/externalSurface";
 import { HISTORY_REPLAY_GRACE_MS } from "../lib/historyReplay";
 
 /* batch30 第 1 件（真机 P1）：SSE 到不了时的轮询兜底，在**页面这一层**的样子。
@@ -45,7 +44,6 @@ vi.mock("../lib/sessionApi", async () => {
     fetchModelCatalog: vi.fn(),
     fetchBindingStatus: vi.fn(),
     fetchSurface: vi.fn(),
-    fetchLaunches: vi.fn(),
     fetchEventsSnapshot: vi.fn(),
     sendConversationMessage: vi.fn(),
   };
@@ -182,15 +180,6 @@ function replayWholeRun(options: { completed: boolean }) {
   if (options.completed) push(envelope(7, { type: "run.completed", runId: "run:1" }));
 }
 
-/** 重放之后这四样必须都在——少一样就是"重开为空"的前身。 */
-async function expectWholeRunRendered() {
-  expect(await screen.findByText("请列出当前目录")).toBeInTheDocument();
-  expect(await screen.findByText("目录里有两个文件。")).toBeInTheDocument();
-  expect(screen.getByTestId("tool-row")).toBeInTheDocument();
-  expect(screen.queryByText("发第一条消息开始。")).toBeNull();
-  expect(screen.queryByTestId("history-missing")).toBeNull();
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   sources = [];
@@ -216,7 +205,6 @@ beforeEach(() => {
     lease: null,
     launch: null,
   });
-  mocked.fetchLaunches.mockResolvedValue({ conversationId: "conversation:1", launches: [], count: 0 });
   mocked.fetchEventsSnapshot.mockResolvedValue({
     conversationId: "conversation:1",
     events: [],

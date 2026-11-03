@@ -1,16 +1,19 @@
 import { ErrorNotice } from "./ui";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Copy, MessageSquarePlus, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import { ADD_EXISTING_CONVERSATIONS } from "../lib/projectHistory";
-import { deleteAgent, forkAgent, renameAgent, setPin, type OrgNode } from "../lib/api";
+import { deleteAgent, deletePreview, forkAgent, renameAgent, runningConversationsOf, setPin, type OrgNode } from "../lib/api";
 import { cream, dname } from "./ui";
 
 const Field = ({ children }: { children: React.ReactNode }) => <div className="p-2.5">{children}</div>;
 
 type Mode = "menu" | "rename" | "fork" | "delete";
 
-// Sidebar ⋯ menu — pin / rename / fork / delete, wired to the backend.
+/** Sub-project names shown in the delete confirm before truncating. */
+const NAMED_DESCENDANTS = 3;
+
+// Project ⋯ menu (wheel nodes and the project page header) — pin / rename / fork / delete.
 // Positioned at (x, y) = panel top-left. A transparent backdrop closes it.
 export function CtxMenu({
   node,
@@ -18,14 +21,17 @@ export function CtxMenu({
   y,
   onClose,
   onChanged,
+  onDeleted,
 }: {
   node: OrgNode;
   x: number;
   y: number;
   onClose: () => void;
   onChanged: () => void;
+  /** Called after a confirmed delete, e.g. to leave the deleted Project's page. */
+  onDeleted?: (name: string) => void;
 }) {
-  const { locale } = useLocale();
+  const { t } = useLocale();
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -34,7 +40,20 @@ export function CtxMenu({
   const [forkId, setForkId] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  /** Running conversations reported by a refused delete; a confirmed retry stops them first. */
+  const [running, setRunning] = useState<number | null>(null);
+  /** Sub-projects deleted together with this one; `null` until the preview loads. */
+  const [descendants, setDescendants] = useState<string[] | null>(null);
   const isDefault = node.name === "default";
+  useEffect(() => {
+    if (mode !== "delete") return;
+    let cancelled = false;
+    setDescendants(null);
+    deletePreview(node.name)
+      .then(preview => { if (!cancelled) setDescendants(preview.descendants.map(item => item.label || item.name)); })
+      .catch(e => { if (!cancelled) setErr(e instanceof Error ? e.message : String(e)); });
+    return () => { cancelled = true; };
+  }, [mode, node.name]);
   useLayoutEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
     const close = (event: KeyboardEvent) => {
@@ -65,6 +84,22 @@ export function CtxMenu({
       setBusy(false);
     }
   };
+  const runDelete = async () => {
+    const force = running !== null;
+    setBusy(true);
+    setErr(null);
+    try {
+      await deleteAgent(node.name, { force });
+      onChanged();
+      onDeleted?.(node.name);
+      onClose();
+    } catch (e) {
+      const ids = runningConversationsOf(e);
+      if (ids && !force) setRunning(ids.length);
+      else setErr(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  };
 
   const panel: React.CSSProperties = {
     left: x,
@@ -80,12 +115,12 @@ export function CtxMenu({
     border: `1px solid ${cream(16)}`,
     color: "var(--midground-base)",
   };
-  const Actions = ({ onOk, okLabel, danger }: { onOk: () => void; okLabel: string; danger?: boolean }) => (
+  const Actions = ({ onOk, okLabel, danger, disabled }: { onOk: () => void; okLabel: string; danger?: boolean; disabled?: boolean }) => (
     <div className="mt-2 flex items-center justify-end gap-3 text-xs">
-      <button onClick={() => { setErr(null); setMode("menu"); }} style={{ color: cream(55) }}>
+      <button onClick={() => { setErr(null); setRunning(null); setMode("menu"); }} style={{ color: cream(55) }}>
         取消
       </button>
-      <button disabled={busy} onClick={onOk} style={{ color: danger ? "var(--danger)" : "var(--accent-text)" }}>
+      <button disabled={busy || disabled} onClick={onOk} style={{ color: danger ? "var(--danger)" : "var(--accent-text)" }}>
         {okLabel}
       </button>
     </div>
@@ -116,7 +151,7 @@ export function CtxMenu({
             <button role="menuitem" className={item} onClick={() => {
               window.dispatchEvent(new CustomEvent(ADD_EXISTING_CONVERSATIONS, { detail: { projectRef: node.name } }));
               onClose();
-            }}><MessageSquarePlus className="size-3.5" />{locale === "zh" ? "添加已有对话" : "Add existing conversations"}</button>
+            }}><MessageSquarePlus className="size-3.5" />{t("project.history.add")}</button>
             <button role="menuitem" disabled={busy} className={item} onClick={() => run(() => setPin(node.name, !node.is_pinned))}>
               {node.is_pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
               {node.is_pinned ? "取消置顶" : "置顶"}
@@ -178,10 +213,20 @@ export function CtxMenu({
         {mode === "delete" && (
           <Field>
             <div className="mb-1 text-[0.72rem] leading-relaxed" style={{ color: cream(72) }}>
-              删除「{dname(node)}」？归档到 trash，可恢复。
+              {descendants && descendants.length > 0
+                ? t("project.delete.cascadeConfirm", {
+                    name: dname(node),
+                    count: descendants.length,
+                    names: descendants.slice(0, NAMED_DESCENDANTS).join(t("common.listSeparator"))
+                      + (descendants.length > NAMED_DESCENDANTS ? "…" : ""),
+                  })
+                : t("project.delete.confirm", { name: dname(node) })}
             </div>
+            {running !== null && <div role="alert" className="mb-1 text-[0.72rem] leading-relaxed" style={{ color: "var(--danger)" }}>
+              {t("project.delete.stopConfirm", { count: running })}
+            </div>}
             {err && <ErrorNotice error={err} className="mt-1 text-[0.7rem]" />}
-            <Actions onOk={() => run(() => deleteAgent(node.name))} okLabel="删除" danger />
+            <Actions onOk={() => void runDelete()} okLabel={running !== null ? t("project.delete.stopAndDelete") : "删除"} disabled={descendants === null} danger />
           </Field>
         )}
       </div>

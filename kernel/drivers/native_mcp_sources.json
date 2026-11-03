@@ -1,0 +1,25 @@
+{
+  "claude-code": [
+    {"env": "CLAUDE_CONFIG_DIR", "envPath": ".claude.json", "path": "~/.claude.json", "format": "json", "key": "mcpServers"}
+  ],
+  "codex": [
+    {"env": "CODEX_HOME", "envPath": "config.toml", "path": "~/.codex/config.toml", "format": "toml", "key": "mcp_servers", "shape": "codex"}
+  ],
+  "gemini": [
+    {"env": "GEMINI_CLI_HOME", "envPath": ".gemini/settings.json", "path": "~/.gemini/settings.json", "format": "jsonc", "key": "mcpServers", "shape": "gemini"}
+  ],
+  "qwen": [
+    {"path": "~/.qwen/settings.json", "format": "jsonc", "key": "mcpServers", "shape": "gemini"}
+  ],
+  "opencode": [
+    {"path": "$XDG_CONFIG_HOME/opencode/opencode.json", "format": "jsonc", "key": "mcp", "shape": "opencode"},
+    {"path": "$XDG_CONFIG_HOME/opencode/opencode.jsonc", "format": "jsonc", "key": "mcp", "shape": "opencode"},
+    {"path": "$XDG_CONFIG_HOME/opencode/config.json", "format": "jsonc", "key": "mcp", "shape": "opencode"}
+  ],
+  "cursor": [
+    {"env": "CURSOR_CONFIG_DIR", "envPath": "mcp.json", "path": "~/.cursor/mcp.json", "format": "jsonc", "key": "mcpServers"}
+  ],
+  "copilot": [
+    {"env": "COPILOT_HOME", "envPath": "mcp-config.json", "path": "~/.copilot/mcp-config.json", "format": "jsonc", "key": "mcpServers"}
+  ]
+}

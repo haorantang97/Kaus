@@ -132,11 +132,33 @@ it("组长保存同一套原生扩展配置", async () => {
   render(<CoordinatorSettings group={group} />);
   fireEvent.click(screen.getByRole("button", { name: "组长配置" }));
   await screen.findByText("vendor-a 模型");
-  fireEvent.click(screen.getByRole("button", { name: "更多设置" }));
+  fireEvent.click(screen.getByRole("button", { name: "高级" }));
   fireEvent.click(screen.getByRole("switch", { name: "Network" }));
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await waitFor(() => expect(api.sessionRequest).toHaveBeenCalledWith("/api/groups/g1/coordinator", expect.objectContaining({
     method: "PUT", body: expect.objectContaining({ config: expect.objectContaining({ configOptions: { network: true } }) }) })));
+});
+
+it("调用上限与运行时限收在默认关闭的「高级」里；没有主持要求，旧值保存时丢弃", async () => {
+  api.sessionRequest.mockImplementation((path: string) => Promise.resolve(path.endsWith("/options")
+    ? { bindings: [{ id: "b1", projectId: "p1", projectName: "项目", displayName: "引擎", backendId: "mock", enabled: true }] }
+    : { config: { bindingId: "b1", modelId: "same", providerId: "vendor-a", instructions: "旧的主持要求", callCap: 40, timeLimitMinutes: 30, revision: 2 } }));
+  render(<CoordinatorSettings group={group} />);
+  fireEvent.click(screen.getByRole("button", { name: "组长配置" }));
+  await screen.findByText("vendor-a 模型");
+  const advanced = screen.getByRole("button", { name: "高级" });
+  expect(advanced).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByText("调用上限")).toBeNull();
+  expect(screen.queryByText("运行时限（分钟）")).toBeNull();
+  fireEvent.click(advanced);
+  expect(screen.getByText("调用上限")).toBeInTheDocument();
+  expect(screen.getByText("运行时限（分钟）")).toBeInTheDocument();
+  expect(screen.queryByText("主持要求")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(api.sessionRequest).toHaveBeenCalledWith("/api/groups/g1/coordinator", expect.objectContaining({ method: "PUT" })));
+  const put = api.sessionRequest.mock.calls.find(([path, init]) => path === "/api/groups/g1/coordinator" && init?.method === "PUT")!;
+  expect(put[1].body.config).not.toHaveProperty("instructions");
+  expect(put[1].body.config).toMatchObject({ callCap: 40, timeLimitMinutes: 30 });
 });
 
 it("组长按选定模型读取原生 effort 配置", async () => {

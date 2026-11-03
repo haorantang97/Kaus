@@ -210,6 +210,10 @@ it("保存自定义路径并打开原生登录，返回后刷新同一连接", a
   vi.mocked(connectEngine).mockResolvedValue({ backendId: "backend:codex", registered: true });
   vi.mocked(openEngineLogin).mockResolvedValue({ backendId: "backend:codex", launched: true, launcher: "cmux" });
   render(<ConnectEngineModal initialBackendId="backend:codex" onClose={() => {}} />);
+  const advanced = await screen.findByTestId("connect-advanced");
+  expect(advanced).not.toHaveAttribute("open");
+  expect(within(advanced).getByText("高级").tagName).toBe("SUMMARY");
+  expect(advanced).toHaveTextContent("1.10");
   await user.click(await screen.findByRole("button", { name: "指定 CLI" }));
   const path = screen.getByRole("textbox", { name: "CLI 路径" });
   await user.clear(path); await user.type(path, "/chosen path/codex");

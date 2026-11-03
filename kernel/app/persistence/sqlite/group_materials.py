@@ -28,3 +28,6 @@ class SqliteGroupMaterialsRepository:
                 (bundle.group_id, saved.revision, payload),
             )
         return saved
+
+    async def delete(self, group_id: str) -> None:
+        self._db.run("DELETE FROM group_materials WHERE group_id = ?", (group_id,))

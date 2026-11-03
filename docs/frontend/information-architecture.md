@@ -1,9 +1,15 @@
 # Kaus 前端信息架构
 
+> 2026-11-03 removed：任务板（`KanbanOverlay.tsx`、`/kanban`、`/api/kanban*`）与轮盘上的分身/网关/技能链接/角色标记已删除；下文相关条目为历史记录。
+
 **日期：** 2026-09-02
 **性质：** 规范。Phase 2「Project-centric UI 与 Group Shell」的施工依据。与 `docs/frontend/DESIGN.md`（视觉规范，另一分支产出）、`docs/frontend/component-boundaries.md`（组件边界）配套。
 **范围：** 有哪些页面、每个页面给谁看、显示什么、六种状态各长什么样、URL 怎么定、数据从哪来。**不写**像素级视觉（那是 DESIGN.md 的事），**不写**组件实现（那是 component-boundaries.md 的事）。
 **冲突时听谁的：** `docs/product/baseline.md` > `docs/architecture/decisions/*` > 本文。本文与基线冲突处一律以基线为准，并在此登记。
+
+> **2026-11 移除：** 运行概况 / 系统健康（`DashboardOverlay`、`DriftAlert`、`UpdateHealthAlert`，`/dashboard`、`/api/dashboard/summary`、`/api/lint`、`/api/distribution`、`/api/reconcile`、`/api/update-health`）、资料库（`/vault`、`/api/vault*`）、仓库（`/warehouse`、`/api/warehouse*`）和设置里的只读 Hermes 原生配置（`/api/config`）都是围绕个人 Hermes 配置建的，已删除。下文涉及它们的页面、路由、数据源与验收条目仅作历史记录；任务板仍隐藏。
+
+> **2026-11-02 移除：** `Conversation.tsx`、`TerminalLab.tsx` 与 `/terminal-lab`、旧 PTY/WebSocket 终端（`/ws/chat`、`/ws/terminal-lab`、`/api/pty/*`）、`NativeArchivePanel`、`ProfileDrawer` 抽屉本体及其记忆 / 运行设置 / 技能 / 子任务分区、`static/` 旧界面已删除；项目详情页仍复用人格、协作影响面与备份三个分区。
 
 ---
 
@@ -126,6 +132,7 @@ Phase 2 的改名工作照这张表逐条替换。左边两列是要消失的词
 - **不显示：** 模型名（基线 §7.5）、引擎文件夹层（基线 §13.1）、`visibility=group_only` 的对话（基线 §10.5）。
 - **状态：** 空＝"还没有项目" + 新建；加载＝三行骨架；出错＝树位置显示错误行，其余界面照常可用；运行中＝节点上一个状态点；引擎未就绪＝树照常显示（项目是我们自己的数据，与引擎无关），只是节点上的引擎标签变灰。
 - **现状：** `web/src/components/Sidebar.tsx`（239 行）+ `AgentGraph.tsx`（619 行）两套树。`Sidebar` 是紧凑树，只在"进入某个 agent 的对话页"时才出现（`App.tsx:344` 的 `showAgentTree` 条件）；`AgentGraph` 是主区的大图（轮盘/图谱两种模式，`mode: "chat" | "governance"`）。
+- **2026-11-03 removed：** `Sidebar.tsx` 与项目详情页内的紧凑树已删除；项目层级由轮盘与项目页面包屑承担。
 - **处置：****合并 + 提升**。合并为一棵常驻树 `ProjectTree`；`AgentGraph` 的可视化降级为项目详情页里的一个"下级项目关系图"分区，或列入"暂不实现"（见未决问题 3）。
 
 ### 2.3 项目详情页
@@ -460,7 +467,7 @@ AD-73：能力矩阵的 wire 分两层，`ui` 只有取值，`detail` 才带 not
 | 引擎 · 模型 | 经 Conversation → `agentBindingId` → Binding；模型取 `conversation.modelId` |
 | 来源 | `joinMode`：`existing`（选已有会话）/ `spawned_in_group`（用引擎新建） |
 | 加入时间 | `joinedAt` |
-| 状态 | `participationState`：活跃 / 已暂停 / 已离开 / 失败（AD-04 枚举锁定） |
+| 状态 | `participationState`：活跃 / 已暂停 / 已离开 / 失败（AD-04 枚举锁定）。2026-11-03 起界面不再提供暂停 / 恢复，旧数据里的「已暂停」仍显示 |
 | 工作区 | `isolationMode` + `worktreeOrRuntimeRef`：共享只读 / 共享工作区 / git worktree / 引擎自管 |
 
 ### 5.3 两条"添加成员"路径

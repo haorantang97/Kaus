@@ -292,7 +292,7 @@ async def test_catalog_waits_for_advertised_auth_after_session_response(tmp_path
 
 async def test_advertised_auth_timeout_does_not_offer_unconfirmed_public_models(monkeypatch):
     driver = AcpDriver(fake_agent_spec("text-stream"))
-    monkeypatch.setattr("drivers.acp.driver.AUTH_STATUS_WAIT_SECONDS", 0.01)
+    monkeypatch.setattr("drivers.acp.catalog.AUTH_STATUS_WAIT_SECONDS", 0.01)
     connection = SimpleNamespace(native_auth_expected=True, native_auth_state=None, native_auth_event=asyncio.Event())
     await driver._await_connection_auth(connection)
     snapshot = driver._with_connection_auth(driver._snapshot_from_session(

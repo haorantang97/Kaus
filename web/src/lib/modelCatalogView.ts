@@ -25,7 +25,7 @@ export function isSelectableModel(model: ModelDescriptorWire): boolean {
 }
 
 export function modelEffort(model: ModelDescriptorWire | undefined): string | null {
-  const effort = model?.modelId.match(/\[([^\[\]]+)\]$/)?.[1];
+  const effort = model?.modelId.match(/\[([^[\]]+)\]$/)?.[1];
   return effort && model?.reasoningLevels?.includes(effort) ? effort : null;
 }
 
@@ -101,7 +101,7 @@ export function modelOptionsFor(
   for (const model of own.models ?? []) {
     if (model.backendId && model.backendId !== binding.backendId) continue;
     if (!isSelectableModel(model)) continue;
-    const base = modelEffort(model) ? model.modelId.replace(/\[[^\[\]]+\]$/, "") : model.modelId;
+    const base = modelEffort(model) ? model.modelId.replace(/\[[^[\]]+\]$/, "") : model.modelId;
     const key = `${model.providerId ?? ""}\u0000${base}`;
     const existing = grouped.get(key);
     if (!existing || model.modelId === selectedId || (existing.modelId !== selectedId && model.modelId === own.defaultModelId)) grouped.set(key, model);
@@ -110,7 +110,7 @@ export function modelOptionsFor(
     .map((model) => ({
       value: modelValue(model.modelId, model.providerId, own)!,
       ...(model.providerId ? { providerId: model.providerId } : {}),
-      label: modelEffort(model) ? (model.displayName || model.modelId).replace(/\s*(?:\([^()]+\)|\[[^\[\]]+\])$/, "") : model.displayName || model.modelId,
+      label: modelEffort(model) ? (model.displayName || model.modelId).replace(/\s*(?:\([^()]+\)|\[[^[\]]+\])$/, "") : model.displayName || model.modelId,
       group: model.providerLabel || undefined,
       /* batch30：哪一组默认展开由后端这个键决定，不是"选中项在哪组"的推断。
          不是当前那家就整个不带这个键——`false` 与"没说"在 wire 上是两件事，

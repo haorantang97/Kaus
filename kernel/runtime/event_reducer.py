@@ -268,7 +268,8 @@ class InteractionItem(TimelineItem):
     permission: PermissionRequest | None = None
     question: QuestionRequest | None = None
     authentication: AuthenticationRequest | None = None
-    status: Literal["pending", "resolved"] = "pending"
+    #: ``expired``：所在的主 run 已结束（含进程丢失后补的 run.failed），无法再回答。
+    status: Literal["pending", "resolved", "expired"] = "pending"
     decision: str | None = None
     #: AD-08：``authentication.resolved`` 的结果；其它两种交互恒为 None。
     outcome: AuthenticationOutcome | None = None
@@ -623,6 +624,13 @@ def _handle_run_started(
     )
 
 
+def _expire_pending(items):
+    """A finished main run can no longer receive answers; keep the card, drop its buttons."""
+    return tuple(item.model_copy(update={"status": "expired"})
+                 if isinstance(item, InteractionItem) and item.status == "pending" else item
+                 for item in items)
+
+
 def _run_terminal_handler(target_state: RunState):
     def handler(state: TimelineState, envelope: AgentEventEnvelope) -> TimelineState:
         event = envelope.event
@@ -636,7 +644,7 @@ def _run_terminal_handler(target_state: RunState):
         if state.is_run_terminal:
             # 已经是终态：只记录 lifecycle marker，不再改变 run_state（收敛）。
             return _drop_stale(appended)
-        update: dict[str, Any] = {"run_state": target_state}
+        update: dict[str, Any] = {"run_state": target_state, "items": _expire_pending(appended.items)}
         if error is not None:
             update["error"] = error
         return appended.model_copy(update=update)

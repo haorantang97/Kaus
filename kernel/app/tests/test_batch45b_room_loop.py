@@ -124,7 +124,7 @@ def test_only_public_kinds_get_into_the_delta() -> None:
     rows = [
         _Row(0, "broadcast", "各位早"),
         _Row(1, "member_turn", "我看完了", author="member:a"),
-        _Row(2, "context_packet", "【私有】这条会话的全文快照"),
+        _Row(2, "writeback", "【私有】这条会话的全文快照"),
         _Row(3, "writeback", "【私有】写回项目的草稿"),
         _Row(4, "system", "打杂 加入了这个组"),
     ]
@@ -664,7 +664,7 @@ async def test_the_room_never_carries_a_members_private_body(tmp_path) -> None:
                 CollaborationMessage.create(
                     collaboration_session_id=group["id"],
                     sequence=sequence,
-                    kind="context_packet",
+                    kind="writeback",
                     author_type="system",
                     content="【私有】写手那条会话的完整历史",
                 )

@@ -80,7 +80,7 @@ export function CardShell({
       >
         {engine && (
           <span
-            className="inline-flex items-center rounded-[1px] px-1.5 py-0.5 text-[0.6rem] uppercase tracking-[0.14em]"
+            className="inline-flex items-center rounded-[1px] px-1.5 py-0.5 text-[0.7rem] "
             style={{ background: cream(7), color: cream(70), border: `1px solid ${cream(14)}` }}
             title={engine.name}
           >
@@ -166,7 +166,7 @@ export function MonoBlock({ children, max = 220 }: { children: ReactNode; max?: 
 export function ColumnLabel({ children }: { children: ReactNode }) {
   return (
     <div
-      className="mb-1 text-[0.6rem] uppercase tracking-[0.14em]"
+      className="mb-1 text-[0.7rem] "
       style={{ color: cream(45) }}
     >
       {children}

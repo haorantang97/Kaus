@@ -119,6 +119,8 @@ class ContinuationService:
         project = await self.repositories.projects.get(binding.project_id)
         if project is None or not binding.enabled or self.registry.try_get(binding.backend_id) is None:
             raise ApiError(409, "continuation_target_invalid", "目标 Agent 不可用")
+        if project.status == "disabled":
+            raise ApiError(409, "project_deleted", "所属 Project 已删除。")
         require_new_work(self.registry.try_get(binding.backend_id), backend_id=binding.backend_id)
         effective = await resolve_effective_for_binding(self.repositories, binding)
         value = {"effective": effective.model_dump(mode="json"), "binding": binding.model_dump(mode="json"),
@@ -150,9 +152,18 @@ class ContinuationService:
                                                {**asset, "revision": revision} for asset in page["assets"]]
         raise ApiError(400, "continuation_source_invalid", "接续来源无效")
 
+    async def _target_allowed(self, binding, source_project_id):
+        """Same Project, or any active Project when the source Project was deleted."""
+        if binding is None:
+            return False
+        if binding.project_id == source_project_id:
+            return True
+        source_project = await self.repositories.projects.get(source_project_id)
+        return source_project is not None and source_project.status == "disabled"
+
     async def preview(self, source, binding_id):
         binding = await self.repositories.bindings.get(binding_id)
-        if binding is None or binding.project_id != source["projectId"]:
+        if not await self._target_allowed(binding, source["projectId"]):
             raise ApiError(400, "continuation_target_invalid", "请选择当前项目的 Agent")
         if self.registry.try_get(binding.backend_id) is None:
             raise ApiError(409, "driver_not_registered", "请先接入目标 Agent")
@@ -270,7 +281,7 @@ class ContinuationService:
             if time.time() - plan["created"] > 3600:
                 raise ApiError(409, "continuation_preview_expired", "预览已过期，请重新生成")
             binding = await self.repositories.bindings.get(plan["bindingId"])
-            if binding is None or binding.project_id != plan["source"]["projectId"]:
+            if not await self._target_allowed(binding, plan["source"]["projectId"]):
                 raise ApiError(409, "continuation_target_changed", "目标配置已变更，请重新预览")
             _, config_revision = await self._configuration(binding)
             if config_revision != plan["configRevision"]:

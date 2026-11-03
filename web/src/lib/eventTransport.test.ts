@@ -280,7 +280,7 @@ describe("batch37：重连之后要重新计活性（R9）", () => {
   it("空闲对账把落下的事件补进来（同一个出口）", async () => {
     const world = harness({
       isRunActive: () => false,
-      snapshot: (since) => Promise.resolve({ events: [envelope(2, "补")], lastSequence: 2, runState: "idle" }),
+      snapshot: () => Promise.resolve({ events: [envelope(2, "补")], lastSequence: 2, runState: "idle" }),
     });
     await reconnectedSilently(world);
     await tick(HISTORY_REPLAY_GRACE_MS);

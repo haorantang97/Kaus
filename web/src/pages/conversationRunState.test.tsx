@@ -29,7 +29,6 @@ vi.mock("../lib/sessionApi", async () => {
     sendConversationMessage: vi.fn(),
     interruptConversation: vi.fn(),
     fetchSurface: vi.fn(),
-    fetchLaunches: vi.fn(),
   };
 });
 
@@ -178,7 +177,6 @@ beforeEach(() => {
     lease: null,
     launch: null,
   });
-  mocked.fetchLaunches.mockResolvedValue({ conversationId: "conversation:1", launches: [], count: 0 });
   mocked.interruptConversation.mockResolvedValue({ conversationId: "conversation:1", interrupted: true });
 });
 

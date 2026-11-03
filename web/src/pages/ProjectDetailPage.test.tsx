@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { navScroller, ProjectDetailPage, resetNavScrollMemory } from "./ProjectDetailPage";
+import { ProjectDetailPage } from "./ProjectDetailPage";
 import { ConfirmHost, ToastHost } from "../components/ui";
 import * as api from "../lib/sessionApi";
 import { openProjectTerminal } from "../lib/terminalApi";
@@ -19,7 +19,6 @@ vi.mock("../lib/api", async () => {
     ...actual,
     apiGet: vi.fn(() => new Promise(() => {})),
     apiPost: vi.fn(() => new Promise(() => {})),
-    openTerminal: vi.fn().mockResolvedValue({ command: "kaus open" }),
   };
 });
 
@@ -116,12 +115,11 @@ const catalog = {
 
 const net: NetworkResp = {
   nodes: {
-    default: { name: "default", label: "X", is_pinned: false, model: null, role: "root", in_network: true, gateway: null, skill_count: 1, symlinks: [], parent: null, killed: false, effective_killed: false, main_twin: false, is_draft: false, children: ["pronto"] },
-    pronto: { name: "pronto", label: "Pronto", is_pinned: false, model: null, role: "none", in_network: true, gateway: null, skill_count: 0, symlinks: [], parent: "default", killed: false, effective_killed: false, main_twin: false, is_draft: false, children: [] },
+    default: { name: "default", label: "X", is_pinned: false, parent: null, killed: false, effective_killed: false, is_draft: false, children: ["pronto"] },
+    pronto: { name: "pronto", label: "Pronto", is_pinned: false, parent: "default", killed: false, effective_killed: false, is_draft: false, children: [] },
   },
   roots: ["default"],
   drafts: [],
-  source: "test",
 } as unknown as NetworkResp;
 
 function baseProps(): React.ComponentProps<typeof ProjectDetailPage> {
@@ -409,12 +407,28 @@ describe("项目详情页", () => {
     });
   });
 
-  it("次级导航：点树里的另一个项目 → 切 /projects/:id", async () => {
+  it("页内不再渲染项目树；上级项目经面包屑切换", async () => {
     const user = userEvent.setup();
     const props = renderPage();
-    const nav = screen.getByRole("navigation", { name: "子项目 / 上级" });
-    await user.click(within(nav).getByText("X"));
+    await screen.findByRole("heading", { name: "Pronto" });
+    expect(document.querySelector(".kaus-project-nav")).toBeNull();
+    expect(screen.queryByRole("navigation")).toBeNull();
+    await user.click(within(screen.getByRole("banner")).getByRole("button", { name: "X" }));
     expect(props.onSelectProject).toHaveBeenCalledWith("default");
+  });
+
+  it("页头 ⋯ 打开当前项目的共用菜单（改名、删除）", async () => {
+    const user = userEvent.setup();
+    const props = renderPage();
+    await screen.findByRole("heading", { name: "Pronto" });
+    await user.click(within(screen.getByRole("banner")).getByRole("button", { name: "更多" }));
+    expect(props.onOpenMenu).toHaveBeenCalledWith("pronto", expect.any(Object));
+  });
+
+  it("旧域节点还没读到时 ⋯ 不可用", async () => {
+    renderPage({ net: null });
+    await screen.findByRole("heading", { name: "Pronto" });
+    expect(screen.getByRole("button", { name: "更多" })).toBeDisabled();
   });
 
   it("项目终端打开项目目录，不切换到最近会话", async () => {
@@ -451,40 +465,7 @@ describe("项目详情页", () => {
   });
 });
 
-/* ------------------------------------------------------------------ *
- * 批次十五第 2、3 件：次级导航不跳顶 / 回轮盘的路
- * ------------------------------------------------------------------ */
-
-describe("次级导航的滚动位置（第 2 件）", () => {
-  beforeEach(() => resetNavScrollMemory());
-
-  it("换项目时导航列的 scrollTop 保留（不回 0）", async () => {
-    const view = render(<ProjectDetailPage {...baseProps()} projectRef="pronto" />);
-    const scroller = await waitFor(() => {
-      const found = navScroller(document.querySelector(".kaus-project-nav"));
-      expect(found).not.toBeNull();
-      return found as HTMLElement;
-    });
-    // 用户把导航列滚下去一截。
-    scroller.scrollTop = 180;
-    scroller.dispatchEvent(new Event("scroll"));
-
-    /* 点子项目 = 路由变 = 整页按 `key={route.projectRef}` 重挂载。
-       这里用 unmount + 重新 render 模拟那次重挂载。 */
-    view.unmount();
-    render(<ProjectDetailPage {...baseProps()} projectRef="default" />);
-    const next = await waitFor(() => {
-      const found = navScroller(document.querySelector(".kaus-project-nav"));
-      expect(found).not.toBeNull();
-      return found as HTMLElement;
-    });
-    expect(next.scrollTop).toBe(180);
-  });
-});
-
 describe("回到轮盘的路（第 3 件）", () => {
-  beforeEach(() => resetNavScrollMemory());
-
   it("进项目页就把该项目写进 graphFocus", async () => {
     const onFocusProject = vi.fn();
     renderPage({ onFocusProject });

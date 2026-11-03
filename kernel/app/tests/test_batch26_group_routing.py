@@ -1,4 +1,4 @@
-"""批次二十六：Group 消息路由 + Context Packet v0 + 批次二十三提的补项。
+"""批次二十六：Group 消息路由 + 批次二十三提的补项。
 
 覆盖（对应任务书「验证」一节）
 ------------------------------
@@ -6,7 +6,7 @@
    行、倒序 + ``before=`` 游标；
 2. 路由：广播 / 定向 / 跳过（paused、left）/ 失败（引擎没注册）/ 单目标糖衣；
 3. 关组之后 ``/broadcast`` 一律 409 ``group_closed``；
-4. Context Packet v0：摘要、无历史时不编内容、``markdown`` 与 ``members`` 同源；
+4. Context Packet v0 已在 2026-11-03 移除：端点不再存在；
 5. 补项：索引行的 ``groupTitle``、``GET /groups`` 的 ``memberConversationIds``、
    组级流的 ``?since=`` 重放与断档提示。
 
@@ -22,11 +22,7 @@ pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
 
 from app.api.group_router import GroupEventHub  # noqa: E402
-from app.api.group_views import (  # noqa: E402
-    DELIVERY_STATUSES,
-    SUMMARY_LIMIT,
-    truncate_summary,
-)
+from app.api.group_views import DELIVERY_STATUSES  # noqa: E402
 from app.conversations.models import Conversation  # noqa: E402
 from app.tests.test_batch22_groups import (  # noqa: E402
     GroupHarness,
@@ -435,7 +431,7 @@ async def test_send_to_member_is_the_same_path(tmp_path) -> None:
 
 
 async def test_broadcasting_into_a_closed_group_is_409(tmp_path) -> None:
-    """第 2 件末句：组关了就不能再往里发；时间线仍然读得到（那是账本）。"""
+    """组关了（即删除）就不能再往里发，时间线也一起删掉。"""
     built = await _seeded(tmp_path)
     try:
         conversation = await _new_conversation(built, "关组前的成员")
@@ -447,18 +443,14 @@ async def test_broadcasting_into_a_closed_group_is_409(tmp_path) -> None:
             blocked = await api.post(
                 f"/api/groups/{group['id']}/broadcast", json={"text": "还在吗"}
             )
-            assert blocked.status_code == 409
-            assert blocked.json()["error"]["code"] == "group_closed"
+            assert blocked.status_code == 404
 
             also_blocked = await api.post(
                 f"/api/groups/{group['id']}/members/{member['id']}/send",
                 json={"text": "还在吗"},
             )
-            assert also_blocked.status_code == 409
-
-            readable = await api.get(f"/api/groups/{group['id']}/messages")
-            assert readable.status_code == 200
-            assert readable.json()["count"] >= 1
+            assert also_blocked.status_code == 404
+            assert (await api.get(f"/api/groups/{group['id']}/messages")).status_code == 404
     finally:
         await built.aclose()
 
@@ -487,98 +479,20 @@ async def test_message_posted_shows_up_on_the_group_stream(tmp_path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# 3. Context Packet v0
+# 3. Context Packet v0（已移除）
 # --------------------------------------------------------------------------- #
 
 
-async def test_context_packet_summarises_each_member(tmp_path) -> None:
+async def test_context_packet_endpoint_is_gone(tmp_path) -> None:
+    """2026-11-03：「成员近况」与它的端点一起移除。"""
     built = await _seeded(tmp_path)
     try:
-        conversation = await _new_conversation(built, "说过话的会话")
-        async with _api(built) as api:
-            group = await _new_group(api, "评审组")
-            member = await _join(api, group["id"], conversation.id)
-            await api.post(
-                f"/api/groups/{group['id']}/broadcast", json={"text": "先看一下这段代码"}
-            )
-
-            packet = (
-                await api.get(f"/api/groups/{group['id']}/context-packet")
-            ).json()
-            assert packet["groupId"] == group["id"]
-            assert packet["generatedAt"].endswith("Z")
-            entry = packet["members"][0]
-            assert entry["memberId"] == member["id"]
-            assert entry["conversationId"] == member["conversationId"]
-            assert entry["title"] == "说过话的会话"
-            assert entry["bindingId"] == built.binding.id
-            assert entry["backendId"] == built.binding.backend_id
-            assert entry["participationState"] == "active"
-            assert entry["runState"] in ("idle", "running")
-            assert entry["lastUserMessage"] == "先看一下这段代码"
-            # markdown 与 members 同源：内容一样，只是形状不同。
-            assert "评审组 · Context Packet" in packet["markdown"]
-            assert "说过话的会话" in packet["markdown"]
-            assert "先看一下这段代码" in packet["markdown"]
-    finally:
-        await built.aclose()
-
-
-async def test_context_packet_without_history_says_nothing_rather_than_inventing(
-    tmp_path,
-) -> None:
-    """AD-154 / N §13.1：取不到摘要就**不放这个键**，不编一句「暂无内容」。"""
-    built = await _seeded(tmp_path)
-    try:
-        conversation = await _new_conversation(built, "一句话都还没说")
         async with _api(built) as api:
             group = await _new_group(api)
-            await _join(api, group["id"], conversation.id)
-            packet = (
-                await api.get(f"/api/groups/{group['id']}/context-packet")
-            ).json()
-            entry = packet["members"][0]
-            assert "lastUserMessage" not in entry
-            assert "lastAssistantMessage" not in entry
-            assert "lastCompletedAt" not in entry
-            assert "还没有可摘要的对话内容" in packet["markdown"]
+            response = await api.get(f"/api/groups/{group['id']}/context-packet")
+            assert response.status_code in (404, 405)
     finally:
         await built.aclose()
-
-
-async def test_context_packet_is_read_only_and_injects_nothing(tmp_path) -> None:
-    """AD-154：取一次 Context Packet **不会**往任何成员会话里写一个字。"""
-    built = await _seeded(tmp_path)
-    try:
-        conversation = await _new_conversation(built, "不该被打扰")
-        async with _api(built) as api:
-            group = await _new_group(api)
-            await _join(api, group["id"], conversation.id)
-            before = await built.host.event_store.latest_sequence(conversation.id)
-            timeline_before = (
-                await api.get(f"/api/groups/{group['id']}/messages")
-            ).json()["count"]
-
-            await api.get(f"/api/groups/{group['id']}/context-packet")
-            await api.get(f"/api/groups/{group['id']}/context-packet")
-
-            assert (
-                await built.host.event_store.latest_sequence(conversation.id) == before
-            )
-            after = (await api.get(f"/api/groups/{group['id']}/messages")).json()[
-                "count"
-            ]
-            assert after == timeline_before
-    finally:
-        await built.aclose()
-
-
-def test_summary_truncation_is_capped_and_collapses_whitespace() -> None:
-    assert truncate_summary(None) is None
-    assert truncate_summary("   \n  ") is None
-    assert truncate_summary(" 两  行\n合成一行 ") == "两 行 合成一行"
-    long = truncate_summary("字" * (SUMMARY_LIMIT + 50))
-    assert long is not None and len(long) == SUMMARY_LIMIT and long.endswith("…")
 
 
 # --------------------------------------------------------------------------- #

@@ -1,10 +1,9 @@
 /* 双表面（Card ⇄ External CLI）的界面件（Phase 4，任务书第 2/3/4/5 件）。
  *
- * 五个件，全部中性（DESIGN ★H：会话工作区里强调色只剩运行点与审批边框）：
+ * 四个件，全部中性（DESIGN ★H：会话工作区里强调色只剩运行点与审批边框）：
  *  - `ExternalBanner`      外部态横幅 +「回到站内」
  *  - `DegradedLaunchPanel` `launched=false` 时的小面板：原因、重试与终端设置
  *  - `NoticeBanner`        接管提示那条中性横幅（5s 自动收起由页面控制）
- *  - `LaunchHistoryMenu`   页头「历史 ▾」，只在 `launches.count > 0` 时出现
  *  - `ExternalHistoryGroup` 回站后那组折叠的历史行
  *
  * 视觉一律复用现有 class（`.kaus-stream-bar` / `.kaus-bar-pill` / `.kaus-tool*` /
@@ -12,14 +11,14 @@
  * **不用 `--danger`**——那是降级不是错误。
  */
 
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, RotateCw, Settings2, Terminal, X } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ChevronRight, RotateCw, Settings2, SquareArrowOutUpRight, Terminal, X } from "lucide-react";
 
 import { useLocale } from "../i18n";
 import { Button, ErrorNotice, Modal } from "./ui";
 import { failureDiagnostic } from "../lib/userFacingErrors";
 import type { ExternalHistoryGroup as HistoryGroup, ReconciledEntry } from "../lib/externalSurface";
-import type { TerminalLaunchWire } from "../lib/sessionApi";
+import type { TerminalStatusWire } from "../lib/sessionApi";
 
 /** `HH:MM`；解析不了就不显示（不编一个）。 */
 export function shortTime(value: string | null | undefined): string | undefined {
@@ -27,15 +26,6 @@ export function shortTime(value: string | null | undefined): string | undefined 
   const at = new Date(value);
   if (Number.isNaN(at.getTime())) return undefined;
   return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
-}
-
-/** 启动记录那一列的时间：`MM-DD HH:MM`（同一天里连开几次要分得清）。 */
-export function launchTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const at = new Date(value);
-  if (Number.isNaN(at.getTime())) return "—";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -46,15 +36,21 @@ export function ExternalBanner({
   launchedAt,
   launcher,
   busy = false,
+  status = null,
   onReturn,
+  onFocus,
 }: {
   launchedAt: string | null;
   launcher: string | null;
   busy?: boolean;
+  /** hook 上报的终端状态；没有就不显示（不猜）。 */
+  status?: TerminalStatusWire | null;
   onReturn: () => void;
+  onFocus?: () => void;
 }) {
   const { t } = useLocale();
   const time = shortTime(launchedAt);
+  const waiting = status?.state === "waiting";
   return (
     <div className="kaus-stream-bar kaus-external-banner" data-testid="external-banner">
       <Terminal className="size-3.5 shrink-0" aria-hidden />
@@ -67,7 +63,13 @@ export function ExternalBanner({
         ]
           .filter(Boolean)
           .join(" · ")}
+        {status && <span className="kaus-external-status" data-testid="terminal-status" data-state={status.state}
+          title={status.message ?? undefined}> · {t(`surface.status.${status.state}`)}</span>}
       </span>
+      {onFocus && <button type="button" className={`kaus-bar-pill is-button${waiting ? " kaus-accent" : ""}`}
+        aria-label={t("surface.action.focus")} title={t("surface.action.focus")} onClick={onFocus}>
+        <SquareArrowOutUpRight className="size-3.5" aria-hidden />
+      </button>}
       <button type="button" className="kaus-bar-pill is-button" disabled={busy} onClick={onReturn}>
         {t("surface.action.returnToCard")}
       </button>
@@ -159,67 +161,6 @@ export function NoticeBanner({ text, testId }: { text: string; testId: string })
 }
 
 /* ------------------------------------------------------------------ *
- * 启动记录（第 5 件）
- * ------------------------------------------------------------------ */
-
-export function LaunchHistoryMenu({ launches }: { launches: TerminalLaunchWire[] }) {
-  const { t } = useLocale();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  // 一次也没开过就整枚不渲染（AD-71：不留占位、不写"暂无记录"）。
-  if (launches.length === 0) return null;
-
-  return (
-    <span className="kaus-bar-menu" ref={ref} data-testid="launch-history">
-      <button
-        type="button"
-        className="kaus-bar-pill is-button"
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        onClick={() => setOpen((value) => !value)}
-      >
-        {t("surface.launches.label")}
-        <span className="kaus-bar-caret" aria-hidden>
-          ▾
-        </span>
-      </button>
-      {open && (
-        <span className="kaus-bar-pop" role="listbox" aria-label={t("surface.launches.label")}>
-          {launches.slice(0, 5).map((launch) => (
-            <span key={launch.id} role="option" aria-selected={false} className="kaus-bar-pop-item is-static">
-              {[
-                launchTime(launch.launchedAt),
-                launch.launcher,
-                launch.exitStatus === null
-                  ? t("surface.launches.running")
-                  : t("surface.launches.exit", { code: launch.exitStatus }),
-              ].join(" · ")}
-            </span>
-          ))}
-        </span>
-      )}
-    </span>
-  );
-}
-
-/* ------------------------------------------------------------------ *
  * 折叠的历史组（第 3 件）
  * ------------------------------------------------------------------ */
 
@@ -235,6 +176,18 @@ function HistoryEntry({ entry }: { entry: ReconciledEntry }) {
   return (
     <div className="kaus-msg is-assistant">
       <div className="kaus-prose">{entry.text}</div>
+    </div>
+  );
+}
+
+/** 终端运行期间的新消息，浅色显示；回站校准后由正式记录替换。 */
+export function TerminalPreview({ entries }: { entries: ReconciledEntry[] }) {
+  const { t } = useLocale();
+  if (!entries.length) return null;
+  return (
+    <div className="kaus-terminal-preview" data-testid="terminal-preview" aria-live="polite">
+      <div className="kaus-tool-name">{t("surface.preview.label", { count: entries.length })}</div>
+      {entries.map((entry) => <HistoryEntry key={entry.entryId} entry={entry} />)}
     </div>
   );
 }

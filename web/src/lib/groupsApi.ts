@@ -99,6 +99,8 @@ export interface GroupWire {
   memberCount?: number;
   /** batch26：这个组现在圈着哪几条会话。只有列表端点（`GET /api/groups`）带。 */
   memberConversationIds?: string[];
+  /** 组内正等用户回答审批 / 提问的会话（成员或组长）。 */
+  awaitingConversationIds?: string[];
 }
 
 /** 组还开着吗。`archived | closed` 关了 ⇒ 广播输入框禁用（后端也会回 409）。 */
@@ -156,18 +158,11 @@ export interface GroupDetailWire {
   memberCount: number;
 }
 
-/** 关组时对一条成员会话做了什么（`kept | promoted | archived | missing`）。 */
-export interface DispositionWire {
-  memberId: string;
-  conversationId: string;
-  retention: string | null;
-  action: string;
-}
-
+/** 关组即删除组：返回删掉的组内会话（原会话不在其中）。 */
 export interface CloseGroupResultWire {
-  group: GroupWire;
-  onClose: "keep" | "archive";
-  dispositions: DispositionWire[];
+  groupId: string;
+  deleted: true;
+  deletedConversationIds: string[];
 }
 
 /** `/spawn` 的首句：没给就是整个 null，而不是一个「失败」的假回执。
@@ -276,11 +271,8 @@ export function stopGroupThread(
 }
 
 /** 关组。`keep`（缺省）只提升 `decide_on_group_close` 的那几条；`archive` 把它们归档。 */
-export function closeGroup(
-  groupId: string,
-  body: { onClose: "keep" | "archive" },
-): Promise<CloseGroupResultWire> {
-  return sessionRequest(path(groupId, "close"), { method: "POST", body });
+export function closeGroup(groupId: string): Promise<CloseGroupResultWire> {
+  return sessionRequest(path(groupId, "close"), { method: "POST" });
 }
 
 export function addGroupMember(
@@ -315,21 +307,9 @@ export function renameGroupMember(
   });
 }
 
-export function pauseGroupMember(groupId: string, memberId: string): Promise<{ member: GroupMemberWire }> {
-  return sessionRequest(path(groupId, "members", memberId, "pause"), { method: "POST" });
-}
-
-/** 恢复。它同时是「移出之后重新加入」的入口（再 POST 一次 `/members` 会长出第二条行）。 */
+/** 重新加入：已移出的成员回到组里（再 POST 一次 `/members` 会长出第二条行）。 */
 export function resumeGroupMember(groupId: string, memberId: string): Promise<{ member: GroupMemberWire }> {
   return sessionRequest(path(groupId, "members", memberId, "resume"), { method: "POST" });
-}
-
-/** 提升为普通会话（`project_visible + persistent`）。关组之后这条仍然通。 */
-export function promoteGroupMember(
-  groupId: string,
-  memberId: string,
-): Promise<{ member: GroupMemberWire; promoted: boolean }> {
-  return sessionRequest(path(groupId, "members", memberId, "promote"), { method: "POST" });
 }
 
 /** 用 Driver 拉起一条组内会话并加入。首句失败**不回滚**（AD-148）。 */
@@ -439,7 +419,7 @@ export interface GroupMessageWire {
   routed?: string[];
 }
 
-/** 广播与定向发送同形：一条消息 + 一份投递回执。 */
+/** 发送结果：一条消息 + 一份投递回执。 */
 export interface SendResultWire {
   message: GroupMessageWire;
   deliveries: GroupDeliveryWire[];
@@ -454,15 +434,6 @@ export function broadcastGroup(
   return sessionRequest(path(groupId, "broadcast"), { method: "POST", body });
 }
 
-/** 定向发送给一名成员。回执同形——只是 `deliveries` 只有一条。 */
-export function sendToGroupMember(
-  groupId: string,
-  memberId: string,
-  body: { text: string },
-): Promise<SendResultWire> {
-  return sessionRequest(path(groupId, "members", memberId, "send"), { method: "POST", body });
-}
-
 /** 组时间线一页。`nextBefore` 为 null = 没有更早的了（不是"再试一次"）。 */
 export function fetchGroupMessages(
   groupId: string,
@@ -473,40 +444,6 @@ export function fetchGroupMessages(
   params.set("limit", String(options.limit ?? 50));
   if (options.before !== undefined) params.set("before", String(options.before));
   return sessionRequest(`${path(groupId, "messages")}?${params.toString()}`, { signal });
-}
-
-/** Context Packet 里的一名成员。**可选键在拿不到时是缺席，不是 null**——
- *  所以界面上"这一格没有"与"这一格是空字符串"分得开（AD-71）。 */
-export interface ContextPacketMemberWire {
-  memberId: string;
-  conversationId: string;
-  /** batch52：后端那张共用表算的显示名（含 `#2`）。与成员栏、时间线是同一份。 */
-  // batch52
-  displayName?: string | null;
-  title: string;
-  bindingId: string;
-  backendId?: string;
-  modelId?: string;
-  runState?: string;
-  participationState: string;
-  /** batch52：最近一条**点到他**的用户消息（取自组时间线）。 */
-  lastUserMessage?: string;
-  /** batch52：他在组里最近一条 `member_turn` 的正文（略过的不算）。 */
-  lastAssistantMessage?: string;
-  lastCompletedAt?: string;
-}
-
-/** 现算的一份组上下文快照。`markdown` 是同一份东西的可复制形态（复制按钮发它）。 */
-export interface ContextPacketWire {
-  groupId: string;
-  generatedAt: string;
-  members: ContextPacketMemberWire[];
-  markdown: string;
-}
-
-/** 拉一份 Context Packet。**每次都是现算**：不缓存、不写 storage。 */
-export function fetchContextPacket(groupId: string, signal?: AbortSignal): Promise<ContextPacketWire> {
-  return sessionRequest(path(groupId, "context-packet"), { signal });
 }
 
 /* ------------------------------------------------------------------ *
@@ -530,6 +467,7 @@ export type GroupChange =
   | "member_left"
   | "member_paused"
   | "member_resumed"
+  /** 「提升为普通会话」2026-11-03 删除，不再发出；保留取值以便旧事件重放。 */
   | "member_promoted"
   /** batch52：这位成员在本组改了名（`roleLabel`，AD-173）。单开一个取值：改名
    *  同时改了**地址**（`@名字` 解析回成员 id 的那张表），浮窗要把成员栏、`@`

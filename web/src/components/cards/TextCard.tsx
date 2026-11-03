@@ -130,7 +130,7 @@ export class MarkdownBoundary extends Component<{ text: string; children: ReactN
 }
 
 function UserMessageText({ text }: { text: string }) {
-  const { locale } = useLocale();
+  const { t } = useLocale();
   const body = useRef<HTMLDivElement>(null);
   const id = useId();
   const [overflowing, setOverflowing] = useState(false);
@@ -148,7 +148,7 @@ function UserMessageText({ text }: { text: string }) {
   return <>
     <div ref={body} id={id} className={`kaus-user-text${overflowing && !expanded ? " is-collapsed" : ""}`}>{text}</div>
     {overflowing && <button type="button" className="kaus-user-expand" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(value => !value)}>
-      {locale === "zh" ? expanded ? "收起" : "展开全文" : expanded ? "Show less" : "Show more"}
+      {expanded ? t("card.user.collapse") : t("card.user.expand")}
     </button>}
   </>;
 }

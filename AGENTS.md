@@ -14,5 +14,6 @@
 - For sequential live probes, wait for the submitted run's terminal event before sending again. Use one probe owner per conversation; a busy response must not trigger an automatic interrupt and retry.
 - Frontend checks: `cd web && npm run check`. Backend checks: install `requirements-dev.txt`, then run `cd kernel && ../.venv/bin/python -m pytest -q`.
 - The local backend serves `web/dist`; a source edit needs a new frontend build to appear on port 8877. The development frontend uses port 5174.
-- Keep the backend on loopback. Avoid touching another installation's `HERMES_HOME`, services or database during tests.
-- `static/` and some top-level endpoints are historical compatibility code. The current conversation path uses structured driver events, the event store and SSE.
+- Keep the backend on loopback. Avoid touching another installation's Agent home directories, services or database during tests.
+- The Project tree, instruction layers and archives live only in the domain database (`kernel/app/projects/tree_store.py`); `server.py` keeps the legacy tree endpoints (`/api/network`, `/api/move`, `/api/agent/*`, `/api/constitution*`) on top of it and reads or writes no Agent directory. Kaus has no Hermes-specific product features: Hermes is one Agent among others, integrated only through `kernel/drivers/hermes/`. `project_file_import.py` is the one-time legacy migration (it reads an old native home read-only for rule layers).
+- Some top-level `server.py` endpoints are historical compatibility code (the legacy `static/` UI was removed 2026-11-02). The current conversation path uses structured driver events, the event store and SSE.

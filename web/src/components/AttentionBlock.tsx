@@ -13,12 +13,15 @@ import "./attention.css";
  */
 
 import { useMemo } from "react";
-import { AlertCircle, ChevronDown } from "lucide-react";
+import { AlertCircle, Blocks, ChevronDown, Users } from "lucide-react";
 
 import { useLocale } from "../i18n";
 import { backendDisplay } from "../lib/backend-display";
 import { buildAttentionItems, isRunning, type AttentionItem, type SidebarGroup } from "../lib/conversationIndex";
 import { relativeTime } from "../lib/shellPrefs";
+import type { ModuleAttentionItem } from "../lib/moduleAttention";
+import { openGroupDock, useGroupState } from "../lib/groupStore";
+import { isGroupOpen, type GroupWire } from "../lib/groupsApi";
 
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (id: string) => void }) {
   const { t, locale } = useLocale();
@@ -30,7 +33,7 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (id: stri
       className="kaus-overview-row"
       data-testid="overview-conversation"
       data-conversation-id={item.id}
-      title={item.title}
+      title={item.kind === "terminal" && item.terminalWaiting ? `${item.title} · ${item.terminalWaiting}` : item.title}
       onClick={() => onOpen(item.id)}
     >
       {running ? (
@@ -56,21 +59,59 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (id: stri
 
 export interface AttentionBlockProps {
   groups: SidebarGroup[];
+  /** 模块任务里等用户处理的那一步（宿主统一列出）。 */
+  modules?: ModuleAttentionItem[];
   onOpenConversation: (conversationId: string) => void;
 }
 
-export function AttentionBlock({ groups, onOpenConversation }: AttentionBlockProps) {
+function ModuleAttentionRow({ item, onOpen }: { item: ModuleAttentionItem; onOpen: (id: string) => void }) {
+  const { t, locale } = useLocale();
+  const title = [item.moduleName, item.stepTitle].filter(Boolean).join(" · ");
+  return (
+    <button type="button" className="kaus-overview-row" data-testid="overview-module-attention" title={title} onClick={() => onOpen(item.conversationId)}>
+      <span className="kaus-run-dot is-idle" aria-hidden />
+      <span className="kaus-overview-title">{title}</span>
+      <span className="kaus-overview-meta"><Blocks size={13} aria-hidden />{t("workbench.title")}</span>
+      <span className="kaus-overview-state" data-kind="module">{t("overview.attention.awaiting")}</span>
+      <span className="kaus-overview-time">{item.updatedAt ? relativeTime(item.updatedAt, locale) : null}</span>
+    </button>
+  );
+}
+
+/** 协作组里有成员或组长在等审批 / 提问：点开就是那个组的浮窗。 */
+function GroupAttentionRow({ group }: { group: GroupWire }) {
+  const { t, locale } = useLocale();
+  return (
+    <button type="button" className="kaus-overview-row" data-testid="overview-group-attention" title={group.title} onClick={() => openGroupDock(group.id)}>
+      <span className="kaus-run-dot is-idle" aria-hidden />
+      <span className="kaus-overview-title">{group.title}</span>
+      <span className="kaus-overview-meta"><Users size={13} aria-hidden />{t("group.pill")}</span>
+      <span className="kaus-overview-state" data-kind="group">{t("overview.attention.awaiting")}</span>
+      <span className="kaus-overview-time">{group.updatedAt ? relativeTime(group.updatedAt, locale) : null}</span>
+    </button>
+  );
+}
+
+export function AttentionBlock({ groups, modules = [], onOpenConversation }: AttentionBlockProps) {
   const attention = useMemo(() => buildAttentionItems(groups), [groups]);
+  const groupState = useGroupState();
+  const waitingGroups = useMemo(
+    () => groupState.groups.filter((group) => isGroupOpen(group) && (group.awaitingConversationIds ?? []).length > 0),
+    [groupState.groups],
+  );
   const { t } = useLocale();
+  const total = attention.length + modules.length + waitingGroups.length;
   // 一条都没有 = 整块不渲染（不是一句"目前没有需要处理的"）。
-  if (attention.length === 0) return null;
+  if (total === 0) return null;
   return (
     <details className="kaus-attention-disclosure">
-      <summary><AlertCircle size={15} /><span>{t("overview.attention.title")}</span><span>{attention.length}</span><ChevronDown size={14} /></summary>
+      <summary><AlertCircle size={15} /><span>{t("overview.attention.title")}</span><span>{total}</span><ChevronDown size={14} /></summary>
       <div className="kaus-overview-list" data-testid="overview-attention">
         {attention.map((item) => (
           <AttentionRow key={item.id} item={item} onOpen={onOpenConversation} />
         ))}
+        {waitingGroups.map((group) => <GroupAttentionRow key={group.id} group={group} />)}
+        {modules.map((item) => <ModuleAttentionRow key={item.jobId} item={item} onOpen={onOpenConversation} />)}
       </div>
     </details>
   );

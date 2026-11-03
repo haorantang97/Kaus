@@ -224,6 +224,22 @@ class Conversation(DomainModel):
             changes["reasoning_mode"] = reasoning_mode
         return self.evolve(**changes)
 
+    def relocate_archived(
+        self, *, project_id: str, agent_binding_id: str, at: datetime | None = None
+    ) -> Conversation:
+        """Move an archived conversation into another Project and restore it.
+
+        The one sanctioned exception to the immutable owner fields: used only to
+        rescue a conversation whose Project was deleted. The caller guarantees the
+        new Binding uses the same Backend, so the engine identity (D-06) is unchanged.
+        """
+        if self.archived_at is None:
+            raise DomainInvariantError("只有已归档的 Conversation 可以移动到其他 Project")
+        data = self.model_dump(by_alias=False)
+        data.update(project_id=project_id, agent_binding_id=agent_binding_id,
+                    archived_at=None, updated_at=at or _now())
+        return type(self).model_validate(data)
+
     def promote_to_project(self, *, at: datetime | None = None) -> Conversation:
         """N §9.5「保留到项目」：group_only → project_visible + persistent。"""
         return self.evolve(

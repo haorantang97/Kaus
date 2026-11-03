@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import sys
 
 from drivers.base import CliLaunchSpec
@@ -21,10 +22,8 @@ CMUX_WRAPPERS = {
 }
 
 
-def prepare_command(spec: CliLaunchSpec, directory: Path, terminal: str) -> tuple[str, ...]:
-    """Keep the selected binary and native arguments behind a one-shot guard."""
-    wrapper = None
-    custom_key = None
+def terminal_wrapper(spec: CliLaunchSpec, terminal: str) -> tuple[Path, str] | None:
+    """The terminal app's own agent wrapper (it installs its own hooks), if one applies."""
     binding = CMUX_WRAPPERS.get(spec.terminal_integration or "")
     app = terminal_app_path(terminal) if terminal_app_id(terminal) == "cmux" else None
     if binding and app:
@@ -32,7 +31,26 @@ def prepare_command(spec: CliLaunchSpec, directory: Path, terminal: str) -> tupl
         if candidate.is_file() and os.access(candidate, os.X_OK):
             # A configured wrapper already provides integration; never wrap it twice.
             if Path(spec.command[0]).resolve() != candidate.resolve():
-                wrapper, custom_key = candidate, binding[1]
+                return candidate, binding[1]
+    return None
+
+
+#: Wrappers that deep-merge a caller's ``--settings`` into their own hooks, and
+#: the program that merge needs. Without it the wrapper keeps the caller's
+#: settings and drops its own hooks, so Kaus then leaves the wrapper alone.
+CMUX_SETTINGS_MERGE = {"claude-code": "node"}
+
+
+def wrapper_keeps_caller_hooks(spec: CliLaunchSpec, terminal: str, path: str | None = None) -> bool:
+    """Whether hook settings passed through the terminal's own wrapper reach the agent
+    alongside the wrapper's hooks."""
+    requirement = CMUX_SETTINGS_MERGE.get(spec.terminal_integration or "")
+    return bool(requirement and terminal_wrapper(spec, terminal) and shutil.which(requirement, path=path))
+
+
+def prepare_command(spec: CliLaunchSpec, directory: Path, terminal: str) -> tuple[str, ...]:
+    """Keep the selected binary and native arguments behind a one-shot guard."""
+    wrapper, custom_key = terminal_wrapper(spec, terminal) or (None, None)
     metadata = directory / "native.json"
     metadata.write_text(json.dumps({"executable": spec.command[0],
                                    "config_directory": spec.config_directory,

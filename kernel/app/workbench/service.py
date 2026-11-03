@@ -15,6 +15,8 @@ from typing import Any
 
 from app.api.api_errors import ApiError
 from app.conversations.models import Conversation
+from app.projects.retirement import is_retired, project_deleted_error
+from app.workbench.frame_tokens import FrameTokens
 from app.workbench.models import Manifest, ModulePatch, Workflow
 from app.workbench.packages import install_package
 from app.workbench.store import WorkbenchStore
@@ -48,6 +50,7 @@ class WorkbenchService:
         self._tasks: dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
         self._closing = False
+        self.frame_tokens = FrameTokens()
 
     async def initialize(self):
         # No startup replay: an interrupted tool may have had external effects.
@@ -84,6 +87,25 @@ class WorkbenchService:
         rows = [self._wire_module(row) for row in self.store.all("modules") if row.get("installed", True)]
         return sorted(rows, key=lambda row: (not row["pinned"], row["pinOrder"], row["name"]))
 
+    def attention(self):
+        """Module jobs stopped on an approval, question or sign-in, across all modules.
+
+        Module conversations stay out of the chat list, so the host lists these itself
+        instead of relying on each module page to show an approval button.
+        """
+        rows = []
+        for job in self.store.all("jobs"):
+            if job.get("status") != "waiting":
+                continue
+            module = self.store.get("modules", job.get("moduleId"))
+            step = next((item for item in job.get("steps", []) if item.get("status") == "waiting"), None)
+            if module is None or not module.get("installed", True) or step is None or not step.get("conversationId"):
+                continue
+            rows.append({"moduleId": job["moduleId"], "moduleName": module.get("name"), "jobId": job["id"],
+                         "stepTitle": step.get("title"), "conversationId": step["conversationId"],
+                         "updatedAt": job.get("updatedAt")})
+        return sorted(rows, key=lambda row: row.get("updatedAt") or "", reverse=True)
+
     def _module_record(self, module_id):
         module = self.store.get("modules", module_id)
         if module is None or not module.get("installed", True):
@@ -108,13 +130,20 @@ class WorkbenchService:
                 raise ApiError(409, "configuration_required", "请选择项目和 Agent。")
             if binding_id:
                 raise ApiError(400, "binding_project_mismatch", "请选择对应项目。")
-            if project_id and await self.repositories.projects.get(project_id) is None:
-                raise ApiError(404, "project_not_found", "项目不存在。")
+            if project_id:
+                project = await self.repositories.projects.get(project_id)
+                if project is None:
+                    raise ApiError(404, "project_not_found", "项目不存在。")
+                if is_retired(project):
+                    raise project_deleted_error()
             return
         project = await self.repositories.projects.get(project_id)
         binding = await self.repositories.bindings.get(binding_id)
         if project is None or binding is None:
             raise ApiError(404, "configuration_unavailable", "项目或 Agent 已移除。")
+        # A deleted Project accepts no new runs; every job start and step passes here.
+        if is_retired(project):
+            raise project_deleted_error()
         if binding.project_id != project_id:
             raise ApiError(400, "binding_project_mismatch", "Agent 不属于所选项目。")
         driver = self.registry.try_get(binding.backend_id)
@@ -153,6 +182,8 @@ class WorkbenchService:
             if updated["pinned"] and not module["pinned"]:
                 updated["pinOrder"] = max([item["pinOrder"] for item in self.modules()] + [-1]) + 1
             self.store.put("modules", module_id, updated)
+            if not updated["enabled"]:
+                self.frame_tokens.revoke_module(module_id)
         if not updated["enabled"] or "agent:run" not in updated["grants"]:
             for job in self.jobs(module_id):
                 if job["status"] in ACTIVE:
@@ -220,6 +251,7 @@ class WorkbenchService:
             module.update(enabled=False, pinned=False)
             module["installed"] = False
             self.store.put("modules", module_id, module)
+            self.frame_tokens.revoke_module(module_id)
         if self.module_change_hook:
             await self.module_change_hook(module_id)
         return {"removed": True}
@@ -483,6 +515,37 @@ class WorkbenchService:
         for task in list(self._tasks.values()):
             task.cancel()
         await asyncio.gather(*list(self._tasks.values()), return_exceptions=True)
+
+    def open_frame(self, module_id):
+        """Issue a frame URL whose capability segment gates every module asset."""
+        module = self.require_module(module_id)
+        if not module.get("assetUrl"):
+            raise ApiError(404, "asset_not_found", "文件不存在。")
+        token = self.frame_tokens.issue(module_id)
+        return {"url": f"/api/workbench/assets/{module_id}/~{token}/{module['entry']}", "token": token,
+                "expiresIn": int(self.frame_tokens.idle_seconds)}
+
+    def renew_frame(self, module_id, token):
+        self.require_module(module_id)
+        if not self.frame_tokens.touch(module_id, token):
+            raise ApiError(404, "frame_expired", "模块页面已失效，请重新打开。")
+        return {"expiresIn": int(self.frame_tokens.idle_seconds)}
+
+    def release_frame(self, module_id, token):
+        self.frame_tokens.release(module_id, token)
+        return {"released": True}
+
+    def frame_asset(self, module_id, token, relative):
+        self.require_module(module_id)
+        if not self.frame_tokens.touch(module_id, token):
+            raise ApiError(404, "asset_not_found", "文件不存在。")
+        return self.asset(module_id, relative)
+
+    def icon_asset(self, module_id, relative):
+        """The declared icon only, for the host UI's own image requests."""
+        if self.require_module(module_id).get("icon") != relative:
+            raise ApiError(404, "asset_not_found", "文件不存在。")
+        return self.asset(module_id, relative)
 
     def asset(self, module_id, relative):
         self.require_module(module_id)

@@ -8,6 +8,8 @@ export interface SkillTreeProject {
 }
 export interface SkillTreeSkill {
   id: string;
+  /** Absent for Skills; "mcp" for an Agent's discovered native MCP server. */
+  kind?: "mcp";
   name: string;
   description: string;
   agentKey: string | null;

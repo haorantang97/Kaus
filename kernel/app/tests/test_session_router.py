@@ -1161,3 +1161,39 @@ def test_archive_cannot_hide_externally_owned_conversation(harness):
         result = client.patch(f"/api/conversations/{ident}/archive", json={"archived": True})
         assert result.status_code == 409, result.text
         assert not asyncio.run(harness.repositories.conversations.get(ident)).archived_at
+
+
+def test_invalid_answer_is_a_400_with_guidance(harness, client, monkeypatch):
+    conversation_id = harness.new_conversation(client)
+    client.post(f"/api/conversations/{conversation_id}/messages", json={"text": "hi"})
+    pending = _pending_interaction(client, conversation_id, kind="permission")
+
+    async def reject(*args, **kwargs):
+        raise ValueError("select the offered options")
+
+    monkeypatch.setattr(harness.host, "resolve_interaction", reject)
+    response = client.post(f"/api/conversations/{conversation_id}/interactions/{pending['interactionId']}",
+                           json={"kind": "permission", "optionId": "allow"})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_answer"
+
+
+def test_resolving_the_same_interaction_twice_is_404(harness, client):
+    """同一张审批卡只能被答一次：第二次提交按「没有待处理的请求」拒绝，而不是再答一遍。"""
+    conversation_id = harness.new_conversation(client)
+    client.post(f"/api/conversations/{conversation_id}/messages", json={"text": "hi"})
+    pending = _pending_interaction(client, conversation_id, kind="permission")
+    url = f"/api/conversations/{conversation_id}/interactions/{pending['interactionId']}"
+
+    first = client.post(url, json={"kind": "permission", "optionId": "allow"})
+    assert first.status_code == 200 and first.json()["resolved"] is True
+
+    second = client.post(url, json={"kind": "permission", "optionId": "deny"})
+    assert second.status_code == 404
+    assert second.json()["error"]["code"] == "interaction_not_found"
+
+    # 时间线上只有一条 permission.resolved，决定是第一次的那个。
+    snapshot = client.get(f"/api/conversations/{conversation_id}/events/snapshot").json()
+    resolved = [e for e in snapshot["events"] if e["event"]["type"] == "permission.resolved"
+                and e["event"]["requestId"] == pending["interactionId"]]
+    assert len(resolved) == 1 and resolved[0]["event"]["decision"] == "allow"

@@ -4,10 +4,9 @@ import { BrowserRouter } from "react-router-dom";
 import "./index.css";
 import "./theme-overrides.css";
 import { App } from "./App";
-import { TerminalLab } from "./components/TerminalLab";
 import { CardsPreview } from "./components/cards/preview";
 import "./styles/controls.css";
-import { currentLocale } from "./i18n";
+import { t } from "./i18n";
 import { failureDiagnostic } from "./lib/userFacingErrors";
 
 class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -24,7 +23,6 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
   render() {
     if (!this.state.error) return this.props.children;
     const message = failureDiagnostic(this.state.error);
-    const zh = currentLocale() === "zh";
     return (
       <div
         style={{
@@ -47,9 +45,9 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
             boxShadow: "var(--shadow-lg)",
           }}
         >
-          <h1 style={{ margin: "0 0 14px", fontSize: 20, fontWeight: 600 }}>{zh ? "界面暂时无法显示" : "Unable to display this view"}</h1>
+          <h1 style={{ margin: "0 0 14px", fontSize: 20, fontWeight: 600 }}>{t("shell.crash.title")}</h1>
           <details>
-            <summary style={{ fontSize: 12, cursor: "pointer", color: "color-mix(in srgb, var(--midground-base) 55%, transparent)" }}>{zh ? "详情" : "Details"}</summary>
+            <summary style={{ fontSize: 12, cursor: "pointer", color: "color-mix(in srgb, var(--midground-base) 55%, transparent)" }}>{t("graph.details")}</summary>
           <pre
             style={{
               maxHeight: 160,
@@ -77,7 +75,7 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
                 background: "transparent",
               }}
             >
-              {zh ? "重试" : "Try again"}
+              {t("shell.crash.retry")}
             </button>
             <button
               type="button"
@@ -90,7 +88,7 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
                 background: "var(--gold-soft)",
               }}
             >
-              {zh ? "重新加载" : "Reload"}
+              {t("conversation.history.retry")}
             </button>
           </div>
         </section>
@@ -103,7 +101,6 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
    import.meta.env.DEV 为 false，这段判断被摇掉，预览页不进产物。 */
 function root() {
   const path = window.location.pathname;
-  if (path === "/terminal-lab") return <TerminalLab />;
   if (import.meta.env.DEV && path === "/dev/cards") return <CardsPreview />;
   // 真路由（IA §6.4，采纳 react-router）。App 内部只读 location，
   // flag 关闭时它一条路由分支都不会走——界面与改造前一致。

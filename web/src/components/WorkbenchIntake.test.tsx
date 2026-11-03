@@ -23,12 +23,12 @@ beforeEach(() => {
  vi.mocked(api.cancelWorkbenchIntake).mockResolvedValue({...initial,status:"cancelled"});
  vi.mocked(api.installWorkbenchIntake).mockResolvedValue({intake:{...initial,status:"installed",moduleId:"my-app"},module});
 });
-it("adds an existing module only after explicit service consent, without starting adaptation", async () => {
+it("pre-checks the manifest's data and Agent access, keeps the module service opt-in, without starting adaptation", async () => {
  const user=userEvent.setup();render(<WorkbenchIntake {...props} initial={{...initial,kind:"module",status:"ready",requiresAdaptation:false,manifestPermissions:["backend:run","agent:run"]}}/>);
  await screen.findByRole("option",{name:"写作"});
- expect(screen.getByRole("checkbox",{name:"运行模块服务"})).not.toBeChecked();expect(screen.getByRole("checkbox",{name:"调用 Agent 执行任务"})).not.toBeChecked();
+ expect(screen.getByRole("checkbox",{name:"运行模块服务"})).not.toBeChecked();expect(screen.getByRole("checkbox",{name:"调用 Agent 执行任务"})).toBeChecked();
  await user.click(screen.getByRole("checkbox",{name:"运行模块服务"}));await user.click(screen.getByRole("button",{name:"添加并打开"}));
- await waitFor(()=>expect(api.installWorkbenchIntake).toHaveBeenCalledWith("i",{...config,grants:["backend:run"]}));expect(props.onInstalled).toHaveBeenCalledWith(module);expect(api.startWorkbenchIntake).not.toHaveBeenCalled();
+ await waitFor(()=>expect(api.installWorkbenchIntake).toHaveBeenCalledWith("i",{...config,grants:["agent:run","backend:run"]}));expect(props.onInstalled).toHaveBeenCalledWith(module);expect(api.startWorkbenchIntake).not.toHaveBeenCalled();
 });
 it("uses shared model/provider choices then waits for validation and new permissions", async () => {
  const user=userEvent.setup();vi.mocked(api.fetchWorkbenchIntake).mockResolvedValue({...initial,status:"ready",manifestPermissions:["backend:run"]});render(<WorkbenchIntake {...props} initial={initial}/>);
@@ -53,7 +53,7 @@ it("retries a failed adaptation and reuses idempotency on a transport failure",a
  await waitFor(()=>expect(screen.getByRole("button",{name:"重新适配"})).toBeEnabled());await user.click(screen.getByRole("button",{name:"重新适配"}));expect(await screen.findByRole("alert")).toHaveTextContent("操作未完成，请重试。");expect(screen.queryByText(/secret/)).toBeNull();await user.click(screen.getByRole("button",{name:"重新适配"}));const calls=vi.mocked(api.retryWorkbenchIntake).mock.calls;expect(calls).toHaveLength(2);expect(calls[1][1].idempotencyKey).toEqual(calls[0][1].idempotencyKey);expect(api.startWorkbenchIntake).not.toHaveBeenCalled();
 });
 it("cannot run an adaptation or grant Agent access without valid configuration",async()=>{
- const user=userEvent.setup();const view=render(<WorkbenchIntake {...props} initial={{...initial,configuration:null}}/>);await screen.findByRole("option",{name:"写作"});expect(screen.getByRole("button",{name:"适配并添加"})).toBeDisabled();view.unmount();render(<WorkbenchIntake {...props} initial={{...initial,status:"ready",configuration:null,manifestPermissions:["agent:run"]}}/>);await screen.findByRole("option",{name:"写作"});await user.click(screen.getByRole("checkbox",{name:"调用 Agent 执行任务"}));expect(screen.getByRole("button",{name:"添加并打开"})).toBeDisabled();
+ const user=userEvent.setup();const view=render(<WorkbenchIntake {...props} initial={{...initial,configuration:null}}/>);await screen.findByRole("option",{name:"写作"});expect(screen.getByRole("button",{name:"适配并添加"})).toBeDisabled();view.unmount();render(<WorkbenchIntake {...props} initial={{...initial,status:"ready",configuration:null,manifestPermissions:["agent:run"]}}/>);await screen.findByRole("option",{name:"写作"});expect(screen.getByRole("checkbox",{name:"调用 Agent 执行任务"})).toBeChecked();expect(screen.getByRole("button",{name:"添加并打开"})).toBeDisabled();await user.click(screen.getByRole("checkbox",{name:"调用 Agent 执行任务"}));expect(screen.getByRole("button",{name:"添加并打开"})).toBeEnabled();
 });
 it("ignores a stale poll result after cancellation",async()=>{
  let resolve!:(value:api.WorkbenchIntake)=>void;vi.mocked(api.fetchWorkbenchIntake).mockReturnValue(new Promise(r=>{resolve=r;}));const user=userEvent.setup();render(<WorkbenchIntake {...props} initial={{...initial,status:"running"}}/>);

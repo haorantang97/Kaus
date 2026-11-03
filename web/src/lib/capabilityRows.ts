@@ -25,10 +25,15 @@ export function capabilityValue(config: Record<string, unknown> | null | undefin
   return "value" in config ? config.value : config;
 }
 
+/** `<agent>:mcp` records an Agent's own native MCP server; generic `mcp` is Project configuration. */
+const isNativeMcpType = (type: string) => type.includes(":") && type.split(":").at(-1) === "mcp";
+
 /** 这一行该不该出现在能力表里。 */
 export function isVisibleCapabilityEntry(entry: EffectiveCapabilityEntryWire): boolean {
   // Individual skills are edited in the Project skill tree, including native scopes.
   if (entry.capabilityType.split(":").at(-1) === "skills") return false;
+  // An Agent's discovered native MCP servers (`<agent>:mcp`) are arranged in the same tree.
+  if (isNativeMcpType(entry.capabilityType)) return false;
   // 没验证过 = 说不出有没有，AD-71 判静默隐藏（不是"显示成未知"）。
   if (entry.verification === "unknown") return false;
   // Imported native defaults are conversation/connection settings, not project configuration.
@@ -139,6 +144,6 @@ export function visibleCapabilityRows(capabilities: EffectiveCapabilitiesWire | 
   total: number;
 } {
   const entries = (capabilities?.entries ?? []).filter(isVisibleCapabilityEntry);
-  const blocked = (capabilities?.blocked ?? []).filter(row => row.capabilityType.split(":").at(-1) !== "skills");
+  const blocked = (capabilities?.blocked ?? []).filter(row => row.capabilityType.split(":").at(-1) !== "skills" && !isNativeMcpType(row.capabilityType));
   return { entries, blocked, total: entries.length + blocked.length };
 }

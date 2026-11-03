@@ -148,3 +148,25 @@ async def test_terminal_adapter_can_prepare_shared_store_and_private_config(tmp_
     assert launch.private_env['KAUS_FIXTURE_TOKEN'] == 'synthetic-secret'
     assert 'synthetic-secret' not in ' '.join(launch.command)
     assert 'KAUS_FIXTURE_TOKEN' not in driver.agent_spec.env
+
+
+async def test_terminal_resume_carries_update_suppression_and_trust_record(tmp_path):
+    executable(tmp_path, 'fixture-native')
+    config = tmp_path / 'native-config'
+    driver = driver_for(tmp_path, terminal_args=('-c', 'check_for_update_on_startup=false'),
+        terminal_env={'FIXTURE_DISABLE_UPDATE': '1'}, workspace_trust='fixture-trust', config_root_env='FIXTURE_HOME')
+    driver.agent_spec = driver.agent_spec.with_env(FIXTURE_HOME=str(config))
+    conversation = Conversation.create(project_id='project:test', agent_binding_id='binding:test:fixture', title='Synthetic').evolve(native_session_id='native-id')
+    launch = await driver.build_external_cli_launch(conversation)
+    assert launch.command[1:] == ('-c', 'check_for_update_on_startup=false', 'resume', 'native-id')
+    assert launch.private_env['FIXTURE_DISABLE_UPDATE'] == '1'
+    assert launch.workspace_trust == ('fixture-trust', str(config))
+    assert 'FIXTURE_DISABLE_UPDATE' not in launch.model_dump_json()
+
+
+async def test_terminal_resume_without_trust_kind_records_nothing(tmp_path):
+    executable(tmp_path, 'fixture-native')
+    conversation = Conversation.create(project_id='project:test', agent_binding_id='binding:test:fixture', title='Synthetic').evolve(native_session_id='native-id')
+    launch = await driver_for(tmp_path).build_external_cli_launch(conversation)
+    assert launch.workspace_trust is None
+    assert launch.command[1:] == ('resume', 'native-id')

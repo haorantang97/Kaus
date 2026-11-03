@@ -20,6 +20,10 @@ export interface SidebarConversation {
   updatedAt: string;
   /** 该会话所属 Binding 的引擎 id；取不到就是 null（不编造）。 */
   backendId: string | null;
+  /** 外部终端里的 Agent 正等用户处理（hook 上报的说明，可能为空串）。 */
+  terminalWaiting?: string;
+  /** 有一张审批 / 提问卡在等用户回答。 */
+  awaitingInput?: boolean;
 }
 
 export interface SidebarGroup {
@@ -102,8 +106,9 @@ export interface RecentConversation extends SidebarConversation {
   projectDisplayName: string;
 }
 
-/** 「需要处理」的两档。`awaiting` = 会话停在那儿等人（审批/暂停），`failed` = 上一次没发出去。 */
-export type AttentionKind = "awaiting" | "failed";
+/** 「需要处理」的三档。`awaiting` = 会话停在那儿等人（审批/暂停），`failed` = 上一次没发出去，
+ *  `terminal` = 外部终端里的 Agent 在等人（hook 上报，审批仍在终端里完成）。 */
+export type AttentionKind = "awaiting" | "failed" | "terminal";
 
 export interface AttentionItem extends RecentConversation {
   kind: AttentionKind;
@@ -114,7 +119,7 @@ export interface AttentionItem extends RecentConversation {
  *
  * 后端没有"跨会话的待审批清单"这样一个端点，索引行给的是一个封闭集合
  * （idle | running | paused | ended | error）。所以这一段的口径就写死在这里：
- *   - `paused` → 这条会话停在那儿等人（审批未答、或被暂停）；
+ *   - `awaitingInput` / `paused` → 这条会话停在那儿等人（审批或提问未答、或被暂停）；
  *   - `error`  → 上一轮没跑成 / 上一句没发出去。
  * 别的档一律不进这一段——**不猜**（AD-71）。一条都没有时页面整段不渲染。
  */
@@ -122,25 +127,15 @@ export function buildAttentionItems(groups: SidebarGroup[]): AttentionItem[] {
   const items: AttentionItem[] = [];
   for (const group of groups) {
     for (const conversation of group.conversations) {
-      const kind: AttentionKind | null =
-        conversation.state === "paused" ? "awaiting" : conversation.state === "error" ? "failed" : null;
+      const kind: AttentionKind | null = conversation.terminalWaiting !== undefined ? "terminal"
+        : conversation.awaitingInput || conversation.state === "paused" ? "awaiting" : conversation.state === "error" ? "failed" : null;
       if (kind === null) continue;
       items.push({ ...conversation, projectDisplayName: group.displayName, kind });
     }
   }
   // 失败排在等待前面：没发出去比停着更需要人动手。
-  return items.sort((a, b) => {
-    if (a.kind !== b.kind) return a.kind === "failed" ? -1 : 1;
-    return activityOf(b) - activityOf(a);
-  });
-}
-
-export function plateCounts(groups: SidebarGroup[], projectCount: number) {
-  return {
-    attention: buildAttentionItems(groups).length,
-    running: groups.reduce((total, group) => total + group.conversations.filter(item => isRunning(item.state)).length, 0),
-    projects: projectCount,
-  };
+  const rank: Record<AttentionKind, number> = { failed: 0, terminal: 1, awaiting: 2 };
+  return items.sort((a, b) => rank[a.kind] - rank[b.kind] || activityOf(b) - activityOf(a));
 }
 
 export interface ConversationIndex {
@@ -191,6 +186,8 @@ export function useConversationIndex(refreshToken: number, enabled = true): Conv
           state: entry.status,
           updatedAt: entry.updatedAt,
           backendId: entry.backendId,
+          ...(entry.terminalStatus?.state === "waiting" ? { terminalWaiting: entry.terminalStatus.message ?? "" } : {}),
+          ...(entry.awaitingInput ? { awaitingInput: true } : {}),
         }));
         const known = new Set(flat.map(item => item.id));
         const projectIds = new Set(projects.map(project => project.id));

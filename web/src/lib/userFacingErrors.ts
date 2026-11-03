@@ -9,6 +9,7 @@ const copy = {
   busy: ["当前任务尚未结束", "The current task is still running."],
   unavailable: ["此内容暂时无法打开", "This item isn't available right now."],
   unsupported: ["当前 Agent 不支持此操作", "This Agent doesn't support this action."],
+  archived: ["所选技能已被引擎归档，请恢复后重试", "A selected skill was archived by the engine. Restore it and try again."],
   limit: ["已达到使用限额，请稍后重试", "Usage limit reached. Try again later."],
   size: ["文件过大，请选择较小的文件", "Choose a smaller file."],
 } as const;
@@ -41,11 +42,12 @@ export function failureSummary(failure: unknown): string {
   if (/quota_exceeded|rate_limit|insufficient_quota|too many requests/.test(text) || record.status === 429) return label("limit");
   if (/permission_denied|access_denied|\beacces\b|\beperm\b/.test(text) || record.status === 403) return label("denied");
   if (/attachment_too_large|file_too_large|payload_too_large/.test(text) || record.status === 413) return label("size");
+  if (/skill_archived_by_engine/.test(code)) return label("archived");
   if (/unsupported|not_supported/.test(code)) return label("unsupported");
   if (/failed to fetch|networkerror|network request failed|econnrefused|econnreset|etimedout|fetch failed/.test(text)) return label("connection");
   if (/\benoent\b|source_missing|source_unavailable|not_found/.test(text) || record.status === 404) return label("unavailable");
   // Keep short human-readable validation and action messages. Raw protocol/code/path output belongs in details.
-  const technical = /(?:^|\s)(?:\/[\w.~@-]+){2,}|[A-Z]:\\|file:\/\/|https?:\/\/|\b[0-9a-f]{8}-[0-9a-f-]{27,}\b|\b[a-z]+_[a-z_]+\b|\bHTTP\s*\d{3}\b|Traceback|\b(?:TypeError|SyntaxError|Exception):|\[object Object\]|[\uFFFD]|(?:^|\n)\s*at\s|^[\[{]/i.test(message);
+  const technical = /(?:^|\s)(?:\/[\w.~@-]+){2,}|[A-Z]:\\|file:\/\/|https?:\/\/|\b[0-9a-f]{8}-[0-9a-f-]{27,}\b|\b[a-z]+_[a-z_]+\b|\bHTTP\s*\d{3}\b|Traceback|\b(?:TypeError|SyntaxError|Exception):|\[object Object\]|[\uFFFD]|(?:^|\n)\s*at\s|^[[{]/i.test(message);
   if (message && message.length <= 180 && !technical && !message.includes("\n")) return message;
   return label("retry");
 }

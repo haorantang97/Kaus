@@ -1017,3 +1017,15 @@ def test_ad27_replay_with_reasoning_and_streamed_tool_output_is_idempotent() -> 
     assert tool.output == "out-1\nout-2\n"
     message = [i for i in once.items if isinstance(i, MessageItem)][0]
     assert message.reasoning_text == "思考"
+
+
+def test_pending_interaction_expires_when_main_run_ends() -> None:
+    request = PermissionRequest(request_id="req-x", title="允许？",
+                                options=(InteractionOption(option_id="allow", label="允许"),))
+    state = reduce_events(initial(), [
+        env(RunStarted(run_id="run-1"), 0, run_id="run-1"),
+        env(PermissionRequested(request=request), 1, run_id="run-1"),
+        env(RunFailed(run_id=None, error=AgentError(code="runtime_lost", message="lost")), 2),
+    ])
+    interactions = [i for i in state.items if isinstance(i, InteractionItem)]
+    assert interactions[0].status == "expired"

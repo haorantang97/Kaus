@@ -75,6 +75,12 @@ async def world(tmp_path, script_factory=text_stream_script):
             unit.close()
 
 
+async def open_frame(client, module_id):
+    response = await client.post(f"/api/workbench/modules/{module_id}/frames")
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
 async def wait_job(service, job_id, statuses=("completed", "failed", "cancelled"), module_id="automation"):
     async with asyncio.timeout(5):
         while True:
@@ -207,9 +213,14 @@ async def test_permission_request_uses_existing_interaction_flow(tmp_path):
         job = await service.start_job("automation", "test", "approval")
         waiting = await wait_job(service, job["id"], ("waiting",))
         conversation_id = waiting["steps"][0]["conversationId"]
+        listed = await client.get("/api/workbench/attention")
+        assert listed.status_code == 200, listed.text
+        assert [(item["moduleId"], item["jobId"], item["conversationId"]) for item in listed.json()["items"]] == [
+            ("automation", job["id"], conversation_id)]
         response = await client.post(f"/api/conversations/{conversation_id}/interactions/approve", json={"kind": "permission", "optionId": "allow"})
         assert response.status_code == 200, response.text
         assert (await wait_job(service, job["id"]))["output"] == "approved"
+        assert service.attention() == []
 
 
 def package(tmp_path, id="example", permissions=None, **extra):
@@ -229,14 +240,18 @@ async def test_package_install_assets_sandbox_grants_and_no_token(tmp_path):
         module = response.json()
         assert module["grants"] == []
         assert "assetRoot" not in module and str(tmp_path) not in json.dumps(module)
-        asset = await client.get(module["assetUrl"], headers={"Authorization": ""})
+        assert (await client.get(module["assetUrl"], headers={"Authorization": ""})).status_code == 404
+        frame = await open_frame(client, "example")
+        asset = await client.get(frame["url"], headers={"Authorization": ""})
         assert asset.status_code == 200
         assert "sandbox allow-scripts" in asset.headers["content-security-policy"]
         assert "connect-src 'none'" in asset.headers["content-security-policy"]
-        assert asset.headers["access-control-allow-origin"] == "*"
+        assert "access-control-allow-origin" not in asset.headers
         assert (await client.get("/api/workbench/modules", headers={"Authorization": ""})).status_code == 401
         assert (await client.get("/api/workbench/assets/example/%2E%2E/automation/index.html")).status_code == 404
+        assert (await client.get(frame["url"].replace("index.html", "%2E%2E/%2E%2E/automation/~x/index.html"))).status_code == 404
         await service.uninstall("example")
+        assert (await client.get(frame["url"])).status_code == 404
         assert (await client.get(module["assetUrl"])).status_code == 404
 
 
@@ -392,9 +407,10 @@ async def test_backend_package_boundary_lifecycle_and_reconsent(tmp_path):
         (root / "backend/settings.json").write_text("{}")
         installed = await service.install(str(root))
         assert installed["backend"] == {"runtime": "node", "entry": "backend/main.mjs"}
-        assert (await client.get(installed["assetUrl"])).status_code == 200
+        frame = await open_frame(client, "custom-service")
+        assert (await client.get(frame["url"])).status_code == 200
         for filename in ("backend/main.mjs", "backend/settings.json"):
-            assert (await client.get(f"/api/workbench/assets/custom-service/{filename}")).status_code == 404
+            assert (await client.get(frame["url"].replace("index.html", filename))).status_code == 404
         await service.patch_module("custom-service", {"grants": ["backend:run", "data:read"]})
         reinstalled = await service.install(str(root))
         assert reinstalled["grants"] == ["data:read"]
@@ -423,10 +439,11 @@ async def test_invalid_backend_manifests_are_rejected(tmp_path, backend, permiss
 
 async def test_asset_csp_uses_explicit_module_prefix_for_opaque_webkit_frames(tmp_path):
     async with world(tmp_path) as (service, _host, _repos, _driver, client, _binding):
-        module = await service.install(str(package(tmp_path, "webkit-module")))
-        source = "http://localhost:8877/api/workbench/assets/webkit-module/"
+        await service.install(str(package(tmp_path, "webkit-module")))
+        frame = await open_frame(client, "webkit-module")
+        source = f"http://localhost:8877/api/workbench/assets/webkit-module/~{frame['token']}/"
         for method in (client.get, client.options):
-            response = await method(module["assetUrl"], headers={"Authorization": ""})
+            response = await method(frame["url"], headers={"Authorization": "", "Origin": "null"})
             assert response.status_code in {200, 204}
             policy = dict(part.strip().split(" ", 1) for part in response.headers["content-security-policy"].split(";"))
             assert policy["script-src"] == source + " 'unsafe-inline'"
@@ -438,7 +455,7 @@ async def test_asset_csp_uses_explicit_module_prefix_for_opaque_webkit_frames(tm
             assert policy["connect-src"] == policy["form-action"] == policy["frame-src"] == "'none'"
             assert policy["frame-ancestors"] == "'self'"
             assert "allow-same-origin" not in response.headers["content-security-policy"]
-            assert response.headers["access-control-allow-origin"] == "*"
+            assert response.headers["access-control-allow-origin"] == "null"
         script = await client.get(source + "main.js", headers={"Authorization": ""})
         assert script.status_code == 200
         assert script.headers["content-type"].startswith("text/javascript")
@@ -452,3 +469,134 @@ def test_site_surface_permissions_are_declared_per_site():
     for permission in ("surface:browser", "surface:*", "surface:"):
         with pytest.raises(ValidationError):
             Manifest(**base, permissions=[permission])
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+async def test_frame_token_gates_module_assets(tmp_path):
+    async with world(tmp_path) as (service, _host, _repos, _driver, client, _binding):
+        bare = {"Authorization": ""}
+        frame = await open_frame(client, "automation")
+        base = frame["url"].rsplit("/", 1)[0]
+        assert frame["url"] == f"/api/workbench/assets/automation/~{frame['token']}/index.html"
+        assert (await client.post("/api/workbench/modules/automation/frames", headers=bare)).status_code == 401
+        # The sandboxed frame loads its entry, then relative assets that inherit the token.
+        index = await client.get(frame["url"], headers={**bare, "Sec-Fetch-Site": "same-origin", "Sec-Fetch-Dest": "iframe"})
+        assert index.status_code == 200 and "main.js" in index.text
+        script = await client.get(base + "/main.js", headers={**bare, "Origin": "null", "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "script"})
+        assert script.status_code == 200 and script.headers["access-control-allow-origin"] == "null"
+        assert (await client.get(base + "/main.js", headers={**bare, "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "script"})).status_code == 200
+        # Missing, unknown and other-module tokens look like missing files.
+        for url in ("/api/workbench/assets/automation/index.html", "/api/workbench/assets/automation/main.js",
+                    "/api/workbench/assets/automation/~/index.html", "/api/workbench/assets/automation/~short/index.html",
+                    "/api/workbench/assets/automation/~" + "A" * 43 + "/index.html",
+                    f"/api/workbench/assets/content-workbench/~{frame['token']}/index.html"):
+            response = await client.get(url, headers=bare)
+            assert response.status_code == 404, url
+            assert response.json()["error"]["code"] == "asset_not_found"
+        other = await open_frame(client, "content-workbench")
+        assert (await client.get(f"/api/workbench/assets/automation/~{other['token']}/index.html")).status_code == 404
+        # Another site cannot read module code even with a valid token.
+        for headers in ({"Origin": "https://outside.example"}, {"Origin": "http://localhost:3000"},
+                        {"Sec-Fetch-Site": "same-site"}, {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "document"}):
+            for method in (client.get, client.options):
+                response = await method(base + "/main.js", headers={**bare, **headers})
+                assert response.status_code == 403, headers
+                assert response.json()["error"]["code"] == "forbidden_origin"
+                assert "access-control-allow-origin" not in response.headers
+
+
+async def test_frame_token_expiry_renewal_release_and_revocation(tmp_path):
+    async with world(tmp_path) as (service, _host, _repos, _driver, client, _binding):
+        clock = Clock()
+        service.frame_tokens.clock = clock
+        idle = service.frame_tokens.idle_seconds
+        first = await open_frame(client, "automation")
+        second = await open_frame(client, "automation")
+        # Each open rotates to a fresh token; concurrent frames keep their own.
+        assert first["token"] != second["token"] and first["expiresIn"] == idle
+        assert (await client.get(first["url"])).status_code == 200
+        assert (await client.get(second["url"])).status_code == 200
+        # Use and keepalive slide the idle window; an unused token expires.
+        clock.now += idle - 1
+        assert (await client.get(first["url"])).status_code == 200
+        renewed = await client.post(f"/api/workbench/modules/automation/frames/{second['token']}/renew")
+        assert renewed.status_code == 200 and renewed.json() == {"expiresIn": idle}
+        clock.now += idle - 1
+        assert (await client.get(first["url"])).status_code == 200
+        assert (await client.get(second["url"])).status_code == 200
+        clock.now += idle
+        assert (await client.get(first["url"])).status_code == 404
+        expired = await client.post(f"/api/workbench/modules/automation/frames/{first['token']}/renew")
+        assert expired.status_code == 404 and expired.json()["error"]["code"] == "frame_expired"
+        assert (await client.post(f"/api/workbench/modules/content-workbench/frames/{second['token']}/renew")).status_code == 404
+        # Release, disable and uninstall end the frame's access.
+        third = await open_frame(client, "automation")
+        assert (await client.delete(f"/api/workbench/modules/automation/frames/{third['token']}")).json() == {"released": True}
+        assert (await client.get(third["url"])).status_code == 404
+        fourth = await open_frame(client, "automation")
+        await service.patch_module("automation", {"enabled": False})
+        assert (await client.post("/api/workbench/modules/automation/frames")).status_code == 409
+        await service.patch_module("automation", {"enabled": True})
+        assert (await client.get(fourth["url"])).status_code == 404
+        fifth = await open_frame(client, "content-workbench")
+        await service.uninstall("content-workbench")
+        assert (await client.get(fifth["url"])).status_code == 404
+        assert (await client.post("/api/workbench/modules/content-workbench/frames")).status_code == 404
+        # Live tokens per module are bounded; the oldest is dropped first.
+        tokens = [service.frame_tokens.issue("automation") for _ in range(service.frame_tokens.per_module + 2)]
+        assert not service.frame_tokens.touch("automation", tokens[0])
+        assert all(service.frame_tokens.touch("automation", token) for token in tokens[2:])
+
+
+async def test_declared_icon_is_served_only_to_the_host_page(tmp_path):
+    async with world(tmp_path) as (service, _host, _repos, _driver, client, _binding):
+        root = package(tmp_path, "iconic", icon="icon.svg")
+        (root / "icon.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
+        await service.install(str(root))
+        url = "/api/workbench/assets/iconic/icon.svg"
+        assert (await client.get(url, headers={"Sec-Fetch-Site": "same-origin", "Sec-Fetch-Dest": "image"})).status_code == 200
+        assert (await client.get(url)).status_code == 404
+        assert (await client.get(url, headers={"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "image"})).status_code == 404
+        assert (await client.get("/api/workbench/assets/iconic/main.js", headers={"Sec-Fetch-Site": "same-origin"})).status_code == 404
+        assert (await client.get("/api/workbench/assets/iconic/index.html", headers={"Sec-Fetch-Site": "same-origin"})).status_code == 404
+
+
+async def test_deleted_project_refuses_module_runs(tmp_path):
+    async with world(tmp_path) as (service, _host, repos, driver, client, binding):
+        project = await repos.projects.get(binding.project_id)
+        await repos.projects.save(project.evolve(status="disabled"))
+        response = await client.post("/api/workbench/modules/automation/jobs", json={"prompt": "test", "idempotencyKey": "deleted"})
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "project_deleted"
+        response = await client.post("/api/workbench/modules/automation/workflow/run", json={"input": "x", "idempotencyKey": "deleted-flow"})
+        assert response.json()["error"]["code"] == "project_deleted"
+        with pytest.raises(ApiError) as refused:
+            await service.patch_module("content-workbench", {"projectId": binding.project_id, "bindingId": binding.id})
+        assert refused.value.code == "project_deleted"
+        with pytest.raises(ApiError) as refused:
+            await service.patch_module("content-workbench", {"projectId": binding.project_id})
+        assert refused.value.code == "project_deleted"
+        assert driver.received == [] and not await repos.conversations.list_for_project(binding.project_id, include_group_only=True, archived=False)
+
+
+async def test_project_deleted_during_job_stops_before_next_step(tmp_path):
+    async with world(tmp_path) as (service, _host, repos, driver, _client, binding):
+        project = await repos.projects.get(binding.project_id)
+        original = driver.send_message
+        async def retire_after_first(runtime, content):
+            await original(runtime, content)
+            await repos.projects.save(project.evolve(status="disabled"))
+        driver.send_message = retire_after_first
+        job = await service.start_workflow("automation", "input", "retire-midway")
+        result = await wait_job(service, job["id"])
+        assert result["status"] == "failed" and result["errorCode"] == "project_deleted"
+        assert [step["status"] for step in result["steps"]] == ["completed", "failed"]
+        assert result["steps"][1]["conversationId"] is None
+        assert len(driver.received) == 1

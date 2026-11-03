@@ -6,7 +6,6 @@ The source ID is retained for provenance; one source may join multiple Groups.
 
 Materials are selected by the user and stored per Group, with CAS revisions.
 Each user-triggered discussion snapshots a single version for all recipients.
-The separate Context Packet endpoint remains a read-only activity overview.
 
 Authentication and the v1.1 event envelope are shared with the session API;
 Group changes use the kaus/group.changed extension and the Group SSE stream.
@@ -30,14 +29,11 @@ from app.api.group_views import (
     GROUP_EVENT_NAME,
     GROUP_EVENT_NAMESPACE,
     collaboration_message_to_wire,
-    context_packet_markdown,
     group_change_data,
     group_list_to_wire,
     group_to_wire,
     member_conversation_summary,
     member_to_wire,
-    # batch52
-    packet_recent_lines,
 )
 from app.api.session_auth import (
     SessionAuthPolicy,
@@ -46,6 +42,7 @@ from app.api.session_auth import (
 )
 from app.api.session_views import (
     KEEPALIVE_FRAME,
+    awaiting_input,
     SSE_HEADERS,
     SSE_PADDING_FRAME,
     conversation_surface,
@@ -99,6 +96,7 @@ from app.conversations.models import Conversation
 from app.errors import DomainInvariantError
 from app.persistence.base import RepositorySet
 from app.projects.binding_snapshot import register_binding_snapshot
+from app.projects.retirement import require_open_project
 from app.api.event_wait import DEFAULT_RUN_ID_TIMEOUT, first_run_id as _first_run_id
 from drivers.base import (
     AGENT_SPAWN_FAILED,
@@ -130,12 +128,6 @@ SNAPSHOT_MAX_EVENTS: int = 2000
 GROUP_CLOSED_CODE = "group_closed"
 
 #: 一条会话已经在**另一个**还开着的组里（detail 带那个 ``groupId``）。
-
-#: 关组时对成员会话的处置动作（任务书第 4 件的三行）。
-CLOSE_ACTIONS: frozenset[str] = frozenset({"kept", "promoted", "archived"})
-
-#: ``POST /close`` 的 ``onClose`` 取值。
-ON_CLOSE_CHOICES: frozenset[str] = frozenset({"keep", "archive"})
 
 #: 一次「推进」最多连着走几步（PRD §B4，批次四十五 b）。
 #:
@@ -407,55 +399,6 @@ class SendToMemberBody(_Body):
     text: str = Field(min_length=1, max_length=100_000)
 
 
-class CloseGroupBody(_Body):
-    """``POST /api/groups/{id}/close``。
-
-    ``on_close`` 只管 ``retention=decide_on_group_close`` 的那些成员会话；
-    ``persistent`` 不动、``ephemeral`` 一律归档（见 :func:`_close_disposition`）。
-    缺省 ``keep``。
-    """
-
-    on_close: str | None = None
-
-
-# --------------------------------------------------------------------------- #
-# 关组处置
-# --------------------------------------------------------------------------- #
-
-
-def _close_disposition(conversation: Conversation, *, on_close: str) -> str:
-    """关组时这条成员会话该怎么处置（任务书第 4 件 / N §9.5）。
-
-    ==============================  =========================================
-    ``retention``                    动作
-    ==============================  =========================================
-    ``persistent``                   ``kept`` —— 一个字段都不动
-    ``decide_on_group_close``        ``on_close="keep"`` → ``promoted``
-                                     （``project_visible + persistent``）；
-                                     ``on_close="archive"`` → ``archived``
-    ``ephemeral``                    ``archived`` —— 不问，也不删
-    ==============================  =========================================
-
-    **归档不是删除**：只把会话置 ``state="ended"``，事件缓冲一条不清、原生
-    Session 一个不动。删除是显式动作（``DELETE /api/conversations/{id}``，
-    AD-105），关一个组不该顺手替用户做那件不可逆的事。
-    """
-    if conversation.retention == "persistent":
-        return "kept"
-    if conversation.retention == "ephemeral":
-        return "archived"
-    return "promoted" if on_close == "keep" else "archived"
-
-
-def _apply_disposition(conversation: Conversation, action: str) -> Conversation:
-    """把处置动作落到 Conversation 上。``kept`` 是恒等。"""
-    if action == "promoted":
-        return conversation.promote_to_project()
-    if action == "archived":
-        return conversation.evolve(state="ended", updated_at=_now())
-    return conversation
-
-
 # --------------------------------------------------------------------------- #
 # 装配
 # --------------------------------------------------------------------------- #
@@ -597,7 +540,6 @@ def build_group_router(
         "member_left": "{who} 被移出了这个组",
         "member_paused": "{who} 被暂停，暂时不接收组内消息",
         "member_resumed": "{who} 恢复参与",
-        "member_promoted": "{who} 被保留为普通项目会话",
     }
 
     async def _append_message(
@@ -881,8 +823,15 @@ def build_group_router(
         result = group_list_to_wire(
             groups, member_counts=counts, member_conversation_ids=conversation_ids
         )
-        if coordinator_enabled:
-            for item in result["groups"]:
+        for item in result["groups"]:
+            # Approvals inside a group must be reachable while its panel is collapsed.
+            candidates = list(conversation_ids.get(item["id"], ()))
+            if coordinator_enabled and (active := coordinator.active.get(item["id"])):
+                candidates.append(active)
+            item["awaitingConversationIds"] = [
+                cid for cid in dict.fromkeys(candidates) if awaiting_input(host.timeline(cid))
+            ]
+            if coordinator_enabled:
                 item["coordinatorEnabled"] = True
                 item["leaderMemberId"] = None
         return result
@@ -961,60 +910,43 @@ def build_group_router(
         return {"group": _group_wire(updated)}
 
     @_endpoint
-    async def close_group(
-        group_id: str, body: CloseGroupBody | None = Body(None)
-    ) -> Any:
-        """关组：先对每个成员会话按 ``retention`` 做处置，再把组置 ``closed``。
+    async def close_group(group_id: str) -> Any:
+        """关组 = 删除这个组（2026-11-01 项目负责人决定）。
 
-        顺序不能换——处置要读成员行，而成员行在组关掉之后仍然留着（它是这次
-        关组做了什么的账本）。成员**不**被标 ``left``：他们是关组时在场的人，
-        抹掉这件事等于让「这个组当时有谁」变得查不到。
+        删掉组记录、时间线、资料、成员行、组内会话（拖入时的副本、组内新建的
+        成员）以及组长的临时会话与临时绑定。**原会话不动**；用户已「提升为普通
+        会话」的成员会话是 ``project_visible``，也不动。原生 Agent 自己的历史不在
+        Kaus 这一侧，不删。终端里还开着的组内会话先要用户结束。
         """
         group = await _load_open_group(group_id)
-        on_close = ((body.on_close if body is not None else None) or "keep").strip()
-        if on_close not in ON_CLOSE_CHOICES:
-            raise GroupApiError(
-                400,
-                "invalid_on_close",
-                "onClose 只接受 keep 或 archive",
-                detail={"onClose": on_close},
-            )
+        internal = [
+            conversation
+            for conversation in await repositories.conversations.list_for_collaboration(group.id)
+            if conversation.visibility == "group_only" and conversation.retention != "ephemeral"
+        ]
+        for conversation in internal:
+            owner = await host.describe_runtime_owner(conversation.id)
+            if owner is not None and owner.owner_type == "external-cli":
+                raise GroupApiError(
+                    409, "surface_external_active", "请先结束终端中的组内对话",
+                    detail={"conversationId": conversation.id},
+                )
         if coordinator_enabled:
             await coordinator.stop(group.id, reason="closed")
-            group = await _load_open_group(group.id)
-        dispositions: list[dict[str, Any]] = []
-        for member in await repositories.members.list_for_collaboration(group.id):
-            conversation = await repositories.conversations.get(member.conversation_id)
-            if conversation is None:
-                dispositions.append(
-                    {
-                        "memberId": member.id,
-                        "conversationId": member.conversation_id,
-                        "retention": None,
-                        "action": "missing",
-                    }
-                )
-                continue
-            action = _close_disposition(conversation, on_close=on_close)
-            updated = _apply_disposition(conversation, action)
-            if updated is not conversation:
-                saved = await repositories.conversations.save(updated)
-                host.update_conversation(saved)
-            dispositions.append(
-                {
-                    "memberId": member.id,
-                    "conversationId": conversation.id,
-                    "retention": conversation.retention,
-                    "action": action,
-                }
-            )
-        closed = await repositories.collaborations.save(group.close())
-        await _notify(group=closed, change="group_closed")
-        return {
-            "group": _group_wire(closed, member_count=len(dispositions)),
-            "onClose": on_close,
-            "dispositions": dispositions,
-        }
+            await coordinator.dispose(group.id)
+        for conversation in internal:
+            await host.stop_runtime(conversation.id)
+        members = await repositories.members.list_for_collaboration(group.id)
+        for member in members:
+            await repositories.members.delete(member.id)
+        for conversation in internal:
+            await repositories.conversations.delete(conversation.id)
+            await host.purge_conversation(conversation)
+        await repositories.group_messages.delete_for_collaboration(group.id)
+        await repositories.group_materials.delete(group.id)
+        await repositories.collaborations.delete(group.id)
+        await _notify(group=group.close(), change="group_closed")
+        return {"groupId": group.id, "deleted": True, "deletedConversationIds": [c.id for c in internal]}
 
     # Group materials are explicit user selections, never Project capabilities.
     async def _editable_materials(group_id: str) -> CollaborationSession:
@@ -1114,6 +1046,7 @@ def build_group_router(
     async def add_member(group_id: str, body: AddMemberBody = Body(...)) -> Any:
         group = await _load_open_group(group_id)
         conversation = await _load_conversation(body.conversation_id)
+        await require_open_project(repositories, conversation.project_id)
         await _reject_if_duplicate(conversation.id, group=group)
         source = conversation
         source_binding = await repositories.bindings.get(source.agent_binding_id)
@@ -1130,7 +1063,6 @@ def build_group_router(
                     model_id=source.model_id,
                     provider_id=source.provider_id,
                     reasoning_mode=source.reasoning_mode,
-                    retention="persistent",
                 ).evolve(approval_mode=source.approval_mode, execution_mode=source.execution_mode, config_options=dict(source.config_options))
             )
         member = await repositories.members.save(
@@ -1292,46 +1224,8 @@ def build_group_router(
         )
         return {"member": await _member_wire(group, saved)}
 
-    @_endpoint
-    async def promote_member(group_id: str, member_id: str) -> Any:
-        """把 ``group_only`` 的成员会话提升为普通项目会话（N §9.5「保留到项目」）。
-
-        Phase 7 成员能力清单第 7 条的数据面。**组不必关**：用户在组还开着的时候
-        就决定「这条会话我要留下」是完全正常的事，关组时那一条会因为
-        ``retention`` 已经是 ``persistent`` 而落进 ``kept``。
-
-        已经是 ``project_visible + persistent`` 时是一次无操作，仍回 200——
-        「提升一条已经提升过的会话」的结果与「提升成功」一模一样。
-        """
-        group = await _load_group(group_id)
-        member = await _load_member(group, member_id)
-        conversation = await _load_conversation(member.conversation_id)
-        already = (
-            conversation.visibility == "project_visible"
-            and conversation.retention == "persistent"
-        )
-        if already:
-            return {
-                "member": await _member_wire(group, member),
-                "conversation": conversation_to_wire(
-                    conversation, run_state=await host.run_state_of(conversation)
-                ),
-                "promoted": False,
-            }
-        saved = await repositories.conversations.save(
-            conversation.promote_to_project()
-        )
-        host.update_conversation(saved)
-        await _notify(
-            group=group, change="member_promoted", member=member, conversation=saved
-        )
-        return {
-            "member": await _member_wire(group, member),
-            "conversation": conversation_to_wire(
-                saved, run_state=await host.run_state_of(saved)
-            ),
-            "promoted": True,
-        }
+    # 「提升为普通会话」（promote_member）2026-11-03 删除。已提升过的会话
+    # （project_visible + persistent）照常读取，关组时落进 kept。
 
     # --- 在组里启动新成员（N §9.3 路径 B） ----------------------------------- #
 
@@ -1485,6 +1379,7 @@ def build_group_router(
         project_id = normalize_project_id(body.project_id)
         if await repositories.projects.get(project_id) is None:
             raise _not_found("project_not_found", f"未知 Project：{body.project_id}")
+        await require_open_project(repositories, project_id)
         binding = await _resolve_binding(project_id, body.binding_id)
         require_new_work(registry.try_get(binding.backend_id), backend_id=binding.backend_id)
         model_id = (body.model_id or "").strip() or None
@@ -2594,104 +2489,6 @@ def build_group_router(
             "nextBefore": None if earliest in (None, 0) else earliest,
         }
 
-    # --- Context Packet v0（第 3 件 / AD-154） ------------------------------- #
-
-    async def _last_messages(conversation: Conversation) -> dict[str, Any]:
-        """从事件里摘出这条会话的**最近一次完成时间**。
-
-        AD-154：Context Packet 是**只读汇编**，所以这里只**读**——除了一处例外：
-        缓冲整个是空的时候调一次 :meth:`SessionHost.restore_from_native_history`
-        （AD-143 的同一条路），它自己就只在「没有任何缓冲事件 + 没有活跃 runtime
-        + 绑了原生 Session」时才动手，其余情形是彻底的 no-op。读不到就**什么都
-        不放**（键不出现），不编一句「（暂无内容）」——N §13.1。
-
-        批次五十二第 4 件（真机 UI-01）：两句摘要**不再从这里取**。此前
-        ``lastUserMessage`` 摘的是事件流里那条 ``kaus/user.message``——而在房间
-        里，投给成员的「用户消息」正是**房间增量**，里面装着别人的发言，于是
-        「最近一句」显示成了别人说的话或上一条输入。它们改由
-        :func:`packet_recent_lines` 从**组时间线**取（那里「谁说的」是一等公民）。
-        这里只留 ``lastCompletedAt``：一次 run 什么时候跑完，只有会话自己的事件
-        流知道，组时间线上没有这个事实。
-        """
-        store = host.event_store
-        if await store.latest_sequence(conversation.id) is None:
-            # 读不到原生历史时它自己返回 0，不会抛。
-            await host.restore_from_native_history(conversation)
-        envelopes = await store.replay(conversation.id)
-        last_completed: str | None = None
-        for envelope in envelopes:
-            if getattr(envelope.event, "type", None) == "run.completed":
-                last_completed = (
-                    envelope.occurred_at.isoformat().replace("+00:00", "Z")
-                )
-        if last_completed is None:
-            return {}
-        return {"lastCompletedAt": last_completed}
-
-    @_endpoint
-    async def context_packet(group_id: str) -> Any:
-        """``GET /api/groups/{id}/context-packet``：只读汇编，**不发给任何人**。
-
-        AD-154 的边界写在返回体本身上：这里没有任何「注入」的动作，也没有一个
-        叫 ``inject`` 的参数。要把它送进某条会话，得由用户显式点「作为消息发给
-        某成员」——那就是一条定向消息，走 ``/members/{id}/send``。之所以定死这
-        一条：自动注入会让每个成员的上下文里悄悄多出一段它没同意过的内容，而
-        「这句话是谁说的」在多 Agent 场景里正是最要紧的事。
-        """
-        group = await _load_group(group_id)
-        rows = await repositories.members.list_for_collaboration(group.id)
-        # batch52 第 4 件：名字与「最近一句」都改从组这边取——名字用那张共用表
-        # （与成员栏 / 时间线 / 房间说明一致，含 `#2`），两句摘要用组时间线。
-        roster = await _room_members(group)
-        names = resolve_display_names(roster)
-        recent = packet_recent_lines(
-            await repositories.group_messages.list_for_collaboration(group.id),
-            roster,
-        )
-        members: list[dict[str, Any]] = []
-        for member in rows:
-            conversation = await repositories.conversations.get(member.conversation_id)
-            if conversation is None:
-                members.append(
-                    {
-                        "memberId": member.id,
-                        "conversationId": member.conversation_id,
-                        "displayName": names.get(member.id),
-                        "title": None,
-                        "bindingId": None,
-                        "backendId": None,
-                        "modelId": None,
-                        "runState": None,
-                        "participationState": member.participation_state,
-                        **recent.get(member.id, {}),
-                    }
-                )
-                continue
-            binding = await repositories.bindings.get(conversation.agent_binding_id)
-            entry: dict[str, Any] = {
-                "memberId": member.id,
-                "conversationId": conversation.id,
-                "displayName": names.get(member.id),
-                "title": conversation.title,
-                "bindingId": conversation.agent_binding_id,
-                "backendId": binding.backend_id if binding is not None else None,
-                "modelId": conversation.model_id,
-                "runState": await host.run_state_of(conversation),
-                "participationState": member.participation_state,
-            }
-            entry.update(recent.get(member.id, {}))
-            entry.update(await _last_messages(conversation))
-            members.append(entry)
-        generated_at = _now().isoformat().replace("+00:00", "Z")
-        return {
-            "groupId": group.id,
-            "generatedAt": generated_at,
-            "members": members,
-            "markdown": context_packet_markdown(
-                title=group.title, generated_at=generated_at, members=members
-            ),
-        }
-
     # --- 组级 SSE ----------------------------------------------------------- #
 
     @_endpoint
@@ -2864,7 +2661,7 @@ def build_group_router(
         if source is None:
             raise GroupApiError(409, 'task_missing', '原始任务已不存在')
         targets = tuple(state.get('addressedMembers', state['allowedMembers'])) if state['explicitScope'] else None
-        row = await coordinator.route(group, '继续上一任务：\n' + source.content, targets)
+        row = await coordinator.route(group, '继续上一任务：\n' + source.content, targets, replace=True)
         return {"message": collaboration_message_to_wire(row)}
 
     router.group_coordinator = coordinator
@@ -2923,13 +2720,6 @@ def build_group_router(
             [_auth],
         ),
         (
-            "/groups/{group_id}/context-packet",
-            context_packet,
-            ["GET"],
-            "groups_context_packet",
-            [_auth],
-        ),
-        (
             "/groups/{group_id}/members",
             add_member,
             ["POST"],
@@ -2963,13 +2753,6 @@ def build_group_router(
             resume_member,
             ["POST"],
             "groups_resume_member",
-            [_auth],
-        ),
-        (
-            "/groups/{group_id}/members/{member_id}/promote",
-            promote_member,
-            ["POST"],
-            "groups_promote_member",
             [_auth],
         ),
         (
@@ -3144,14 +2927,11 @@ def _dumps(payload: Any) -> str:
 
 
 __all__ = [
-    "CLOSE_ACTIONS",
     "DEFAULT_GROUP_KEEPALIVE_INTERVAL",
     "GROUP_CLOSED_CODE",
     "GROUP_REPLAY_BUFFER",
-    "ON_CLOSE_CHOICES",
     "AddMemberBody",
     "BroadcastBody",
-    "CloseGroupBody",
     "CreateGroupBody",
     "GroupApiError",
     "GroupEventHub",

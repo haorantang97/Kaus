@@ -74,8 +74,8 @@ export function ConversationSidebar({
       void projectHistoryApi.list().then(value => {
         const project = value.projects.find(item => item.id === reference || item.slug === reference);
         if (project) setAddingHistory(project);
-        else toast(locale === "zh" ? "项目不可用" : "Project unavailable", "bad");
-      }).catch(() => toast(locale === "zh" ? "暂时无法打开" : "Could not open this action", "bad"));
+        else toast(t("sidebar.projectUnavailable"), "bad");
+      }).catch(() => toast(t("sidebar.openFailed"), "bad"));
     };
     window.addEventListener(ADD_EXISTING_CONVERSATIONS, open);
     return () => window.removeEventListener(ADD_EXISTING_CONVERSATIONS, open);
@@ -99,7 +99,7 @@ export function ConversationSidebar({
     window.dispatchEvent(new CustomEvent("kaus:sidebar-pins-changed", { detail: next }));
   };
   useEffect(() => { const sync = (event: StorageEvent) => { if (event.key === SIDEBAR_PINS_KEY) setPins(readSidebarPins()); }; window.addEventListener("storage", sync); return () => window.removeEventListener("storage", sync); }, []);
-  const announceMove = (title: string) => setAnnouncement(locale === "zh" ? `已调整 ${title} 的置顶顺序` : `Reordered pinned conversation ${title}`);
+  const announceMove = (title: string) => setAnnouncement(t("sidebar.reordered", { title }));
   useEffect(() => {
     // Once the index confirms a change, let future server updates own the row again.
     setEditedTitles(current => {
@@ -121,7 +121,7 @@ export function ConversationSidebar({
       setEditedTitles(current => ({ ...current, [conversationId]: title }));
       setRenaming(null);
       onConversationChanged?.({ conversationId, projectId });
-    } catch { toast(locale === "zh" ? "重命名失败" : "Could not rename", "bad"); }
+    } catch { toast(t("sidebar.renameFailed"), "bad"); }
     finally { setBusyId(null); }
   };
   const archive = async (conversationId: string, projectId: string) => {
@@ -132,7 +132,7 @@ export function ConversationSidebar({
       setArchivedIds(current => [...current, conversationId]);
       savePins({ ...pins, [projectId]: (pins[projectId] ?? []).filter(id => id !== conversationId) });
       onConversationChanged?.({ conversationId, projectId, archived: true });
-    } catch { toast(locale === "zh" ? "归档失败" : "Could not archive", "bad"); }
+    } catch { toast(t("sidebar.archiveFailed"), "bad"); }
     finally { setBusyId(null); }
   };
 
@@ -260,7 +260,7 @@ export function ConversationSidebar({
                       ) : (
                         <span className="kaus-run-dot is-idle" aria-hidden="true" />
                       )}
-                      {renaming?.id === conversation.id ? <input className="kaus-sidebar-title-input" autoFocus aria-label={locale === "zh" ? "对话名称" : "Conversation name"}
+                      {renaming?.id === conversation.id ? <input className="kaus-sidebar-title-input" autoFocus aria-label={t("sidebar.renameField")}
                         value={renaming.title} disabled={busyId === conversation.id} onChange={event => setRenaming({ id: conversation.id, title: event.target.value })}
                         onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()} onFocus={event => event.currentTarget.select()}
                         onBlur={() => { if (busyId !== conversation.id) setRenaming(null); }} onKeyDown={event => {

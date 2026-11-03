@@ -9,7 +9,7 @@
 | 技能管理意图 | 原生/受管分开；移走最后一项仍保持受管空集合，撤销恢复意图；Project 树统一编排通用与 Agent 专属项 |
 | Hermes 并发与生成项 | 不可变 baseline、逐会话可写副本；原生 loader、并发/Group、create/edit、同 ID 冷恢复通过。生成技能进入待分配，不覆盖其他会话使用的版本 |
 | 插件库存 | 原生来源与项目阻断分开；显式编排接管阻断所有权；兄弟项目、撤销和只读原生库存回归通过 |
-| ACP 技能范围 | 22 个预设逐项核查，20 个已注册并有原生加载证据；Devin/Alma 仍有范围接口或实际运行前提限制。版本、接口和验证深度见支持矩阵 |
+| ACP 技能范围 | 22 个预设逐项核查，20 个已注册并有原生加载证据；其余 Alma、Devin 已于 2026-11-02 移除。版本、接口和验证深度见支持矩阵 |
 | 原生终端 | Codex、普通 Hermes、direct Hermes ACP、Gemini、Copilot、Qwen、OMP、Goose、Grok、Pi、Command Code、Crush、ZCode、OpenClaw 已完成各自原生终端往返；当前设置、同 ID、selected/empty 及动态来源按报告逐项验收 |
 | 新增终端闭环 | Pi/Command Code 精确原生 ID 和当前 model/effort/mode；Crush/ZCode selected/empty/native 六组、MCP A→B→空及 SQLite 回填；OpenClaw selected/empty/precreate 三组实际 Surface 回填通过 |
 | 未发消息直接开终端 | Codex 私有 app-server 在显式预创建时落盘空会话；Gemini 只允许精确 ID 的 main 空会话恢复。两家实际 Surface→PTY→公开消息回填→同 ID ACP 均通过，预创建不发送模型请求、不生成用户消息 |
@@ -39,9 +39,8 @@
 
 | 类别 | 尚未完成及下一步 |
 | --- | --- |
-| 用户账号 / 本机服务 | Cursor 的真实 session/new 受登录限制；Alma 需安装或指定兼容本地服务。OpenClaw 实际使用需可用 Gateway 与模型认证。其他引擎的真实账号模型、远程 MCP 授权与断线恢复分别验收，本轮不代用户登录 |
-| 上游范围接口 | Devin 的 `read_config_from=false` 仍保留原生全部 Skill，需全来源范围入口或可核验加载层；Alma 未有已验证的 per-thread exclusive scope |
-| 受管终端 | Claude 缺 SDK allowlist 等价交互入口；OpenCode/Kilo 缺独立 TUI 的早期命令范围保护；DeepSeek ACP 无原生 TUI，DSH 安装版缺 tui profile；Cursor/Antigravity/Devin/Alma 尚无完成验收的终端适配 |
+| 用户账号 / 本机服务 | Cursor 的真实 session/new 受登录限制。OpenClaw 实际使用需可用 Gateway 与模型认证。其他引擎的真实账号模型、远程 MCP 授权与断线恢复分别验收，本轮不代用户登录 |
+| 受管终端 | Claude 缺 SDK allowlist 等价交互入口；OpenCode/Kilo 缺独立 TUI 的早期命令范围保护；DeepSeek ACP 无原生 TUI，DSH 安装版缺 tui profile；Cursor/Antigravity 尚无完成验收的终端适配 |
 | 特定配置 | Crush/OMP 的 Plan 没有安全等价 TUI 初始状态；Gemini 无已验证独立 CLI effort 档；无等价原生权限的 host:auto 等显式档位不降级放行；不明确的厂家路由不猜测 |
 | 项目 MCP | OpenClaw/Pi/Command Code 当前入口不执行项目会话 MCP，非空项明确拒绝；分别需要 Agent 级适配、原生执行扩展或逐会话接口 |
 | 历史完整度 | 新 reader 以公开文字为主，缺附件/工具细节时报告 missing；普通 Hermes 本地全量读取并保留公开工具，预览保持 50 条；HTTP 只有尾部且本地源不可读时明确报告缺口。公开历史不包含隐藏思考 |

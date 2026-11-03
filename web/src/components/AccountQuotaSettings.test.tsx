@@ -127,15 +127,15 @@ it("同厂家两个账号按来源分别补充，成功后仅对应提示消失�
   const account = { ...snapshot.accounts[0], id: "account-a", provider: "同一平台", accountLabel: "账号 A", connectionIds: ["saved-a"], agentIds: [], windows: [], balances: [{ id: "usd", label: "余额", remaining: 88.5, currency: "USD" }] };
   vi.mocked(fetchAccountQuotas).mockResolvedValue({ ...snapshot, accounts: [account], unavailable: [pending("source-b", "账号 B")] }).mockResolvedValueOnce({ ...snapshot, accounts: [], unavailable: [pending("source-a", "账号 A"), pending("source-b", "账号 B")] });
   render(<AccountQuotaSettings />);
-  await userEvent.click(await screen.findByRole("button", { name: "补充凭据 · 账号 A" }));
+  await userEvent.click(await screen.findByRole("button", { name: "连接 · 账号 A" }));
   await userEvent.type(await screen.findByLabelText("管理密钥"), "synthetic-a");
   expect(screen.queryByText("source-a")).toBeNull();
   expect(screen.queryByRole("combobox", { name: "来源" })).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "验证并保存" }));
   expect(await screen.findByRole("region", { name: "账号 A" })).toBeVisible();
   expect(screen.getAllByRole("region", { name: "账号 A" })).toHaveLength(1);
-  expect(screen.queryByRole("button", { name: "补充凭据 · 账号 A" })).toBeNull();
-  expect(screen.getByRole("button", { name: "补充凭据 · 账号 B" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "连接 · 账号 A" })).toBeNull();
+  expect(screen.getByRole("button", { name: "连接 · 账号 B" })).toBeVisible();
   expect(connections.saveQuotaConnection).toHaveBeenCalledWith({ provider: "billing", sourceId: "source-a", config: {}, secrets: { token: "synthetic-a" } }, undefined, expect.any(AbortSignal));
   expect(screen.getByRole("button", { name: "管理 账号 A 的额度查询" })).toBeVisible();
   expect(screen.queryByText("已连接来源")).toBeNull();
@@ -150,7 +150,7 @@ it("失败原因没有明确恢复操作时不提供虚假的补充按钮", asyn
   render(<AccountQuotaSettings />);
   await userEvent.click(await screen.findByText("其他来源"));
   expect(screen.getByText("未提供查询接口")).toBeVisible();
-  expect(screen.queryByRole("button", { name: /补充|配置查询|登录查询/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^连接 ·/ })).toBeNull();
   expect(connections.fetchQuotaConnectionCatalog).not.toHaveBeenCalled();
 });
 
@@ -199,7 +199,7 @@ it("可配置查询的账号只显示待配置，不把未配置当成不支持�
   vi.mocked(fetchAccountQuotas).mockResolvedValue({ ...snapshot, accounts: [], unavailable: [{ sourceId: "private-source-id", label: "平台查询", state: "unsupported", reason: "unsupported_provider", recovery: { sourceId: "private-source-id", provider: "custom", config: { url: "https://private.example/balance" }, fixedConfig: {}, action: "configure", hasExistingCredential: true } }] });
   render(<AccountQuotaSettings />);
   expect(await screen.findByText("待配置查询")).toBeVisible();
-  expect(screen.getByRole("button", { name: "配置查询 · 平台查询" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "连接 · 平台查询" })).toBeVisible();
   expect(screen.queryByText("供应商未支持")).toBeNull();
   expect(screen.queryByText(/private-source-id|private\.example/)).toBeNull();
 });

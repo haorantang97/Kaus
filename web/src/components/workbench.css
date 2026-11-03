@@ -1,8 +1,8 @@
 .workbench-page{height:100%;display:flex;flex-direction:column;overflow:auto;padding:30px 36px;color:var(--midground-base)}
 .workbench-page.is-module{padding:20px 24px 0;overflow:hidden}
 .workbench-header,.workbench-heading,.workbench-actions,.workbench-card-top,.workbench-config header,.workbench-config footer{display:flex;align-items:center;gap:10px}
-.workbench-header{justify-content:space-between;margin-bottom:26px;flex-shrink:0}.workbench-header h1{font-size:22px;font-weight:650;letter-spacing:-.02em}
-.workbench-primary,.workbench-subtle{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;transition:background .16s ease,transform .16s ease}
+.workbench-header{justify-content:space-between;margin-bottom:26px;flex-shrink:0}.workbench-header h1{font-size:22px;font-weight: 400;letter-spacing:-.02em}
+.workbench-primary,.workbench-subtle{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:10px;padding:9px 14px;font-size:13px;font-weight: 400;transition:background .16s ease,transform .16s ease}
 .workbench-primary{background:var(--midground-base);color:var(--background-base,#f5f3ec)}.workbench-primary:hover:not(:disabled){filter:brightness(.88);transform:translateY(-1px)}
 .workbench-subtle{background:color-mix(in srgb,var(--midground-base) 5%,transparent)}.workbench-subtle:hover:not(:disabled){background:color-mix(in srgb,var(--midground-base) 10%,transparent)}
 .workbench-primary:disabled,.workbench-subtle:disabled,.workbench-page button:disabled{opacity:.4;cursor:default}
@@ -10,7 +10,7 @@
 .workbench-card{position:relative;border:1px solid color-mix(in srgb,var(--midground-base) 12%,transparent);border-radius:18px;padding:20px;background:color-mix(in srgb,var(--background-base,#f5f3ec) 96%,var(--midground-base));transition:background-color .18s,border-color .18s,box-shadow .18s}
 .workbench-card:hover,.workbench-card:focus-within{background:color-mix(in srgb,var(--background-base,#f5f3ec) 93%,var(--midground-base));border-color:color-mix(in srgb,var(--midground-base) 22%,transparent);box-shadow:0 6px 20px #00000005}.workbench-card.is-disabled{opacity:.62}
 .workbench-card-top{justify-content:space-between;margin-bottom:24px}.workbench-module-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:13px;background:color-mix(in srgb,var(--midground-base) 6%,transparent)}
-.workbench-card-open{text-align:left;width:100%}.workbench-card-open h2{font-size:17px;font-weight:650}.workbench-card-open p{font-size:13px;line-height:1.7;opacity:.56;margin-top:8px;max-height:3.4em;overflow:hidden}
+.workbench-card-open{text-align:left;width:100%}.workbench-card-open h2{font-size:17px;font-weight: 400}.workbench-card-open p{font-size:13px;line-height:1.7;opacity:.56;margin-top:8px;max-height:3.4em;overflow:hidden}
 .workbench-card-open footer{display:flex;align-items:center;justify-content:space-between;margin-top:22px;font-size:12px;opacity:.55}.workbench-card-open:hover footer svg{transform:translate(2px,-2px);transition:transform .16s}
 .workbench-menu{position:absolute;z-index:40;right:12px;top:42px;min-width:170px;border-radius:12px;padding:5px;background:var(--background-base,#f5f3ec);border:1px solid color-mix(in srgb,var(--midground-base) 14%,transparent);box-shadow:0 8px 24px #0002}
 .workbench-menu button{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;font-size:13px;text-align:left;border-radius:7px}.workbench-menu button:hover{background:color-mix(in srgb,var(--midground-base) 7%,transparent)}
@@ -18,7 +18,7 @@
 .workbench-nav{border-radius:9px;position:relative}.workbench-nav.is-drop{box-shadow:inset 0 0 0 1px var(--accent-text)}.workbench-pin{position:relative;display:flex;align-items:center}.workbench-pin.is-drop::before{content:"";position:absolute;left:10px;right:10px;top:0;height:2px;background:var(--accent-text)}
 .workbench-pin .shell-nav-item{flex:1;min-width:0;padding-right:29px}.workbench-pin .workbench-pin-menu{position:absolute;right:4px;opacity:0}.workbench-pin:hover .workbench-pin-menu,.workbench-pin:focus-within .workbench-pin-menu{opacity:1}.workbench-pin .workbench-menu{top:30px}.workbench-nav.is-compact .shell-nav-item{padding-right:0}
 .workbench-inline-error{font-size:12px;color:var(--danger);padding:8px 0}.workbench-nav .workbench-inline-error{display:block;padding:8px;font-size:11px}
-.workbench-config{padding:22px}.workbench-config header{justify-content:space-between;margin-bottom:24px}.workbench-config h2{font-size:18px;font-weight:650}.workbench-config>label{display:grid;grid-template-columns:85px 1fr;align-items:center;font-size:13px;margin:14px 0;gap:16px}
+.workbench-config{padding:22px}.workbench-config header{justify-content:space-between;margin-bottom:24px}.workbench-config h2{font-size:18px;font-weight: 400}.workbench-config>label{display:grid;grid-template-columns:85px 1fr;align-items:center;font-size:13px;margin:14px 0;gap:16px}
 .workbench-config select{min-width:0;background:color-mix(in srgb,var(--midground-base) 4%,transparent);border:1px solid color-mix(in srgb,var(--midground-base) 12%,transparent);border-radius:8px;padding:9px 10px;font-size:13px}
 .workbench-runtime-select{position:relative;display:block;min-width:0}
 .workbench-config .workbench-runtime-select select{-webkit-appearance:none;appearance:none;width:100%;background-image:none;color:inherit;font-family:inherit;line-height:1.35;padding-right:34px;box-shadow:none;cursor:pointer;transition:border-color .16s,background-color .16s}
@@ -43,11 +43,11 @@
 .workbench-intake-open{display:flex;align-items:center;gap:10px;min-width:0;flex:1;padding:11px 14px;text-align:left;color:inherit;border-radius:12px}
 .workbench-page .workbench-intake-row .workbench-intake-open:hover{background:transparent;box-shadow:none}
 .workbench-intake-row:hover{background:color-mix(in srgb,var(--midground-base) 8%,transparent)}
-.workbench-intake-row strong{font-weight:550;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.workbench-intake-row strong{font-weight: 400;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .workbench-intake-row span{margin-left:auto;opacity:.52;white-space:nowrap;font-size:12px}
 .workbench-intake-project{display:flex;align-items:center;gap:12px;padding:4px 0 16px}
 .workbench-intake-project>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
-.workbench-intake-project strong{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.workbench-intake-project strong{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight: 400}
 .workbench-intake-project span{font-size:12px;opacity:.52}
 .workbench-intake-progress{min-height:155px;display:flex;align-items:center;justify-content:center;gap:12px;font-size:14px}
 .workbench-intake textarea{width:100%;resize:vertical;border:1px solid color-mix(in srgb,var(--midground-base) 16%,transparent);border-radius:10px;background:transparent;padding:10px;font:inherit;line-height:1.6;color:inherit}
@@ -56,3 +56,5 @@
 @media(prefers-reduced-motion:reduce){.workbench-card,.workbench-card-open footer svg,.workbench-intake-row{transition:none}}
 /* Module pages integrate an independent app: host Agent overlays stay off it (the sidebar keeps the Groups entry). */
 :root.kaus-module-page .kaus-group-dock{display:none}
+.workbench-pin .shell-nav-icon{position:relative}
+.workbench-pin-dot{position:absolute;top:-2px;right:-3px;width:7px;height:7px;border-radius:50%;background:var(--accent-text)}

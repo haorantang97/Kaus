@@ -50,6 +50,24 @@ def gateway_unreachable(base_url: str | None = None) -> FailureHint:
     )
 
 
+#: A selected skill was moved into the engine's archive by its curator.
+SKILL_ARCHIVED_BY_ENGINE = "skill_archived_by_engine"
+
+
+def skill_archived_by_engine(names) -> FailureHint:
+    """Managed session cannot start: the engine archived a selected source skill.
+
+    Hermes's curator moves idle agent-created skills into ``skills/.archive/``;
+    ``hermes curator restore <name>`` moves one back (verified against 5e7c2b2).
+    """
+    listed = tuple(str(name) for name in names)
+    return FailureHint(
+        code=SKILL_ARCHIVED_BY_ENGINE,
+        message="技能已被 Hermes 归档：" + "、".join(listed),
+        hint="在终端执行 " + "；".join(f"`hermes curator restore {name}`" for name in listed) + " 后重试",
+    )
+
+
 def gateway_key_mismatch() -> FailureHint:
     """``/v1/capabilities`` 回 401/403：key 无效或指向了别的 profile。"""
     return FailureHint(
@@ -123,11 +141,13 @@ __all__ = [
     "GATEWAY_KEY_MISMATCH",
     "GATEWAY_UNREACHABLE",
     "RUN_SUBMIT_REJECTED",
+    "SKILL_ARCHIVED_BY_ENGINE",
     "TURN_ALREADY_RUNNING",
     "classify_status",
     "gateway_key_mismatch",
     "gateway_unreachable",
     "looks_busy",
     "run_submit_rejected",
+    "skill_archived_by_engine",
     "turn_already_running",
 ]

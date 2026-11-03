@@ -4,6 +4,11 @@ Catalogue/provenance and display order live in app_settings. Assignments use
 project_capabilities and the normal resolver; neither is a second Project tree.
 Native paths stay in the catalogue, outside persistent capability config and
 general instructions. Binding resolution hydrates them only for the adapter.
+
+The tree also arranges an Agent's discovered native MCP servers
+(``<agent>:mcp``, catalogue ``kind: "mcp"``). Those records are organisation
+only: the source Agent keeps loading them natively and binding resolution
+removes them before projection, so they are never injected twice.
 """
 from __future__ import annotations
 
@@ -25,6 +30,8 @@ BLOCKED_LOCAL_KEY = "skill_tree.blocked_local.v1"
 NATIVE_BLOCKS_KEY = "skill_tree.native_blocks.v1"
 MANAGED_PROJECTS_KEY = "skill_tree.managed_projects.v1"
 ONBOARDING_KEY = "skill_tree.onboarding.v1"
+ARRANGED_TYPES_SQL = ("capability_type = 'skills' OR capability_type LIKE '%:skills' "
+                      "OR capability_type LIKE '%:mcp'")
 
 
 def _dump(value) -> str:
@@ -41,15 +48,64 @@ class SkillTreeService:
         self.onboarding_enabled = onboarding_enabled or (lambda _: True)
 
     def begin_onboarding(self, agent_key: str, agent_label: str):
-        """Only an explicit first connection enrolls an Agent; upgrades do not."""
+        """Only an explicit first connection enrolls an Agent; upgrades do not.
+
+        Returns the still-pending invitation for the connect flow, or ``None``
+        once it was completed or skipped.
+        """
         if not self.onboarding_enabled(agent_key):
-            return
+            return None
         with self.db.transaction() as conn:
             states = self._setting(conn, ONBOARDING_KEY)
             if agent_key not in states:
                 states[agent_key] = {"id": str(uuid.uuid4()), "agentKey": agent_key,
                                      "agentLabel": agent_label, "status": "pending"}
                 self._save_setting(conn, ONBOARDING_KEY, states)
+            state = states[agent_key]
+            if state.get("status") != "pending":
+                return None
+            return {"id": state["id"], "agentKey": agent_key, "agentLabel": state["agentLabel"]}
+
+    @staticmethod
+    def _counts(catalog, agent_key):
+        skills = mcp = 0
+        for item in catalog.values():
+            if item.get("agentKey") != agent_key or not item.get("available", True) or item.get("generated"):
+                continue
+            if item.get("kind") == "mcp":
+                mcp += 1
+            else:
+                skills += 1
+        return skills, mcp
+
+    @staticmethod
+    def _root_project(conn):
+        return conn.execute("SELECT id,slug,display_name FROM projects "
+                            "WHERE status='active' AND parent_project_id IS NULL "
+                            "ORDER BY CASE WHEN slug='default' THEN 0 ELSE 1 END,slug").fetchone()
+
+    def onboarding_status(self, invitation_id: str):
+        """State of one connect-flow capability step; reads inventory only while pending."""
+        with self.db.transaction() as conn:
+            state = next((s for s in self._setting(conn, ONBOARDING_KEY).values()
+                          if s.get("id") == invitation_id), None)
+        if state is None:
+            raise ApiError(404, "skill_onboarding_not_found", "能力分配已结束")
+        result = {"id": state["id"], "agentKey": state["agentKey"], "agentLabel": state["agentLabel"],
+                  "status": state.get("status", "pending")}
+        if result["status"] != "pending" or not self.onboarding_enabled(state["agentKey"]):
+            return {**result, "status": result["status"] if result["status"] != "pending" else "skipped",
+                    "ready": True, "skillCount": 0, "mcpCount": 0}
+        ready = self.inventory_ready(state["agentKey"])
+        discovered = self.discover()
+        with self.db.transaction() as conn:
+            catalog = self._sync_catalog(conn, discovered)
+            root = self._root_project(conn)
+        skills, mcp = self._counts(catalog, state["agentKey"]) if root else (0, 0)
+        result.update({"ready": ready, "skillCount": skills, "mcpCount": mcp})
+        if root:
+            result.update({"rootProjectId": root[0], "rootProjectName": root[2] or root[1]})
+        return result
 
     def pending_onboarding(self):
         # A normal application launch with no new connection does no inventory IO.
@@ -73,13 +129,11 @@ class SkillTreeService:
                 if not self.inventory_ready(state["agentKey"]):
                     waiting = True
                     continue
-                count = sum(1 for skill in catalog.values()
-                            if skill.get("agentKey") == state["agentKey"]
-                            and skill.get("available", True) and not skill.get("generated"))
-                if count and projects:
+                skills, mcp = self._counts(catalog, state["agentKey"])
+                if (skills or mcp) and projects:
                     root = projects[0]
                     items.append({"id": state["id"], "agentKey": state["agentKey"],
-                                  "agentLabel": state["agentLabel"], "skillCount": count,
+                                  "agentLabel": state["agentLabel"], "skillCount": skills, "mcpCount": mcp,
                                   "rootProjectId": root[0], "rootProjectName": root[2] or root[1]})
                 else:
                     # An adapter may finish its read-only inventory after registration.
@@ -92,7 +146,7 @@ class SkillTreeService:
             states = self._setting(conn, ONBOARDING_KEY)
             state = next((item for item in states.values() if item["id"] == invitation_id), None)
             if state is None:
-                raise ApiError(404, "skill_onboarding_not_found", "技能分配已结束")
+                raise ApiError(404, "skill_onboarding_not_found", "能力分配已结束")
             if state["status"] == "pending":
                 state["status"] = outcome
                 self._save_setting(conn, ONBOARDING_KEY, states)
@@ -124,8 +178,8 @@ class SkillTreeService:
     @staticmethod
     def _rows(conn):
         return [dict(row) for row in conn.execute(
-            "SELECT * FROM project_capabilities WHERE capability_type = 'skills' "
-            "OR capability_type LIKE '%:skills' ORDER BY project_id, capability_type, capability_id")]
+            f"SELECT * FROM project_capabilities WHERE {ARRANGED_TYPES_SQL} "
+            "ORDER BY project_id, capability_type, capability_id")]
 
     def _sync_catalog(self, conn, discovered):
         catalog = self._setting(conn, CATALOG_KEY)
@@ -184,7 +238,8 @@ class SkillTreeService:
             key = (row["capability_type"], row["capability_id"])
             if any((r["capabilityType"], r["capabilityId"]) == key for r in catalog.values()):
                 continue
-            agent = parse_capability_type(row["capability_type"]).backend_key
+            parsed = parse_capability_type(row["capability_type"])
+            agent = parsed.backend_key
             skill_id = "configured-" + hashlib.sha256(_dump(key).encode()).hexdigest()[:24]
             config = json.loads(row["config_json"])
             catalog[skill_id] = {
@@ -192,6 +247,7 @@ class SkillTreeService:
                 "description": str(config.get("description") or ""), "agentKey": agent,
                 "agentLabel": agent or "", "available": True,
                 "capabilityType": row["capability_type"], "capabilityId": row["capability_id"],
+                **({"kind": "mcp"} if parsed.name == "mcp" else {}),
             }
         self._save_setting(conn, CATALOG_KEY, catalog)
         self._save_setting(conn, BLOCKED_LOCAL_KEY, blocked_local)
@@ -267,7 +323,7 @@ class SkillTreeService:
                 e["order"], catalog[e["skillId"]]["name"].casefold(), e["skillId"]
             ))):
                 entry["order"] = index
-        skills = [{k: r[k] for k in ("id", "name", "description", "agentKey", "agentLabel", "sourcePath", "available", "generated", "originProjectId", "sourceConversationId", "replacesId") if k in r}
+        skills = [{k: r[k] for k in ("id", "kind", "name", "description", "agentKey", "agentLabel", "sourcePath", "available", "generated", "originProjectId", "sourceConversationId", "replacesId") if k in r}
                   for r in catalog.values()]
         allocated = {row["skillId"] for row in assignments if row["mode"] == "local"}
         for skill in skills:
@@ -305,7 +361,7 @@ class SkillTreeService:
                     raise ApiError(409, "skill_tree_undo_expired", "此操作已无法撤销")
                 # Revision covers every affected capability row, including changes
                 # made through the existing capability editor or another process.
-                conn.execute("DELETE FROM project_capabilities WHERE capability_type='skills' OR capability_type LIKE '%:skills'")
+                conn.execute(f"DELETE FROM project_capabilities WHERE {ARRANGED_TYPES_SQL}")
                 for row in saved["rows"]:
                     keys = list(row)
                     conn.execute(f"INSERT INTO project_capabilities ({','.join(keys)}) VALUES ({','.join('?' for _ in keys)})",
@@ -336,7 +392,8 @@ class SkillTreeService:
                 for entry in before["entries"]:
                     other = catalog[entry["skillId"]]
                     same_scope = not record["agentKey"] or not other["agentKey"] or record["agentKey"] == other["agentKey"]
-                    if entry["projectId"] == target and not entry["blocked"] and same_scope and other["name"] == record["name"]:
+                    same_kind = record.get("kind", "skill") == other.get("kind", "skill")
+                    if entry["projectId"] == target and not entry["blocked"] and same_scope and same_kind and other["name"] == record["name"]:
                         raise ApiError(409, "skill_name_conflict", "项目已有同名技能，请先移除或停用原项")
                 self._put(conn, target, record, "local", {})
                 blocked_local.pop(tombstone_key, None)
@@ -392,7 +449,10 @@ class SkillTreeService:
                 affected = {target, source} if action == "move" else {target}
                 for project in affected - {None}:
                     native_blocks.pop(_dump([project, skill_id]), None)
-                    managed[project] = sorted(set(managed.get(project, ())) | {record.get("agentKey") or "*"})
+                    # Arranging a native MCP record must not switch the Agent's
+                    # Skill loading to a managed selection.
+                    if record.get("kind") != "mcp":
+                        managed[project] = sorted(set(managed.get(project, ())) | {record.get("agentKey") or "*"})
                 self._save_setting(conn, MANAGED_PROJECTS_KEY, managed)
                 self._save_setting(conn, NATIVE_BLOCKS_KEY, native_blocks)
             after = self._snapshot(conn)

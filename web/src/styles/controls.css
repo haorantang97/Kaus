@@ -24,14 +24,14 @@
 
 body :is(button, [role="button"], summary) {
   font-family: var(--theme-font-sans);
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: normal;
   text-transform: none;
   -webkit-tap-highlight-color: transparent;
 }
 
 body :is(.kaus-button--primary, .kaus-conversation-title, .shell-nav-item.is-active) {
-  font-weight: 600;
+  font-weight: 400;
 }
 
 /* Explicit font shorthands in configuration sheets also use the control weight. */
@@ -39,7 +39,7 @@ body :is(.kaus-button--primary, .kaus-conversation-title, .shell-nav-item.is-act
 .kaus-bar-menu .kaus-bar-pill,
 .kaus-coordinator-settings .kaus-bar-pill {
   font-family: var(--theme-font-sans);
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: normal;
   text-transform: none;
 }
@@ -155,7 +155,7 @@ body.dark .kaus-overlay-header { border-bottom-color: color-mix(in srgb, var(--g
 .kaus-overlay-title {
   margin: 0;
   color: var(--midground-base);
-  font: 600 20px/1.35 var(--theme-font-sans);
+  font: 400 20px/1.35 var(--theme-font-sans);
   letter-spacing: -.02em;
 }
 
@@ -191,7 +191,7 @@ body.dark .kaus-overlay-title { color: var(--accent-text); }
 .kaus-card-title,
 .kaus-section-title {
   margin: 0;
-  font: 600 13px/1.5 var(--theme-font-sans);
+  font: 400 13px/1.5 var(--theme-font-sans);
 }
 
 .kaus-card-header > svg {
@@ -231,13 +231,13 @@ body.dark .kaus-section-header::before {
   gap: 4px;
   padding: 2px 6px;
   border-radius: 4px;
-  font: 500 11px/1.5 var(--theme-font-sans);
+  font: 400 11px/1.5 var(--theme-font-sans);
   white-space: nowrap;
 }
 
 .kaus-modal-title {
   margin: 0 0 6px;
-  font: 600 15px/1.5 var(--theme-font-sans);
+  font: 400 15px/1.5 var(--theme-font-sans);
 }
 
 .kaus-modal-layer { animation: kaus-fade-in var(--motion-snap) var(--ease-out); }
@@ -304,13 +304,6 @@ select option:disabled { color: color-mix(in srgb, var(--midground-base) 48%, va
 }
 .kaus-scroll-fade[data-fade-top="true"] { --fade-top: 28px; }
 .kaus-scroll-fade[data-fade-bottom="true"] { --fade-bottom: 28px; }
-
-.kaus-segmented { display: inline-grid; position: relative; isolation: isolate; grid-template-columns: repeat(var(--segment-count), minmax(0, 1fr)); padding: 1px; border-radius: var(--radius-control); background: var(--control-hover); }
-.kaus-segmented-indicator { position: absolute; z-index: -1; top: 1px; bottom: 1px; left: 1px; width: calc((100% - 2px) / var(--segment-count)); border-radius: calc(var(--radius-control) - 1px); background: var(--surface-3); box-shadow: var(--shadow-sm); transform: translateX(calc(var(--segment-index) * 100%)); transition: transform var(--motion-snap) var(--ease-snap); }
-.kaus-segmented > button { border: 0; background: transparent; padding: 6px 12px; min-height: 30px; border-radius: calc(var(--radius-control) - 1px); color: var(--text-muted); white-space: nowrap; }
-.kaus-segmented > button[aria-pressed="true"] { color: var(--midground-base); }
-body.dark .kaus-segmented-indicator { background: var(--gold-soft); box-shadow: none; }
-body.dark .kaus-segmented > button[aria-pressed="true"] { color: var(--accent-text); }
 
 .kaus-conversation-row { position: relative; }
 .kaus-sidebar-pin { display: inline-grid; flex: 0 0 24px; width: 24px; height: 24px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--midground-base); opacity: 0; }

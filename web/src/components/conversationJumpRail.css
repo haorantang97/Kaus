@@ -54,7 +54,7 @@ body.dark .kaus-jump-rail { --rail-card: #252525; --rail-ink: #f1f1f1; --rail-mu
   display: block; width: 100%; border: 0; padding: 0; background: transparent; color: inherit; text-align: left;
   font: inherit; letter-spacing: normal; cursor: pointer;
 }
-.kaus-jump-preview-link strong { display: block; padding-right: 28px; color: var(--rail-ink); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kaus-jump-preview-link strong { display: block; padding-right: 28px; color: var(--rail-ink); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kaus-jump-preview p { max-height: calc(4.5em + 8px); overflow: hidden; overflow-wrap: anywhere; margin: 6px 0 0; color: var(--rail-muted); font-weight: 400; }
 .kaus-jump-preview p > span { display: block; }
 .kaus-jump-preview p > span + span { margin-top: 8px; }

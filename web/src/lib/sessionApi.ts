@@ -29,7 +29,7 @@ export class SessionApiError extends Error {
 
 /** Public failure copy stays short; the original error retains its diagnostic fields. */
 export function describeFailure(failure: unknown): string {
-  if (failure instanceof SessionApiError && failure.code === "turn_already_running") {
+  if (failure instanceof SessionApiError && (failure.code === "turn_already_running" || failure.code === "project_deleted")) {
     const reasonKey = messageRejectionReasonKey(failure.code);
     if (reasonKey) return t(reasonKey);
   }
@@ -234,6 +234,8 @@ export interface ModelCatalogWire {
   /** 目录是"降级"取来的（探测失败 / 用了兜底表）。批次十三后端新增。 */
   degraded?: boolean;
   engineDefaultAvailable?: boolean;
+  /** `false`: a Kaus model selection does not reach the engine; the engine decides. */
+  selectionApplies?: boolean | null;
   /** 降级原因，人话一行一条。界面只显示第一条（DESIGN ★ I）。 */
   diagnostics?: string[];
 }
@@ -246,6 +248,8 @@ export type SettingSource = "binding" | "engine" | "catalog" | "project" | "none
 export interface EffectiveSettingWire {
   value: string | null;
   source: SettingSource;
+  /** Binding default the engine cannot apply (model only); `value` is engine-decided. */
+  unapplied?: string;
 }
 
 export interface ApprovalOptionWire { id: string; nativeId?: string; name: string; description?: string }
@@ -343,8 +347,9 @@ export interface ConversationDetailWire {
  * 端点
  * ------------------------------------------------------------------ */
 
-export function fetchProjects(signal?: AbortSignal): Promise<{ projects: ProjectWire[]; roots: string[]; count: number }> {
-  return request("/api/projects", { signal });
+/** Deleted Projects are omitted unless `includeDisabled` (e.g. naming archived conversations). */
+export function fetchProjects(signal?: AbortSignal, options?: { includeDisabled?: boolean }): Promise<{ projects: ProjectWire[]; roots: string[]; count: number }> {
+  return request(options?.includeDisabled ? "/api/projects?includeDisabled=true" : "/api/projects", { signal });
 }
 
 export function fetchProjectBindings(projectId: string, signal?: AbortSignal, options?: { includeStatus?: boolean }): Promise<{ projectId: string; bindings: BindingWire[]; count: number }> {
@@ -374,6 +379,17 @@ export interface ConversationIndexEntryWire {
   groupTitle?: string | null;
   updatedAt: string;
   lastSequence: number | null;
+  /** 外部终端里 Agent 的 hook 上报状态（只在终端持有写权时出现）。 */
+  terminalStatus?: TerminalStatusWire | null;
+  /** 有一张审批 / 提问卡在等用户回答。 */
+  awaitingInput?: boolean;
+}
+
+export interface TerminalStatusWire {
+  state: "working" | "waiting" | "idle";
+  message: string | null;
+  at: string;
+  launchId: string;
 }
 
 /** 批次八第 1 件：跨项目最近会话，一次查完（此前是 1 + N 次请求）。
@@ -829,6 +845,8 @@ export interface ExternalSurfaceWire {
   commandSummary: string | null;
   launched: boolean;
   reason: string | null;
+  /** 未发送的草稿已交给原生预填参数；旧后端不回这个字段。 */
+  draftPrefilled?: boolean;
 }
 
 export interface CardSurfaceWire {
@@ -854,11 +872,12 @@ export interface SurfaceStateWire {
 /** 交给外部终端。`force` = 强制接管（v1.0 §8.6：二次确认在前端，风险在这条 query 上）。 */
 export function openExternalSurface(
   conversationId: string,
-  options: { force?: boolean } = {},
+  options: { force?: boolean; draft?: string } = {},
 ): Promise<ExternalSurfaceWire> {
   const query = options.force ? "?force=1" : "";
   return request(`/api/conversations/${encodeURIComponent(conversationId)}/surface/external${query}`, {
     method: "POST",
+    ...(options.draft ? { body: { draft: options.draft } } : {}),
   });
 }
 
@@ -873,18 +892,29 @@ export function returnToCardSurface(
   });
 }
 
+export interface SurfacePreviewWire {
+  conversationId: string;
+  active: boolean;
+  supported: boolean;
+  available?: boolean;
+  entries: { entryId: string; role: string; kind: string | null; text: string; occurredAt: string | null }[];
+  status?: TerminalStatusWire | null;
+}
+
+/** 把运行该会话的外部终端应用切到前台。 */
+export function focusExternalSurface(conversationId: string): Promise<{ focused: boolean }> {
+  return request(`/api/conversations/${encodeURIComponent(conversationId)}/surface/focus`, { method: "POST" });
+}
+
+/** 外部终端期间的新消息预览（只读；回站校准才写入正式记录）。 */
+export function fetchSurfacePreview(conversationId: string, signal?: AbortSignal): Promise<SurfacePreviewWire> {
+  return request(`/api/conversations/${encodeURIComponent(conversationId)}/surface/preview`, { signal });
+}
+
 /** 现在谁在写。刷新后靠它恢复外部态；端点不在（未装 Launcher → 501/404）时
  *  调用方按"站内"处理，不显示错误——AD-71 的同一条精神。 */
 export function fetchSurface(conversationId: string, signal?: AbortSignal): Promise<SurfaceStateWire> {
   return request(`/api/conversations/${encodeURIComponent(conversationId)}/surface`, { signal });
-}
-
-/** 终端启动历史（页头「历史 ▾」）。`count === 0` 时那枚菜单不渲染。 */
-export function fetchLaunches(
-  conversationId: string,
-  signal?: AbortSignal,
-): Promise<{ conversationId: string; launches: TerminalLaunchWire[]; count: number }> {
-  return request(`/api/conversations/${encodeURIComponent(conversationId)}/launches`, { signal });
 }
 
 /** `clientRef` 是可选的对账编号（AD-94）：给了，内核就把它原样放进
@@ -912,6 +942,16 @@ export interface ArchivedConversationWire {
 
 export function fetchArchivedConversations(): Promise<{ conversations: ArchivedConversationWire[] }> {
   return request("/api/conversations?archived=true&limit=500");
+}
+
+/** Move an archived conversation (of a deleted Project) into another Project with the same engine.
+ *  `409 workspace_changed` asks for `confirmWorkspaceChange`: the native session may not resume there. */
+export async function moveConversation(conversationId: string, body: { projectId: string; bindingId: string; confirmWorkspaceChange?: boolean }): Promise<{ conversation: ConversationWire }> {
+  const result = await request<{ conversation: ConversationWire }>(`/api/conversations/${encodeURIComponent(conversationId)}/move`, {
+    method: "POST", body,
+  });
+  window.dispatchEvent(new Event("kaus:conversations-changed"));
+  return result;
 }
 
 export async function archiveConversation(conversationId: string, archived = true): Promise<{ conversation: ConversationWire }> {

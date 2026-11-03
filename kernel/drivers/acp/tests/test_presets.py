@@ -27,7 +27,7 @@ from drivers.acp.capabilities import effective_quirks, resolve_mode_id
 from drivers.acp.presets import PRESETS, QUIRK_BITS, SESSION_ID_PLACEHOLDER, get_preset
 
 
-NEW_NATIVE_ACP_IDS = {"goose", "cursor", "copilot", "devin", "omp", "grok"}
+NEW_NATIVE_ACP_IDS = {"goose", "cursor", "copilot", "omp", "grok"}
 
 
 def test_native_acp_commands_match_official_entrypoints() -> None:
@@ -36,7 +36,6 @@ def test_native_acp_commands_match_official_entrypoints() -> None:
         "goose": ("goose", "acp"),
         "cursor": ("cursor-agent", "acp"),
         "copilot": ("copilot", "--acp", "--stdio"),
-        "devin": ("devin", "acp"),
         "omp": ("omp", "acp"),
         "grok": ("grok", "--no-auto-update", "agent", "stdio"),
     }
@@ -50,10 +49,7 @@ def test_new_catalog_rows_do_not_mislabel_source_review_as_live() -> None:
         else:
             assert not preset.verified_bits
             assert "verifiedBits" not in preset.to_wire()
-        if id in {"goose", "copilot", "omp", "grok", "cursor"}:
-            assert preset.resume_argv_template is not None
-        else:
-            assert preset.resume_argv_template is None
+        assert preset.resume_argv_template is not None
 
 
 def test_task_modes_do_not_become_permission_modes() -> None:
@@ -66,7 +62,7 @@ def test_task_modes_do_not_become_permission_modes() -> None:
 
 
 def test_local_session_registration_keeps_auth_and_permission_boundaries() -> None:
-    for id in ("crush", "commandcode", "alma", "zcode", "omp", "deepseek-acp"):
+    for id in ("crush", "commandcode", "zcode", "omp", "deepseek-acp"):
         assert get_preset(id).session_creation_proves_auth is False
     preset = get_preset("zcode")
     assert preset.command[-1].endswith("/zcode_bridge/cli.py")
@@ -108,7 +104,6 @@ def test_new_config_watchers_follow_native_provider_configuration() -> None:
     assert get_preset("cursor").workspace_config_dir == ".cursor"
     assert get_preset("omp").config_root_env == "PI_CODING_AGENT_DIR"
     assert {"models.yml", "models.yaml", "models.json"} <= set(get_preset("omp").config_watch_files)
-    assert get_preset("devin").workspace.instructions_file == "AGENTS.md"
 
 
 def test_every_preset_row_declares_its_auth_method_ids_field() -> None:
@@ -580,7 +575,7 @@ def test_no_preset_claims_a_bit_nobody_has_measured() -> None:
 def test_mcp_projection_excludes_adapters_that_only_store_the_servers() -> None:
     """pi-acp 上游明确忽略传入的服务器，不能报告项目 MCP 已投射。"""
     for preset in PRESETS.values():
-        expected = preset.id not in {"pi", "openclaw", "commandcode", "alma"}
+        expected = preset.id not in {"pi", "openclaw", "commandcode"}
         assert preset.quirks.mcp_via_session_new is expected
         assert preset.quirks.to_wire()["mcpViaSessionNew"] is expected
 

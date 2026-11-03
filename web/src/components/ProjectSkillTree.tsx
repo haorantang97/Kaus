@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowRight, ArrowUp, Ban, Check, ChevronRight, Copy, CornerDownLeft, CornerUpLeft, FileText, Folder, GripVertical, MoreHorizontal, MoveRight, Plus, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, Ban, Check, ChevronRight, Copy, CornerDownLeft, CornerUpLeft, FileText, Folder, GripVertical, MoreHorizontal, MoveRight, Plug, Plus, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { useLocale } from "../i18n";
 import { affectedProjects, matchesSkill, orderedEntries, projectAncestors } from "../lib/skillTree";
 import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
@@ -39,7 +39,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
   const [pending, setPending] = useState<Pending | null>(null);
   const [undoToken, setUndoToken] = useState<string | null>(null);
   const [status, setStatus] = useState("");
-  const [ghost, setGhost] = useState<{ x: number; y: number; name: string } | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number; name: string; mcp?: boolean } | null>(null);
   const [drop, setDrop] = useState<Drop | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
@@ -159,7 +159,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     if (!current || !data) return;
     if (!current.active && Math.hypot(e.clientX - current.x, e.clientY - current.y) < 5) return;
     current.active = true;
-    setGhost({ x: e.clientX, y: e.clientY, name: current.skill.name });
+    setGhost({ x: e.clientX, y: e.clientY, name: current.skill.name, mcp: current.skill.kind === "mcp" });
     const element = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-skill-drop]");
     let target: Drop | null = null;
     if (element && root.current?.contains(element)) {
@@ -225,7 +225,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
       style={{ "--tree-depth": depth } as CSSProperties} data-skill-drop={skill.pendingAssignment ? undefined : "row"} data-project-id={entry.projectId} data-agent-key={skill.agentKey ?? ""} data-skill-id={skill.id}>
       <button type="button" className="skill-tree-icon skill-tree-grip" aria-label={t("skillTree.drag", { name: skill.name })} title={t("skillTree.drag", { name: skill.name })}
         disabled={entry.blocked || busy} onPointerDown={e => beginDrag(e, item)}><GripVertical size={15} /></button>
-      <FileText size={15} className="skill-tree-type" aria-hidden="true" />
+      {skill.kind === "mcp" ? <Plug size={15} className="skill-tree-type" role="img" aria-label="MCP" /> : <FileText size={15} className="skill-tree-type" aria-hidden="true" />}
       <span className="skill-tree-name" title={skill.description || skill.name}>{skill.name}</span>
       {skill.pendingAssignment && <span className="skill-tree-pending">{t("skillTree.pendingAssignment")}</span>}
       {entry.inherited && <span className="skill-tree-source" title={t("skillTree.inherited", { name: projectName(entry.sourceProjectId) })}><CornerUpLeft size={12} /><span>{projectName(entry.sourceProjectId)}</span></span>}
@@ -307,7 +307,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
       {!data ? <div className="skill-tree-loading"><Spinner />{t("ui.loading")}</div> : roots.map(p => renderProject(p, 0, new Set()))}
       {visibleProjects?.size === 0 && <div className="skill-tree-empty">{t("skillTree.noResults")}</div>}
     </div>
-    {ghost && createPortal(<div className="skill-tree-ghost" style={{ left: ghost.x + 16, top: ghost.y + 12 }}><FileText size={15} /><span>{ghost.name}</span>{drop && <><ArrowRight size={13} /><span>{projectName(drop.projectId)}</span></>}</div>, document.body)}
+    {ghost && createPortal(<div className="skill-tree-ghost" style={{ left: ghost.x + 16, top: ghost.y + 12 }}>{ghost.mcp ? <Plug size={15} /> : <FileText size={15} />}<span>{ghost.name}</span>{drop && <><ArrowRight size={13} /><span>{projectName(drop.projectId)}</span></>}</div>, document.body)}
     {menu && createPortal(<div className="skill-tree-menu-backdrop" onPointerDown={() => setMenu(null)}>
       <div className="skill-tree-menu" ref={menuRef} role="menu" data-skill-tree-owner={treeId} style={{ left: Math.max(12, menu.x), top: Math.max(12, menu.y) }} onPointerDown={e => e.stopPropagation()} onKeyDown={e => {
         if (!["ArrowDown", "ArrowUp"].includes(e.key)) return;

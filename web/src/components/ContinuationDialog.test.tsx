@@ -4,7 +4,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { ContinuationDialog } from "./ContinuationDialog";
-import { ArchiveViewer } from "./NativeArchivePanel";
+import { ProjectHistoryViewer } from "./ProjectHistoryViewer";
 import { fetchConnectedBackends, ensureProjectBinding } from "../lib/sessionApi";
 import { createContinuation, previewContinuation } from "../lib/continuations";
 import { nativeArchives, type ArchiveItem } from "../lib/nativeArchivesApi";
@@ -99,14 +99,14 @@ it("names the dialog, contains keyboard focus, and restores its trigger on close
   expect(trigger).toHaveFocus();
 });
 
-it("exposes only the nested continuation dialog and restores the archive viewer on Escape", async () => {
+it("exposes only the nested continuation dialog and restores the history viewer on Escape", async () => {
   const item: ArchiveItem = { id: "reference-1", title: "Native discussion", source: "engine-a", revision: "r1", projectIds: ["project:work"], storage: "reference", availability: "available", messageCount: 1, assetCount: 0, warnings: [] };
   vi.mocked(nativeArchives.detail).mockResolvedValue({ archive: item, messages: [{ index: 0, role: "user", text: "Original question" }], assets: [], nextOffset: null, recordCount: 1, warnings: [] });
   const user = userEvent.setup(), closeViewer = vi.fn();
-  render(<MemoryRouter><ArchiveViewer item={item} projectId="project:work" onClose={closeViewer} /></MemoryRouter>);
+  render(<MemoryRouter><ProjectHistoryViewer item={item} projectId="project:work" onClose={closeViewer} onOpenConversation={vi.fn()} /></MemoryRouter>);
   await screen.findByText("Original question");
   const viewer = screen.getByRole("dialog");
-  const trigger = within(viewer).getByRole("button", { name: "换 Agent 继续" });
+  const trigger = within(viewer).getByRole("button", { name: "用其他 Agent 继续" });
   await user.click(trigger);
   const dialog = screen.getByRole("dialog", { name: "用其他 Agent 接续" });
   expect(screen.getAllByRole("dialog")).toEqual([dialog]);

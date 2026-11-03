@@ -51,6 +51,11 @@ def build_skill_tree_router(service: SkillTreeService, *, auth_policy: Any):
     async def onboarding():
         return await asyncio.to_thread(service.pending_onboarding)
 
+    @router.get("/skill-tree/onboarding/{invitation_id}", dependencies=[auth])
+    @endpoint
+    async def onboarding_status(invitation_id: str):
+        return await asyncio.to_thread(service.onboarding_status, invitation_id)
+
     @router.post("/skill-tree/onboarding", dependencies=[auth])
     @endpoint
     async def finish_onboarding(body: SkillOnboardingResult):

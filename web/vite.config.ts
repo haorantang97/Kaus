@@ -12,8 +12,6 @@ const BACKEND = "http://127.0.0.1:8877";
 const TUNNEL = process.env.DASH_VITE_TUNNEL === "1";
 
 // Dev server proxies REST /api → our existing FastAPI backend (server.py on 8877).
-// PTY WebSocket traffic connects directly to :8877 from ChatTerminal; routing it
-// through Vite's WS proxy caused EPIPE/ECONNRESET stalls during long streams.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {

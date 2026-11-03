@@ -135,7 +135,7 @@ DELEGATION_KEY_MAP: Final[tuple[HermesDelegationKey, ...]] = (
         "child_timeout_seconds",
         "timeout_seconds",
         verified=True,
-        evidence="%s（默认 600，单位秒；mcp_servers/hermes_delegate_mcp.py 亦读取该键）。" % '实测：用户 2026-09-03 在 Mac 上运行 `hermes config get delegation`（Hermes 0.21.0）输出含该键',
+        evidence="%s（默认 600，单位秒）。" % '实测：用户 2026-09-03 在 Mac 上运行 `hermes config get delegation`（Hermes 0.21.0）输出含该键',
     ),
 )
 

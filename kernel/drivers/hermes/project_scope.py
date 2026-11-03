@@ -15,6 +15,37 @@ from drivers.projection_store import Provenance, atomic_write_text
 
 SCOPE_KEY = "project_execution"
 
+# Markers of the constitution block the removed dashboard wrote into native
+# SOUL.md files. Replicated from the host's project_instructions.py (the driver
+# must not import host modules); keep both copies byte-identical.
+LEGACY_CONSTITUTION_BEGIN = "<!-- ⚖ HERMES CONSTITUTION · 由仪表盘统一管理（沿组织树分层继承），勿手改本区块（下方是本 agent 的人格，可自由编辑） -->"
+LEGACY_CONSTITUTION_END = "<!-- ⚖ END CONSTITUTION -->"
+
+
+def strip_legacy_constitution(text: str) -> str:
+    """Drop every legacy managed block before the persona enters a private copy."""
+    while True:
+        begin = text.find(LEGACY_CONSTITUTION_BEGIN)
+        if begin == -1:
+            return text
+        end = text.find(LEGACY_CONSTITUTION_END, begin)
+        if end == -1:
+            return text
+        rest = text[end + len(LEGACY_CONSTITUTION_END):].lstrip("\n")
+        text = text[:begin] + rest
+
+
+def disable_native_curator(values: dict) -> dict:
+    """Keep the engine's skill curator off inside a Kaus-owned home.
+
+    The curator reads ``curator.enabled`` from ``<HERMES_HOME>/config.yaml``
+    and would otherwise archive idle source skills reached through the linked
+    ``skills/`` directory. Only scope configs receive this key.
+    """
+    curator = values.get("curator")
+    values["curator"] = {**(curator if isinstance(curator, dict) else {}), "enabled": False}
+    return values
+
 
 def enabled(binding) -> bool:
     # Group executions own a separate binding even when their source connection
@@ -48,6 +79,7 @@ def prepare(root: Path, source: Path, binding, *, refresh: bool = False) -> Path
     for key in owned.records:
         top = key.split(".")[0]
         values.pop(top, None)
+    disable_native_curator(values)
     atomic_write_text(home / "config.yaml", config_yaml.apply_top_level("", values))
     os.chmod(home / "config.yaml", 0o600)
     # This generated home is rebuilt from the connection baseline before each
@@ -63,6 +95,6 @@ def prepare(root: Path, source: Path, binding, *, refresh: bool = False) -> Path
     # added in the private copy, never in the source persona file.
     soul = source / "SOUL.md"
     text = soul.read_text() if binding.native_scope_ref and binding.native_scope_ref != "default" and soul.is_file() else ""
-    atomic_write_text(home / "SOUL.md", text)
+    atomic_write_text(home / "SOUL.md", strip_legacy_constitution(text))
     atomic_write_text(marker, json.dumps(ownership))
     return home

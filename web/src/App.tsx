@@ -1,17 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Boxes, ChevronDown, ChevronRight, KanbanSquare, LayoutDashboard, FolderTree, Pin, PinOff, Plus, SlidersHorizontal, Warehouse } from "lucide-react";
+import { FolderTree, Pin, PinOff, Plus, SlidersHorizontal } from "lucide-react";
 import { WorkbenchPage } from "./pages/WorkbenchPage";
 import { WorkbenchNav, MODULE_DRAG_TYPE } from "./components/WorkbenchNav";
 import { reorderWorkbenchPins, notifyWorkbenchChanged } from "./lib/workbenchApi";
 import { useWorkbench } from "./hooks/useWorkbench";
+import { useDashboardEvents } from "./hooks/useDashboardEvents";
 import { workbenchPath } from "./lib/routes";
 import { Backdrop } from "./Backdrop";
 import { CtxMenu } from "./components/CtxMenu";
-import { DashboardOverlay } from "./components/DashboardOverlay";
 import { ConfigOverlay } from "./components/ConfigOverlay";
-import { WarehouseOverlay } from "./components/WarehouseOverlay";
-import { VaultOverlay } from "./components/VaultOverlay";
 import { AgentGraph } from "./components/AgentGraph";
 import { NewAgentModal } from "./components/NewAgentModal";
 import { NotFoundPage } from "./components/NotFoundPage";
@@ -20,7 +18,6 @@ import { ConfirmHost, cream, ErrorNotice, ToastHost, toast } from "./components/
 import { ConversationSidebar } from "./components/ConversationSidebar";
 import { useConversationIndex } from "./lib/conversationIndex";
 import { GroupDock } from "./components/GroupDock";
-import { SkillOnboardingHost } from "./components/SkillOnboardingHost";
 import { GroupNavItem } from "./components/GroupNavItem";
 import { ConversationPage } from "./pages/ConversationPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
@@ -28,57 +25,41 @@ import { NewConversationPage } from "./pages/NewConversationPage";
 import { fetchNetwork, type NetworkResp } from "./lib/api";
 import { useSessionHost } from "./lib/useSessionHost";
 import { conversationPath, newConversationPath, parseRoute, projectPath, routeView, shellViewPath, type ShellViewName } from "./lib/routes";
-import { readNavMoreOpen, readSidebarPinned, writeNavMoreOpen, writeSidebarPinned } from "./lib/shellPrefs";
+import { readSidebarPinned, writeSidebarPinned } from "./lib/shellPrefs";
 import { applyDocumentLang, useLocale, type DictKey } from "./i18n";
 
-type OverlayId = "dash" | "kanban" | "vault" | "warehouse" | "config";
+type OverlayId = "config";
 type AgentMode = "chat" | "governance";
 /* Navigation belongs to the URL; only project graph preferences persist here. */
 interface ShellState {
   graphFocus?: string;
   agentMode?: AgentMode;
 }
-interface DashboardEvent {
-  type: string;
-  scopes?: string[];
-  version?: string;
-  ts?: number;
-}
-const SHELL_STATE_KEY = "hermes-dashboard-shell-state-v1";
+const SHELL_STATE_KEY = "kaus-shell-state-v1";
+const THEME_KEY = "kaus-theme";
+/* 2026-11-03 之前的存储键；只读一次，便于平滑迁移。 */
+const LEGACY_SHELL_STATE_KEY = "hermes-dashboard-shell-state-v1";
+const LEGACY_THEME_KEY = "hermes-dashboard-theme";
 type ModuleId = OverlayId | "agents" | "new-conversation";
 /* 标签走词典（AD-96）：这里只存键，文案在 `src/i18n/`。 */
 type ModuleItem = { id: ModuleId; icon: typeof Plus; labelKey: DictKey };
 const NAV_MODULES: ModuleItem[] = [
   { id: "new-conversation", icon: Plus, labelKey: "nav.newConversation" },
   { id: "agents", icon: FolderTree, labelKey: "nav.agents" },
-  { id: "dash", icon: LayoutDashboard, labelKey: "nav.dash" },
-  { id: "kanban", icon: KanbanSquare, labelKey: "nav.kanban" },
-  { id: "vault", icon: Boxes, labelKey: "nav.vault" },
-  { id: "warehouse", icon: Warehouse, labelKey: "nav.warehouse" },
   { id: "config", icon: SlidersHorizontal, labelKey: "nav.config" },
 ];
-/* 日常入口置顶，工作区工具折叠，设置固定在侧栏底部。 */
+/* 日常入口置顶，设置固定在侧栏底部。 */
 const ALWAYS_VISIBLE: ModuleId[] = ["new-conversation", "agents"];
 const PRIMARY_MODULES = NAV_MODULES.filter((m) => ALWAYS_VISIBLE.includes(m.id));
-/* Hermes 任务板已屏蔽（2026-10-24），等通用任务板替换；入口、快捷键和 /kanban 都不再打开它。 */
-const MORE_MODULES = NAV_MODULES.filter((m) => !ALWAYS_VISIBLE.includes(m.id) && m.id !== "config" && m.id !== "dash" && m.id !== "kanban");
 const SETTINGS_MODULE = NAV_MODULES.find(m => m.id === "config")!;
 
 const MODULE_VIEWS: Record<Exclude<ModuleId, "new-conversation">, ShellViewName> = {
   agents: "agents",
-  dash: "dash",
-  kanban: "kanban",
-  vault: "vault",
-  warehouse: "warehouse",
   config: "config",
 };
 const VIEW_MODULES: Record<ShellViewName, ModuleId> = {
   overview: "new-conversation",
   agents: "agents",
-  dash: "dash",
-  kanban: "kanban",
-  vault: "vault",
-  warehouse: "warehouse",
   config: "config",
 };
 
@@ -94,7 +75,7 @@ const isAgentMode = (value: unknown): value is AgentMode => value === "chat" || 
 const isProfileName = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length < 128;
 const readShellState = (): ShellState => {
   try {
-    const raw = window.localStorage.getItem(SHELL_STATE_KEY);
+    const raw = window.localStorage.getItem(SHELL_STATE_KEY) ?? window.localStorage.getItem(LEGACY_SHELL_STATE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
@@ -118,7 +99,7 @@ export function App() {
   const initialShell = useRef<ShellState | null>(null);
   if (initialShell.current === null) initialShell.current = readShellState();
   const [theme, setTheme] = useState<"light" | "dark">(() => {
-    const saved = window.localStorage.getItem("hermes-dashboard-theme");
+    const saved = window.localStorage.getItem(THEME_KEY) ?? window.localStorage.getItem(LEGACY_THEME_KEY);
     if (saved === "light" || saved === "dark") return saved;
     return "light";
   });
@@ -130,9 +111,6 @@ export function App() {
   const [newOpen, setNewOpen] = useState(false);
   // 「+ 添加项目」带来的父级预填（批次七 d 第 5 条）；从导航/快捷键打开时是 null。
   const [newAgentParent, setNewAgentParent] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const refreshTimer = useRef<number | null>(null);
-  const stateVersion = useRef<string | null>(null);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -141,15 +119,13 @@ export function App() {
   const workbench = useWorkbench(sessionOn);
   const route = useMemo(() => parseRoute(location.pathname, location.search), [location.pathname, location.search]);
   /* view / overlay 不再是独立状态源：URL 说了算（批次十一第 1 件）。
-     `/` = 概览、`/agents` = 轮盘、`/dashboard` `/kanban` `/vault` `/warehouse`
-     `/config` = 原来的五个浮层。地址不认识就是 404，不再静默当概览。 */
+     `/` = 概览、`/agents` = 轮盘、`/config` = 设置。
+     地址不认识就是 404，不再静默当概览。 */
   const currentView = routeView(route);
   const overlay: OverlayId | null =
     currentView && currentView !== "overview" && currentView !== "agents" ? currentView : null;
   const goView = useCallback((next: ShellViewName) => navigate(shellViewPath(next)), [navigate]);
   const [sidebarPinned, setSidebarPinned] = useState<boolean>(() => readSidebarPinned());
-  /* batch40（★L 第 2 条）：「更多」这一组开着还是折着。出厂折着，改动记 localStorage。 */
-  const [moreOpen, setMoreOpen] = useState<boolean>(() => readNavMoreOpen());
   const [railOpen, setRailOpen] = useState(false);
   const [sidebarRefreshToken, setSidebarRefreshToken] = useState(0);
   /* Bootstrap gates all session-backed data while preserving the requested URL. */
@@ -159,7 +135,7 @@ export function App() {
   const railTimer = useRef<number | null>(null);
   const railRef = useRef<HTMLDivElement>(null);
   /* 侧栏自动收起**只在轮盘视图**生效（批次七 d 第 6 条）：概览路由 + 没有浮层 +
-     主区正是 Agents 轮盘。其余视图（Overview/Dashboard/…/草稿页/会话页/项目页）
+     主区正是 Agents 轮盘。其余视图（设置/草稿页/会话页/项目页）
      侧栏常驻，和改造前一致；图钉也只在轮盘视图显示。 */
   const isWheelView = route.name === "agents";
   const railCollapsible = isWheelView && !sidebarPinned;
@@ -209,58 +185,11 @@ export function App() {
     if (!net) return;
     if (graphFocus && graphFocus !== "default" && !net.nodes[graphFocus]) setGraphFocus("default");
   }, [net, graphFocus]);
-  useEffect(() => {
-    if (!sessionOn) return;
-    const es = new EventSource("/api/events");
-    const schedule = (event: DashboardEvent) => {
-      if (event.version) {
-        const changedSinceLastMessage = stateVersion.current !== null && stateVersion.current !== event.version;
-        stateVersion.current = event.version;
-        if (event.type === "state_snapshot" && changedSinceLastMessage) {
-          reload();
-          setRefreshKey((value) => value + 1);
-        }
-      }
-      if (event.type !== "state_changed") return;
-      window.dispatchEvent(new CustomEvent("hermes-dashboard-state", { detail: event }));
-      if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
-      refreshTimer.current = window.setTimeout(() => {
-        const scopes = new Set(event.scopes || []);
-        if (["network", "profiles", "skills", "config"].some((scope) => scopes.has(scope))) reload();
-        setRefreshKey((value) => value + 1);
-      }, 180);
-    };
-    es.onmessage = (message) => {
-      try { schedule(JSON.parse(message.data) as DashboardEvent); }
-      catch { /* ignore malformed SSE chunks */ }
-    };
-    es.onerror = () => {
-      // EventSource 自带重连；这里不弹 toast，避免后台文件频繁改动时打扰对话。
-    };
-    return () => {
-      es.close();
-      if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
-    };
-  }, [reload, sessionOn]);
-  useEffect(() => {
-    if (!sessionOn) return;
-    const reconcile = () => {
-      if (route.name === "conversation") return;
-      void reload();
-      setRefreshKey((value) => value + 1);
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") reconcile();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [reload, route.name, sessionOn]);
+  const { refreshKey, bump: bumpRefreshKey } = useDashboardEvents({ sessionOn, reload, routeName: route.name });
   useEffect(() => {
     document.body.classList.toggle("dark", theme === "dark");
     document.documentElement.style.colorScheme = theme;
-    window.localStorage.setItem("hermes-dashboard-theme", theme);
+    window.localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
   // `<html lang>` 跟着界面语言走（读屏软件与浏览器翻译都看它）。
   useEffect(applyDocumentLang, [pref]);
@@ -272,7 +201,7 @@ export function App() {
     let t = 0;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      const inInput = Boolean(target?.closest("input, textarea, select, [contenteditable='true'], .chat-terminal-host, .xterm"));
+      const inInput = Boolean(target?.closest("input, textarea, select, [contenteditable='true']"));
       if (inInput) return;
       if (e.key === "Escape") { setMenu(null); setNewOpen(false); g = false; return; }
       if (e.key === "g") { g = true; clearTimeout(t); t = window.setTimeout(() => { g = false; }, 1200); return; }
@@ -282,13 +211,10 @@ export function App() {
            于是"跳过去了但链接还是上一页"。 */
         if (e.key === "h") goView("overview");
         else if (e.key === "a") { setAgentMode("chat"); goView("agents"); }
-        else if (e.key === "d") goView("dash");
-        else if (e.key === "v") goView("vault");
         else if (e.key === "r") {
           setAgentMode("governance");
           goView("agents");
         }
-        else if (e.key === "w") goView("warehouse");
         else if (e.key === "s") goView("config");
         else if (e.key === "n") { setNewAgentParent(null); setNewOpen(true); }
       }
@@ -296,10 +222,6 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [goView, sessionOn]);
-  useEffect(() => {
-    if (overlay === "kanban") navigate(shellViewPath("overview"), { replace: true });
-  }, [overlay, navigate]);
-
   const openMenu = (name: string, rect: DOMRect) =>
     setMenu({ name, x: Math.max(8, rect.right - 192), y: rect.bottom + 4 });
 
@@ -370,7 +292,7 @@ export function App() {
            也能换页——轮盘视图不再是"进去就出不来"。收回交给侧栏自己的
            onMouseLeave，这里只负责推开。 */
         <div className="kaus-nav-peek" data-testid="nav-peek" onMouseEnter={() => scheduleRail(true, 150)}>
-          {[...PRIMARY_MODULES, ...MORE_MODULES, SETTINGS_MODULE].map((m) => {
+          {[...PRIMARY_MODULES, SETTINGS_MODULE].map((m) => {
             const label = t(m.labelKey);
             return (
               <button
@@ -432,23 +354,6 @@ export function App() {
           {PRIMARY_MODULES.map(renderNavItem)}
           <GroupNavItem />
           <WorkbenchNav modules={workbench.modules} active={route.name === "workbench"} activeId={route.name === "workbench" ? route.moduleId : null} navigate={navigate} />
-          {/* 低频工作区保留在更多；设置及运行概况另有固定入口。 */}
-              <button
-                type="button"
-                className="shell-nav-item is-more"
-                data-testid="nav-more-toggle"
-                aria-expanded={moreOpen}
-                title={t("nav.more")}
-                onClick={() => {
-                  const next = !moreOpen;
-                  setMoreOpen(next);
-                  writeNavMoreOpen(next);
-                }}
-              >
-                <span className="shell-nav-icon">{moreOpen ? <ChevronDown /> : <ChevronRight />}</span>
-                <span className="shell-nav-label">{t("nav.more")}</span>
-              </button>
-              {moreOpen && MORE_MODULES.map(renderNavItem)}
         </nav>
 
           <ConversationSidebar
@@ -534,13 +439,7 @@ export function App() {
         )}
         {!showNotFound && !mainIsSessionPage && (
           <div className="absolute inset-0">
-            {overlay === "dash" ? (
-              <DashboardOverlay onClose={closeOverlay} onGoProfile={goProfile} refreshKey={refreshKey} />
-            ) : overlay === "kanban" ? null : overlay === "vault" ? (
-              <VaultOverlay onClose={closeOverlay} refreshKey={refreshKey} />
-            ) : overlay === "warehouse" ? (
-              <WarehouseOverlay onClose={closeOverlay} refreshKey={refreshKey} />
-            ) : overlay === "config" ? (
+            {overlay === "config" ? (
               <ConfigOverlay onClose={closeOverlay} refreshKey={refreshKey} theme={theme} onThemeChange={setTheme} />
             ) : net ? (
               <AgentGraph
@@ -571,7 +470,10 @@ export function App() {
           x={menu.x}
           y={menu.y}
           onClose={() => setMenu(null)}
-          onChanged={reload}
+          /* 项目页读 `/api/projects`（跟 refreshKey），改名后页头也要跟着变。 */
+          onChanged={() => { void reload(); bumpRefreshKey(); }}
+          /* 项目页上的 ⋯ 只针对当前项目：删掉之后回轮盘，不停在已删除的页面。 */
+          onDeleted={() => { if (route.name === "project") goView("agents"); }}
         />
       )}
 
@@ -584,7 +486,6 @@ export function App() {
       )}
 
       <GroupDock />
-      <SkillOnboardingHost />
 
       <ToastHost />
       <ConfirmHost />

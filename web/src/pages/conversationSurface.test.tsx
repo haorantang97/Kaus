@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ConversationPage } from "./ConversationPage";
@@ -34,9 +34,10 @@ vi.mock("../lib/sessionApi", async () => {
     sendConversationMessage: vi.fn(),
     interruptConversation: vi.fn(),
     fetchSurface: vi.fn(),
-    fetchLaunches: vi.fn(),
     openExternalSurface: vi.fn(),
     returnToCardSurface: vi.fn(),
+    fetchSurfacePreview: vi.fn(),
+    focusExternalSurface: vi.fn(),
   };
 });
 
@@ -194,7 +195,7 @@ beforeEach(() => {
     lease: null,
     launch: null,
   });
-  mocked.fetchLaunches.mockResolvedValue({ conversationId: "conversation:1", launches: [], count: 0 });
+  mocked.fetchSurfacePreview.mockResolvedValue({ conversationId: "conversation:1", active: false, supported: true, entries: [] });
   mocked.openExternalSurface.mockResolvedValue({
     conversationId: "conversation:1",
     surface: "external-cli",
@@ -261,6 +262,27 @@ describe("第 1 件：「到终端打开」入口", () => {
     await waitFor(() => expect(mocked.openExternalSurface).toHaveBeenCalledTimes(2));
   });
 
+  it("草稿随打开终端一起交出；原生不能预填时复制到剪贴板并保留在输入框", async () => {
+    const user = userEvent.setup();
+    // user-event installs its own clipboard stub during setup.
+    const writeText = vi.spyOn(navigator.clipboard, "writeText");
+    renderPage();
+    const button = await findOpenButton();
+    await user.type(screen.getByRole("textbox"), "还没发送的草稿");
+    await user.click(button);
+    await waitFor(() => expect(mocked.openExternalSurface).toHaveBeenCalledWith("conversation:1", { draft: "还没发送的草稿" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("还没发送的草稿"));
+    expect(await screen.findByText("草稿已复制，可粘贴到终端")).toBeInTheDocument();
+
+    writeText.mockClear();
+    mocked.openExternalSurface.mockResolvedValue({ conversationId: "conversation:1", surface: "external-cli", launch,
+      lease: null, commandSummary: launch.commandSummary, launched: true, reason: null, draftPrefilled: true });
+    renderPage();
+    await user.click((await screen.findAllByTestId("open-external")).at(-1)!);
+    await waitFor(() => expect(mocked.openExternalSurface).toHaveBeenCalledTimes(2));
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
   it("409 lease_held → 二次确认，确认后带 force=1 重试一次", async () => {
     mocked.openExternalSurface.mockRejectedValueOnce(
       new SessionApiError(409, "lease_held", "写权已被别人持有", {
@@ -278,6 +300,32 @@ describe("第 1 件：「到终端打开」入口", () => {
     expect(mocked.openExternalSurface.mock.calls[0][1]).toEqual({});
     expect(mocked.openExternalSurface.mock.calls[1][1]).toEqual({ force: true });
     expect(await screen.findByTestId("external-banner")).toBeInTheDocument();
+  });
+
+  it("终端运行期间显示新消息预览，不写入正式记录", async () => {
+    mocked.fetchSurfacePreview.mockResolvedValue({ conversationId: "conversation:1", active: true, supported: true, available: true,
+      entries: [{ entryId: "n-3", role: "assistant", kind: "message", text: "终端里刚写完的回复", occurredAt: null }] });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await findOpenButton());
+    const preview = await screen.findByTestId("terminal-preview");
+    expect(preview).toHaveTextContent("终端中 · 1 条新消息");
+    expect(preview).toHaveTextContent("终端里刚写完的回复");
+    expect(mocked.fetchSurfacePreview).toHaveBeenCalledWith("conversation:1", expect.any(AbortSignal));
+  });
+
+  it("横幅显示终端上报的状态，可把终端切到前台", async () => {
+    mocked.focusExternalSurface.mockResolvedValue({ focused: true });
+    mocked.fetchSurfacePreview.mockResolvedValue({ conversationId: "conversation:1", active: true, supported: true, entries: [],
+      status: { state: "waiting", message: "Claude needs your permission to use Bash", at: "2026-11-01T12:00:00Z", launchId: "l" } });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await findOpenButton());
+    const status = await screen.findByTestId("terminal-status");
+    expect(status).toHaveTextContent("等待你处理");
+    expect(status).toHaveAttribute("title", "Claude needs your permission to use Bash");
+    await user.click(screen.getByRole("button", { name: "切到终端" }));
+    expect(mocked.focusExternalSurface).toHaveBeenCalledWith("conversation:1");
   });
 
   it("501 shows a concise unsupported action and stays in the page", async () => {
@@ -423,6 +471,16 @@ describe("第 4 件：接管与状态一致", () => {
     expect(await screen.findByTestId("external-banner")).toBeInTheDocument();
   });
 
+  it("首帧 owner 是外部终端时，切回后输入框恢复可用（不等刷新）", async () => {
+    mocked.fetchConversation.mockResolvedValue({ ...detail, runtime: { ...detail.runtime,
+      owner: { ownerType: "external-cli", ownerId: "launch:1", ownerLabel: "终端", acquiredAt: "", heartbeatAt: "", stale: false } } });
+    renderPage();
+    expect(await screen.findByTestId("external-banner")).toBeInTheDocument();
+    push(kausEvent(9, "surface.changed", { surface: "card" }));
+    await waitFor(() => expect(screen.queryByTestId("external-banner")).toBeNull());
+    expect(screen.getByLabelText("消息")).toBeEnabled();
+  });
+
   it("lease.taken_over → 一条中性横幅，5 秒后自动收起", async () => {
     vi.useFakeTimers();
     try {
@@ -463,30 +521,12 @@ describe("第 4 件：接管与状态一致", () => {
 });
 
 describe("第 5 件：启动记录", () => {
-  it("count > 0 才出现「历史 ▾」，菜单列最近 5 次（时间 · launcher · 退出码）", async () => {
+  it("页头不再提供终端启动历史", async () => {
     renderPage();
     await screen.findByTestId("open-external");
-    expect(screen.queryByTestId("launch-history")).toBeNull();
-
-    const many = Array.from({ length: 7 }, (_, index) => ({
-      ...launch,
-      id: `launch:${index}`,
-      launcher: `launcher-${index}`,
-      exitStatus: index === 0 ? null : index,
-      launchedAt: `2026-09-0${index + 1}T10:00:00Z`,
-    }));
-    mocked.fetchLaunches.mockResolvedValue({ conversationId: "conversation:1", launches: many, count: 7 });
-
-    const user = userEvent.setup();
-    // 事件驱动的一次刷新（终端退出）顺手重取启动记录。
     push(kausEvent(10, "surface.changed", { surface: "card" }));
-    const menu = await screen.findByTestId("launch-history");
-    await user.click(within(menu).getByRole("button"));
-
-    const options = screen.getAllByRole("option");
-    expect(options).toHaveLength(5);
-    expect(options[0]).toHaveTextContent("launcher-0 · 仍在运行");
-    expect(options[1]).toHaveTextContent("launcher-1 · 退出码 1");
+    expect(screen.queryByTestId("launch-history")).toBeNull();
+    expect(screen.queryByRole("button", { name: /历史/ })).toBeNull();
   });
 });
 

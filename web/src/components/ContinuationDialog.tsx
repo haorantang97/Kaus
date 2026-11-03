@@ -7,8 +7,10 @@ import { createContinuation, previewContinuation, type ContinuationPreview, type
 import { describeFailure, ensureProjectBinding, fetchConnectedBackends } from "../lib/sessionApi";
 import { preferredEngineConnections, type EngineConnection } from "../lib/enginePresets";
 
-export function ContinuationDialog({ source, onClose, onCreated }: {
+export function ContinuationDialog({ source, onClose, onCreated, targetProjectId }: {
   source: ContinuationSource; onClose: () => void; onCreated: (id: string) => void;
+  /** Continue in another Project; the backend allows it only when the source Project was deleted. */
+  targetProjectId?: string;
 }) {
   const { t } = useLocale();
   const [engines, setEngines] = useState<EngineConnection[]>([]);
@@ -53,7 +55,7 @@ export function ContinuationDialog({ source, onClose, onCreated }: {
     const request = ++requestId.current;
     setBackend(id); setPreview(null); setBusy(true); setError("");
     try {
-      const binding = await ensureProjectBinding(source.projectId, id);
+      const binding = await ensureProjectBinding(targetProjectId ?? source.projectId, id);
       const next = await previewContinuation(source, binding.id);
       if (request !== requestId.current) return;
       setPreview(next); setContext(next.context);

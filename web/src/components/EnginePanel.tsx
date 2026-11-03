@@ -157,6 +157,8 @@ export interface EngineModelCatalog {
   degraded?: boolean;
   /** 降级或"就这一条"的原因，人话。菜单底部只显示第一条（DESIGN ★ I）。 */
   diagnostics?: string[];
+  /** `false`: the engine decides the model; a binding default would not apply. */
+  selectionApplies?: boolean | null;
 }
 
 export interface EngineRow {
@@ -225,17 +227,6 @@ const PROBE_TONE: Record<BackendWire["probeState"], "success" | "gold" | "danger
   unavailable: "danger",
   unknown: "muted",
 };
-
-/** runtime_config 是 opaque dict（公共层不解释内容），只做**通用**键名查找。 */
-function pick(config: Record<string, unknown>, candidates: string[]): string | null {
-  for (const [key, value] of Object.entries(config)) {
-    const normalized = key.toLowerCase().replace(/[^a-z]/g, "");
-    if (candidates.includes(normalized) && value !== null && value !== undefined && value !== "") {
-      return typeof value === "string" ? value : JSON.stringify(value);
-    }
-  }
-  return null;
-}
 
 /** 值不是本 Binding 自己设的时候，字段旁那句小字（「来自引擎配置」/「目录默认」）。
  *  它是**来源**不是能力备注，所以不违反 AD-71 的"不显示备注"。 */
@@ -502,7 +493,7 @@ export function EngineConfigSection({
           type="button"
           onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
-          className="text-[0.6rem] uppercase tracking-[0.14em]"
+          className="text-[0.7rem] "
           style={{ color: cream(45) }}
         >
           {t("engine.config.toggle", { count: rows.length })} {open ? "▾" : "▸"}
@@ -630,7 +621,7 @@ export function CapabilityList({ detail }: { detail: DetailCapabilityTree }) {
               <span className="ml-1" style={{ color: cream(45) }}>
                 {tDynamic(`capValue.${state.value}`, state.value)}
               </span>
-              <span className="ml-1 text-[0.6rem]" style={{ color: cream(38) }}>
+              <span className="ml-1 text-[0.7rem]" style={{ color: cream(38) }}>
                 · {tDynamic(`capValue.${state.verification}`, state.verification)}
               </span>
               {/* AD-71：note 只出现在这里（和 GET /api/backends/{id} 的输出里）。 */}
@@ -676,17 +667,19 @@ export function EngineCard({
   const [showDetails, setShowDetails] = useState(false);
   const { binding, backend } = row;
   const ui = backend.capabilities.ui;
-  const runtimeConfig = binding.runtimeConfig ?? {};
   /* 模型 / 推理强度 / 审批模式读**有效设置**（Binding → 引擎配置 → 目录默认，
      后端一次解析好）。这次没读着时只剩 Binding 自己记着的模型。 */
   const settings = row.effectiveSettings ?? null;
-  const model = settings?.model.value ?? binding.defaultModelId;
+  /* A binding default the engine cannot select is not in effect: show the engine's value. */
+  const unappliedModel = settings?.model.unapplied ?? null;
+  const model = settings?.model.value ?? (unappliedModel ? null : binding.defaultModelId);
   const reasoning = settings?.reasoningEffort.value ?? null;
   /* 「来自引擎配置」/「目录默认」：值不是本 Binding 自己设的就在字段旁写一句小字，
      这样"空着"与"引擎那边已经设了"就分得开了（不再一律显示「未设置」）。 */
-  const modelHint = settings ? sourceHint(settings.model.source, t) : undefined;
+  const modelHint = unappliedModel
+    ? t("bar.model.unapplied", { model: unappliedModel })
+    : settings ? sourceHint(settings.model.source, t) : undefined;
   const reasoningHint = settings ? sourceHint(settings.reasoningEffort.source, t) : undefined;
-  const twinNote = pick(runtimeConfig, ["twinmode", "mode"]);
   // AD-82：登录**入口**（按钮）只在引擎声明了站外 CLI 时才有意义；状态本身照显。
   const canSignIn = hasCapability(ui.externalCli.supported);
   const authState = row.auth ?? null;
@@ -715,7 +708,7 @@ export function EngineCard({
   /* 第 5 件：**有目录就可点开**（哪怕只有一条、甚至空目录）。目录整个拿不到
      （`catalog === null`：501 / 请求失败）才退回只读——那是"没有目录"，不是"没得选"。 */
   const hasCatalog = row.catalog !== null && row.catalog !== undefined;
-  const canChangeModel = Boolean(onChangeModel) && hasCatalog;
+  const canChangeModel = Boolean(onChangeModel) && hasCatalog && row.catalog?.selectionApplies !== false;
   const modelDiagnostic = row.catalog?.diagnostics?.[0] ?? null;
   const modelDegraded = Boolean(row.catalog?.degraded);
   // 推理档位跟着**当前**模型走（不同模型的档位不一样）。
@@ -796,13 +789,13 @@ export function EngineCard({
     <div style={{ background: cream(2), border: `1px solid ${cream(16)}`, borderRadius: 8 }}>
       <div className="flex flex-wrap items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${cream(16)}` }}>
         <span
-          className="grid size-6 shrink-0 place-items-center rounded-[2px] text-[0.65rem] font-bold"
+          className="grid size-6 shrink-0 place-items-center rounded-[2px] text-[0.65rem] font-semibold"
           style={{ background: cream(7), color: cream(70), border: `1px solid ${cream(14)}` }}
           title={backendDisplay(backend.preset?.id ?? backend.id, backend.displayName).displayName}
         >
           <EngineIcon engine={backend.preset?.id ?? backend.key ?? backend.id} size={18} />
         </span>
-        <span className="text-sm font-semibold" style={{ color: "var(--midground-base)" }}>
+        <span className="text-sm font-medium" style={{ color: "var(--midground-base)" }}>
           {bindingDisplayName(backend.preset?.id ?? binding.backendId, binding.displayName)}
         </span>
         {/* batch40（★L 第 3 条）：摘要第一行 = 引擎名 · 版本 · 状态 · 默认。
@@ -891,7 +884,7 @@ export function EngineCard({
         )}
         <button
           type="button"
-          className="ml-auto text-[0.6rem] uppercase tracking-[0.14em]"
+          className="ml-auto text-[0.7rem] "
           style={{ color: cream(45) }}
           data-testid="engine-details-toggle"
           aria-expanded={showDetails}
@@ -927,7 +920,6 @@ export function EngineCard({
             {binding.nativeScopeRef ?? "—"}
           </span>
         </FieldRow>
-        {twinNote && <FieldRow label={t("engine.field.mode")}>{twinNote}</FieldRow>}
         {/* 原生会话数（batch19 第 1 件）。端点落地后这一行自己回来了。
             判据只有一条：**wire 上有没有这个数**。数拿不到（null / 字段缺席）就整行
             不渲染，不摆「BACKEND TODO」也不写备注（AD-71）。不再另外查
@@ -978,7 +970,7 @@ export function EngineCard({
             type="button"
             onClick={() => setShowCapabilities((value) => !value)}
             aria-expanded={showCapabilities}
-            className="mb-2 text-[0.6rem] uppercase tracking-[0.14em]"
+            className="mb-2 text-[0.7rem] "
             style={{ color: cream(45) }}
           >
             {t("engine.caps.toggle", { count: capabilityRowCount })} {showCapabilities ? "▾" : "▸"}

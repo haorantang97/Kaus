@@ -24,10 +24,20 @@ The active workflow connects an Agent globally, selects a project/persona separa
 ## Intentional compatibility boundaries
 
 - Existing native profile bindings preserve their directories, native session identifiers and resume mapping. They are not silently converted to empty execution homes. Shared-directory writes are guarded. Their original histories remain available.
-- `static/`, the feature-flag-off conversation UI and native profile endpoints remain compatibility code. They are not the normal global Agent selection path.
+- The feature-flag-off conversation UI and native profile endpoints remain compatibility code. They are not the normal global Agent selection path. (The legacy `static/` UI was removed 2026-11-02.)
 - The Hermes task board and its native background scheduler are still Hermes-specific. A general multi-Agent task scheduler has not been implemented in this change. Group orchestration already uses the shared driver layer and remains separate.
 - ACP MCP attachment follows the existing session protocol. Native instruction-file changes use the project configuration preview/apply action and workspace guards. Missing support is reported by the driver; merely connecting an Agent does not claim every project capability is active.
 - Private Hermes project execution requires an installed ACP runtime. The local installation passes `hermes acp --check`. HTTP-only installations retain their native compatibility path and shared-target protection; this audit does not certify every upstream Agent installation.
+
+## Engine self-maintenance defenses (2026-11-03)
+
+Private Hermes execution homes link the source profile's `skills/` directory and copy selected skills in managed mode. The engine's own skill curator (run by `hermes gateway run` / `hermes chat`, configured only through `HERMES_HOME/config.yaml`) archives idle agent-created source skills into `skills/.archive/`, and the copies' usage was recorded only inside the execution home. The driver now keeps these rules, active only when Hermes is connected and only for processes Kaus launches (`kernel/drivers/hermes/README.md` has the exact scope):
+
+- Every Kaus-owned execution home config carries `curator.enabled: false`; a legacy profile directory never receives this key.
+- After a Kaus-launched managed run ends and when its runtime stops, usage recorded by the copies is merged into `<source HERMES_HOME>/skills/.usage.json`. This is the only write Kaus makes into a user's native Hermes directory: existing records only, timestamps raised and counters increased by the unreported delta, nothing created, removed or otherwise changed, under the engine's own file lock.
+- A managed session whose selected source skill was archived by the engine is refused with the stable code `skill_archived_by_engine` (409), naming the skill and the restore command; the interface localizes the code.
+- The legacy dashboard constitution block is stripped from the persona copy placed in an execution home; the source `SOUL.md` is untouched.
+- Projection into a linked `config.yaml` or instruction file is reported as `target_linked` instead of replacing the link.
 
 ## Validation
 

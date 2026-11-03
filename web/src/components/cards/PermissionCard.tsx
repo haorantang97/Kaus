@@ -47,6 +47,16 @@ export function PermissionCard({
   const resolved = item.status === "resolved";
   const answer = item.decision ?? item.outcome;
 
+  if (item.status === "expired") {
+    return (
+      <div className="kaus-permission-done" data-testid="permission-expired">
+        <span className="kaus-permission-mark">–</span>
+        <span>{t("card.expired")}</span>
+        <span className="kaus-permission-subject">{item.permission?.title ?? title}</span>
+      </div>
+    );
+  }
+
   /* G-5：回答完就收成一行 `✓ 已允许 · <工具名>` / `✕ 已拒绝 · <工具名>`。
      "拒绝"只认引擎给的 decision 里的否定词；认不出来时按中性的「已回答」走，
      不猜一个语义（AD-71 的同一条精神：不确定就不编）。 */

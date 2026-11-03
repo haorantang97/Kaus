@@ -16,9 +16,7 @@ import type { GroupMemberWire, GroupMessageWire, GroupWire } from "../lib/groups
 
 const api = vi.hoisted(() => ({
   fetchGroupMessages: vi.fn(),
-  fetchContextPacket: vi.fn(),
   broadcastGroup: vi.fn(),
-  sendToGroupMember: vi.fn(),
   stopGroupThread: vi.fn(),
 }));
 
@@ -119,8 +117,6 @@ function renderWorkspace(changeToken = 0) {
         members={MEMBERS}
         changeToken={changeToken}
         membersPane={<div />}
-        directedMemberId={null}
-        onClearDirected={() => {}}
 
       />
     </>,
@@ -133,12 +129,6 @@ const ids = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   api.fetchGroupMessages.mockResolvedValue(page([]));
-  api.fetchContextPacket.mockResolvedValue({
-    groupId: "collaboration:1",
-    generatedAt: "2026-09-14T10:00:00Z",
-    members: [],
-    markdown: "",
-  });
 });
 
 describe("贴底判定是纯函数（jsdom 没有布局，只测它）", () => {
@@ -347,8 +337,6 @@ describe("batch53：重取是**归并**，不是替换", () => {
           members={MEMBERS}
           changeToken={1}
           membersPane={<div />}
-          directedMemberId={null}
-          onClearDirected={() => {}}
 
         />
       </>,
@@ -380,8 +368,7 @@ describe("时间线滚动", () => {
 
   function workspace(changeToken: number) {
     return <><ToastHost /><GroupWorkspace group={GROUP} members={MEMBERS}
-      changeToken={changeToken} membersPane={<div />} directedMemberId={null}
-      onClearDirected={() => {}} /></>;
+      changeToken={changeToken} membersPane={<div />} /></>;
   }
 
   it("贴底时新消息自动跟随，不显示跳转箭头", async () => {

@@ -43,7 +43,7 @@ export function SelectPopover({
   id, label, value, onChange, options, placeholder, searchable,
   searchPlaceholder, emptyLabel, disabled = false, className = "", style,
 }: SelectPopoverProps) {
-  const { locale } = useLocale();
+  const { t } = useLocale();
   const generatedId = useId();
   const listId = `${id ?? generatedId}-options`;
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -65,7 +65,7 @@ export function SelectPopover({
   const active = enabled.find(option => option.value === activeValue) ?? enabled[0];
   const activeIndex = active ? shown.indexOf(active) : -1;
   const activeId = activeIndex < 0 ? undefined : `${listId}-${activeIndex}`;
-  const searchText = searchPlaceholder ?? (locale === "zh" ? "搜索选项" : "Search options");
+  const searchText = searchPlaceholder ?? t("ui.select.search");
   const portalHost = triggerRef.current?.closest<HTMLElement>('[role="dialog"], [data-kaus-modal]') ?? document.body;
 
   function close(returnFocus = true) {
@@ -299,7 +299,7 @@ export function SelectPopover({
           <span className="kaus-select-option-copy"><span>{option.label}</span>{option.description && <small>{option.description}</small>}</span>
           <span className="kaus-select-check" aria-hidden="true">{option.value === value && <Check size={14} />}</span>
         </div>)}
-        {!shown.length && <div className="kaus-select-empty" role="status">{emptyLabel ?? (locale === "zh" ? "没有匹配选项" : "No matching options")}</div>}
+        {!shown.length && <div className="kaus-select-empty" role="status">{emptyLabel ?? t("ui.select.empty")}</div>}
       </div>
     </div>, portalHost)}
   </span>;

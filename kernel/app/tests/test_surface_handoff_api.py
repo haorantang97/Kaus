@@ -1067,3 +1067,110 @@ async def test_corrupt_native_transcript_is_retried_without_skipping_terminal_me
         assert (await harness.coordinator.to_card(second.conversation, force=True)).entries == ()
     finally:
         await harness.aclose()
+
+
+async def test_open_external_reports_draft_handling_and_rejects_bad_body(tmp_path: Path) -> None:
+    """草稿只在原生支持预填时带进终端；不支持时如实回 ``draftPrefilled: false``。"""
+    harness = _harness(tmp_path)
+    await harness.seed()
+    try:
+        with _client(harness) as client:
+            conversation_id = harness.new_conversation(client)
+            for body in ({"draft": 3}, {"draft": "x", "command": "sh"}):
+                rejected = client.post(f"/api/conversations/{conversation_id}/surface/external", json=body)
+                assert rejected.status_code == 400, rejected.text
+            response = client.post(f"/api/conversations/{conversation_id}/surface/external",
+                                   json={"draft": "未发送的草稿"})
+            assert response.status_code == 200, response.text
+            assert response.json()["draftPrefilled"] is False
+            assert "未发送的草稿" not in response.text
+    finally:
+        await harness.aclose()
+
+
+async def test_preview_shows_terminal_messages_without_writing_events(tmp_path: Path) -> None:
+    """终端期间只读预览新条目；回站后同一批条目由正式校准写入，预览清空。"""
+    harness = _harness(tmp_path)
+    await harness.seed()
+    try:
+        with _client(harness) as client:
+            conversation_id = harness.new_conversation(client)
+            idle = client.get(f"/api/conversations/{conversation_id}/surface/preview").json()
+            assert idle["active"] is False and idle["entries"] == []
+            client.post(f"/api/conversations/{conversation_id}/surface/external")
+            before = len(await harness.events_of(conversation_id))
+            assert client.get(f"/api/conversations/{conversation_id}/surface/preview").json()["entries"] == []
+            original = harness.driver.load_native_history
+            async def terminal_history(binding, native_session_id):
+                history = await original(binding, native_session_id)
+                return history.model_copy(update={"entries": history.entries + tuple(
+                    item.model_copy(update={"entry_id": item.entry_id + "-terminal"}) for item in history.entries)})
+            harness.driver.load_native_history = terminal_history
+            preview = client.get(f"/api/conversations/{conversation_id}/surface/preview").json()
+            assert preview["active"] is True and preview["supported"] is True
+            assert [entry["entryId"].endswith("-terminal") for entry in preview["entries"]] == [True, True]
+            assert len(await harness.events_of(conversation_id)) == before
+            reconciled = client.post(f"/api/conversations/{conversation_id}/surface/card?force=1").json()
+            assert [e["entryId"] for e in reconciled["entries"]] == [e["entryId"] for e in preview["entries"]]
+            assert client.get(f"/api/conversations/{conversation_id}/surface/preview").json()["active"] is False
+    finally:
+        await harness.aclose()
+
+
+async def test_preview_reports_unreadable_history_without_failing(tmp_path: Path) -> None:
+    harness = _harness(tmp_path)
+    await harness.seed()
+    try:
+        with _client(harness) as client:
+            conversation_id = harness.new_conversation(client)
+            client.post(f"/api/conversations/{conversation_id}/surface/external")
+            async def broken(binding, native_session_id):
+                raise OSError("locked")
+            harness.driver.load_native_history = broken
+            response = client.get(f"/api/conversations/{conversation_id}/surface/preview")
+            assert response.status_code == 200
+            assert response.json()["available"] is False and response.json()["entries"] == []
+    finally:
+        await harness.aclose()
+
+
+async def test_terminal_status_reaches_index_and_preview_until_return(tmp_path: Path) -> None:
+    from runtime.terminal_status import TerminalStatusBoard
+    harness = _harness(tmp_path)
+    await harness.seed()
+    harness.launcher.status_board = board = TerminalStatusBoard()
+    try:
+        with _client(harness) as client:
+            conversation_id = harness.new_conversation(client)
+            launch_id = client.post(f"/api/conversations/{conversation_id}/surface/external").json()["launch"]["id"]
+            token = board.register(launch_id, conversation_id)
+            assert board.record(launch_id, token, "notification", "Claude needs your permission to use Bash")
+            index = client.get("/api/conversations").json()["conversations"]
+            row = next(item for item in index if item["id"] == conversation_id)
+            assert row["terminalStatus"]["state"] == "waiting"
+            preview = client.get(f"/api/conversations/{conversation_id}/surface/preview").json()
+            assert preview["status"]["message"] == "Claude needs your permission to use Bash"
+            client.post(f"/api/conversations/{conversation_id}/surface/card?force=1")
+            row = next(item for item in client.get("/api/conversations").json()["conversations"] if item["id"] == conversation_id)
+            assert "terminalStatus" not in row and board.status(conversation_id) is None
+    finally:
+        await harness.aclose()
+
+
+async def test_focus_only_acts_while_terminal_holds_the_session(tmp_path: Path) -> None:
+    harness = _harness(tmp_path)
+    await harness.seed()
+    focused = []
+    async def focus(launch):
+        focused.append(launch.id)
+        return True
+    harness.launcher.focus = focus
+    try:
+        with _client(harness) as client:
+            conversation_id = harness.new_conversation(client)
+            assert client.post(f"/api/conversations/{conversation_id}/surface/focus").json()["focused"] is False
+            launch_id = client.post(f"/api/conversations/{conversation_id}/surface/external").json()["launch"]["id"]
+            assert client.post(f"/api/conversations/{conversation_id}/surface/focus").json()["focused"] is True
+            assert focused == [launch_id]
+    finally:
+        await harness.aclose()

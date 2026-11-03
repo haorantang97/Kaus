@@ -30,9 +30,7 @@ vi.mock("react-router-dom", async original => ({ ...await original<object>(), us
 
 const api = vi.hoisted(() => ({
   fetchGroupMessages: vi.fn(),
-  fetchContextPacket: vi.fn(),
   broadcastGroup: vi.fn(),
-  sendToGroupMember: vi.fn(),
   stopGroupThread: vi.fn(),
   patchGroup: vi.fn(),
   fetchGroups: vi.fn(),
@@ -130,12 +128,6 @@ beforeEach(() => {
     count: 0,
     nextBefore: null,
   });
-  api.fetchContextPacket.mockResolvedValue({
-    groupId: "collaboration:1",
-    generatedAt: "2026-09-18T10:00:00Z",
-    members: [],
-    markdown: "",
-  });
   api.subscribeGroupEvents.mockReturnValue(() => {});
   api.fetchGroups.mockResolvedValue({ groups: [group()], count: 1 });
   api.fetchGroup.mockResolvedValue({
@@ -155,8 +147,6 @@ function renderWorkspace(overrides: Partial<GroupWire> = {}) {
         members={MEMBERS}
         changeToken={0}
         membersPane={<div />}
-        directedMemberId={null}
-        onClearDirected={() => {}}
 
       />
     </>,
@@ -171,9 +161,7 @@ async function openDockOnGroup() {
     </>,
   );
   fireEvent.click(await screen.findByTestId("group-dock-pill"));
-  fireEvent.click(
-    await screen.findByRole("button", { name: new RegExp("有组长的房间") }),
-  );
+  fireEvent.click(await screen.findByTestId("group-open-collaboration:1"));
   return screen.findByTestId("group-member-member:a");
 }
 

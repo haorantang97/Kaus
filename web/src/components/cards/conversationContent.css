@@ -1,8 +1,8 @@
 /* Conversation content uses the existing neutral theme; controls stay reachable without hover. */
 .kaus-msg.kaus-content-message { width: 100%; padding: 5px 0 9px; }
 .kaus-msg.kaus-content-message.is-user { width: fit-content; max-width: min(82%, 760px); margin-left: auto; text-align: left; }
-.kaus-content-message.is-user .kaus-msg-body { padding: 12px 16px; border: 0; border-radius: 18px; background: color-mix(in srgb, var(--midground-base) 6%, var(--surface-raised)); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
-.kaus-content-message.is-assistant .kaus-prose { font-size: 14px; line-height: 1.8; letter-spacing: .005em; }
+.kaus-content-message.is-user .kaus-msg-body { padding: 12px 16px; border: 0; border-radius: 18px; background: color-mix(in srgb, var(--midground-base) 6%, var(--surface-raised)); font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+.kaus-content-message.is-assistant .kaus-prose { font-size: 15px; font-weight: 400; line-height: 1.6; letter-spacing: normal; }
 .kaus-content-message .kaus-msg-footer { display: flex; min-height: 27px; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 9px; }
 .kaus-content-message.is-user .kaus-msg-footer { justify-content: flex-end; }
 .kaus-content-message .kaus-msg-actions { position: static; opacity: 1; display: flex; gap: 3px; z-index: auto; }
@@ -25,7 +25,7 @@
 .kaus-markdown-content > :first-child { margin-top: 0; }
 .kaus-markdown-content > :last-child { margin-bottom: 0; }
 .kaus-markdown-content p { margin: 0 0 14px; }
-.kaus-markdown-content h1, .kaus-markdown-content h2, .kaus-markdown-content h3, .kaus-markdown-content h4, .kaus-markdown-content h5, .kaus-markdown-content h6 { margin: 23px 0 10px; color: inherit; font-weight: 650; line-height: 1.5; }
+.kaus-markdown-content h1, .kaus-markdown-content h2, .kaus-markdown-content h3, .kaus-markdown-content h4, .kaus-markdown-content h5, .kaus-markdown-content h6 { margin: 23px 0 10px; color: inherit; font-weight: 400; line-height: 1.5; }
 .kaus-markdown-content h1 { font-size: 1.38em; }
 .kaus-markdown-content h2 { font-size: 1.22em; }
 .kaus-markdown-content h3 { font-size: 1.1em; }
@@ -48,7 +48,7 @@
 .kaus-markdown-table { margin: 14px 0 20px; overflow-x: auto; border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent); border-radius: 8px; }
 .kaus-markdown-table table { width: 100%; border-collapse: collapse; font-size: .93em; }
 .kaus-markdown-table th, .kaus-markdown-table td { text-align: left; border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent); padding: 9px 12px; min-width: 90px; vertical-align: top; }
-.kaus-markdown-table th { font-weight: 600; background: color-mix(in srgb, var(--midground-base) 4%, transparent); }
+.kaus-markdown-table th { font-weight: 400; background: color-mix(in srgb, var(--midground-base) 4%, transparent); }
 .kaus-markdown-table tr:last-child td { border-bottom: 0; }
 .kaus-markdown-content .kaus-task-list-item { list-style: none; margin-left: -19px; }
 .kaus-task-list-item > input { margin-right: 8px; accent-color: var(--midground-base); }
@@ -74,7 +74,7 @@
 .kaus-artifact-preview { display: flex; flex-direction: column; width: min(920px, 86vw); min-width: 0; height: 100%; background: var(--surface-raised, #fff); color: var(--midground-base, #242424); box-shadow: -8px 0 40px rgb(0 0 0 / 10%); }
 .kaus-preview-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 17px 20px; border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent); }
 .kaus-preview-heading { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-.kaus-preview-heading strong { font: 600 14px/1.45 var(--theme-font-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kaus-preview-heading strong { font: 400 14px/1.45 var(--theme-font-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kaus-preview-heading small { font: 11px/1.4 var(--theme-font-sans); color: color-mix(in srgb, var(--midground-base) 48%, transparent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kaus-preview-actions { display: flex; align-items: center; flex: none; gap: 4px; }
 .kaus-preview-actions > :is(button,a) { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; padding: 7px; min-width: 30px; min-height: 30px; background: transparent; color: inherit; font: 12px/1.4 var(--theme-font-sans); cursor: pointer; }

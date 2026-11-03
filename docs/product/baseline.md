@@ -1,5 +1,6 @@
 # Hermes Dashboard 多 Agent 项目工作台开发基线 v1.2（合并版）
 
+> 2026-11-03 removed：文中的 `/api/kanban`、`selfcheck.py`、`test_dashboard.py`、`test_regressions.py`、`scripts/ops`、Hermes profile 树/分身/继承物化均已删除（见 docs/handoff）。
 > 历史基线：保留 2026-09-02 的架构背景与裁决。后续产品决定、当前实现与接手流程以 [开发交接](../handoff/README.md) 和其中链接的专题文档为准；本文旧有的“唯一规范”“锁定”不覆盖之后的决定。
 
 **文档版本：** v1.2 merged（历史规范）

@@ -7,10 +7,14 @@ import { Button, cream, dname, inputStyle, Modal, ModalTitle, toast } from "./ui
 
 const slugify = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
 
-export function NewAgentModal({ onClose, onCreated, initialParent = null }: { onClose: () => void; onCreated: () => void; initialParent?: string | null }) {
+export function NewAgentModal({ onClose, onCreated, initialParent = null, initialDisplay = "", initialId = "" }: {
+  onClose: () => void; onCreated: (name: string) => void; initialParent?: string | null;
+  /** Prefill from a deleted Project that cannot be restored in place. */
+  initialDisplay?: string; initialId?: string;
+}) {
   const { t } = useLocale();
-  const [display, setDisplay] = useState("");
-  const [id, setId] = useState("");
+  const [display, setDisplay] = useState(initialDisplay);
+  const [id, setId] = useState(initialId);
   const [desc, setDesc] = useState("");
   // 从轮盘的「+ 添加项目」进来时父级预填为那一列的父节点（批次七 d 第 5 条）。
   const [parent, setParent] = useState(initialParent ?? "default");
@@ -18,7 +22,7 @@ export function NewAgentModal({ onClose, onCreated, initialParent = null }: { on
   const [parentsErr, setParentsErr] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const idEdited = useRef(false);
+  const idEdited = useRef(Boolean(initialId));
 
   useEffect(() => {
     fetchProjects()
@@ -47,7 +51,7 @@ export function NewAgentModal({ onClose, onCreated, initialParent = null }: { on
       toast(parent
         ? t("newAgent.created", { name: display || name, parent: parentLabel })
         : t("newAgent.createdDraft", { name: display || name }), "ok");
-      onCreated();
+      onCreated(name);
     } catch (e) { setErr(t("newAgent.createFailed", { error: e instanceof Error ? e.message : String(e) })); setBusy(false); }
   };
 

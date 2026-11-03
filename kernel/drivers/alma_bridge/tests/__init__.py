@@ -1,1 +1,0 @@
-"""Alma bridge contract tests."""

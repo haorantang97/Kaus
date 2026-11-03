@@ -69,7 +69,7 @@ export function WorkbenchPage({moduleId,modules,loading,failed,onRefresh,navigat
         <button className="workbench-card-open" onClick={()=>navigate(workbenchPath(item.id))}><h2>{item.name}</h2>{item.description&&<p>{item.description}</p>}<footer><span>{t(!item.enabled?"workbench.disabled":"workbench.external")}</span><ArrowUpRight size={18}/></footer></button>
       </article>)}
     </div>}
-    {picker&&<WorkspacePicker initialPath={null} onSelect={inspect} onClose={()=>setPicker(false)}/>}
+    {picker&&<WorkspacePicker initialPath={null} title={t("workbench.pickFolder")} onSelect={inspect} onClose={()=>setPicker(false)}/>}
     {selectedIntake&&<WorkbenchIntake key={`intake:${selectedIntake.id}`} initial={selectedIntake} onClose={closeIntake} onUpdate={updateIntake} onInstalled={item=>{setInstalled(item);setSelectedIntake(null);navigate(workbenchPath(item.id));}} onConversation={(id,source)=>{setSelectedIntake(null);onIntakeConversation?.(id,source);}}/>}
     {configure&&<WorkbenchConfig key={`config:${configure.id}`} module={configure} onClose={()=>setConfig(null)}/>}
   </div>;

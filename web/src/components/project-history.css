@@ -1,6 +1,6 @@
 .project-history-head, .project-history-controls, .project-history-footer, .project-history-candidate { display:flex; align-items:center; gap:12px; }
 .project-history-head { justify-content:space-between; margin-bottom:22px; }
-.project-history-head h3 { margin:0 0 5px; font-size:17px; font-weight:600; }
+.project-history-head h3 { margin:0 0 5px; font-size:17px; font-weight: 400; }
 .project-history-muted { color:color-mix(in srgb,currentColor 58%,transparent); font-size:12px; }
 .project-history-icon { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border:0; border-radius:8px; background:transparent; color:inherit; cursor:pointer; }
 .project-history-icon:hover { background:color-mix(in srgb, currentColor 8%, transparent); }

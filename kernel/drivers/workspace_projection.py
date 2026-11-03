@@ -55,6 +55,9 @@ REASON_SHARED: Final[str] = "workspace_shared"
 REASON_NO_CONVENTION: Final[str] = "no_convention"
 #: 目录本身不能写（不存在 / 不是目录 / 在黑名单上）。
 REASON_DENIED: Final[str] = "workspace_denied"
+#: 目标文件是一个链接：原子写会把链接换成普通文件，断开它指向的来源。
+REASON_LINKED: Final[str] = "target_linked"
+LINKED_DETAIL: Final[str] = "目标文件是一个链接，投影不会把它换成普通文件；请先把它改成普通文件，或改用独立执行目录"
 
 #: 每种 :data:`~drivers.managed_block.BlockAction` 在报告里的一句话。
 ACTION_DETAIL: Final[dict[str, str]] = {
@@ -260,6 +263,21 @@ def materialize_block(
             warnings=tuple(warnings),
         )
 
+    if upsert.action != "unchanged" and target.is_symlink():
+        return BlockOutcome(
+            unsupported=_rows(
+                rows,
+                level=SupportLevel.UNSUPPORTED,
+                key_path=key_path,
+                target_ref=ref,
+                before=before,
+                after=wanted,
+                reason=REASON_LINKED,
+                detail=LINKED_DETAIL,
+            ),
+            warnings=tuple(warnings),
+        )
+
     action = "unchanged" if upsert.action == "unchanged" else "set"
     applied = _rows(
         rows,
@@ -395,7 +413,9 @@ def inspect_block_drift(
 
 __all__ = [
     "ACTION_DETAIL",
+    "LINKED_DETAIL",
     "REASON_DENIED",
+    "REASON_LINKED",
     "REASON_NO_CONVENTION",
     "REASON_NO_WORKSPACE",
     "REASON_SHARED",

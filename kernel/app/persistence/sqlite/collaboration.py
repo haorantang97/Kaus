@@ -153,6 +153,9 @@ class SqliteCollaborationSessionRepository:
         )
         return session
 
+    async def delete(self, collaboration_id: str) -> None:
+        self._db.run("DELETE FROM collaboration_sessions WHERE id = ?", (collaboration_id,))
+
 
 def _row_to_member(row: sqlite3.Row) -> CollaborationMember:
     return CollaborationMember(

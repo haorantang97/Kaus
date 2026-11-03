@@ -55,7 +55,7 @@ def test_fresh_database_gets_every_recommended_table(tmp_path) -> None:
         assert tables == EXPECTED_TABLES | {"schema_version"}
         # 十二张推荐表 + Phase 5 新增的 projection_results（AD-149）。
         # 数字写死是故意的：再多一张就得有人在这里说明它是什么。
-        assert len(EXPECTED_TABLES) == 16  # Includes native-source watermarks, bookmarks and application defaults.
+        assert len(EXPECTED_TABLES) == 17  # Includes native-source watermarks, bookmarks, application defaults and Project archives.
         assert "projection_results" in EXPECTED_TABLES
         # 可选缓存表（v1.0 §11.1 / AD-22：live 探针出结论前不建）确实没建。
         assert "conversation_messages" not in tables
@@ -566,3 +566,35 @@ def test_concurrent_event_append_keeps_the_replay_buffer_consistent(tmp_path) ->
             )
 
     asyncio.run(verify())
+
+
+def test_upgrade_removes_retired_context_packet_messages(tmp_path) -> None:
+    """v20：旧库里 ``context_packet`` 那一种组消息被删掉，其余行与读取照常。"""
+    GROUP = "collaboration:00000000-0000-4000-8000-000000000001"
+    path = tmp_path / "k.db"
+    database = SqliteDatabase(path, apply_migrations=False)
+    try:
+        migrate(database, target_version=19)
+        with database.transaction() as connection:
+            connection.execute(
+                "INSERT INTO collaboration_sessions (id, title, status, created_at, updated_at)"
+                " VALUES (?, 'Group', 'active', '2026-10-01T00:00:00+00:00', '2026-10-01T00:00:00+00:00')",
+                (GROUP,),
+            )
+            for sequence, kind in enumerate(("broadcast", "context_packet", "system")):
+                connection.execute(
+                    "INSERT INTO collaboration_messages (id, collaboration_session_id, sequence, kind,"
+                    " author_type, content, created_at) VALUES (?, ?, ?, ?, 'system', 'x',"
+                    " '2026-10-01T00:00:00+00:00')",
+                    (f"groupmsg:00000000-0000-4000-8000-00000000000{sequence}", GROUP, sequence, kind),
+                )
+        assert migrate(database) == tuple(m.version for m in MIGRATIONS if m.version > 19)
+    finally:
+        database.close()
+
+    async def read() -> None:
+        with SqliteUnitOfWork(path) as unit_of_work:
+            rows = await unit_of_work.repositories.group_messages.list_for_collaboration(GROUP)
+            assert [row.kind for row in rows] == ["broadcast", "system"]
+
+    asyncio.run(read())

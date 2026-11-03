@@ -21,6 +21,7 @@ _start_skill_inventory_refresh = AcpDriver.start_skill_inventory_refresh
 def isolate_native_inventory(monkeypatch):
     # These router tests must not read/run the test machine's installed parsers.
     monkeypatch.setattr(AcpDriver, "start_skill_inventory_refresh", lambda _: None)
+    monkeypatch.setattr("drivers.mcp_inventory.configured_mcp_sources", lambda *_a, **_k: ())
 
 
 def application(tmp_path, config=None):
@@ -102,6 +103,41 @@ def test_first_connect_enrolls_skill_flow_and_skip_persists(tmp_path, monkeypatc
         asyncio.run(runtime.aclose())
 
 
+def test_connect_returns_capability_step_once_with_native_mcp(tmp_path, monkeypatch):
+    from app.projects.models import Project
+    from drivers.mcp_inventory import preset_sources
+    home = tmp_path / "synthetic-home"
+    config = home / ".codex" / "config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('[mcp_servers.fs]\ncommand = "uvx"\nenv = { TOKEN = "sk-live-0123456789abcdefABCDEF" }\n')
+    original = config.read_bytes()
+    monkeypatch.setattr("drivers.skill_inventory.configured_roots", lambda *_: [])
+    monkeypatch.setattr("drivers.mcp_inventory.configured_mcp_sources", lambda registry, *_a, **_k: [
+        source for driver in registry.list_drivers() if getattr(driver, "preset", None)
+        for source in preset_sources(driver.preset.id, agent_key=driver.preset.id, agent_label=driver.preset.label,
+                                     project_id="project:default", home=home, env={})])
+    client, runtime, auth = application(tmp_path)
+    try:
+        asyncio.run(runtime.repositories.projects.save(Project.create(slug="default", display_name="X")))
+        connected = client.post("/api/engine-connections", headers=auth, json={"presetId": "codex"})
+        assert connected.status_code == 200, connected.text
+        step = connected.json()["onboarding"]
+        assert step["agentKey"] == "codex"
+        assert client.get(f"/api/skill-tree/onboarding/{step['id']}").status_code == 401
+        status = client.get(f"/api/skill-tree/onboarding/{step['id']}", headers=auth).json()
+        assert (status["status"], status["ready"], status["skillCount"], status["mcpCount"]) == ("pending", True, 0, 1)
+        tree = client.get("/api/skill-tree", headers=auth).json()
+        assert [(s["kind"], s["name"], s["agentKey"]) for s in tree["skills"]] == [("mcp", "fs", "codex")]
+        assert "sk-live" not in json.dumps(tree)
+        assert client.post("/api/skill-tree/onboarding", headers=auth, json={"id": step["id"], "outcome": "done"}).status_code == 200
+        again = client.post("/api/engine-connections", headers=auth, json={"presetId": "codex"})
+        assert "onboarding" not in again.json()
+        assert client.get("/api/skill-tree/onboarding/unknown", headers=auth).status_code == 404
+        assert config.read_bytes() == original
+    finally:
+        asyncio.run(runtime.aclose())
+
+
 def test_second_transport_for_existing_product_does_not_trigger_onboarding(tmp_path):
     from app.projects.models import Backend
     from drivers.mock.driver import MockDriver
@@ -131,13 +167,60 @@ def test_connect_rejects_untrusted_launch_fields(tmp_path, body):
 
 def test_malformed_persisted_data_does_not_silently_spawn_commands(tmp_path):
     path = tmp_path/'engine-connections.json'
-    path.write_text(json.dumps({'version':1,'presets':['sh']}))
+    path.write_text(json.dumps({'version':1,'presets':['sh'],'nativePaths':{'sh':'/bin/sh'}}))
+    assert read_connections(path) == ()
+    assert merge_connections(None, path) == {}
+    path.write_text(json.dumps({'version':1,'presets':[['sh']]}))
     with pytest.raises(ValueError):
         read_connections(path)
 
 
-@pytest.mark.parametrize("preset_id", ["alma", "devin"])
-def test_retired_presets_cannot_be_new_connections_or_trigger_onboarding(tmp_path, preset_id):
+def test_removed_preset_rows_do_not_block_other_connections_or_history(tmp_path):
+    from app.conversations.models import Conversation
+    from app.api.router import build_domain_router
+    from app.projects.models import AgentBinding, Backend, Project
+
+    path = tmp_path/'engine-connections.json'
+    path.write_text(json.dumps({'version':1, 'presets':['removed-agent', 'openclaw'],
+                                'nativePaths':{'removed-agent':'/usr/bin/removed-agent'}}))
+    project = Project.create(slug='work', display_name='Work')
+    binding = AgentBinding.create(project=project, backend='removed-agent')
+    conversation = Conversation.create(project_id=project.id, agent_binding_id=binding.id, title='Saved work')
+    client, runtime, auth = application(tmp_path)
+    try:
+        client.app.include_router(build_domain_router(runtime.repositories))
+        assert runtime.registry.try_get('backend:removed-agent') is None
+        assert runtime.registry.get('openclaw').preset.id == 'openclaw'
+        asyncio.run(runtime.repositories.backends.save(Backend.create(key='removed-agent', display_name='Removed', driver_kind='acp')))
+        asyncio.run(runtime.repositories.projects.save(project))
+        asyncio.run(runtime.repositories.bindings.save(binding))
+        asyncio.run(runtime.repositories.conversations.save(conversation))
+        assert 'removed-agent' not in {row['id'] for row in client.get('/api/engine-catalog', headers=auth).json()['engines']}
+        assert client.get('/api/engine-connections', headers=auth).status_code == 200
+        response = client.post('/api/engine-connections', headers=auth, json={'presetId':'removed-agent'})
+        assert response.status_code == 400 and response.json()['error']['code'] == 'invalid_engine_preset'
+        detail = client.get(f'/api/conversations/{conversation.id}', headers=auth)
+        assert detail.status_code == 200, detail.text
+        assert detail.json()['conversation']['title'] == 'Saved work'
+        listed = client.get(f'/api/projects/{project.id}/conversations', headers=auth)
+        assert listed.status_code == 200 and conversation.id in listed.text
+        bindings = client.get(f'/api/projects/{project.id}/bindings', params={'includeStatus':False}, headers=auth)
+        assert bindings.status_code == 200, bindings.text
+    finally:
+        asyncio.run(runtime.aclose())
+
+
+@pytest.fixture
+def retired_preset(monkeypatch):
+    from dataclasses import replace
+    from drivers.acp.presets import PRESETS
+    preset = replace(PRESETS['goose'], id='retired', label='Retired', catalog_status='legacy')
+    monkeypatch.setitem(PRESETS, 'retired', preset)
+    return preset
+
+
+def test_retired_presets_cannot_be_new_connections_or_trigger_onboarding(tmp_path, retired_preset):
+    preset_id = retired_preset.id
     client, runtime, auth = application(tmp_path)
     try:
         rows = client.get('/api/engine-catalog', headers=auth).json()['engines']
@@ -151,12 +234,12 @@ def test_retired_presets_cannot_be_new_connections_or_trigger_onboarding(tmp_pat
         asyncio.run(runtime.aclose())
 
 
-@pytest.mark.parametrize("preset_id", ["alma", "devin"])
-def test_retired_connections_and_history_survive_but_cannot_create_new_targets(tmp_path, preset_id, monkeypatch):
+def test_retired_connections_and_history_survive_but_cannot_create_new_targets(tmp_path, retired_preset, monkeypatch):
     from app.conversations.models import Conversation
     from app.api.router import build_domain_router
     from app.projects.models import AgentBinding, Backend, Project
     from drivers.acp.presets import get_preset
+    preset_id = retired_preset.id
 
     path = tmp_path/'engine-connections.json'
     original = json.dumps({'version':1, 'presets':[preset_id]})
@@ -417,7 +500,7 @@ def test_native_path_adapter_metadata_retains_bridge_and_rejects_unsupported(tmp
     command, env = apply_native_cli(PRESETS['pi'].command, {}, PRESETS['pi'], path)
     assert command == PRESETS['pi'].command
     assert env['PI_ACP_PI_COMMAND'] == path
-    for preset in ['antigravity', 'alma']:
+    for preset in ['antigravity']:
         assert not supports_native_cli(PRESETS[preset])
         with pytest.raises(ValueError):
             apply_native_cli(PRESETS[preset].command, {}, PRESETS[preset], path)

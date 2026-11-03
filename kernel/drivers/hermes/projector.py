@@ -636,6 +636,10 @@ def project_capabilities(
         )
 
     backup: Path | None = None
+    if plan.changes and target.is_symlink():
+        # A linked config belongs to another home. Replacing the link would
+        # silently detach it, so the pending keys are reported as a conflict.
+        _refuse_linked_target(plan)
     if dry_run:
         if plan.changes:
             plan.warnings.append(
@@ -669,6 +673,23 @@ def project_capabilities(
         dry_run=dry_run,
         backup_path=(str(backup) if backup is not None else file_backup),
     )
+
+
+def _refuse_linked_target(plan: _Plan) -> None:
+    """Move every pending write into ``unsupported`` and drop the change set."""
+    kept: list[ProjectionEntry] = []
+    for entry in plan.applied:
+        if entry.key_path in plan.changes and entry.action != "unchanged":
+            plan.unsupported.append(entry.model_copy(update={
+                "level": SupportLevel.UNSUPPORTED, "action": None,
+                "reason": workspace_projection.REASON_LINKED,
+                "detail": workspace_projection.LINKED_DETAIL,
+            }))
+        else:
+            kept.append(entry)
+    plan.applied = kept
+    plan.changes.clear()
+    plan.claims.clear()
 
 
 def _commit(

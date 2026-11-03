@@ -36,34 +36,15 @@ const network = {
       name: "default",
       label: "X",
       is_pinned: false,
-      model: null,
-      role: "root",
-      in_network: true,
-      gateway: null,
-      skill_count: 3,
-      symlinks: [],
       parent: null,
       killed: false,
       effective_killed: false,
-      main_twin: false,
       is_draft: false,
       children: [],
     },
   },
   roots: ["default"],
   drafts: [],
-  source: "test",
-};
-
-/* Dashboard 浮层拿不到数据会直接抛，这里给一份空但完整的摘要。 */
-const dashboardSummary = {
-  health: {
-    agent_total: 1, main: 1, twin: 0, sub: 0, drafts: 0, killed: 0, effective_killed: 0,
-    lint_hard_total: 0, lint_soft_total: 0, default_mcp_count: 0, agents_with_mcp: 0, const_subscribed: 0,
-  },
-  review: { killed: [], hard_lint: [], drafts: [] },
-  recent_changes: [],
-  generated_at: "2026-09-03T00:00:00Z",
 };
 
 function stubFetch(bootstrapStatus: number) {
@@ -77,19 +58,6 @@ function stubFetch(bootstrapStatus: number) {
     }
     if (url === "/api/terminal/settings") return { ok: true, status: 200, json: async () => ({ app: "cmux", launchers: [{ id: "cmux", label: "cmux", installed: true }] }) } as Response;
     if (url === "/api/network") return { ok: true, status: 200, json: async () => network } as Response;
-    if (url === "/api/dashboard/summary") {
-      return { ok: true, status: 200, json: async () => dashboardSummary } as Response;
-    }
-    // 旧浮层各自的空但**形状完整**的返回：只验路由渲染到了哪张页，不验内容。
-    if (url.startsWith("/api/config")) {
-      return { ok: true, status: 200, json: async () => ({ source: "config.yaml", config_version: 1, category_count: 0, categories: [], generated_at: "2026-09-03T00:00:00Z" }) } as Response;
-    }
-    if (url.startsWith("/api/warehouse")) {
-      return { ok: true, status: 200, json: async () => ({ root: "", source_count: 0, item_total: 0, type_totals: {}, sources: [] }) } as Response;
-    }
-    if (url.startsWith("/api/vault")) {
-      return { ok: true, status: 200, json: async () => ({ root: "", exists: true, tree: [], file_count: 0 }) } as Response;
-    }
     if (url.startsWith("/api/conversations")) {
       return { ok: true, status: 200, json: async () => ({ conversations: [], launches: [], count: 0, nextUpdatedAfter: null }) } as Response;
     }
@@ -104,12 +72,6 @@ function stubFetch(bootstrapStatus: number) {
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
-}
-
-/* batch40（DESIGN ★L 第 2 条）：仪表盘 / 任务板 / 资料库 / 仓库 / 设置收进了「更多」，
-   默认折着。要点它们的用例先把这一组打开。 */
-async function openMore(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByTestId("nav-more-toggle"));
 }
 
 beforeEach(() => {
@@ -138,10 +100,9 @@ describe("现代外壳的启动与重连", () => {
     await waitFor(() => expect(screen.getByTestId("conversation-sidebar")).toBeInTheDocument());
     expect(screen.queryByText("Legend")).toBeNull();
     // 批次七 d 第 4 条：导航顺序 + 去掉「New」，且「新会话」只有一个入口。
-    /* batch40（★L 第 2 条）：常显只剩每天都用的入口 + 一枚「更多」；五个旧面板折在里面。
-       batch42（用户裁决：概览页取消）：「概览」整项从导航里拿掉，**也不进「更多」**。 */
+    /* batch42（用户裁决：概览页取消）：「概览」整项从导航里拿掉。 */
     const labels = [...document.querySelectorAll(".app-sidebar .shell-nav-item .shell-nav-label")].map((el) => el.textContent);
-    expect(labels).toEqual(["新会话", "项目", "协作组", "工作台", "更多", "设置"]);
+    expect(labels).toEqual(["新会话", "项目", "协作组", "工作台", "设置"]);
     expect(labels).not.toContain("概览");
     /* 「新会话」入口只剩导航顶部那一枚：`/` 本身就是草稿页，铭牌上那枚按钮也去掉了。 */
     expect(screen.getAllByRole("button", { name: "新会话" })).toHaveLength(1);
@@ -196,49 +157,23 @@ describe("现代外壳的启动与重连", () => {
   });
 });
 
-/* batch40 / DESIGN ★L 第 2 条：常显只留每天都用的入口，五个旧面板收进「更多」。
-   折叠状态记 localStorage——每天不用的东西不该每天占三行。
-   batch42：「概览」不在常显、也不在「更多」里。 */
-describe("导航的「更多」分组（★L 第 2 条）", () => {
-  it("设置常驻底部，工作区工具按需展开", async () => {
-    const user = userEvent.setup();
+/* 常显只留每天都用的入口，设置固定在底部；运行概况、资料库、仓库已移除。 */
+describe("侧栏导航", () => {
+  it("只显示日常入口和设置", async () => {
     stubFetch(200);
     renderApp("/");
     await waitFor(() => expect(screen.getByTestId("conversation-sidebar")).toBeInTheDocument());
 
     const labels = () =>
       [...document.querySelectorAll(".app-sidebar .shell-nav-item .shell-nav-label")].map((el) => el.textContent);
-    expect(labels()).toEqual(["新会话", "项目", "协作组", "工作台", "更多", "设置"]);
-    expect(screen.getByTestId("nav-more-toggle")).toHaveAttribute("aria-expanded", "false");
-
-    await user.click(screen.getByTestId("nav-more-toggle"));
-    expect(labels()).toEqual([
-      "新会话", "项目", "协作组", "工作台", "更多", "资料库", "仓库", "设置",
-    ]);
-    // batch42：展开「更多」也不会把「概览」翻出来——它整项没了。
-    expect(labels()).not.toContain("概览");
-  });
-
-  it("开合状态写进 localStorage，重新挂载后还是那样", async () => {
-    const user = userEvent.setup();
-    stubFetch(200);
-    const view = renderApp("/");
-    await waitFor(() => expect(screen.getByTestId("conversation-sidebar")).toBeInTheDocument());
-    await user.click(screen.getByTestId("nav-more-toggle"));
-    expect(window.localStorage.getItem("kaus-nav-more-open-v1")).toBe("1");
-    view.unmount();
-
-    stubFetch(200);
-    renderApp("/");
-    await waitFor(() => expect(screen.getByTestId("nav-more-toggle")).toHaveAttribute("aria-expanded", "true"));
-    expect(screen.getAllByRole("button", { name: "设置" }).length).toBeGreaterThan(0);
+    expect(labels()).toEqual(["新会话", "项目", "协作组", "工作台", "设置"]);
+    expect(screen.queryByTestId("nav-more-toggle")).toBeNull();
   });
 
   it("连接未就绪时不暴露旧导航或工作区操作", async () => {
     stubFetch(404);
     renderApp("/");
     await screen.findByTestId("session-host-gate");
-    expect(screen.queryByTestId("nav-more-toggle")).toBeNull();
     expect(screen.queryByText("Legend")).toBeNull();
     expect(document.querySelector(".app-sidebar")).toBeNull();
   });
@@ -246,7 +181,7 @@ describe("导航的「更多」分组（★L 第 2 条）", () => {
 
 /* 批次七 d 第 6 条：侧栏自动收起（＋图钉）只在轮盘视图（Agents）生效。 */
 describe("侧栏自动收起的适用范围", () => {
-  it("Overview 上常驻，切到 Agents 才出现热区与图钉，再切到 Dashboard 又消失", async () => {
+  it("Overview 上常驻，切到 Agents 才出现热区与图钉，再切到设置又消失", async () => {
     const user = userEvent.setup();
     stubFetch(200);
     renderApp("/");
@@ -259,8 +194,6 @@ describe("侧栏自动收起的适用范围", () => {
     expect(screen.getByTitle("钉住侧栏")).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
-    await user.click(screen.getByRole("button", { name: "高级" }));
-    await user.click(screen.getByRole("button", { name: "运行概况" }));
     await waitFor(() => expect(screen.queryByTestId("sidebar-hotzone")).toBeNull());
     expect(screen.queryByTitle("钉住侧栏")).toBeNull();
   });
@@ -291,18 +224,15 @@ describe("从草稿页点导航", () => {
     expect(await screen.findByRole("button", { name: "Media" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("进入 /new 后点 Dashboard 能切换", async () => {
+  it("进入 /new 后点设置能切换", async () => {
     const user = userEvent.setup();
     stubFetch(200);
     renderApp("/new");
     await waitFor(() => expect(screen.getByText("Let’s make something sick")).toBeInTheDocument());
 
-    await openMore(user);
     await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
-    await user.click(screen.getByRole("button", { name: "高级" }));
-    await user.click(screen.getByRole("button", { name: "运行概况" }));
     await waitFor(() => expect(screen.queryByText("Let’s make something sick")).toBeNull());
-    expect(screen.getByText("仪表盘 · Dashboard")).toBeInTheDocument();
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/config");
   });
 
   it("进入 /new 后点「新会话」不会变成两页叠着", async () => {
@@ -319,25 +249,24 @@ describe("从草稿页点导航", () => {
    都靠它——以前七个视图全挂在 `/` 下靠 localStorage 记"我在哪页"，`/dashboard`
    打开的是 Overview。 */
 describe("每个视图一个真 URL", () => {
-  const cases: [string, string][] = [
-    ["/dashboard", "仪表盘 · Dashboard"],
-    ["/vault", "资料库 · Vault"],
-    ["/warehouse", "仓库 · Warehouse"],
-    ["/config", "设置"],
-  ];
-  for (const [path, marker] of cases) {
-    it(`${path} 渲染对应视图`, async () => {
+  it("/config 渲染设置", async () => {
+    stubFetch(200);
+    renderApp("/config");
+    await waitFor(() => expect(screen.getAllByText("设置").length).toBeGreaterThan(0));
+  });
+
+  for (const path of ["/dashboard", "/vault", "/warehouse"]) {
+    it(`${path} 已移除，渲染页面不存在`, async () => {
       stubFetch(200);
       renderApp(path);
-      await waitFor(() => expect(screen.getAllByText(marker).length).toBeGreaterThan(0));
+      await waitFor(() => expect(screen.getByTestId("not-found")).toBeInTheDocument());
     });
   }
 
-  it("/kanban 已屏蔽，回到首页", async () => {
+  it("/kanban 不再是视图：按未知地址渲染 404", async () => {
     stubFetch(200);
     renderApp("/kanban");
-    await waitFor(() => expect(screen.getByTestId("pathname")).toHaveTextContent(/^\/$/));
-    expect(screen.queryByText("Hermes 任务板")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("not-found")).toBeInTheDocument());
   });
 
   /* `/` and `/new` both open the conversation composer. */
@@ -385,18 +314,15 @@ describe("404 与幽灵页", () => {
 
 /* 第 1 件：点导航 = 换地址（以前只改 view/overlay，URL 不动）。 */
 describe("导航改的是地址", () => {
-  it("点「仪表盘」后 pathname 变成 /dashboard", async () => {
+  it("点「设置」后 pathname 变成 /config", async () => {
     const user = userEvent.setup();
     stubFetch(200);
     renderApp("/");
     await waitFor(() => expect(screen.getByTestId("conversation-sidebar")).toBeInTheDocument());
     expect(screen.getByTestId("pathname")).toHaveTextContent("/");
 
-    await openMore(user);
     await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
-    await user.click(screen.getByRole("button", { name: "高级" }));
-    await user.click(screen.getByRole("button", { name: "运行概况" }));
-    await waitFor(() => expect(screen.getByTestId("pathname")).toHaveTextContent("/dashboard"));
+    await waitFor(() => expect(screen.getByTestId("pathname")).toHaveTextContent("/config"));
   });
 });
 
@@ -430,9 +356,7 @@ describe("从项目页回到轮盘（第 3 件）", () => {
         ...network.nodes.default,
         name: "pronto",
         label: "Pronto",
-        role: "none",
         parent: "default",
-        skill_count: 0,
         children: [],
       },
     };
@@ -458,8 +382,8 @@ describe("从项目页回到轮盘（第 3 件）", () => {
     const user = userEvent.setup();
     withChild();
     renderApp("/projects/pronto");
-    // 项目页起来了（次级导航在）。
-    await waitFor(() => expect(document.querySelector(".kaus-project-nav")).not.toBeNull());
+    // 项目页起来了。
+    await waitFor(() => expect(screen.getByTestId("project-detail-page")).toBeInTheDocument());
     // 侧栏「项目」在项目页上保持高亮：用户看得出"我还在项目域里"。
     await waitFor(() => {
       const item = [...document.querySelectorAll<HTMLElement>(".app-sidebar .shell-nav-item")].find(

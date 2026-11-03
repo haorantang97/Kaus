@@ -314,6 +314,16 @@ class AcpPreset:
     process_env: Mapping[str, str] = field(default_factory=dict)
     #: 「在 CLI 里打开」的续接命令模板；``None`` = 不确定，不显示这个入口。
     resume_argv_template: tuple[str, ...] | None = None
+    #: 只对终端续接生效的非敏感参数与环境（关掉启动时的更新提示）。参数插在可执行文件
+    #: 之后，不改用户全局设置。取值来自 stablyai/orca（MIT）的启动表。
+    terminal_args: tuple[str, ...] = ()
+    terminal_env: Mapping[str, str] = field(default_factory=dict)
+    #: 终端续接前可预写的目录信任记录种类，见 :mod:`drivers.terminals.trust`。
+    workspace_trust: str | None = None
+    #: 原生 CLI 预填输入框（不提交）的参数，用于把 Kaus 里未发送的草稿带进终端。
+    draft_prompt_flag: str | None = None
+    #: 终端续接时可附加的会话专用状态 hook 种类，见 :mod:`drivers.terminals.status_hooks`。
+    status_hooks: str | None = None
     group_isolation_adapter: str | None = None
     restricted_execution_adapter: str | None = None
     skill_projection_adapter: str | None = None
@@ -466,6 +476,10 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 native_executable_env="CLAUDE_CODE_EXECUTABLE",
                 adapter_install_command="npm exec --yes --package=@agentclientprotocol/claude-agent-acp@0.90.0 -- node --version",
                 resume_argv_template=("claude", "--resume", SESSION_ID_PLACEHOLDER),
+                terminal_env={"DISABLE_AUTOUPDATER": "1"},
+                workspace_trust="claude",
+                draft_prompt_flag="--prefill",
+                status_hooks="claude",
                 # 它没有子命令式的登录入口：直接跑 `claude` 走交互式登录。
                 login_command="claude",
                 # 只有名字，**不自动放行**：中继路线要用这两个变量时，仍须在
@@ -527,6 +541,9 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 native_executable_env="CODEX_PATH",
                 adapter_install_command="npm exec --yes --package=@agentclientprotocol/codex-acp@1.10.0 -- node --version",
                 resume_argv_template=("codex", "resume", SESSION_ID_PLACEHOLDER),
+                # Enter on the update screen picks "Update now", which installs and exits.
+                terminal_args=("-c", "check_for_update_on_startup=false"),
+                workspace_trust="codex",
                 login_command="codex login",
                 env_keys_hint=("OPENAI_API_KEY", "CODEX_API_KEY"),
                 auth_method_ids=("chatgpt", "codex-api-key", "openai-api-key"),
@@ -573,6 +590,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 label="OpenCode",
                 command=("opencode", "acp"),
                 resume_argv_template=("opencode", "-s", SESSION_ID_PLACEHOLDER),
+                terminal_env={"OPENCODE_DISABLE_AUTOUPDATE": "true"},
                 # authMethods 的说明原话就是这一句（AD-156 取证）。
                 login_command="opencode auth login",
                 auth_method_ids=("opencode-login",),
@@ -878,6 +896,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 label="Pi",
                 command=("pi-acp",),
                 resume_argv_template=("pi", "--session", SESSION_ID_PLACEHOLDER),
+                terminal_env={"PI_SKIP_VERSION_CHECK": "1"},
                 quirks=AgentQuirks(
                     supports_session_resume=False,
                     supports_session_load=True,
@@ -1181,6 +1200,8 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 label="Cursor CLI",
                 command=("cursor-agent", "acp"),
                 resume_argv_template=("cursor-agent", "--resume", SESSION_ID_PLACEHOLDER),
+                terminal_args=("--disable-auto-update",),
+                workspace_trust="cursor",
                 executable="cursor-agent",
                 setup_url="https://cursor.com/docs/cli/acp",
                 login_command="agent login",
@@ -1243,6 +1264,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                     thought_chunks=False,
                 ),
                 resume_argv_template=("copilot", "--resume", SESSION_ID_PLACEHOLDER),
+                workspace_trust="copilot",
                 notes=(
                     "2026-10-16 隔离原生进程 + loopback 实测 ACP→TUI→ACP 同 ID 历史与技能范围；终端显式传递可映射配置；不支持的运行模式在启动前提示。",
                     "2026-09-27 官方 ACP 目录 1.0.88 与官方文档确认 --acp --stdio；"
@@ -1251,37 +1273,6 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                     "只暴露会话实际返回的可变配置，不将启动参数伪装成热切换。",
                     "模型与 BYOK 路由由原生 CLI 和 providers.json 管理；"
                     "文件监测只读取元数据。",
-                ),
-            )
-        ),
-        _preset(
-            AcpPreset(
-                id="devin",
-                catalog_status="legacy",
-                runtime_adapter="drivers.skill_execution.devin_runtime",
-                label="Devin",
-                command=("devin", "acp"),
-                executable="devin",
-                setup_url="https://docs.devin.ai/cli/acp/zed",
-                login_command="devin auth login",
-                config_root_default="~/.config/devin",
-                config_xdg_dir="devin",
-                workspace_config_dir=".devin",
-                config_watch_files=("config.json", "config.local.json", "mcp_config.json", "mcp_config.local.json"),
-                workspace=WorkspaceConventions(instructions_file="AGENTS.md"),
-                quirks=AgentQuirks(
-                    supports_session_resume=False,
-                    supports_session_load=False,
-                    supports_set_mode=False,
-                    mode_semantics="approval",
-                    model_switch="config_option",
-                    thought_chunks=False,
-                ),
-                notes=(
-                    "2026-09-27 官方 ACP 目录 3000.11.3：devin acp；"
-                    "会话能力按 initialize 与 configOptions 协商，未做本机推理验收。",
-                    "原生 CLI 自动读项目 AGENTS.md 与 .devin 配置；"
-                    "登录、订阅与组织策略仍由 Devin 管理。",
                 ),
             )
         ),
@@ -1441,42 +1432,6 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                     "原生包为 UNLICENSED，桥不复制原生实现；登录仍由用户的 CLI 管理。",
                     "2026-10-16：终端从桥记录映射原生会话 ID，校验工作目录后 --resume；"
                     "模型、思考与审批沿用会话设置，已验证 ACP/终端/冷恢复往返。",
-                ),
-            )
-        ),
-        _preset(
-            AcpPreset(
-                id="alma",
-                catalog_status="legacy",
-                runtime_adapter="drivers.alma_bridge.runtime",
-                resume_argv_template=("alma", "tui", SESSION_ID_PLACEHOLDER),
-                session_creation_proves_auth=False,
-                label="Alma",
-                command=(
-                    sys.executable,
-                    str(Path(__file__).resolve().parents[1] / "alma_bridge" / "cli.py"),
-                ),
-                executable="alma",
-                setup_url="https://alma.now/",
-                env_keys_hint=("ALMA_API_URL",),
-                client_methods={"questions": "_alma/questions"},
-                approval_mode_ids={"read_only": "chat", "bypass": "tools"},
-                quirks=AgentQuirks(
-                    supports_session_resume=False,
-                    supports_session_load=True,
-                    prefer_session_load=True,
-                    supports_set_mode=True,
-                    supports_set_model=True,
-                    mode_semantics="approval",
-                    model_switch="set_model",
-                    mcp_via_session_new=False,
-                ),
-                notes=(
-                    "2026-09-27：通过 Kaus 原创桥连接原生 loopback REST/WS；"
-                    "依据官方 v0.4.148 服务包的公开本地协议，未复制原生实现。",
-                    "默认 chat 每轮显式 noTools；tools 只在用户选完整权限后启用，"
-                    "沿用原生工具策略，不将其冒充 ask/auto。模型来自原生目录。",
-                    "原生安装与登录由用户管理；本机未安装原生 Alma，未完成原生推理验收。",
                 ),
             )
         ),

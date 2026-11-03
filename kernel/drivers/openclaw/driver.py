@@ -182,6 +182,10 @@ class OpenClawAcpDriver(AcpDriver):
         except ValueError:
             # Explicit non-native wrapper commands can still speak ordinary ACP.
             self.gateway = None
+        if self.gateway is not None:
+            # The Gateway selects models (sessions.patch) independently of the
+            # ACP bridge; this holds before any initialize has been absorbed.
+            self.quirks = replace(self.quirks, model_switch="config_option")
         if self.preset is not None:
             self.preset = replace(self.preset, approval_option_id=_PERMISSION_OPTION,
                                   approval_mode_ids={"ask": "guarded", "auto": "workspace", "bypass": "full", "read_only": "read-only"})
@@ -470,8 +474,18 @@ class OpenClawAcpDriver(AcpDriver):
     def _gateway_for(self, session_id: str):
         return self._session_gateways.get(session_id, self.gateway)
 
+    def _selection_applies(self, snapshot) -> bool | None:
+        if self.gateway is None:
+            return super()._selection_applies(snapshot)
+        # Gateway-backed selection applies whenever the Gateway answered; an
+        # empty configured list is "no models configured", not "cannot select".
+        return None if snapshot is None or snapshot.degraded else True
+
     async def _probe_catalog(self, binding, *, model_id=None):
         """The shared Gateway owns persistence; read its catalog without a session."""
+        if self.gateway is None:
+            # A custom ACP command without a Gateway uses the ordinary session probe.
+            return await super()._probe_catalog(binding, model_id=model_id)
         try:
             payload = await self.gateway.call("models.list", {"includeDetails": True, "view": "configured"})
             if not isinstance(payload.get("models"), list):
@@ -483,7 +497,8 @@ class OpenClawAcpDriver(AcpDriver):
             return _CatalogSnapshot(fetched_at=datetime.now(timezone.utc), models=models,
                 current_model_id=current, model_option_id=_MODEL_OPTION if models else None,
                 thought_levels=selected.reasoning_levels if selected else (),
-                engine_default_available=True, auth_state="unknown")
+                engine_default_available=True, auth_state="unknown",
+                diagnostics=() if models else ("OpenClaw Gateway 没有可手动选择的已配置模型",))
         except (AcpRpcError, AcpTransportError, asyncio.TimeoutError) as exc:
             return _CatalogSnapshot(fetched_at=datetime.now(timezone.utc), degraded=True,
                 diagnostics=(str(exc),))

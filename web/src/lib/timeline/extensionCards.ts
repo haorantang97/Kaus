@@ -24,6 +24,18 @@ import {
 } from "./reducer";
 import type { AnyTimelineItem } from "./reducer";
 
+/** 驱动发出的非常规停止理由（`{stopReason}`）。 */
+export const STOP_REASON_NAMESPACE = "acp";
+export const STOP_REASON_NAME = "stop_reason";
+
+/** Project capabilities a session did not receive (`{projectId, items: [{kind, names, reason}]}`). */
+export const PROJECT_UNAPPLIED_NAMESPACE = "kaus";
+export const PROJECT_UNAPPLIED_NAME = "project.unapplied";
+
+/** An action the main agent took for the user through the control MCP (`{proxy, action, ...}`). */
+export const PROXY_ACTION_NAMESPACE = "kaus";
+export const PROXY_ACTION_NAME = "proxy.action";
+
 /** 有专属渲染的扩展事件（`namespace/name`）。 */
 export const EXTENSION_CARDS: ReadonlySet<string> = new Set<string>([
   /* 用户自己发的那句话。正常情况下 reducer 已经把它变成 message 条目，
@@ -39,6 +51,12 @@ export const EXTENSION_CARDS: ReadonlySet<string> = new Set<string>([
      一行中性系统提示，而不是按「未登记 → 不显示」被静默丢掉——一次没送到的发送
      被藏起来，界面就等于骗人说它发出去了。 */
   `${USER_MESSAGE_NAMESPACE}/${USER_MESSAGE_FAILED_NAME}`,
+  /* 非常规停止（token 用尽、拒绝回答等）。不显示，这一轮看起来就像"什么都没做"。 */
+  `${STOP_REASON_NAMESPACE}/${STOP_REASON_NAME}`,
+  /* D-03：Project 能力没送进引擎时必须看得见。 */
+  `${PROJECT_UNAPPLIED_NAMESPACE}/${PROJECT_UNAPPLIED_NAME}`,
+  /* 主 Agent 代为审批或改设置：必须留在时间线上。 */
+  `${PROXY_ACTION_NAMESPACE}/${PROXY_ACTION_NAME}`,
 ]);
 
 export function hasExtensionCard(namespace: string, name: string): boolean {

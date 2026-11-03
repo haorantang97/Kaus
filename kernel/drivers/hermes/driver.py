@@ -90,6 +90,7 @@ from drivers.hermes.translator import (
 )
 from runtime.capability_matrix import BackendCapabilities, InterruptCapability
 from runtime.event_envelope import (
+    TERMINAL_RUN_EVENT_TYPES,
     AgentEventEnvelope,
     EventSource,
     ExtensionEvent,
@@ -217,6 +218,8 @@ class HermesDriver:
         self._watchers: dict[str, HermesOutOfBandWatcher] = {}
         self._runtimes: dict[str, _RuntimeState] = {}
         self._isolated_runtimes: dict[str, Any] = {}
+        #: Binding behind each isolated runtime, for usage write-back on run end / stop.
+        self._isolated_bindings: dict[str, AgentBinding] = {}
         self._project_drivers: dict[str, Any] = {}
         self._capabilities: BackendCapabilities | None = None
         self._report: capabilities_mod.HermesCapabilityReport | None = None
@@ -1008,6 +1011,11 @@ class HermesDriver:
             failed_skills = tuple(item for item in result.unsupported
                 if item.capability_type == "skill-selection" or item.capability_type.split(":")[-1] == "skills")
             if mode == "managed" and failed_skills:
+                from drivers.hermes.skill_projection import archived_skills
+                archived = archived_skills(effective)
+                if archived:
+                    hint = failure_hints.skill_archived_by_engine(archived)
+                    raise UnsupportedCapabilityError(hint.message, failure=hint)
                 raise UnsupportedCapabilityError("项目技能未完整应用，请检查技能来源后重试")
             previous_mode = session_mode(self.projection_scope(binding), conversation.id)
             scope = pin_session(self.projection_scope(binding), conversation.id,
@@ -1060,6 +1068,31 @@ class HermesDriver:
         from drivers.hermes.isolated_runtime import create_driver
         return await create_driver(self, binding).session_options_for(conversation, effective)
 
+    async def unapplied_project_capabilities(self, conversation, effective, *, workspace_root=None):
+        """Effective capabilities this session will not receive (D-03).
+
+        Hermes reads Project instructions from the managed block in its profile
+        directory; they count as delivered when that block holds the current
+        text. A shared native directory does not carry a Project skill scope.
+        """
+        from drivers.base import UnappliedCapability
+        from drivers.hermes.skill_projection import selection_of
+        from drivers.projection_gaps import SKILLS, UNSUPPORTED, instructions_gap
+
+        binding = self._binding_for(conversation)
+        rule = projection_map.file_rule_for("instructions")
+        gaps = []
+        # Instructions live in the profile directory, whatever the workspace.
+        instructions = instructions_gap(effective, workspace_root=str(self.projection_scope(binding)),
+            filename=rule.filename if rule is not None else None, guard=False)
+        if instructions is not None:
+            gaps.append(instructions)
+        if (not workspace_root and not project_scope.enabled(binding)
+                and not binding.runtime_config.get("group_execution") and selection_of(effective) is not None):
+            gaps.append(UnappliedCapability(kind=SKILLS, names=(selection_of(effective).capability_id,),
+                reason=UNSUPPORTED))
+        return tuple(gaps)
+
     def supports_workspace_override(self) -> bool:
         return True
 
@@ -1109,6 +1142,7 @@ class HermesDriver:
             native_handle = handle
             handle = handle.model_copy(update={"runtime_id": "isolated-" + uuid.uuid4().hex})
             self._isolated_runtimes[handle.runtime_id] = (driver, native_handle)
+            self._isolated_bindings[handle.runtime_id] = binding
             return handle
         supervisor = self.supervisor_for(binding)
         status = await supervisor.ensure_ready()
@@ -1893,6 +1927,8 @@ class HermesDriver:
             driver, handle = self._isolated_runtimes[runtime.runtime_id]
             async for event in driver.events(handle):
                 yield event
+                if event.event.type in TERMINAL_RUN_EVENT_TYPES and not event.is_child_run:
+                    await self._sync_skill_usage(self._isolated_bindings.get(runtime.runtime_id))
             return
         state = self._state(runtime)
         while True:
@@ -1900,6 +1936,22 @@ class HermesDriver:
             if item is _SENTINEL:
                 return
             yield item
+
+    async def _sync_skill_usage(self, binding: AgentBinding | None) -> None:
+        """Mirror managed-copy skill usage into the source profile (best effort).
+
+        The only write Kaus makes into a user's native Hermes directory; see
+        :mod:`drivers.hermes.skill_usage_sync` for its exact limits.
+        """
+        if binding is None or not project_scope.enabled(binding):
+            return
+        from drivers.hermes import skill_usage_sync
+        scope = project_scope.home_for(self.hermes_root, binding)
+        source = self.gateway_config_for(binding).hermes_home
+        try:
+            await asyncio.to_thread(skill_usage_sync.merge_usage, scope, source)
+        except Exception as exc:  # noqa: BLE001 - telemetry must never fail a conversation
+            LOGGER.warning("技能用量回写失败：%s", redact(str(exc)))
 
     def runtime_reusable(self, runtime: RuntimeHandle) -> bool:
         isolated = self._isolated_runtimes.get(runtime.runtime_id)
@@ -1914,7 +1966,11 @@ class HermesDriver:
         isolated = self._isolated_runtimes.pop(runtime.runtime_id, None)
         if isolated is not None:
             driver, handle = isolated
-            return await driver.stop_runtime(handle)
+            binding = self._isolated_bindings.pop(runtime.runtime_id, None)
+            try:
+                return await driver.stop_runtime(handle)
+            finally:
+                await self._sync_skill_usage(binding)
         state = self._runtimes.pop(runtime.runtime_id, None)
         if state is None:
             return

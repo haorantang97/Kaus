@@ -345,7 +345,6 @@ CollaborationMessageKind = Literal[
     "broadcast",
     "directed",
     "member_turn",
-    "context_packet",
     "writeback",
     "system",
 ]
@@ -355,7 +354,6 @@ CollaborationMessageKind = Literal[
 - ``broadcast``：用户发给**组内全体**活跃成员的一条（AD-153）；
 - ``directed``：用户发给**点名的**若干成员的一条（AD-153）；
 - ``member_turn``：某个成员**一轮的最终正文**（PRD §B2，批次四十五 a）；
-- ``context_packet``：按 Context Policy 生成的上下文包（N §9.4 / AD-154）；
 - ``writeback``：显式写回项目的结论（N §9.8 ``/writebacks``）；
 - ``system``：成员加入/离开等 Group 自身的事件。
 

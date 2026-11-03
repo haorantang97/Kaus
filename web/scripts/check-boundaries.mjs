@@ -40,11 +40,8 @@ const ALLOWED = [
    （批次七第 ② 项）。这份清单只减不增——**新建的文件一律受检**，这正是这条检查
    要防的事：新写的页面/卡片不许再长出引擎名分支。清完一个就从这里删一行。 */
 const LEGACY = [
-  "Conversation.tsx",
   "ConfigOverlay.tsx",
-  "KanbanOverlay.tsx",
   "ProfileDrawer.tsx",
-  "TerminalLab.tsx",
   "UpdateHealthAlert.tsx",
   "WarehouseOverlay.tsx",
   "ui.tsx",

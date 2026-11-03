@@ -127,7 +127,7 @@ export const DOCK_STORAGE_KEY = "kaus.groupDock";
 export interface DockState {
   /** 浮层是不是展开着。false = 收成右下角那枚 Pill。 */
   open: boolean;
-  /** 展开着的那个组（浮层里一次只展开一个）。 */
+  /** 进入的那个组（第二级）；null = 停在组列表（第一级）。 */
   expandedGroupId: string | null;
 }
 
@@ -186,13 +186,14 @@ export function minimizeGroupDock(): void {
   writeDock({ ...dock, open: false });
 }
 
-/** 关闭：收回 Pill 并把展开位置也忘掉（下次点开是干净的组列表）。 */
-export function closeGroupDock(): void {
-  writeDock(CLOSED);
+/** 浮窗两级导航：`groupId` = 进入那个组（第二级）；`null` = 回到组列表（第一级）。 */
+export function selectGroup(groupId: string | null): void {
+  writeDock({ ...dock, expandedGroupId: groupId });
 }
 
-export function toggleGroupExpanded(groupId: string): void {
-  writeDock({ ...dock, expandedGroupId: dock.expandedGroupId === groupId ? null : groupId });
+/** 打开浮窗并停在组列表（多组时的拖放落点）。 */
+export function showGroupList(): void {
+  writeDock({ open: true, expandedGroupId: null });
 }
 
 /* ------------------------------------------------------------------ *

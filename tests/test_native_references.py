@@ -251,7 +251,7 @@ def test_sqlite_reference_reads_live_wal_without_copying_database(tmp_path):
     finally:writer.close()
 
 
-def test_api_defaults_to_reference_and_explicit_archive_download_survives(tmp_path):
+def test_api_adds_references_and_an_explicit_archive_survives_source_removal(tmp_path):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from app.api.native_archives import build_native_archive_router
@@ -264,20 +264,18 @@ def test_api_defaults_to_reference_and_explicit_archive_download_survives(tmp_pa
     app=FastAPI();service=NativeArchiveService(store,repos)
     app.router.routes.extend(build_native_archive_router(service,auth_policy=SessionAuthPolicy(lambda:'fixture')).routes)
     client=TestClient(app,base_url='http://127.0.0.1:8877');headers={'Authorization':'Bearer fixture'}
-    preview=client.post('/api/native-archives/preview',headers=headers,json={'projectId':project.id,'sourceIds':[key]}).json()
-    assert preview['storage']=='reference'
-    result=client.post('/api/native-archives/import',headers=headers,json={'projectId':project.id,'previewToken':preview['previewToken']})
+    result=client.post('/api/native-archives/add',headers=headers,json={'projectId':project.id,'sourceIds':[key]})
     identity=result.json()['archiveIds'][0]
     page=client.get(f'/api/native-archives/{identity}',headers=headers,params={'projectId':project.id}).json()
     asset=client.get(f'/api/native-archives/{identity}/assets/'+page['assets'][0]['hash'],headers=headers,params={'projectId':project.id})
     assert asset.status_code==200 and asset.content==b'fixture-image'
     revision=page['archive']['revision']
     jsonl(path,codex('changed through API'))
-    for endpoint in ('','/records','/assets/'+page['assets'][0]['hash']):
+    assert page['archive']['storage']=='reference'
+    for endpoint in ('','/assets/'+page['assets'][0]['hash']):
         stale=client.get(f'/api/native-archives/{identity}'+endpoint,headers=headers,params={'projectId':project.id,'revision':revision})
         assert stale.status_code==409 and stale.json()['error']['code']=='archive_source_changed'
-    snapshot=client.post(f'/api/native-archives/{identity}/archive',headers=headers,json={'projectId':project.id})
-    assert snapshot.status_code==200
+    snapshot=store.archive(identity,project.id)
     path.unlink()
-    item=client.get('/api/native-archives/'+snapshot.json()['archiveIds'][0],headers=headers,params={'projectId':project.id}).json()
+    item=client.get('/api/native-archives/'+snapshot['archiveIds'][0],headers=headers,params={'projectId':project.id}).json()
     assert item['archive']['storage']=='archive' and item['messages']

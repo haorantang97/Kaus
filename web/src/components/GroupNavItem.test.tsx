@@ -126,11 +126,11 @@ describe("侧栏「协作组」入口", () => {
     );
   });
 
-  it("开着多个组时不替用户猜：打开浮窗摊开第一个组，不加入", async () => {
+  it("开着多个组时不替用户猜：打开浮窗停在组列表，不加入", async () => {
     await seed([group("collaboration:1", "评审组"), group("collaboration:2", "写作组")]);
     renderItem();
     dropOn(screen.getByTestId("nav-groups"), CONVERSATION_DRAG_MIME, "conversation:9", "发布前检查");
-    await waitFor(() => expect(dockState()).toEqual({ open: true, expandedGroupId: "collaboration:1" }));
+    await waitFor(() => expect(dockState()).toEqual({ open: true, expandedGroupId: null }));
     expect(api.addGroupMember).not.toHaveBeenCalled();
   });
 });

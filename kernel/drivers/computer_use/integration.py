@@ -9,6 +9,7 @@ import asyncio
 from dataclasses import replace
 import hashlib
 import json
+import logging
 from pathlib import Path
 import time
 import tomllib
@@ -45,7 +46,8 @@ def quarantine(leases, confirm, spec, session_id, metadata, *, monitor=False):
                     return
                 try:
                     stopped = await asyncio.wait_for(confirm(spec, session_id, metadata), timeout=8)
-                except Exception:
+                except Exception:  # noqa: BLE001 - adapter code; keep observing
+                    logging.getLogger(__name__).debug("Quarantine check failed for %s", session_id, exc_info=True)
                     stopped = False
                 if stopped is True:
                     release_quarantine(leases)
@@ -69,7 +71,8 @@ async def reconcile_resources():
     for resource, (lease, confirm, spec, session_id, metadata) in list(_quarantined.items()):
         try:
             stopped = await asyncio.wait_for(confirm(spec, session_id, metadata), timeout=8)
-        except Exception:
+        except Exception:  # noqa: BLE001 - adapter code; the resource stays quarantined
+            logging.getLogger(__name__).debug("Quarantine reconcile check failed for %s", session_id, exc_info=True)
             stopped = False
         if stopped is True:
             release_quarantine([lease])

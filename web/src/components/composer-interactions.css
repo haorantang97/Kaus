@@ -29,7 +29,7 @@ body :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer textarea,
 }
 .kaus-user-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .kaus-user-text.is-collapsed { max-height: 300px; overflow: hidden; mask-image: linear-gradient(to bottom, #000 calc(100% - 3rem), transparent); }
-.kaus-user-expand { display: block; margin-top: 8px; padding: 3px 0; border: 0; border-radius: 4px; background: transparent; color: color-mix(in srgb, var(--midground-base) 62%, transparent); font: 500 12px/1.5 var(--theme-font-sans); }
+.kaus-user-expand { display: block; margin-top: 8px; padding: 3px 0; border: 0; border-radius: 4px; background: transparent; color: color-mix(in srgb, var(--midground-base) 62%, transparent); font: 400 12px/1.5 var(--theme-font-sans); }
 .kaus-thinking-dots { display: inline-flex; align-items: center; gap: 3.5px; width: 17px; }
 .kaus-thinking-dots > span { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: kaus-thinking-dot 1.9s cubic-bezier(.4,0,.2,1) infinite; }
 .kaus-thinking-dots > span:nth-child(2) { animation-delay: .15s; }

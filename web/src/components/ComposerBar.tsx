@@ -638,7 +638,7 @@ export function ComposerBar({
             value={model.value}
             display={modelLabel || t("bar.model")}
             options={modelOptions}
-            title={[sourceHint(model.source, t), modelDegraded ? modelDiagnostic : null]
+            title={[sourceHint(model.source, t), model.unapplied ? t("bar.model.unapplied", { model: model.unapplied }) : null, modelDegraded ? modelDiagnostic : null]
               .filter(Boolean)
               .join(" · ") || undefined}
             /* 一条时也要说清楚"就这一条"的原因（有 diagnostics 才说）。 */
@@ -648,7 +648,7 @@ export function ComposerBar({
             onSelect={onChangeModel}
           />
         ) : (
-          <BarPill label={t("bar.model")} title={sourceHint(model.source, t)}>
+          <BarPill label={t("bar.model")} title={[sourceHint(model.source, t), model.unapplied ? t("bar.model.unapplied", { model: model.unapplied }) : null].filter(Boolean).join(" · ") || undefined}>
             {modelLabel}
           </BarPill>
         )

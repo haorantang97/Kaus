@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronRight, ExternalLink, LoaderCircle, MoreHorizontal, Pencil, Unplug, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { QuotaRecovery } from "../lib/accountQuotasApi";
-import { useLocale } from "../i18n";
+import { t, tDynamic, useLocale } from "../i18n";
 import { Button, Modal } from "./ui";
 import { SelectPopover } from "./SelectPopover";
 import {
@@ -12,33 +12,9 @@ import {
   type QuotaConnection, type QuotaConnectionDraft, type QuotaConnectionField, type QuotaConnectionProvider,
 } from "../lib/quotaConnectionsApi";
 
-function failureLabel(error: unknown, zh: boolean): string {
+function failureLabel(error: unknown): string {
   const reason = error instanceof QuotaConnectionError ? error.reason : "request_failed";
-  const labels: Record<string, [string, string]> = {
-    desktop_required: ["请在桌面端登录", "Sign in from the desktop app"],
-    sign_in_required: ["登录已失效，请重新登录", "Sign in again"],
-    credential_expired: ["凭据已失效", "Credentials expired"],
-    credential_unavailable: ["请检查凭据", "Check credentials"],
-    management_key_required: ["需要管理密钥", "Management key required"],
-    permission_required: ["缺少查询权限", "Usage access required"],
-    quota_not_returned: ["未取得额度数据", "No quota data returned"],
-    web_session_required: ["请重新登录", "Sign in again"],
-    unsupported_provider: ["暂不支持此来源", "Source unsupported"],
-    credential_access_required: ["无法访问本机凭据", "Local credentials unavailable"],
-    invalid_config: ["请检查填写内容", "Check the fields"],
-    invalid_fields: ["请检查填写内容", "Check the fields"],
-    connection_changed: ["来源已更新，请重新打开", "Source changed. Reopen it"],
-    connection_not_found: ["连接已移除", "Connection removed"],
-    login_expired: ["登录已超时，请重试", "Sign-in timed out. Try again"],
-    login_in_progress: ["登录正在进行", "Sign-in in progress"],
-    login_failed: ["登录未完成，请重试", "Sign-in failed. Try again"],
-    invalid_endpoint: ["请检查查询地址", "Check the query address"],
-    storage_unavailable: ["无法保存连接，请重试", "Could not save the connection"],
-    cloud_credentials_required: ["需要云账号凭据", "Cloud credentials required"],
-    source_changed: ["账号已更新，请刷新后重试", "Account changed. Refresh and retry"],
-    credential_required: ["请填写此查询地址的密钥", "Enter the key for this query address"],
-  };
-  return labels[reason]?.[zh ? 0 : 1] ?? (zh ? "连接未完成，请重试" : "Connection failed. Try again");
+  return tDynamic(`quota.connection.failure.${reason}`, t("quota.connection.failed"));
 }
 function defaults(provider?: QuotaConnectionProvider): Record<string, string> {
   return Object.fromEntries((provider?.fields ?? []).filter(field => field.type !== "password").map(field => [field.key, field.default ?? (field.type === "select" ? field.options?.[0]?.value ?? "" : "")]));
@@ -52,7 +28,7 @@ export interface QuotaConnectionTarget {
 interface Props { target: QuotaConnectionTarget; onClose: () => void; onChanged: () => void }
 
 export function QuotaConnections({ target, onClose, onChanged }: Props) {
-  const { locale } = useLocale(); const zh = locale === "zh";
+  const { locale } = useLocale();
   const [provider, setProvider] = useState<QuotaConnectionProvider | null>(null);
   const [editing, setEditing] = useState<QuotaConnection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,10 +60,10 @@ export function QuotaConnections({ target, onClose, onChanged }: Props) {
         const preset = Object.fromEntries(Object.entries(target.recovery?.config ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
         setEditing(existing ?? null); setProvider(spec); setConfig({ ...defaults(spec), ...existing?.config, ...preset });
       })
-      .catch(cause => { if (!controller.signal.aborted) setError(failureLabel(cause, zh)); })
+      .catch(cause => { if (!controller.signal.aborted) setError(failureLabel(cause)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [target, connectionId, removing, revision, zh]);
+  }, [target, connectionId, removing, revision, locale]);
   useEffect(() => () => {
     operation.current?.abort();
     if (pollTimer.current !== null) window.clearTimeout(pollTimer.current);
@@ -117,11 +93,11 @@ export function QuotaConnections({ target, onClose, onChanged }: Props) {
     const controller = new AbortController(); operation.current = controller;
     setBusy("save"); setError(null);
     try { await saveQuotaConnection(draft(), connectionId, controller.signal); completed(controller); }
-    catch (cause) { if (!controller.signal.aborted) { setError(failureLabel(cause, zh)); setBusy(null); } }
+    catch (cause) { if (!controller.signal.aborted) { setError(failureLabel(cause)); setBusy(null); } }
   }
   async function login() {
     if (!provider || busy) return;
-    if (!canLoginQuotaConnection()) { setError(failureLabel(new QuotaConnectionError("desktop_required"), zh)); return; }
+    if (!canLoginQuotaConnection()) { setError(failureLabel(new QuotaConnectionError("desktop_required"))); return; }
     const controller = new AbortController(); operation.current = controller;
     setBusy("login"); setError(null);
     try {
@@ -131,7 +107,7 @@ export function QuotaConnections({ target, onClose, onChanged }: Props) {
       void openQuotaConnectionLogin(id).catch(cause => {
         if (!controller.signal.aborted && loginId.current === id) {
           controller.abort(); loginId.current = null; void cancelQuotaConnectionLogin(id).catch(() => {});
-          setBusy(null); setError(failureLabel(cause, zh));
+          setBusy(null); setError(failureLabel(cause));
         }
       });
       const poll = async () => {
@@ -141,30 +117,30 @@ export function QuotaConnections({ target, onClose, onChanged }: Props) {
           if (status.status === "connected") { completed(controller); return; }
           if (status.status !== "waiting" && status.status !== "verifying") {
             loginId.current = null; setBusy(null);
-            if (status.status === "failed") setError(failureLabel(new QuotaConnectionError(status.reason), zh));
+            if (status.status === "failed") setError(failureLabel(new QuotaConnectionError(status.reason)));
             return;
           }
           pollTimer.current = window.setTimeout(() => { void poll(); }, 1000);
         } catch (cause) {
           if (!controller.signal.aborted) {
             loginId.current = null; void cancelQuotaConnectionLogin(id).catch(() => {});
-            setBusy(null); setError(failureLabel(cause, zh));
+            setBusy(null); setError(failureLabel(cause));
           }
         }
       };
       await poll();
-    } catch (cause) { if (!controller.signal.aborted) { setBusy(null); setError(failureLabel(cause, zh)); } }
+    } catch (cause) { if (!controller.signal.aborted) { setBusy(null); setError(failureLabel(cause)); } }
   }
   async function remove() {
     if (!connectionId || busy) return;
     const controller = new AbortController(); operation.current = controller; setBusy("remove"); setError(null);
     try { await deleteQuotaConnection(connectionId, controller.signal); completed(controller); }
-    catch (cause) { if (!controller.signal.aborted) { setError(failureLabel(cause, zh)); setBusy(null); } }
+    catch (cause) { if (!controller.signal.aborted) { setError(failureLabel(cause)); setBusy(null); } }
   }
   function renderField(field: QuotaConnectionField) {
     const placeholder = field.type === "password" && editing?.secretFields.includes(field.key)
-      ? (zh ? "已保存，留空保留" : "Saved · leave blank to keep")
-      : field.type === "password" && hasExistingCredential ? (zh ? "使用现有密钥" : "Use existing key") : field.placeholder;
+      ? t("quota.connection.secretSaved")
+      : field.type === "password" && hasExistingCredential ? t("quota.connection.secretExisting") : field.placeholder;
     return <div className="kaus-quota-connection-field" key={field.key}>
       <label htmlFor={`quota-field-${field.key}`} title={field.help}>{field.label}</label>
       {field.type === "select" ? <SelectPopover id={`quota-field-${field.key}`} label={field.label} value={config[field.key] ?? ""} onChange={value => { setConfig(current => ({ ...current, [field.key]: value })); setError(null); }} options={field.options ?? []} disabled={!!busy} /> : <input id={`quota-field-${field.key}`} name={field.key} type={field.type} value={(field.type === "password" ? secrets : config)[field.key] ?? ""} placeholder={placeholder} autoComplete="off" spellCheck={false} disabled={!!busy} onChange={event => { (field.type === "password" ? setSecrets : setConfig)(current => ({ ...current, [field.key]: event.target.value })); setError(null); }} />}
@@ -173,32 +149,30 @@ export function QuotaConnections({ target, onClose, onChanged }: Props) {
   const valid = provider && provider.fields.every(field => !field.required || (field.type === "password" ? secrets[field.key]?.trim() || editing?.secretFields.includes(field.key) || provider.login || hasExistingCredential : config[field.key]?.trim()));
   const visibleFields = provider?.fields.filter(field => !fixedKeys.has(field.key)) ?? [];
   const documentation = provider?.docsUrl?.startsWith("https://") ? provider.docsUrl : null;
-  const title = removing ? (zh ? "断开额度查询？" : "Disconnect quota lookup?")
-    : target.recovery?.action === "configure" ? (zh ? "配置查询" : "Configure lookup")
-    : connectionId ? (zh ? "编辑查询凭据" : "Edit query credentials")
-    : target.recovery?.action === "login" ? (zh ? "登录查询" : "Sign in for quotas")
-    : (zh ? "补充凭据" : "Provide credentials");
+  const title = removing ? t("quota.connection.disconnectTitle")
+    : connectionId ? t("quota.connection.editTitle")
+    : t("quota.connection.connectTitle");
 
   return <Modal onClose={close} width={460}><section className="kaus-quota-connection-editor" role="dialog" aria-modal="true" aria-labelledby="quota-connection-title" aria-busy={!!busy}>
-    <header><div><h2 id="quota-connection-title">{title}</h2><p className="kaus-quota-connection-context">{target.label}</p></div><button type="button" className="kaus-quota-refresh" onClick={close} disabled={busy === "save" || busy === "remove"} aria-label={zh ? "关闭" : "Close"}><X size={16} /></button></header>
-    {!removing && (loading ? <p className="kaus-quota-connection-status" role="status">{zh ? "正在读取配置" : "Loading configuration"}</p> : provider ? <>
+    <header><div><h2 id="quota-connection-title">{title}</h2><p className="kaus-quota-connection-context">{target.label}</p></div><button type="button" className="kaus-quota-refresh" onClick={close} disabled={busy === "save" || busy === "remove"} aria-label={t("common.close")}><X size={16} /></button></header>
+    {!removing && (loading ? <p className="kaus-quota-connection-status" role="status">{t("quota.connection.loading")}</p> : provider ? <>
       {visibleFields.filter(field => !field.advanced).map(renderField)}
-      {visibleFields.some(field => field.advanced) && <details className="kaus-quota-connection-advanced"><summary>{zh ? "高级" : "Advanced"}<ChevronRight size={14} /></summary>{visibleFields.filter(field => field.advanced).map(renderField)}</details>}
-    </> : <Button onClick={() => setRevision(value => value + 1)}>{zh ? "重试" : "Retry"}</Button>)}
+      {visibleFields.some(field => field.advanced) && <details className="kaus-quota-connection-advanced"><summary>{t("engines.connect.advanced")}<ChevronRight size={14} /></summary>{visibleFields.filter(field => field.advanced).map(renderField)}</details>}
+    </> : <Button onClick={() => setRevision(value => value + 1)}>{t("card.error.retry")}</Button>)}
     {error && <p className="kaus-quota-connection-status" role="status">{error}</p>}
-    {busy === "login" && <p className="kaus-quota-connection-status" role="status"><LoaderCircle size={14} className="animate-spin" />{zh ? "等待登录" : "Waiting for sign-in"}</p>}
-    <footer>{documentation && !removing && <a href={documentation} target="_blank" rel="noopener noreferrer" title={zh ? "配置说明" : "Setup guide"} aria-label={zh ? "配置说明" : "Setup guide"}><ExternalLink size={15} /></a>}<span />
-      <Button onClick={close} disabled={busy === "save" || busy === "remove"}>{zh ? "取消" : "Cancel"}</Button>
-      {removing ? <Button variant="primary" disabled={!!busy || !connectionId} onClick={() => void remove()}>{zh ? "断开" : "Disconnect"}</Button> : <>
-        {provider?.login && <Button variant={connectionId ? "ghost" : "primary"} disabled={!valid || !!busy} onClick={() => void login()}>{connectionId ? (zh ? "重新登录" : "Sign in again") : provider.login.label || (zh ? "网页登录" : "Sign in")}</Button>}
-        {(!provider?.login || connectionId) && <Button variant="primary" disabled={!valid || !!busy || loading} onClick={() => void save()}>{busy === "save" && <LoaderCircle size={14} className="animate-spin" />}{busy === "save" ? (zh ? "正在验证" : "Verifying") : (zh ? "验证并保存" : "Verify and save")}</Button>}
+    {busy === "login" && <p className="kaus-quota-connection-status" role="status"><LoaderCircle size={14} className="animate-spin" />{t("quota.connection.waitingLogin")}</p>}
+    <footer>{documentation && !removing && <a href={documentation} target="_blank" rel="noopener noreferrer" title={t("quota.connection.docs")} aria-label={t("quota.connection.docs")}><ExternalLink size={15} /></a>}<span />
+      <Button onClick={close} disabled={busy === "save" || busy === "remove"}>{t("common.cancel")}</Button>
+      {removing ? <Button variant="primary" disabled={!!busy || !connectionId} onClick={() => void remove()}>{t("quota.connection.disconnect")}</Button> : <>
+        {provider?.login && <Button variant={connectionId ? "ghost" : "primary"} disabled={!valid || !!busy} onClick={() => void login()}>{connectionId ? t("quota.connection.loginAgain") : provider.login.label || t("quota.connection.login")}</Button>}
+        {(!provider?.login || connectionId) && <Button variant="primary" disabled={!valid || !!busy || loading} onClick={() => void save()}>{busy === "save" && <LoaderCircle size={14} className="animate-spin" />}{busy === "save" ? t("quota.connection.verifying") : t("quota.connection.verifySave")}</Button>}
       </>}
     </footer>
   </section></Modal>;
 }
 
 export function QuotaConnectionMenu({ ids, label, onSelect }: { ids: string[]; label: string; onSelect: (target: QuotaConnectionTarget) => void }) {
-  const { locale } = useLocale(); const zh = locale === "zh";
+  useLocale();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null); const menu = useRef<HTMLDivElement>(null);
   const rect = open ? trigger.current?.getBoundingClientRect() : null;
@@ -224,11 +198,11 @@ export function QuotaConnectionMenu({ ids, label, onSelect }: { ids: string[]; l
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", key); window.removeEventListener("resize", hide); window.removeEventListener("wheel", hide); };
   }, [open]);
   if (!unique.length) return null;
-  return <><button ref={trigger} type="button" className="kaus-quota-refresh" title={zh ? "管理查询" : "Manage lookup"} aria-label={zh ? `管理 ${label} 的额度查询` : `Manage ${label} quotas`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}><MoreHorizontal size={16} /></button>
-    {open && rect && createPortal(<div ref={menu} className="kaus-quota-menu" role="menu" aria-label={zh ? "管理查询" : "Manage lookup"} style={{ left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)), top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - unique.length * 76 - 16)) }}>
+  return <><button ref={trigger} type="button" className="kaus-quota-refresh" title={t("quota.connection.manage")} aria-label={t("quota.connection.manageFor", { label })} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}><MoreHorizontal size={16} /></button>
+    {open && rect && createPortal(<div ref={menu} className="kaus-quota-menu" role="menu" aria-label={t("quota.connection.manage")} style={{ left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)), top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - unique.length * 76 - 16)) }}>
       {unique.flatMap((id, index) => ([
-        <button key={`${id}-edit`} type="button" role="menuitem" onClick={() => { setOpen(false); onSelect({ label, connectionId: id, mode: "edit" }); }}><Pencil size={14} />{zh ? "编辑凭据" : "Edit credentials"}{unique.length > 1 ? ` ${index + 1}` : ""}</button>,
-        <button key={`${id}-disconnect`} type="button" role="menuitem" onClick={() => { setOpen(false); onSelect({ label, connectionId: id, mode: "disconnect" }); }}><Unplug size={14} />{zh ? "断开" : "Disconnect"}{unique.length > 1 ? ` ${index + 1}` : ""}</button>,
+        <button key={`${id}-edit`} type="button" role="menuitem" onClick={() => { setOpen(false); onSelect({ label, connectionId: id, mode: "edit" }); }}><Pencil size={14} />{t("quota.connection.edit")}{unique.length > 1 ? ` ${index + 1}` : ""}</button>,
+        <button key={`${id}-disconnect`} type="button" role="menuitem" onClick={() => { setOpen(false); onSelect({ label, connectionId: id, mode: "disconnect" }); }}><Unplug size={14} />{t("quota.connection.disconnect")}{unique.length > 1 ? ` ${index + 1}` : ""}</button>,
       ]))}
     </div>, trigger.current?.closest<HTMLElement>('[role="dialog"], [data-kaus-modal]') ?? document.body)}
   </>;
