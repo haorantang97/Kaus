@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { BarMenu } from "./ComposerBar";
 import { EngineIcon } from "./EngineIcon";
 import { backendDisplay, engineBrand } from "../lib/backend-display";
-import { engineSelectionChoices } from "../lib/engineSelection";
+import { engineSelectionChoices, preferredBinding } from "../lib/engineSelection";
 import { describeFailure, ensureProjectBinding, fetchConnectedBackends, fetchProjectBindings,
   type BackendWire, type BindingWire } from "../lib/sessionApi";
 import { useLocale } from "../i18n";
@@ -32,7 +32,7 @@ export function ProjectAgentPicker({ projectId, value, onChange, allowedBackendI
         if (generation !== epoch.current) return;
         setConnections(global.backends); setBindings(local.bindings);
         const usable = local.bindings.filter(b => b.enabled && engineAcceptsNewWork(b) && engineAcceptsNewWork(global.backends.find(c => c.id === b.backendId)) && (!allowedBackendIds || allowedBackendIds.includes(b.backendId)));
-        const selected = usable.find(b => b.id === currentValue.current) ?? usable.find(b => b.isDefault) ?? usable[0];
+        const selected = preferredBinding(usable, global.backends, currentValue.current);
         if (retained.current?.id === currentValue.current && retained.current?.projectId === projectId) return;
         if ((selected?.id ?? null) !== (currentValue.current ?? null)) changed.current(selected ?? null);
       }).catch(e => { if (!controller.signal.aborted) setError(describeFailure(e)); })

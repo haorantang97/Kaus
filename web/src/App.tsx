@@ -12,7 +12,6 @@ import { DashboardOverlay } from "./components/DashboardOverlay";
 import { ConfigOverlay } from "./components/ConfigOverlay";
 import { WarehouseOverlay } from "./components/WarehouseOverlay";
 import { VaultOverlay } from "./components/VaultOverlay";
-import { KanbanOverlay } from "./components/KanbanOverlay";
 import { AgentGraph } from "./components/AgentGraph";
 import { NewAgentModal } from "./components/NewAgentModal";
 import { NotFoundPage } from "./components/NotFoundPage";
@@ -61,7 +60,8 @@ const NAV_MODULES: ModuleItem[] = [
 /* 日常入口置顶，工作区工具折叠，设置固定在侧栏底部。 */
 const ALWAYS_VISIBLE: ModuleId[] = ["new-conversation", "agents"];
 const PRIMARY_MODULES = NAV_MODULES.filter((m) => ALWAYS_VISIBLE.includes(m.id));
-const MORE_MODULES = NAV_MODULES.filter((m) => !ALWAYS_VISIBLE.includes(m.id) && m.id !== "config" && m.id !== "dash");
+/* Hermes 任务板已屏蔽（2026-10-24），等通用任务板替换；入口、快捷键和 /kanban 都不再打开它。 */
+const MORE_MODULES = NAV_MODULES.filter((m) => !ALWAYS_VISIBLE.includes(m.id) && m.id !== "config" && m.id !== "dash" && m.id !== "kanban");
 const SETTINGS_MODULE = NAV_MODULES.find(m => m.id === "config")!;
 
 const MODULE_VIEWS: Record<Exclude<ModuleId, "new-conversation">, ShellViewName> = {
@@ -265,7 +265,7 @@ export function App() {
   // `<html lang>` 跟着界面语言走（读屏软件与浏览器翻译都看它）。
   useEffect(applyDocumentLang, [pref]);
 
-  // keyboard shortcuts: Esc close · g then a/r/d/k/v/w/s/n
+  // keyboard shortcuts: Esc close · g then a/r/d/v/w/s/n
   useEffect(() => {
     if (!sessionOn) return;
     let g = false;
@@ -283,7 +283,6 @@ export function App() {
         if (e.key === "h") goView("overview");
         else if (e.key === "a") { setAgentMode("chat"); goView("agents"); }
         else if (e.key === "d") goView("dash");
-        else if (e.key === "k") goView("kanban");
         else if (e.key === "v") goView("vault");
         else if (e.key === "r") {
           setAgentMode("governance");
@@ -297,6 +296,9 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [goView, sessionOn]);
+  useEffect(() => {
+    if (overlay === "kanban") navigate(shellViewPath("overview"), { replace: true });
+  }, [overlay, navigate]);
 
   const openMenu = (name: string, rect: DOMRect) =>
     setMenu({ name, x: Math.max(8, rect.right - 192), y: rect.bottom + 4 });
@@ -534,9 +536,7 @@ export function App() {
           <div className="absolute inset-0">
             {overlay === "dash" ? (
               <DashboardOverlay onClose={closeOverlay} onGoProfile={goProfile} refreshKey={refreshKey} />
-            ) : overlay === "kanban" ? (
-              <KanbanOverlay onClose={closeOverlay} onGoProfile={goProfile} refreshKey={refreshKey} />
-            ) : overlay === "vault" ? (
+            ) : overlay === "kanban" ? null : overlay === "vault" ? (
               <VaultOverlay onClose={closeOverlay} refreshKey={refreshKey} />
             ) : overlay === "warehouse" ? (
               <WarehouseOverlay onClose={closeOverlay} refreshKey={refreshKey} />

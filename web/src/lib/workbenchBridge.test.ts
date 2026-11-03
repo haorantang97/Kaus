@@ -4,16 +4,30 @@ import * as api from "./workbenchApi";
 vi.mock("./workbenchApi",()=>({fetchWorkbenchModule:vi.fn(),fetchModuleJobs:vi.fn(),fetchModuleJob:vi.fn(),startModuleJob:vi.fn(),cancelModuleJob:vi.fn(),resumeModuleJob:vi.fn(),readModuleData:vi.fn(),writeModuleData:vi.fn(),fetchWorkflow:vi.fn(),saveWorkflow:vi.fn(),runWorkflow:vi.fn(),moduleBackendRequest:vi.fn()}));
 const ports: {port1:{close:ReturnType<typeof vi.fn>;start:ReturnType<typeof vi.fn>;postMessage:ReturnType<typeof vi.fn>;onmessage:((e:MessageEvent)=>Promise<void>)|null};port2:object}[]=[];
 it("fixed editor requires an enabled module, declared permission, grant and native host",async()=>{
- const chatcut=vi.fn().mockResolvedValue({accepted:true}),ui={chatcut,confirm:vi.fn(),copy:vi.fn(),external:vi.fn()},open=vi.fn();
+ const request=vi.fn().mockResolvedValue({accepted:true}),ui={surface:{sites:["chatcut","midjourney"],request},confirm:vi.fn(),copy:vi.fn(),external:vi.fn()},open=vi.fn();
  const module={id:"fixed",name:"App",enabled:true,permissions:["editor:chatcut"],grants:["editor:chatcut"]} as api.WorkbenchModule;
  vi.mocked(api.fetchWorkbenchModule).mockResolvedValue(module);
  expect(await dispatchModuleRequest("fixed",{id:"1",method:"editor.chatcut",params:{action:"hide"}},open,ui)).toEqual({accepted:true});
+ expect(request).toHaveBeenCalledWith("chatcut",{action:"hide"});
  for(const value of [{...module,enabled:false},{...module,grants:[]},{...module,permissions:[]}]) {
   vi.mocked(api.fetchWorkbenchModule).mockResolvedValue(value);
   await expect(dispatchModuleRequest("fixed",{id:"2",method:"editor.chatcut",params:{action:"hide"}},open,ui)).rejects.toThrow("scope_denied");
  }
  await expect(dispatchModuleRequest("fixed",{id:"3",method:"editor.chatcut"},open)).rejects.toThrow("method_not_allowed");
- expect(chatcut).toHaveBeenCalledTimes(1);
+ expect(request).toHaveBeenCalledTimes(1);
+});
+it("site surfaces need that site's own permission and a host that provides it",async()=>{
+ const request=vi.fn().mockResolvedValue({accepted:true}),ui={surface:{sites:["chatcut","midjourney"],request},confirm:vi.fn(),copy:vi.fn(),external:vi.fn()},open=vi.fn();
+ const module={id:"art",name:"Art",enabled:true,permissions:["surface:midjourney"],grants:["surface:midjourney"]} as api.WorkbenchModule;
+ vi.mocked(api.fetchWorkbenchModule).mockResolvedValue(module);
+ await dispatchModuleRequest("art",{id:"1",method:"surface.request",params:{site:"midjourney",action:"fill",text:"a cat"}},open,ui);
+ expect(request).toHaveBeenCalledWith("midjourney",{action:"fill",text:"a cat"});
+ await expect(dispatchModuleRequest("art",{id:"2",method:"surface.request",params:{site:"chatcut",action:"status"}},open,ui)).rejects.toThrow("scope_denied");
+ await expect(dispatchModuleRequest("art",{id:"3",method:"surface.request",params:{site:"browser",action:"status"}},open,ui)).rejects.toThrow("method_not_allowed");
+ await expect(dispatchModuleRequest("art",{id:"4",method:"surface.request",params:{action:"status"}},open,ui)).rejects.toThrow("invalid_request");
+ await expect(dispatchModuleRequest("art",{id:"5",method:"surface.request",params:{site:"midjourney",action:"status"}},open,{...ui,surface:{sites:["chatcut"],request}})).rejects.toThrow("method_not_allowed");
+ expect(await dispatchModuleRequest("art",{id:"6",method:"context.get"},open,ui)).toMatchObject({surfaces:{chatcut:false,midjourney:true}});
+ expect(request).toHaveBeenCalledTimes(1);
 });
 beforeEach(()=>{vi.clearAllMocks();ports.length=0;vi.stubGlobal("MessageChannel",class{port1={close:vi.fn(),start:vi.fn(),postMessage:vi.fn(),onmessage:null};port2={};constructor(){ports.push(this);}});});
 afterEach(()=>vi.unstubAllGlobals());

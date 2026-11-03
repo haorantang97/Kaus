@@ -52,10 +52,13 @@ await kaus.data.set('draft', { text: '草稿' });
 | navigation.openExternal | url，用户确认后打开 HTTP(S) 链接 |
 | navigation.openConversation | conversationId，仅限本模块任务 |
 | editor.chatcut | 专用固定剪辑视图，须声明并授予 editor:chatcut 且宿主支持；open/url、layout/bounds/visible、hide 或 status |
+| surface.request | site 加同样的 action；须声明并授予 `surface:<site>`。声明了输入框的站点另有 fill/text/image，只填入、不提交 |
 
 数据、任务与固定顺序存入独立的 workbench.sqlite3；共享的会话事件使用原有存储。
 
 固定 ChatCut 视图在可选 Chromium 开发壳可用；`context.get` 的 `surfaces.chatcut` 表示实际支持且已获授权。普通浏览器或当前 WKWebView 壳不会宣称支持。远端视图与模块 iframe 分离，切换模块隐藏并保留剪辑进程，宿主弹窗优先；布局只能位于模块矩形内。模块可调用 `request('editor.chatcut', {action:'open', url})`，短时登录地址只放内存，作品关联只保存无凭据的稳定项目 URL。详情与实测范围见 [固定剪辑模块验收](product/chatcut-fixed-editor-acceptance-20261024.md)。
+
+同一机制按站点注册（`desktop/chromium/policy.cjs` 的 `SITES` 与 `web/src/lib/siteSurface.ts`）。目前另有 Midjourney：权限 `surface:midjourney`，可调用 `kaus.surface('midjourney', {action:'fill', text, image})` 把提示词和 PNG/JPEG 参考图填入官网输入框，回车由用户自己按。同一模块的多个站点可以并排显示。见 [站点视图记录](product/site-surfaces-20261030.md) 与 `examples/midjourney-panel`。
 
 ## 自有本地后端
 

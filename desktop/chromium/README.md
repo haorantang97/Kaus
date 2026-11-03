@@ -37,6 +37,9 @@ npx --yes @electron/packager@20.3.0 desktop/chromium 'Kaus Chromium Preview' \
 
 ## 边界
 
+- 站点在 `policy.cjs` 的 `SITES` 中注册（目前是 ChatCut 和 Midjourney），新增站点还要同步 `preload.cjs`（有测试核对）和 `web/src/lib/siteSurface.ts`。启动时可以用 `KAUS_PREVIEW_PATH=/workbench/<模块>`（或任意站内路径）指定打开的页面；预览服务可以用 `--dist` 指定前端构建，避免覆盖日常使用的 `web/dist`。
+- 侧边浏览器（`kaus:browser`）：会话页右侧的通用浏览器，标签页共用 `persist:browser` 分区，网页没有 preload；只放行 http/https，拦截 Kaus 自身 3187/8877 端口；下载进入 `Downloads/Kaus-Browser`。`fill` 只插入文字、不发送按键，站点有配置时按配置定位输入框。可以用 `KAUS_PREVIEW_PATH=/conversations/<id>` 打开会话页。
+- Midjourney 需要 `surface:midjourney` 权限；`fill` 只填入文字或粘贴参考图，不发送按键，下载进入 `Downloads/Kaus-Midjourney`。
 - `editor:chatcut` 单独声明和授权；`context.get` 仅在实际支持的桌面壳返回 `surfaces.chatcut=true`。
 - `editor.chatcut` 接受 open/layout/hide/status，只能打开官方首页或项目编辑器。每次调用核对模块启用状态和授权。
 - 宿主将模块内坐标转换成窗口坐标，并限制在模块矩形内；切走、撤销通道、打开宿主弹窗时隐藏，保留页面与导出任务。

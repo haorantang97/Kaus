@@ -1,0 +1,9 @@
+{
+  "id": "midjourney-panel",
+  "name": "Midjourney",
+  "version": "0.1.0",
+  "description": "Agent 写提示词，填入模块内的 Midjourney 页面，由用户按生成",
+  "icon": "image",
+  "entry": "index.html",
+  "permissions": ["agent:run", "surface:midjourney"]
+}

@@ -11,9 +11,11 @@ import sys
 parser = argparse.ArgumentParser()
 parser.add_argument("--state", type=Path, required=True)
 parser.add_argument("--module", type=Path, required=True)
+parser.add_argument("--dist", type=Path, help="Frontend build to serve; defaults to web/dist")
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[2]
 state, package = args.state.resolve(), args.module.resolve()
+dist = (args.dist or root / "web/dist").resolve()
 if not state.is_relative_to(root / "output"):
     parser.error("Preview state must be inside this checkout's output directory")
 if not (package / "kaus-module.json").is_file():
@@ -44,16 +46,17 @@ runtime.module_backends.origin = "http://127.0.0.1:3187"
 
 async def install_preview_module():
     module = await runtime.workbench.install(str(package))
-    await runtime.workbench.patch_module(module["id"], {"grants": ["data:read", "data:write", "backend:run", "editor:chatcut"], "pinned": True})
+    preview = ("data:read", "data:write", "backend:run", "editor:chatcut", "surface:midjourney")
+    await runtime.workbench.patch_module(module["id"], {"grants": [grant for grant in preview if grant in module["permissions"]], "pinned": True})
 
 app.router.on_startup.append(install_preview_module)
 app.router.on_shutdown.append(domain.close)
-app.mount("/assets", StaticFiles(directory=root / "web/dist/assets"), name="assets")
+app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
 
 @app.get("/{route:path}")
 async def page(route: str):
     if route.startswith("api/"):
         return JSONResponse({"error": "not_available_in_preview"}, status_code=404)
-    return FileResponse(root / "web/dist/index.html", headers={"Cache-Control": "no-store"})
+    return FileResponse(dist / "index.html", headers={"Cache-Control": "no-store"})
 
 uvicorn.run(app, host="127.0.0.1", port=3187, access_log=False)

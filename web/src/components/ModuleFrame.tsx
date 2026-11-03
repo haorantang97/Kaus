@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { RotateCw } from "lucide-react";
 import { connectModuleFrame } from "../lib/workbenchBridge";
-import { connectChatCutSurface } from "../lib/chatcutSurface";
+import { connectSiteSurface, siteRule } from "../lib/siteSurface";
 import type { WorkbenchModule } from "../lib/workbenchApi";
 import { confirmAsync } from "./ui";
 import { copyText } from "./cards/clipboard";
@@ -16,9 +16,9 @@ export function ModuleFrame({module, onConversation, onConfigure}: {module: Work
   useLayoutEffect(()=> {
     const frame=ref.current; if(!frame)return;
     loaded.current=false;setFailure(null);
-    const editor=connectChatCutSurface(frame,module.id,()=>Boolean(currentModule.current.enabled && currentModule.current.grants?.includes("editor:chatcut")));
+    const editor=connectSiteSurface(frame,module.id,site=>Boolean(currentModule.current.enabled && currentModule.current.grants?.includes(siteRule(site)?.permission ?? "")));
     const disconnect=connectModuleFrame({frame,moduleId:module.id,onReady:()=>setFailure(previous=>previous==="load"?null:previous),onRevoked:()=>{editor?.dispose();setFailure("revoked");},onConversation:id=>callback.current(id),ui:{
-      chatcut:editor?.request,
+      surface:editor ? {sites:editor.sites,request:editor.request} : undefined,
       configure: ()=>configure.current?.(),
       confirm: message=>confirmAsync(`${module.name} · ${message}`),
       copy: content=>copyText(content),

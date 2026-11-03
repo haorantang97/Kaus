@@ -1,6 +1,7 @@
 import { currentLocale } from "../i18n";
 import { SessionApiError } from "./sessionApi";
-import { cancelModuleJob, fetchModuleJob, fetchModuleJobs, fetchWorkbenchModule, moduleBackendRequest, readModuleData, resumeModuleJob, startModuleJob, writeModuleData, fetchWorkflow, saveWorkflow, runWorkflow, type WorkflowDefinition } from "./workbenchApi";
+import { siteRule } from "./siteSurface";
+import { cancelModuleJob, fetchModuleJob, fetchModuleJobs, fetchWorkbenchModule, moduleBackendRequest, readModuleData, resumeModuleJob, startModuleJob, writeModuleData, fetchWorkflow, saveWorkflow, runWorkflow, type WorkbenchModule, type WorkflowDefinition } from "./workbenchApi";
 export interface BridgeRequest { id: string; method: string; params?: Record<string, unknown> }
 const text = (value: unknown, limit = 200_000) => { if (typeof value !== "string" || !value || value.length > limit) throw new Error("invalid_request"); return value; };
 const paramsObject = (value: unknown): Record<string, unknown> => {
@@ -9,11 +10,20 @@ const paramsObject = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 export interface ModuleUiActions {
-  chatcut?: (message: Record<string, unknown>) => Promise<unknown>;
+  surface?: { sites: readonly string[]; request: (site: string, message: Record<string, unknown>) => Promise<unknown> };
   configure?: () => void;
   confirm: (message: string) => Promise<boolean>;
   copy: (text: string) => Promise<void>;
   external: (url: string) => Promise<boolean>;
+}
+function surfaceGranted(module: WorkbenchModule, site: string) {
+  const permission = siteRule(site)?.permission;
+  return Boolean(permission && module.enabled && module.permissions.includes(permission) && module.grants.includes(permission));
+}
+async function siteRequest(moduleId: string, site: string, p: Record<string, unknown>, ui?: ModuleUiActions) {
+  if (!ui?.surface?.sites.includes(site)) throw new Error("method_not_allowed");
+  if (!surfaceGranted(await fetchWorkbenchModule(moduleId), site)) throw new Error("scope_denied");
+  return ui.surface.request(site, p);
 }
 /** Only this allowlist crosses the frame boundary. Credentials stay in the API layer. */
 export async function dispatchModuleRequest(moduleId: string, request: BridgeRequest, openConversation: (id: string) => void, ui?: ModuleUiActions) {
@@ -39,13 +49,12 @@ export async function dispatchModuleRequest(moduleId: string, request: BridgeReq
     }
     case "context.get": {
       const module = await fetchWorkbenchModule(moduleId);
-      return {theme: document.body.classList.contains("dark") ? "dark" : "light", locale: currentLocale(), moduleId: module.id, name: module.name, grants: module.grants, projectId: module.projectId, bindingId: module.bindingId, modelId: module.modelId, providerId: module.providerId ?? null, ...(ui?.chatcut ? {surfaces:{chatcut:module.enabled && module.permissions.includes("editor:chatcut") && module.grants.includes("editor:chatcut")}} : {})};
+      return {theme: document.body.classList.contains("dark") ? "dark" : "light", locale: currentLocale(), moduleId: module.id, name: module.name, grants: module.grants, projectId: module.projectId, bindingId: module.bindingId, modelId: module.modelId, providerId: module.providerId ?? null, ...(ui?.surface ? {surfaces:Object.fromEntries(ui.surface.sites.map(site=>[site,surfaceGranted(module,site)]))} : {})};
     }
-    case "editor.chatcut": {
-      if (!ui?.chatcut) throw new Error("method_not_allowed");
-      const module = await fetchWorkbenchModule(moduleId);
-      if (!module.enabled || !module.permissions.includes("editor:chatcut") || !module.grants.includes("editor:chatcut")) throw new Error("scope_denied");
-      return ui.chatcut(p);
+    case "editor.chatcut": return siteRequest(moduleId, "chatcut", p, ui);
+    case "surface.request": {
+      const {site, ...rest} = p;
+      return siteRequest(moduleId, text(site, 40), rest, ui);
     }
     case "jobs.list": return fetchModuleJobs(moduleId);
     case "jobs.get": return fetchModuleJob(moduleId, text(p.jobId, 200));
@@ -108,7 +117,7 @@ export function connectModuleFrame({frame, moduleId, onReady, onRevoked, ui, onC
       if (received.has(id) || active >= 16 || received.size >= 10_000) return;
       received.add(id); active++;
       try {
-        const limit = value.method === "backend.request" ? 6 * 1024 * 1024 : value.method === "workflow.save" ? 1_100_000 : 256_000;
+        const limit = value.method === "backend.request" ? 6 * 1024 * 1024 : value.method === "surface.request" ? 12_100_000 : value.method === "workflow.save" ? 1_100_000 : 256_000;
         if (JSON.stringify(value).length > limit) throw new Error("request_too_large");
         const result = await dispatchModuleRequest(moduleId, value, onConversation, ui);
         if (generation === current) channel.port1.postMessage({id, result});

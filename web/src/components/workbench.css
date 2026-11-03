@@ -54,3 +54,5 @@
 .workbench-intake footer{justify-content:space-between;gap:8px}
 .workbench-intake footer>.workbench-primary:last-child{margin-left:auto}
 @media(prefers-reduced-motion:reduce){.workbench-card,.workbench-card-open footer svg,.workbench-intake-row{transition:none}}
+/* Module pages integrate an independent app: host Agent overlays stay off it (the sidebar keeps the Groups entry). */
+:root.kaus-module-page .kaus-group-dock{display:none}

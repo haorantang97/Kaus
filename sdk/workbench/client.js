@@ -59,6 +59,8 @@ export function connectKaus(moduleId, { timeoutMs = 15000 } = {}) {
     copy: text => request('clipboard.writeText', { text }),
     openExternal: url => request('navigation.openExternal', { url }),
     openConversation: conversationId => request('navigation.openConversation', { conversationId }),
+    // Fixed site pages the host shows inside this module. Fill never submits.
+    surface: (site, params) => request('surface.request', { site, ...params }),
     close() {
       closed = true; detach(); rejectReady(new Error('Module connection closed')); port?.close();
       for (const task of pending.values()) { clearTimeout(task.timer); task.reject(new Error('Module connection closed')); }

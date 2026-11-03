@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Midjourney</title>
+<style>
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{font:14px/1.6 system-ui,sans-serif;color:#242424;background:#fafafa;display:grid;grid-template-columns:320px 1fr}
+body.dark{background:#202020;color:#eee}aside{display:flex;flex-direction:column;gap:10px;padding:20px;border-right:1px solid #8883;overflow:auto}
+textarea{width:100%;padding:10px 12px;border:1px solid #8885;border-radius:10px;font:inherit;background:transparent;color:inherit;resize:vertical}
+#idea{min-height:90px}#prompt{min-height:140px}label{font-size:12px;opacity:.7}nav{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;padding:6px 14px;border-radius:9px;border:1px solid #8885;background:transparent;color:inherit;cursor:pointer}button:hover{background:#8882}button:disabled{opacity:.45;cursor:default}
+#image{font-size:12px}img{max-width:100%;max-height:120px;border-radius:8px;object-fit:contain}[role=status]{min-height:1.6em;font-size:13px;opacity:.8}
+#site{position:relative;display:grid;place-items:center;font-size:13px;opacity:.6;padding:24px;text-align:center}
+</style>
+<aside>
+  <label for="idea">想法</label><textarea id="idea" placeholder="例如：雨夜霓虹街头的一只橘猫，电影感"></textarea>
+  <nav><button id="write">写提示词</button></nav>
+  <label for="prompt">提示词</label><textarea id="prompt" placeholder="可以直接编辑"></textarea>
+  <label for="image">参考图（PNG / JPEG）</label><input id="image" type="file" accept="image/png,image/jpeg"><img id="preview" alt="" hidden>
+  <nav><button id="fill">填入 Midjourney</button><button id="clear" hidden>移除参考图</button></nav>
+  <p role="status"></p>
+</aside>
+<main id="site">需要 Kaus 桌面预览壳，并在模块配置里允许使用 Midjourney 页面。</main>
+<script type="module">
+import { connectKaus } from './client.js';
+const kaus=connectKaus('midjourney-panel'),$=id=>document.getElementById(id);
+const status=document.querySelector('[role=status]'),say=text=>{status.textContent=text;};
+const errors={input_not_found:'没找到输入框。请在右侧打开 Imagine 页面并点一下输入框后重试。',surface_not_ready:'页面还在载入，请稍候。',scope_denied:'模块尚未获准使用 Midjourney 页面。',method_not_allowed:'当前窗口不支持站点页面。'};
+const fail=error=>say(errors[error?.code]??error?.message??'操作未完成，请重试。');
+let image=null,supported=false,timer;
+async function call(params){const result=await kaus.surface('midjourney',params);if(result?.error)throw Object.assign(new Error(result.error),{code:result.error});return result;}
+// Layout can briefly race the host frame while it resizes; the next resize places it again.
+function place(){if(!supported)return;const r=$('site').getBoundingClientRect(),x=Math.max(0,Math.ceil(r.x)),y=Math.max(0,Math.ceil(r.y));void call({action:'layout',visible:true,bounds:{x,y,width:Math.floor(Math.min(r.right,innerWidth))-x,height:Math.floor(Math.min(r.bottom,innerHeight))-y}}).catch(()=>{});}
+async function poll(id){
+  const job=await kaus.jobs.get(id),busy=['queued','running','waiting_approval'].includes(job.status);
+  const text=job.steps.map(step=>step.output||'').join('\n').trim();
+  if(busy){say('Agent 正在写…');timer=setTimeout(()=>poll(id).catch(fail),600);return;}
+  $('write').disabled=false;
+  if(job.status==='completed'&&text){$('prompt').value=text;say('提示词已生成，可以修改后填入。');}else say('Agent 没有返回提示词。');
+}
+$('write').onclick=async()=>{
+  const idea=$('idea').value.trim();if(!idea)return;
+  $('write').disabled=true;clearTimeout(timer);
+  try{const job=await kaus.jobs.start(`把下面的想法写成一条英文 Midjourney 提示词。只输出提示词本身，不要解释，可以带 --ar 等参数。\n\n想法：${idea}`);await poll(job.id);}
+  catch(error){$('write').disabled=false;fail(error);}
+};
+$('image').onchange=()=>{
+  const file=$('image').files[0];if(!file)return;
+  if(!['image/png','image/jpeg'].includes(file.type)||file.size>8*1024*1024){say('请选择 8 MB 以内的 PNG 或 JPEG。');$('image').value='';return;}
+  const reader=new FileReader();reader.onload=()=>{image=reader.result;$('preview').src=image;$('preview').hidden=false;$('clear').hidden=false;};reader.readAsDataURL(file);
+};
+$('clear').onclick=()=>{image=null;$('image').value='';$('preview').hidden=true;$('clear').hidden=true;};
+$('fill').onclick=async()=>{
+  const text=$('prompt').value.trim();if(!text&&!image)return;
+  $('fill').disabled=true;
+  try{await call({action:'fill',...(text?{text}:{}),...(image?{image}:{})});say('已填入。请在 Midjourney 里检查后按回车生成。');}
+  catch(error){fail(error);}finally{$('fill').disabled=false;}
+};
+try{
+  const context=await kaus.context();document.body.classList.toggle('dark',context.theme==='dark');
+  supported=context.surfaces?.midjourney===true;
+  if(supported){$('site').textContent='';await call({action:'open',url:'https://www.midjourney.com/imagine'});place();new ResizeObserver(place).observe($('site'));}
+}catch(error){fail(error);}
+window.addEventListener('pagehide',()=>{clearTimeout(timer);kaus.close();});
+</script></html>

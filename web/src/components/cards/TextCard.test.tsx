@@ -6,7 +6,7 @@
  * 的别的东西一个不掉。 */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { MarkdownBoundary, TextCard } from "./TextCard";
 import type { MessageItem } from "./timelineReducer";
@@ -76,5 +76,16 @@ describe("单条消息的渲染边界", () => {
     render(<TextCard item={message("__FENCE_0__")} />);
     expect(screen.getByTestId("assistant-prose").textContent).toContain("FENCE_0");
     expect(screen.queryByText("格式加载失败，已显示原文")).toBeNull();
+  });
+});
+
+describe("side browser fill", () => {
+  it("offers fill only when the page provides it and passes the message text", () => {
+    const onFillBrowser = vi.fn();
+    const { rerender } = render(<TextCard item={message("a cat on a roof")} actions={{}} />);
+    expect(screen.queryByRole("button", { name: "填入浏览器" })).toBeNull();
+    rerender(<TextCard item={message("a cat on a roof")} actions={{ onFillBrowser }} />);
+    fireEvent.click(screen.getByRole("button", { name: "填入浏览器" }));
+    expect(onFillBrowser).toHaveBeenCalledWith("a cat on a roof");
   });
 });

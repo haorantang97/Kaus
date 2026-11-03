@@ -30,7 +30,6 @@ import {
   BackupsSection,
   ImpactSection,
   PersonaSection,
-  SubtasksSection,
 } from "../components/ProfileDrawer";
 import { Sidebar } from "../components/Sidebar";
 import { Button, Card, Modal, Pill, Section, cream, dname, toast } from "../components/ui";
@@ -399,7 +398,6 @@ export function ProjectDetailPage({
               </Section>
               <ImpactSection name={project.slug} refreshKey={refreshKey} />
               <BackupsSection name={project.slug} refreshKey={refreshKey} />
-              <SubtasksSection name={project.slug} refreshKey={refreshKey} />
             </>
           )}
         </details>

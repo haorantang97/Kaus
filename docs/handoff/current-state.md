@@ -37,3 +37,7 @@ Kaus 是面向产品使用的本地多 Agent 工作台。它复用原生 Agent �
 同日完成 [原生会话终端往返验收](../product/terminal-roundtrip-acceptance-20261024.md)：17 条接入路径使用真实原生程序及本机模拟模型完成往返。补齐公共准备环境、Claude 原生模式的当前选项与 MCP，修复 OpenClaw 显式状态目录、Hermes HTTP 自定义目录传递。随后补齐 Cursor 同存储与 MCP 适配，安装并接入 DSH TUI；DeepSeek ACP 复用该原生终端。Codex、Hermes ACP、DSH、DeepSeek ACP 各完成五轮真实模型往返，DSH 另修复退出取消竞争并验证自定义持久化目录。完整后端 4,206 项通过，最后相关增量 38 项通过；本地后台已更新重启，原配置/记录保留，23 条验收会话未进入日常历史。Cursor 等待原生登录后的云端验收；Claude 受管技能模式和 OpenClaw 远端限制与 Antigravity 尚未完成的接续适配分别记录。普通 Codex 桌面历史互通继续保留。
 
 同日完成 [ChatCut 固定剪辑模块](../product/chatcut-fixed-editor-acceptance-20261024.md)的独立工作台与 Kaus 开发预览实测：登录、素材、裁切拼接和 MP4 导出通过，模块切换和宿主弹窗不打断编辑器。使用单独授权的固定 Chromium 视图，日常 WKWebView 客户端未替换。
+
+10 月 30 日把这套固定视图改为按站点注册，并接入 Midjourney：模块可以把提示词和参考图填入官网输入框，由用户按生成；同一模块可以并排打开多个站点。开发预览实测了页面载入、视图位置、文字替换和图片粘贴，尚未登录真实账号。见 [站点视图记录](../product/site-surfaces-20261030.md)。
+
+11 月 1 日推翻“不新增通用浏览器”，在 Chromium 开发壳的会话页右侧加入通用侧边浏览器：地址栏、标签页、独立浏览器资料，对话消息可以“填入浏览器”（不发送按键）。Agent 浏览器工具与逐站点授权尚未实现，日常 WKWebView 壳不显示入口。见 [侧边浏览器记录](../product/side-browser-20261101.md)。

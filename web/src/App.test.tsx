@@ -213,7 +213,7 @@ describe("导航的「更多」分组（★L 第 2 条）", () => {
 
     await user.click(screen.getByTestId("nav-more-toggle"));
     expect(labels()).toEqual([
-      "新会话", "项目", "协作组", "工作台", "更多", "任务板", "资料库", "仓库", "设置",
+      "新会话", "项目", "协作组", "工作台", "更多", "资料库", "仓库", "设置",
     ]);
     // batch42：展开「更多」也不会把「概览」翻出来——它整项没了。
     expect(labels()).not.toContain("概览");
@@ -321,7 +321,6 @@ describe("从草稿页点导航", () => {
 describe("每个视图一个真 URL", () => {
   const cases: [string, string][] = [
     ["/dashboard", "仪表盘 · Dashboard"],
-    ["/kanban", "Hermes 任务板"],
     ["/vault", "资料库 · Vault"],
     ["/warehouse", "仓库 · Warehouse"],
     ["/config", "设置"],
@@ -333,6 +332,13 @@ describe("每个视图一个真 URL", () => {
       await waitFor(() => expect(screen.getAllByText(marker).length).toBeGreaterThan(0));
     });
   }
+
+  it("/kanban 已屏蔽，回到首页", async () => {
+    stubFetch(200);
+    renderApp("/kanban");
+    await waitFor(() => expect(screen.getByTestId("pathname")).toHaveTextContent(/^\/$/));
+    expect(screen.queryByText("Hermes 任务板")).toBeNull();
+  });
 
   /* `/` and `/new` both open the conversation composer. */
   it("/ 渲染新会话草稿页（不是概览、更不是宣传封面）", async () => {

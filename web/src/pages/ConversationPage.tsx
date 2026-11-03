@@ -6,7 +6,9 @@ import { ContinuationDialog } from "../components/ContinuationDialog";
 import { readableContinuationDraft } from "../lib/continuations";
 import { FileReference } from "../components/cards/ArtifactPreview";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Ellipsis, Square, Terminal, FileText, X, LoaderCircle, Paperclip, GitBranch } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Ellipsis, Square, Terminal, FileText, X, LoaderCircle, Paperclip, GitBranch, Globe } from "lucide-react";
+import { BrowserPanel, useBrowserPanel } from "../components/BrowserPanel";
+import { browserBridge } from "../lib/browserSurface";
 import { useLocale } from "../i18n";
 import { confirmAsync, cream, toast } from "../components/ui";
 import {
@@ -1415,6 +1417,21 @@ export function ConversationPage({
     [checkDelivery, readOnly, items, resendText, running, settingsBusy, updateDraft],
   );
 
+  const browser = useBrowserPanel();
+  // Filling the side browser is independent of run state: it never sends to the Agent.
+  const fillBrowser = useCallback(async (body: string) => {
+    const result = await browserBridge()?.send({ action: "fill", text: body }).catch(() => null) as { accepted?: boolean; error?: string } | null;
+    if (result?.accepted) { toast(t("browser.filled"), "ok"); return; }
+    const code = result?.error;
+    toast(t(code === "input_not_found" ? "browser.error.input_not_found" : code === "surface_not_ready" ? "browser.error.surface_not_ready"
+      : code === "invalid_request" ? "browser.error.noTab" : "browser.error.failed"), "bad");
+  }, [t]);
+  const timelineActions = useCallback((item: TimelineItem): MessageActions | null => {
+    const base = messageActions(item);
+    if (!browser.open || item.kind !== "message" || !messageText(item).trim()) return base;
+    return { ...(base ?? {}), onFillBrowser: body => void fillBrowser(body) };
+  }, [browser.open, fillBrowser, messageActions]);
+
   /* AD-126：已经到达的事件不受能力门控，连"合并成一组"这层版式也一样——
      能力矩阵全 `unknown` 时时间线照旧完整（第 1 件）。 */
   /* 批次二十八第 4 件：没有卡的扩展事件在这里就被滤掉，连那一层 <div> 都不生成
@@ -1500,13 +1517,14 @@ export function ConversationPage({
         callbacks={{
           onPermissionRespond: (interaction, optionId) => void respond(interaction, { optionId }),
           onQuestionRespond: (interaction, answer) => void respond(interaction, answer),
-          messageActions,
+          messageActions: timelineActions,
         }}
       />
     );
   };
 
   return (
+    <div className="kaus-conversation-layout">
     <div className="kaus-conversation-page">
       {/* 页头背景横跨全宽，内容对齐 760 栏（G-1）。 */}
       <header className="kaus-conversation-header">
@@ -1576,6 +1594,11 @@ export function ConversationPage({
             {hasCapability(effectiveCaps.card.usage) && <UsagePill usage={timeline.usage} />}
             {/* 第 5 件：启动记录，只在开过终端之后出现。 */}
             <LaunchHistoryMenu launches={launches} />
+            {browser.available && (
+              <button type="button" className="kaus-chat-icon-action" aria-pressed={browser.open}
+                title={browser.open ? t("browser.close") : t("browser.open")} aria-label={browser.open ? t("browser.close") : t("browser.open")}
+                onClick={() => browser.setOpen(!browser.open)}><Globe size={16} aria-hidden /></button>
+            )}
             {canOpenExternal && (
               <button
                 type="button"
@@ -1914,6 +1937,8 @@ export function ConversationPage({
           onCancel={() => setReturnOpen(false)}
         />
       )}
+    </div>
+    {browser.open && <BrowserPanel onClose={() => browser.setOpen(false)} />}
     </div>
   );
 }

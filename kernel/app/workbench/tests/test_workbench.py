@@ -442,3 +442,13 @@ async def test_asset_csp_uses_explicit_module_prefix_for_opaque_webkit_frames(tm
         script = await client.get(source + "main.js", headers={"Authorization": ""})
         assert script.status_code == 200
         assert script.headers["content-type"].startswith("text/javascript")
+
+
+def test_site_surface_permissions_are_declared_per_site():
+    from pydantic import ValidationError
+    from app.workbench.models import Manifest
+    base = {"id": "art", "name": "Art", "version": "1.0.0"}
+    assert Manifest(**base, permissions=["surface:midjourney", "editor:chatcut"]).permissions == ["surface:midjourney", "editor:chatcut"]
+    for permission in ("surface:browser", "surface:*", "surface:"):
+        with pytest.raises(ValidationError):
+            Manifest(**base, permissions=[permission])

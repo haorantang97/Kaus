@@ -7,7 +7,7 @@ import { Component, type ReactNode, useId, useLayoutEffect, useRef, useState } f
 import { useLocale } from "../../i18n";
 import { StreamCursor } from "./CardShell";
 import { messageDeliveryStatus, messageStatus, messageText, type MessageItem } from "./timelineReducer";
-import { Pencil, RotateCcw } from "lucide-react";
+import { ClipboardPaste, Pencil, RotateCcw } from "lucide-react";
 import { MarkdownContent } from "./MarkdownContent";
 import { FileReference } from "./ArtifactPreview";
 import { CopyButton } from "./CopyButton";
@@ -32,6 +32,8 @@ export interface MessageActions {
      状态忽隐忽现），但禁用并挂上「等本轮结束」；同一刻其余动作一枚不给——它们是
      "再发一句"，运行中给了只会打架。本轮一结束调用方就换回 `onRetryFailed`。 */
   lockedWhileRunning?: boolean;
+  /** Places the message text in the side browser's page input; the person submits there. */
+  onFillBrowser?: (text: string) => void;
 }
 
 function MessageActionBar({
@@ -42,6 +44,8 @@ function MessageActionBar({
   ariaLabel,
   copiedLabel,
   editing,
+  fillLabel,
+  onFill,
 }: {
   text: string;
   copyLabel: string;
@@ -50,12 +54,14 @@ function MessageActionBar({
   ariaLabel: string;
   copiedLabel: string;
   editing: boolean;
+  fillLabel?: string;
+  onFill?: (() => void) | null;
 }) {
   const toolbar = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const buttons = Array.from(toolbar.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
     buttons.forEach((button, index) => { button.tabIndex = index === 0 ? 0 : -1; });
-  }, [Boolean(text), onExtra]);
+  }, [Boolean(text), onExtra, onFill]);
   return (
     <div ref={toolbar} role="toolbar" className="kaus-msg-actions" data-testid="message-actions" aria-label={ariaLabel}
       onFocus={event => { toolbar.current?.querySelectorAll<HTMLButtonElement>("button").forEach(button => { button.tabIndex = button === (event.target as HTMLElement) ? 0 : -1; }); }}
@@ -72,6 +78,11 @@ function MessageActionBar({
       {onExtra && extraLabel && (
         <button type="button" className="kaus-msg-action" onClick={onExtra} aria-label={extraLabel} title={extraLabel}>
           {editing ? <Pencil size={15} aria-hidden="true" /> : <RotateCcw size={15} aria-hidden="true" />}
+        </button>
+      )}
+      {onFill && fillLabel && (
+        <button type="button" className="kaus-msg-action" onClick={onFill} aria-label={fillLabel} title={fillLabel}>
+          <ClipboardPaste size={15} aria-hidden="true" />
         </button>
       )}
     </div>
@@ -186,6 +197,8 @@ export function TextCard({
         ariaLabel={t("conversation.action.aria")}
         extraLabel={t(item.role === "user" ? "conversation.action.editResend" : "conversation.action.resendPrevious")}
         onExtra={onExtra}
+        fillLabel={t("browser.fill")}
+        onFill={text && !streaming && actions?.onFillBrowser ? () => actions.onFillBrowser?.(text) : null}
       />}
       {deliveryFailed && <MessageDeliveryStatus
         state={undelivered ? "failed" : "unconfirmed"}

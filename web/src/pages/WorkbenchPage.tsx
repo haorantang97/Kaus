@@ -17,6 +17,12 @@ export function WorkbenchPage({moduleId,modules,loading,failed,onRefresh,navigat
   const [config,setConfig]=useState<string|null>(null),[menu,setMenu]=useState<string|null>(null),[picker,setPicker]=useState(false),[busy,setBusy]=useState(false),[actionError,setActionError]=useState<string|null>(null);
   const [intakes,setIntakes]=useState<Intake[]>([]), [selectedIntake,setSelectedIntake]=useState<Intake|null>(null), [installed,setInstalled]=useState<WorkbenchModule|null>(null);
   const dismissedIntakes=useRef(new Set<string>());
+  // A module page integrates an independent app; host Agent overlays such as the group dock stay off it.
+  useEffect(()=>{
+    if(!moduleId)return;
+    document.documentElement.classList.add("kaus-module-page");
+    return()=>document.documentElement.classList.remove("kaus-module-page");
+  },[moduleId]);
   useEffect(()=> {
     if(moduleId)return;
     const controller=new AbortController(); let timer:ReturnType<typeof setTimeout>;

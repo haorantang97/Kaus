@@ -1,0 +1,24 @@
+.kaus-conversation-layout { display: flex; height: 100%; min-width: 0; }
+.kaus-conversation-layout > .kaus-conversation-page { flex: 1 1 auto; min-width: 380px; }
+.kaus-browser-panel { position: relative; display: flex; flex: 0 0 var(--browser-width, 50%); flex-direction: column; min-width: 420px; max-width: calc(100% - 380px); height: 100%; border-left: 1px solid var(--border-subtle, #8882); background: var(--surface-raised, transparent); }
+.kaus-browser-panel[data-dragging] { user-select: none; }
+.kaus-browser-handle { position: absolute; top: 0; bottom: 0; left: -4px; z-index: 2; width: 8px; cursor: col-resize; touch-action: none; }
+.kaus-browser-handle:hover { background: var(--control-hover); }
+.kaus-browser-tabs { display: flex; align-items: center; gap: 2px; min-height: 38px; padding: 4px 6px 0; overflow-x: auto; scrollbar-width: none; }
+.kaus-browser-tab { display: flex; flex: 0 1 180px; align-items: center; min-width: 72px; border-radius: 7px; color: color-mix(in srgb, var(--midground-base) 70%, transparent); }
+.kaus-browser-tab[data-selected] { background: color-mix(in srgb, var(--midground-base) 8%, transparent); color: var(--midground-base); }
+.kaus-browser-tab:hover:not([data-selected]) { background: color-mix(in srgb, var(--midground-base) 4%, transparent); }
+.kaus-browser-tab > button { display: flex; align-items: center; min-width: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.kaus-browser-tab > button:first-child { flex: 1; gap: 6px; padding: 6px 4px 6px 8px; font-size: 12px; }
+.kaus-browser-tab > button:first-child span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kaus-browser-tab > button:first-child svg { flex: 0 0 auto; opacity: .6; }
+.kaus-browser-tab-close { justify-content: center; width: 22px; height: 22px; margin-right: 3px; border-radius: 5px; opacity: .55; }
+.kaus-browser-tab-close:hover { opacity: 1; background: color-mix(in srgb, var(--midground-base) 9%, transparent); }
+.kaus-browser-tab button:focus-visible { outline: none; }
+.kaus-browser-close { margin-left: auto; }
+.kaus-browser-bar { display: flex; align-items: center; gap: 2px; padding: 4px 8px 6px; border-bottom: 1px solid var(--border-subtle, #8882); }
+.kaus-browser-address { flex: 1; min-width: 0; height: 30px; margin-left: 4px; padding: 0 10px; border: 1px solid transparent; border-radius: 7px; background: color-mix(in srgb, var(--midground-base) 6%, transparent); color: var(--midground-base); font-size: 12.5px; }
+.kaus-browser-address:focus { border-color: color-mix(in srgb, var(--midground-base) 22%, transparent); outline: none; }
+.kaus-browser-viewport { position: relative; display: grid; flex: 1; min-height: 0; place-items: center; }
+.kaus-browser-empty { opacity: .18; }
+:root .kaus-group-dock { right: calc(var(--kaus-browser-inset, 0px) + 20px); }

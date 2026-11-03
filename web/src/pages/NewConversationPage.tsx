@@ -9,7 +9,7 @@ import { cream } from "../components/ui";
 import { BarMenu, ComposerBar, type BarMenuOption } from "../components/ComposerBar";
 import { AttentionBlock } from "../components/AttentionBlock";
 import { backendDisplay, engineBrand, engineFamily } from "../lib/backend-display";
-import { engineSelectionChoices } from "../lib/engineSelection";
+import { bindingConnected, engineSelectionChoices, preferredBinding } from "../lib/engineSelection";
 import type { SidebarGroup } from "../lib/conversationIndex";
 import {
   createConversation,
@@ -191,7 +191,7 @@ export function NewConversationPage({
     const applyBindings = (list: BindingWire[]) => {
       setBindings(list);
       const usable = list.filter((item) => item.enabled && engineAcceptsNewWork(item));
-      const preferred = usable.find((item) => item.id === initialBindingId) ?? usable.find((item) => item.isDefault) ?? usable[0];
+      const preferred = preferredBinding(usable, connectedBackends, initialBindingId);
       setBindingId(preferred?.id ?? "");
     };
     setError(null);
@@ -219,7 +219,7 @@ export function NewConversationPage({
       cancelled = true;
       selectionEpoch.current += 1;
     };
-  }, [projectId, initialBindingId]);
+  }, [projectId, initialBindingId, connectedBackends]);
 
   const selectEngine = async (value: string) => {
     if (sendLockRef.current || bindings === null) return;
@@ -245,7 +245,7 @@ export function NewConversationPage({
 
   const engineGroups = useMemo(() => {
     const groups = new Map<string, { primary: BindingWire; choice: BindingWire }>();
-    const baseRank = (item: BindingWire) => Number(!item.discriminator) * 4 + Number(item.isDefault) * 2
+    const baseRank = (item: BindingWire) => Number(bindingConnected(item, connectedBackends)) * 64 + Number(!item.discriminator) * 4 + Number(item.isDefault) * 2
       + Number(connectedBackends.find((backend) => backend.id === item.backendId)?.preferred ?? false);
     for (const item of bindings ?? []) {
       if (!item.enabled || !engineAcceptsNewWork(item) || !engineAcceptsNewWork(connectedBackends.find(c => c.id === item.backendId)) || item.projectId !== projectId) continue;
