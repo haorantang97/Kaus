@@ -3,6 +3,14 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 4 日重启到合并版本与测试隔离修复
+
+主目录切到 `main`（`dcf3f74`），重建前端后重启 8877。真实库已是 v21，4 条会话、2 个接入、1 个 Project 都在，健康检查 `attachFailures` 为空，轮盘和接口正常。与 21:10 备份相比少 9 条事件，均为到期的临时事件。
+
+发现：真实库的 v19–v21 升级发生在 11 月 3 日 21:04，早于 21:10 的备份。原因已复现：在有 `dashboard-config.json` 的目录里跑宿主测试，测试导入 `server` 时会打开并升级默认库（当时合并任务在主目录跑了这组测试）；未写入测试数据。修复：新增 `tests/conftest.py`，在任何测试模块加载前把数据库、电脑操作目录和原生目录指向临时位置。用 v18 库副本加启用功能的配置复验：宿主 382 通过、内核 4,276 通过，副本仍是 v18；主目录再跑宿主 382 通过，真实库数据不变。
+
+项目负责人确认后，经 `DELETE /api/bindings/binding:default:hermes` 删除本机真实库里失效的 Hermes 接入（指向已不注册的 `backend:hermes`，无会话使用）；默认接入 `binding:default:hermes-acp` 不变。尚未重启验证启动警告消失。
+
 ## 11 月 3 日合并 site-surfaces 与 external-terminal
 
 `feat/site-surfaces`（站点视图、侧边浏览器、Midjourney 示例）合并 `claude/external-terminal`。10 个冲突文件：会话页采用拆分后的结构，侧边浏览器的页头开关改为 `ConversationHeader` 的可选 `browser` 属性；`ModuleFrame` 同时保留短时令牌续期与站点视图；`App`、项目页取 external-terminal 一侧；交接文档两边条目都保留。
