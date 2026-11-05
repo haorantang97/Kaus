@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -310,3 +314,35 @@ def test_runtime_model_refresh_preserves_known_signed_out_state():
         {"models": {"availableModels": [{"modelId": "public-default"}]}}, connection=connection)
     assert not driver._catalog[binding.id].models
     assert driver._catalog[binding.id].auth_state == "signed_out"
+
+
+def _sleeper(env):
+    return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], env=env,
+                            start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process scan is POSIX only")
+def test_detached_daemons_in_the_scope_stop_when_it_closes(tmp_path):
+    base = {"HOME": str(tmp_path), "PATH": os.environ.get("PATH", "")}
+    outside = _sleeper({**base, "HERMES_HOME": str(tmp_path / ".hermes")})
+    try:
+        with isolated_native_state(base, preset_id="hermes-acp") as (child, _cwd):
+            # Only a path into the scope: the marker variable is not passed on.
+            detached = _sleeper({"PATH": child["PATH"], "HERMES_HOME": str(Path(child["HOME"]) / ".hermes")})
+            time.sleep(0.2)
+            assert detached.poll() is None
+        assert detached.wait(timeout=5) is not None
+        assert outside.poll() is None
+    finally:
+        for process in (outside, locals().get("detached")):
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait()
+
+
+def test_scope_without_daemons_closes_without_signalling(tmp_path, monkeypatch):
+    sent = []
+    monkeypatch.setattr("drivers.discovery_scope.os.kill", lambda *args: sent.append(args))
+    with isolated_native_state({"HOME": str(tmp_path)}):
+        pass
+    assert sent == []

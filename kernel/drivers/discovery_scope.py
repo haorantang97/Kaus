@@ -9,8 +9,12 @@ from __future__ import annotations
 import os
 import json
 import shutil
+import signal
+import subprocess
 import sys
 import tempfile
+import threading
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -116,13 +120,65 @@ def configuration_paths(environment, preset_id):
     return tuple(paths)
 
 
+def _processes_referencing(scope_name: str) -> list[int]:
+    """Processes whose arguments or environment point into this scope.
+
+    The random directory name is matched rather than the full path: agents may
+    resolve the temporary path (/var -> /private/var) or drop our marker variable.
+    """
+    if os.name != "posix":
+        return []
+    try:
+        listing = subprocess.run(["ps", "axeww", "-o", "pid=,command="], capture_output=True,
+                                 text=True, errors="replace", timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    needle = f"/{scope_name}/"
+    found = []
+    for line in listing.splitlines():
+        pid, _, rest = line.strip().partition(" ")
+        if needle in rest and pid.isdigit() and int(pid) != os.getpid():
+            found.append(int(pid))
+    return found
+
+
+def _signal_all(pids: list[int], signum: int) -> None:
+    for pid in pids:
+        try:
+            os.kill(pid, signum)
+        except OSError:
+            pass  # Already gone, or not ours to stop.
+
+
+def _stop_scope_daemons(root: Path) -> None:
+    """Stop background services an agent detached from its own process tree.
+
+    Some agents auto-start a daemon that callers cannot reach through the child
+    they launched; it would outlive the scope and keep recreating this directory.
+    Never blocks the caller: escalation and final cleanup run on a daemon thread.
+    """
+    pids = _processes_referencing(root.name)
+    if not pids:
+        return
+    _signal_all(pids, signal.SIGTERM)
+
+    def finish() -> None:
+        time.sleep(3)
+        _signal_all(_processes_referencing(root.name), signal.SIGKILL)
+        time.sleep(0.2)
+        shutil.rmtree(root, ignore_errors=True)
+
+    threading.Thread(target=finish, name="kaus-discovery-scope-cleanup", daemon=True).start()
+
+
 @contextmanager
 def isolated_native_state(environment: dict[str, str], *, preset_id: str | None = None,
                           workspace: str | None = None):
     """Yield (child environment, disposable workspace), then remove the scope.
 
-    Callers MUST stop their process tree before leaving. Unknown local agents
-    still receive isolated HOME/XDG paths, but no guessed credential files.
+    Callers MUST stop their process tree before leaving; daemons an agent detached
+    on its own are stopped here. Unknown local agents still receive isolated
+    HOME/XDG paths, but no guessed credential files.
     Gateway-backed agents need a separate test gateway, not a changed HOME.
     """
     original = dict(environment)
@@ -206,7 +262,10 @@ def isolated_native_state(environment: dict[str, str], *, preset_id: str | None 
                         child["CODEX_CONFIG"] = json.dumps({**inline, **overrides})
                 except ValueError:
                     pass  # The native parser reports malformed configuration.
-        yield child, str(cwd)
+        try:
+            yield child, str(cwd)
+        finally:
+            _stop_scope_daemons(root)
 
 
 @contextmanager
