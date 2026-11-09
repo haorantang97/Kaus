@@ -2080,8 +2080,7 @@ button.kaus-conversation-title:hover {
 
 .kaus-cap-tabs [role="tab"] > span { font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
 .kaus-cap-tabs [role="tab"]:focus-visible,
-.kaus-cap-icon-button:focus-visible,
-.kaus-project-more > summary:focus-visible { outline: none; }
+.kaus-cap-icon-button:focus-visible { outline: none; }
 
 .kaus-cap-value { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 .kaus-cap-summary { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
@@ -2170,26 +2169,9 @@ button.kaus-conversation-title:hover {
   left: auto;
 }
 
-.kaus-project-more > summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  padding: 12px;
-  border-radius: 9px;
-  color: color-mix(in srgb, var(--midground-base) 75%, transparent);
-  font: 400 13px/1.4 var(--theme-font-sans);
-  list-style: none;
-  transition: background 150ms ease;
-}
-.kaus-project-more > summary::-webkit-details-marker { display: none; }
-.kaus-project-more > summary:hover { background: color-mix(in srgb, var(--midground-base) 5%, transparent); }
-.kaus-project-more > summary svg { transition: transform 150ms ease; }
-.kaus-project-more[open] > summary svg { transform: rotate(90deg); }
 
 @media (prefers-reduced-motion: reduce) {
   .kaus-cap-tabs [role="tab"], .kaus-cap-icon-button, .kaus-cap-icon-button svg,
-  .kaus-project-more > summary, .kaus-project-more > summary svg { transition: none; }
   .kaus-cap-icon-button:hover svg { transform: none; }
 }
 
@@ -2440,7 +2422,7 @@ body.dark .kaus-cap-row.is-head {
   height: 6px;
   flex: none;
   border-radius: 50%;
-  background: var(--warning);
+  background: var(--status-waiting);
 }
 
 .kaus-group-panel {
@@ -3138,3 +3120,58 @@ body.dark .kaus-project-conversation-icon { color: var(--accent-text); }
   outline: 2px dashed var(--gold);
   outline-offset: -2px;
 }
+
+/* 项目页「指令」：一节一行，标题 + 来源标记 + ⋯，正文最多三行。 */
+.kaus-instructions { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.kaus-instruction { padding: 8px 2px; border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 8%, transparent); }
+.kaus-instruction:last-child { border-bottom: 0; }
+.kaus-instruction.is-blocked { opacity: 0.55; }
+.kaus-instruction-head { display: flex; align-items: center; gap: 8px; }
+.kaus-instruction-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
+.kaus-instruction-body {
+  margin: 4px 0 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  white-space: pre-wrap; font-size: 12.5px; line-height: 1.6; color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+}
+.kaus-instruction-editor { display: flex; flex-direction: column; gap: 8px; }
+
+/* 侧栏会话状态（产品决策「会话状态显示」）。颜色只用在这几处状态上。 */
+:root { --status-unread: #3b82f6; --status-waiting: #e8902c; }
+body.dark { --status-unread: #6ea8ff; --status-waiting: #f0a24a; }
+.kaus-status-slot { display: inline-grid; place-items: center; flex: none; width: 10px; height: 10px; }
+.kaus-status-dot { width: 6px; height: 6px; border-radius: 50%; }
+.kaus-status-dot.is-unread { background: var(--status-unread); }
+.kaus-status-dot.is-awaiting { background: var(--status-waiting); }
+.kaus-status-alert { width: 11px; height: 11px; color: var(--danger); }
+/* 运行中：标题上一道流光。 */
+.kaus-title-running {
+  background: linear-gradient(90deg, currentColor 0%, currentColor 40%, color-mix(in srgb, currentColor 35%, transparent) 50%, currentColor 60%, currentColor 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: kaus-title-shimmer 1.8s linear infinite;
+}
+@keyframes kaus-title-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .kaus-title-running { animation: none; -webkit-text-fill-color: currentColor; }
+}
+
+/* 输入框候选（`/` 命令、`@` 文件）：贴在输入行上方，沿用弹出菜单的边、圆角与阴影。 */
+.kaus-suggest {
+  display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow-y: auto; margin: 0 6px 4px; padding: 4px;
+  border-radius: 10px; background: var(--panel); box-shadow: var(--shadow-popover);
+}
+.kaus-suggest-item {
+  display: flex; align-items: baseline; gap: 10px; min-width: 0; padding: 6px 8px; border-radius: 6px;
+  text-align: left; cursor: pointer; font-size: 13px;
+}
+.kaus-suggest-item.is-active { background: color-mix(in srgb, var(--midground-base) 7%, transparent); }
+.kaus-suggest-label { flex: none; font-family: var(--theme-font-mono); font-size: 12.5px; }
+.kaus-suggest-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: color-mix(in srgb, var(--midground-base) 50%, transparent); font-size: 12px; }
+.kaus-instruction-delivery { margin-top: 10px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--midground-base) 8%, transparent); display: flex; flex-direction: column; gap: 8px; }
+.kaus-instruction-delivery-title { font-size: 11.5px; color: color-mix(in srgb, var(--midground-base) 50%, transparent); }
+.kaus-instruction-delivery-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.kaus-instruction-delivery-file { flex: none; font-family: var(--theme-font-mono); font-size: 12px; }
+.kaus-instruction-delivery-agents { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: color-mix(in srgb, var(--midground-base) 55%, transparent); }
+.kaus-instruction-delivery-pending { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.kaus-instruction-delivery-note { margin: 10px 0 0; font-size: 12px; color: color-mix(in srgb, var(--midground-base) 50%, transparent); }

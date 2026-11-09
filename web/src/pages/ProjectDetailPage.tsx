@@ -4,9 +4,8 @@ import { failureSummary } from "../lib/userFacingErrors";
  * 分区顺序：
  *   ① 头部      面包屑 · 显示名 · slug · 状态 chip · 新建对话 / 到终端打开 / 设置
  *   ② 会话      `GET /api/conversations?project=`
- *   ③ 项目配置  指令、插件与继承来源。Agent 接入统一在全局设置管理。
- *   ④ 能力      effective-capabilities 表：类型 / 内容摘要 / 来源 / 操作
- *   ⑤ 守则      折叠区里的 ConstitutionEditor。
+ *   ③ 指令      ProjectInstructionsEditor：分节、继承、本级改写 / 屏蔽（替代旧守则编辑器）。
+ *   ④ 能力      effective-capabilities 表：类型 / 内容摘要 / 来源 / 操作（指令不在这里重复）
  *
  * 2026-11-03 删除页内项目树：上下级导航由面包屑与项目轮盘承担；改名、删除等
  * 走页头 ⋯ 打开的共用 CtxMenu。
@@ -15,7 +14,7 @@ import { failureSummary } from "../lib/userFacingErrors";
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, ChevronRight, Maximize2, MessageSquare, MoreHorizontal, Plus, Settings, Sparkles, Terminal, X } from "lucide-react";
+import { ArrowUpRight, ChevronRight, Maximize2, MessageSquare, MoreHorizontal, Plus, Sparkles, Terminal, X } from "lucide-react";
 
 import { useLocale } from "../i18n";
 import { AddExistingConversationsDialog } from "../components/AddExistingConversationsDialog";
@@ -23,9 +22,8 @@ import { ProjectHistoryMenu } from "../components/ProjectHistoryMenu";
 import { ProjectHistoryViewer } from "../components/ProjectHistoryViewer";
 import { useProjectHistory } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
-import { ConstitutionEditor } from "../components/ConstitutionEditor";
-import { ProjectConfigurationApply } from "../components/ProjectConfigurationApply";
-import { Button, Card, Modal, Pill, Section, cream, toast } from "../components/ui";
+import { ProjectInstructionsEditor } from "../components/ProjectInstructionsEditor";
+import { Button, Card, Modal, Pill, cream, toast } from "../components/ui";
 import { type NetworkResp } from "../lib/api";
 import { openProjectTerminal } from "../lib/terminalApi";
 import {
@@ -80,7 +78,6 @@ export function ProjectDetailPage({
   onOpenMenu,
   onOpenConversation,
   onNewConversation,
-  onChanged,
   onFocusProject,
   onBackToWheel,
   onArrangeSkills,
@@ -90,7 +87,6 @@ export function ProjectDetailPage({
   const [projects, setProjects] = useState<ProjectWire[]>([]);
   const [capabilities, setCapabilities] = useState<EffectiveCapabilitiesWire | null>(null);
   const [conversations, setConversations] = useState<ConversationIndexEntryWire[] | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [addingHistory, setAddingHistory] = useState(false);
   const [viewHistory, setViewHistory] = useState<ArchiveItem | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -238,10 +234,6 @@ export function ProjectDetailPage({
                 <Terminal className="size-4" aria-hidden="true" />
                 <span className="sr-only">{t("project.action.openTerminal")}</span>
               </Button>
-              <Button onClick={() => setSettingsOpen((value) => !value)} title={t("project.action.settings")} className="!px-2">
-                <Settings className="size-4" aria-hidden="true" />
-                <span className="sr-only">{t("project.action.settings")}</span>
-              </Button>
               {/* 改名、删除（含子项目级联确认与强制停止）等与轮盘节点共用 CtxMenu。 */}
               <button type="button" className="kaus-button kaus-button--ghost !px-2" data-testid="project-more"
                 onClick={(event) => onOpenMenu(legacyName, event.currentTarget.getBoundingClientRect())}
@@ -301,6 +293,10 @@ export function ProjectDetailPage({
           </button>
         </Card>}
 
+        {/* ③ 指令 */}
+        {projectId && <ProjectInstructionsEditor projectId={projectId} effective={capabilities}
+          projectLabel={projectLabel} onChanged={reloadCapabilities} />}
+
         {/* ④ 能力 */}
         <CapabilitiesSection
           projectId={projectId}
@@ -309,20 +305,6 @@ export function ProjectDetailPage({
           onChanged={reloadCapabilities}
         />
 
-        {/* ⑤ 守则。人格、协作影响面、备份恢复 2026-11-03 删除。 */}
-        <details
-          className="kaus-project-more"
-          open={settingsOpen}
-          onToggle={(event) => setSettingsOpen((event.currentTarget as HTMLDetailsElement).open)}
-        >
-          <summary>{t("project.more")}<ChevronRight size={16} aria-hidden="true" /></summary>
-          {/* 折着的时候不挂载：名字要等项目列表回来才对。 */}
-          {settingsOpen && project && (
-            <Section title={t("project.instructions.title")}>
-              <ConstitutionEditor name={project.slug} onSaved={onChanged} />
-            </Section>
-          )}
-        </details>
       </div>
       {addingHistory && project && <AddExistingConversationsDialog projectId={project.id} projectName={project.displayName || project.slug} onClose={() => setAddingHistory(false)} />}
       {viewHistory && <ProjectHistoryViewer item={viewHistory} projectId={projectId} onClose={() => setViewHistory(null)} onOpenConversation={onOpenConversation} />}
@@ -533,7 +515,7 @@ export function CapabilitiesSection({
   if (capabilities !== null && available.total === 0) return null;
 
   return (
-    <Card title={t("capabilities.title")} icon={Sparkles} right={<div className="flex items-center gap-2"><Pill tone="muted">{available.total}</Pill>{projectId && <ProjectConfigurationApply projectId={projectId} />}</div>}>
+    <Card title={t("capabilities.title")} icon={Sparkles} right={<Pill tone="muted">{available.total}</Pill>}>
       {capabilities === null ? (
         <div className="py-2 text-xs" style={{ color: cream(45) }}>
           {t("capabilities.loading")}

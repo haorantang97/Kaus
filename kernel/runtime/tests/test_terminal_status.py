@@ -144,10 +144,15 @@ def test_waiting_callback_fires_once_per_transition_and_never_breaks_reports():
 def test_notification_text_is_quoted_for_applescript(monkeypatch):
     from drivers.terminals import launcher as module
     calls = []
+    monkeypatch.delenv("KAUS_SYSTEM_NOTIFICATIONS", raising=False)  # conftest turns real notifications off
     monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/osascript")
     monkeypatch.setattr(module.subprocess, "Popen", lambda args, **kw: calls.append(args))
     module.macos_notify("Kaus", 'Run "rm" \\ now\nplease')
     assert calls == [["osascript", "-e", 'display notification "Run \\"rm\\" \\\\ now please" with title "Kaus"']]
+    calls.clear()
+    monkeypatch.setenv("KAUS_SYSTEM_NOTIFICATIONS", "0")
+    module.macos_notify("Kaus", "quiet")
+    assert calls == []
 
 
 async def test_focus_uses_the_launch_terminal_app(tmp_path):

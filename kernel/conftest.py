@@ -18,11 +18,15 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+# Fake runs finish turns too; never pop real system notifications during tests.
+os.environ["KAUS_SYSTEM_NOTIFICATIONS"] = "0"
 
 _KERNEL_ROOT = Path(__file__).resolve().parent
 if str(_KERNEL_ROOT) not in sys.path:

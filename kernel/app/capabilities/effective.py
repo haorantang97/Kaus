@@ -71,17 +71,25 @@ def is_native_mcp_record(entry: Any) -> bool:
 
 
 def without_native_mcp(effective: EffectiveCapabilities) -> EffectiveCapabilities:
-    """Native MCP records never reach an adapter.
+    """Native MCP records never reach an adapter as project MCP.
 
     The source Agent already loads them from its own configuration, and their
     catalogue copy carries no credential values. Projecting them again would
     duplicate (or break) the server. Generic ``mcp`` rows are unaffected.
+
+    The records are moved to ``native_mcp`` / ``native_mcp_blocked`` rather than
+    dropped: a driver compares them with the Agent's actual native inventory to
+    exclude the unassigned servers for one launch (design §3a, 2026-11-09).
     """
     if not any(is_native_mcp_record(e) for e in (*effective.entries, *effective.blocked)):
         return effective
     return effective.model_copy(update={
         "entries": tuple(e for e in effective.entries if not is_native_mcp_record(e)),
-        "blocked": tuple(e for e in effective.blocked if not is_native_mcp_record(e))})
+        "blocked": tuple(e for e in effective.blocked if not is_native_mcp_record(e)),
+        "native_mcp": (*effective.native_mcp,
+                       *(e for e in effective.entries if is_native_mcp_record(e))),
+        "native_mcp_blocked": (*effective.native_mcp_blocked,
+                               *(e for e in effective.blocked if is_native_mcp_record(e)))})
 
 
 async def resolve_effective_for_binding(

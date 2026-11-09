@@ -91,6 +91,13 @@ def build_message_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
         )
 
     @ctx.endpoint
+    async def workspace_files(conversation_id: str) -> Any:
+        """输入框 `@` 的候选：这条会话工作目录里的文件。只读，不占运行租约。"""
+        conversation = await ctx.load_conversation(conversation_id)
+        listed, truncated = files.list_workspace(await ctx.conversation_workspace(conversation))
+        return {"files": listed, "truncated": truncated}
+
+    @ctx.endpoint
     async def send_message(
         conversation_id: str, body: SendMessageBody = Body(...)
     ) -> Any:
@@ -234,6 +241,7 @@ def build_message_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
         RouteSpec('/conversations/{conversation_id}/messages/receipt', message_receipt, ["GET"], 'session_message_receipt'),
         RouteSpec('/conversations/{conversation_id}/attachments', upload_attachment, ["POST"], 'session_upload_attachment'),
         RouteSpec('/conversations/{conversation_id}/files', get_file, ["GET"], 'session_get_file'),
+        RouteSpec('/conversations/{conversation_id}/workspace-files', workspace_files, ["GET"], 'session_workspace_files'),
     ]
 
 

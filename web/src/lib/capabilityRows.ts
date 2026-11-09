@@ -30,6 +30,8 @@ const isNativeMcpType = (type: string) => type.includes(":") && type.split(":").
 
 /** 这一行该不该出现在能力表里。 */
 export function isVisibleCapabilityEntry(entry: EffectiveCapabilityEntryWire): boolean {
+  // Instructions have their own editor on the Project page.
+  if (entry.capabilityType === "instructions") return false;
   // Individual skills are edited in the Project skill tree, including native scopes.
   if (entry.capabilityType.split(":").at(-1) === "skills") return false;
   // An Agent's discovered native MCP servers (`<agent>:mcp`) are arranged in the same tree.
@@ -144,6 +146,6 @@ export function visibleCapabilityRows(capabilities: EffectiveCapabilitiesWire | 
   total: number;
 } {
   const entries = (capabilities?.entries ?? []).filter(isVisibleCapabilityEntry);
-  const blocked = (capabilities?.blocked ?? []).filter(row => row.capabilityType.split(":").at(-1) !== "skills" && !isNativeMcpType(row.capabilityType));
+  const blocked = (capabilities?.blocked ?? []).filter(row => row.capabilityType !== "instructions" && row.capabilityType.split(":").at(-1) !== "skills" && !isNativeMcpType(row.capabilityType));
   return { entries, blocked, total: entries.length + blocked.length };
 }

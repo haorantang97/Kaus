@@ -25,6 +25,10 @@ from drivers.base import AttachmentRef
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_READ_BYTES = 25 * 1024 * 1024
 MAX_MESSAGE_ATTACHMENTS = 8
+#: 输入框 `@` 候选最多列这么多个文件；再多就截断并告诉前端。
+MAX_LISTED_FILES = 5000
+#: 列文件时不进的目录：依赖、构建产物、缓存。隐藏目录一律跳过。
+_SKIPPED_DIRS = frozenset({"node_modules", "__pycache__", "dist", "build", "target", "venv", "out", "coverage"})
 MAX_UPLOAD_JSON_BYTES = ((MAX_UPLOAD_BYTES + 2) // 3) * 4 + 4096
 
 _TEXT_EXTENSIONS = frozenset({
@@ -151,19 +155,45 @@ class ConversationFiles:
         key = hashlib.sha256(conversation_id.encode("utf-8")).hexdigest()
         return self.upload_root / key
 
+    @staticmethod
+    def _workspace(workspace_root: str | None) -> Path | None:
+        if not workspace_root:
+            return None
+        workspace = Path(workspace_root).expanduser()
+        if not workspace.is_absolute():
+            return None
+        root = workspace.resolve()
+        # A project must identify a directory, not authorize an entire disk/home.
+        return root if root != Path(root.anchor) and root != Path.home().resolve() else None
+
     def _roots(self, conversation_id: str, workspace_root: str | None) -> tuple[Path, ...]:
         roots: list[Path] = []
-        if workspace_root:
-            workspace = Path(workspace_root).expanduser()
-            if workspace.is_absolute():
-                root = workspace.resolve()
-                # A project must identify a directory, not authorize an entire disk/home.
-                if root != Path(root.anchor) and root != Path.home().resolve():
-                    roots.append(root)
+        if (workspace := self._workspace(workspace_root)) is not None:
+            roots.append(workspace)
         upload = self.conversation_dir(conversation_id)
         if upload is not None:
             roots.append(upload)
         return tuple(roots)
+
+    def list_workspace(self, workspace_root: str | None, *, limit: int = MAX_LISTED_FILES) -> tuple[list[str], bool]:
+        """工作目录下的文件（相对路径），给输入框 `@` 用。不跟随符号链接，跳过隐藏与依赖目录。
+
+        没有工作目录、或工作目录是整块盘 / 家目录时返回空表——与 :meth:`read` 同一条边界。
+        """
+        root = self._workspace(workspace_root)
+        if root is None or not root.is_dir():
+            return [], False
+        found: list[str] = []
+        for current, dirs, names in os.walk(root, followlinks=False):
+            dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d not in _SKIPPED_DIRS)
+            base = Path(current).relative_to(root)
+            for name in sorted(names):
+                if name.startswith(".") or os.path.islink(os.path.join(current, name)):
+                    continue
+                found.append((base / name).as_posix())
+                if len(found) >= limit:
+                    return found, True
+        return found, False
 
     def read(self, conversation_id: str, workspace_root: str | None, raw_path: str, *, limit: int = MAX_READ_BYTES) -> LocalFile:
         path = _decode_path(raw_path)

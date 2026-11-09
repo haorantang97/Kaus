@@ -421,3 +421,22 @@ def external_cli_command(plan, command, *, conversation, binding, spec):
     if plan is not None:
         command = cli_command(plan, command)
     return environment(spec, conversation, command, values)
+
+
+# 开对话前的原生 MCP 排除（2026-11-09，设计稿第 3a 节）。
+#: ``--disable-mcp-server`` 在 ``--acp`` 模式下是否生效，官方文档没写，未实测。
+NATIVE_MCP_EXCLUSION_VERIFIED = False
+
+
+def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
+    """Repeat ``--disable-mcp-server=<name>`` on this launch's argv.
+
+    GitHub Copilot CLI command reference: "Disable a specific MCP server (can be
+    used multiple times)" (docs.github.com/en/copilot/reference/copilot-cli-reference/
+    cli-command-reference). The ACP page lists only a few per-session options, so
+    acceptance in ``--acp`` mode is unverified. ``~/.copilot/mcp-config.json`` is not
+    modified.
+    """
+    names = [row.get("name") for row in excluded if isinstance(row.get("name"), str) and row.get("name")]
+    flags = tuple(f"--disable-mcp-server={name}" for name in names)
+    return spec.model_copy(update={"command": (*spec.command, *flags)}), metadata, ()

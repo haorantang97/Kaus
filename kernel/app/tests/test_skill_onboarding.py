@@ -176,6 +176,8 @@ def test_native_mcp_is_never_projected_to_the_binding(tmp_path):
         assert [e.capability_type for e in visible.entries] == ["codex:mcp"]
         projected = asyncio.run(resolve_effective_for_binding(repos, binding))
         assert not [e for e in projected.entries if e.type_ref.name == "mcp"]
+        # 2026-11-09：记录挪到 native_mcp，驱动据此算「自带但未分配」的排除名单。
+        assert [e.capability_type for e in projected.native_mcp] == ["codex:mcp"]
     finally:
         uow.close()
 

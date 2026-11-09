@@ -32,6 +32,7 @@ from drivers.instructions_projection import (
     invalid_instruction_entries,
 )
 from drivers.workspace_projection import inspect_block_drift, materialize_block
+from drivers.launch_delivery import home_of, plan_launch, same_directory
 from runtime.capability_matrix import SupportLevel, evaluate_support
 from drivers.acp.runtime_state import _now
 
@@ -54,7 +55,17 @@ class AcpProjectionMixin:
         私有知识（N §3，与批次四十三把 MCP 翻译放在 Driver 侧是同一条界线）。
         """
         del binding  # 约定来自预设，与具体哪条 Binding 无关
-        return {"instructionsFile": self._instructions_file}
+        return {"instructionsFile": self._instructions_file,
+                "deliveryChannel": self.instructions_delivery_channel()}
+
+    def instructions_delivery_channel(self) -> str | None:
+        """项目指令开对话时走哪条路（2026-11-09）：``launch`` = 启动时注入（适配器
+        声明了 ``deliver_instructions``）；``workspace_file`` = 写工作目录指令文件的
+        受管块；``None`` = 都没有，只能报未生效。"""
+        from drivers.launch_delivery import CHANNEL_LAUNCH, CHANNEL_WORKSPACE_FILE
+        if callable(getattr(self._runtime_adapter(), "deliver_instructions", None)):
+            return CHANNEL_LAUNCH
+        return CHANNEL_WORKSPACE_FILE if self._instructions_file else None
 
     def _workspace_of(self, project: Project, binding: AgentBinding) -> str | None:
         """文件投影的目标目录 = 项目的工作目录。
@@ -259,6 +270,12 @@ class AcpProjectionMixin:
         )
         if "mcpServers" in metadata:
             summary["mcpServers"] = [server["name"] for server in metadata["mcpServers"]]
+        # 2026-11-09：开对话前自动送达（设计稿第 3 / 3a 节）。算出这次要怎么送：
+        # 适配器有启动注入就注入；否则**现在**写工作目录指令文件的受管块；自带 MCP
+        # 里未分配给本 Project 的那些记下来，启动时按适配器自己的机制排除。
+        launch_plan = self._plan_launch(conversation, effective, workspace_root)
+        summary.update(launch_plan.summary)
+        warnings.extend(launch_plan.warnings)
         remember_options = getattr(self._runtime_adapter(), "remember_session_options", None)
         if remember_options is not None:
             # Cold terminal launches can bypass runtime preparation. Retain the
@@ -268,7 +285,7 @@ class AcpProjectionMixin:
                              else self.agent_spec, conversation, metadata)
         for warning in warnings:
             self._warn(warning)
-        if not metadata:
+        if not metadata and not launch_plan.summary:
             return None
         return SessionProjection(
             options=CreateSessionOptions(
@@ -293,13 +310,19 @@ class AcpProjectionMixin:
         from drivers.projection_gaps import INVALID_CONFIG, MCP, SKILLS, UNSUPPORTED, instructions_gap
 
         gaps: list[UnappliedCapability] = []
-        instructions = instructions_gap(
-            effective,
-            workspace_root=workspace_root or self._workspace_root_for(conversation.agent_binding_id),
-            filename=self._instructions_file,
-        )
-        if instructions is not None:
-            gaps.append(instructions)
+        plan = self._launch_plans.get(conversation.id)
+        if plan is not None:
+            # ``session_options_for`` 刚为这条会话算过送达计划：没送出去的都在它上面
+            # （含「已写文件但同目录另有会话在跑」的提示与未隔离的自带 MCP）。
+            gaps.extend(plan.unapplied)
+        else:
+            instructions = instructions_gap(
+                effective,
+                workspace_root=workspace_root or self._workspace_root_for(conversation.agent_binding_id),
+                filename=self._instructions_file,
+            )
+            if instructions is not None:
+                gaps.append(instructions)
         delivered = set(project_mcp_servers(effective).names)
         skipped: list[str] = []
         for entry in effective.by_type("mcp"):
@@ -315,6 +338,52 @@ class AcpProjectionMixin:
             reason = next((item.reason for item in plan.report.unsupported if item.reason), None) or UNSUPPORTED
             gaps.append(UnappliedCapability(kind=SKILLS, names=rejected, reason=reason))
         return tuple(gaps)
+
+    def _native_mcp_inventory(self, effective: EffectiveCapabilities) -> tuple[dict[str, Any], ...]:
+        """这台 Agent 此刻从自己全局配置里读到的 MCP（只读；``drivers.mcp_inventory``）。
+
+        与接入时的清单同一套来源与同一种 id（``capabilityId``），所以能直接与
+        ``effective.native_mcp`` 里分配给本 Project 的记录对上。没有预设 = 不知道它
+        把全局 MCP 放哪 = 空。
+        """
+        if self.preset is None:
+            return ()
+        from drivers.mcp_inventory import discover_mcp, preset_sources
+        env = self.agent_spec.build_env()
+        sources = preset_sources(
+            self.preset.id,
+            agent_key=self.preset.skill_scope_key or self.preset.id,
+            agent_label=self.preset.label,
+            project_id=effective.project_id,
+            home=home_of(env),
+            env=env,
+        )
+        return tuple(discover_mcp(sources))
+
+    def _workspace_in_use(self, conversation: Conversation, workspace_root: str | None) -> bool:
+        """同一个工作目录里是不是另有会话正在跑（它的进程读的是改之前的文件）。"""
+        for state in self._runtimes.values():
+            if state.closed or state.handle.conversation_id == conversation.id:
+                continue
+            other = state.runtime_metadata.get("_kausWorkspaceRoot") or state.workspace_root
+            if same_directory(other, workspace_root):
+                return True
+        return False
+
+    def _plan_launch(self, conversation: Conversation, effective: EffectiveCapabilities, workspace_root: str | None):
+        """算这次启动的送达计划并记下来（``start_runtime`` 再把它落到进程规格上）。"""
+        root = workspace_root or self._workspace_root_for(conversation.agent_binding_id)
+        plan = plan_launch(
+            effective,
+            adapter=self._runtime_adapter(),
+            instructions_file=self._instructions_file,
+            workspace_root=root,
+            project_id=effective.project_id,
+            native_inventory=self._native_mcp_inventory(effective),
+            workspace_in_use=self._workspace_in_use(conversation, root),
+        )
+        self._launch_plans[conversation.id] = plan
+        return plan
 
     def supports_workspace_override(self) -> bool:
         return True

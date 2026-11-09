@@ -192,7 +192,7 @@ describe("项目详情页", () => {
     const head = screen.getByRole("banner");
     expect(within(head).getByText("pronto")).toBeInTheDocument();
     expect(within(head).getByText("运行中")).toBeInTheDocument();
-    for (const label of ["新建对话", "到终端打开", "设置"]) {
+    for (const label of ["新建对话", "到终端打开"]) {
       expect(within(head).getByRole("button", { name: label })).toBeInTheDocument();
     }
     // 会话优先于配置，首屏能直接继续已有对话。

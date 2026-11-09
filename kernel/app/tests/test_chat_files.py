@@ -223,3 +223,34 @@ def test_api_stale_interrupt_does_not_cancel_current_run(setup):
     stopped = client.post(f"/api/conversations/{cid}/interrupt", json={"expectedRunId": current})
     assert stopped.status_code == 200
     assert client.get(f"/api/conversations/{cid}").json()["runState"] == "idle"
+
+
+def test_workspace_files_list_relative_paths_without_hidden_dependencies_or_links(setup):
+    harness, client, cid, _captured, tmp = setup
+    workspace = tmp / "site"
+    (workspace / "src/pages").mkdir(parents=True)
+    (workspace / "src/pages/index.tsx").write_text("x")
+    (workspace / "README.md").write_text("x")
+    (workspace / ".env").write_text("SECRET=1")
+    (workspace / ".git").mkdir()
+    (workspace / ".git/config").write_text("x")
+    (workspace / "node_modules/pkg").mkdir(parents=True)
+    (workspace / "node_modules/pkg/index.js").write_text("x")
+    outside = tmp / "outside.txt"
+    outside.write_text("x")
+    os.symlink(outside, workspace / "linked.txt")
+    url = f"/api/conversations/{cid}/workspace-files"
+    assert client.get(url).json() == {"files": [], "truncated": False}  # 还没有工作目录
+    snapshot(harness, cid, workspace)
+    assert client.get(url).json() == {"files": ["README.md", "src/pages/index.tsx"], "truncated": False}
+    assert client.get(url, headers={"Authorization": "Bearer invalid"}).status_code == 401
+    assert client.get("/api/conversations/conversation:missing/workspace-files").status_code == 404
+
+
+def test_workspace_listing_stops_at_the_limit_and_refuses_home(tmp_path):
+    store = ConversationFiles(tmp_path / "uploads")
+    for index in range(5):
+        (tmp_path / f"f{index}.txt").write_text("x")
+    assert store.list_workspace(str(tmp_path), limit=3) == (["f0.txt", "f1.txt", "f2.txt"], True)
+    assert store.list_workspace(str(Path.home())) == ([], False)
+    assert store.list_workspace("relative/path") == ([], False)

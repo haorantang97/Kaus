@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol, Sequence, runtime_checkable
+from typing import Mapping, Protocol, Sequence, runtime_checkable
 
 from app.conversations.models import Conversation
 from app.errors import DomainInvariantError
@@ -87,6 +87,14 @@ class ConversationRepository(Protocol):
 
     async def set_bookmark(self, conversation_id: str, message_id: str, saved: bool) -> None: ...
 
+    async def viewed_sequences(self, conversation_ids: Sequence[str]) -> Mapping[str, int]:
+        """用户在会话页看到的最后一个事件序号；没看过的不在结果里。"""
+        ...
+
+    async def mark_viewed(self, conversation_id: str, sequence: int) -> int:
+        """只前进不后退，返回记下的序号（会话不存在时返回入参）。"""
+        ...
+
     async def delete(self, conversation_id: str) -> None:
         """v1.0 §16.6：删除 Conversation 不删除原生 Session。"""
         ...
@@ -98,6 +106,7 @@ class InMemoryConversationRepository:
     def __init__(self, conversations: Sequence[Conversation] = ()) -> None:
         self._by_id: dict[str, Conversation] = {c.id: c for c in conversations}
         self._bookmarks: dict[str, set[str]] = {}
+        self._viewed: dict[str, int] = {}
 
     async def get(self, conversation_id: str) -> Conversation | None:
         return self._by_id.get(conversation_id)
@@ -175,6 +184,7 @@ class InMemoryConversationRepository:
     async def delete(self, conversation_id: str) -> None:
         self._by_id.pop(conversation_id, None)
         self._bookmarks.pop(conversation_id, None)
+        self._viewed.pop(conversation_id, None)
 
     async def bookmarks(self, conversation_id: str) -> Sequence[str]:
         return tuple(sorted(self._bookmarks.get(conversation_id, ())))
@@ -190,6 +200,15 @@ class InMemoryConversationRepository:
             values.add(message_id)
         else:
             values.discard(message_id)
+
+    async def viewed_sequences(self, conversation_ids: Sequence[str]) -> Mapping[str, int]:
+        return {cid: self._viewed[cid] for cid in conversation_ids if cid in self._viewed}
+
+    async def mark_viewed(self, conversation_id: str, sequence: int) -> int:
+        if conversation_id not in self._by_id:
+            return sequence
+        self._viewed[conversation_id] = max(sequence, self._viewed.get(conversation_id, sequence))
+        return self._viewed[conversation_id]
 
 
 __all__ = [

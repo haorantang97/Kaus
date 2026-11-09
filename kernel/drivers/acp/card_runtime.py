@@ -78,6 +78,19 @@ class AcpCardRuntimeMixin:
             runtime_metadata.pop("_kausComputerUse", None)
             skill_plan, runtime_adapter, role = None, None, None
         runtime_metadata["_kausWorkspaceRoot"] = self._resolve_cwd(workspace_root)
+        if not restricted:
+            # 2026-11-09：把 ``session_options_for`` 算好的送达计划落到这一次进程上
+            # （启动注入的指令、按次排除的自带 MCP）。放在组长隔离之前：组内角色对
+            # 指令的改写要能盖过它。
+            from drivers.launch_delivery import apply_launch_plan
+            spec, runtime_metadata, delivery_warnings = apply_launch_plan(
+                self._launch_plans.get(conversation.id), spec, runtime_metadata,
+                adapter=runtime_adapter, cwd=runtime_metadata["_kausWorkspaceRoot"],
+            )
+            for warning in delivery_warnings:
+                self._warn(warning)
+            if skill_plan is not None:
+                skill_plan.spec = spec
         if role:
             from drivers.group_execution import adapter_for
             adapter = adapter_for(self.preset.group_isolation_adapter if self.preset else None)

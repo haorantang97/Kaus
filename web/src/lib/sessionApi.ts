@@ -383,6 +383,8 @@ export interface ConversationIndexEntryWire {
   terminalStatus?: TerminalStatusWire | null;
   /** 有一张审批 / 提问卡在等用户回答。 */
   awaitingInput?: boolean;
+  /** 用户在会话页看到的最后一个事件序号；从没看过为 null，老后端缺席。 */
+  viewedSequence?: number | null;
 }
 
 export interface TerminalStatusWire {
@@ -431,6 +433,40 @@ export function patchConversation(
 
 export function setConversationBookmark(conversationId: string, messageId: string, saved: boolean): Promise<{ messageId: string; saved: boolean }> {
   return request(`/api/conversations/${encodeURIComponent(conversationId)}/bookmarks`, { method: "PUT", body: { messageId, saved } });
+}
+
+/** 项目指令送达到工作目录里的哪些文件（设计稿第 3、4 节）。没有工作目录时 409 `workspace_required`。 */
+export interface InstructionFileWire {
+  file: string;
+  backends: string[];
+  /** `launch` = 启动时注入；`workspace_file` = 写进这个文件的受管块。 */
+  deliveryChannel: "launch" | "workspace_file" | null;
+  hasManagedBlock: boolean;
+  managedByOtherProject: boolean;
+  hasUserContent: boolean;
+  preview: string;
+  decision: { mode: "import" | "keep" } | null;
+  /** 文件里有用户自己写的内容、还没决定导入还是保留。 */
+  pending: boolean;
+}
+
+export function fetchInstructionFiles(projectId: string, signal?: AbortSignal): Promise<{ workspaceRoot: string; workspaceDenied: string | null; files: InstructionFileWire[] }> {
+  return request(`/api/projects/${encodeURIComponent(projectId)}/instructions/workspace-files`, { signal });
+}
+
+/** 把文件里已有的内容导入成一节指令（文件改成受管块），或保留原文件不再提示。 */
+export function importInstructionFile(projectId: string, file: string, mode: "import" | "keep"): Promise<unknown> {
+  return request(`/api/projects/${encodeURIComponent(projectId)}/instructions/import`, { method: "POST", body: { file, mode } });
+}
+
+/** 输入框 `@` 的候选：会话工作目录里的文件（相对路径，最多 5000 个）。 */
+export function fetchWorkspaceFiles(conversationId: string, signal?: AbortSignal): Promise<{ files: string[]; truncated: boolean }> {
+  return request(`/api/conversations/${encodeURIComponent(conversationId)}/workspace-files`, { signal });
+}
+
+/** 会话页看到哪儿了（侧栏蓝点与系统通知都靠它）。只前进不后退；带上界面语言，通知文案跟着它。 */
+export function markConversationViewed(conversationId: string, sequence: number, locale?: "zh" | "en"): Promise<{ viewedSequence: number }> {
+  return request(`/api/conversations/${encodeURIComponent(conversationId)}/viewed`, { method: "PUT", body: { sequence, ...(locale ? { locale } : {}) } });
 }
 
 /** 400 `model_rejected` 的 `detail`：引擎自己给的一句拒绝理由 + 被拒的模型 id。

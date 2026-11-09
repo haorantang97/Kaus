@@ -151,6 +151,14 @@ class BookmarkBody(_Body):
     saved: bool
 
 
+class ViewedBody(_Body):
+    """``PUT /conversations/{id}/viewed``：会话页看到的最后一个事件序号。"""
+
+    sequence: int = Field(ge=0)
+    #: 界面语言，系统通知的文案跟着它。
+    locale: Literal["zh", "en"] | None = None
+
+
 class SendMessageBody(_Body):
     """``POST /conversations/{id}/messages`` 的 body = 公共 ``MessageInput``。
 

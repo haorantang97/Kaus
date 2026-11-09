@@ -1,6 +1,6 @@
 # Project 配置通用化（设计稿）
 
-2026-11-02 起草，2026-11-03 项目负责人确认（记忆按第 5 节、分期按下文，原生 MCP 隔离并入第一期）。未实现。取代 [project-instructions-design.md](project-instructions-design.md)。
+2026-11-02 起草，2026-11-03 项目负责人确认（记忆按第 5 节、分期按下文，原生 MCP 隔离并入第一期）。第一期第 1 步（唯一存储，2026-11-03）、第 3 步（自动送达，含第 4 节的后端原语）与第 4 步（原生 MCP 排除）已实现（2026-11-09，见 `docs/handoff/verification.md` 同日条目）；各 Agent 的真实启动参数均未实测，排除机制一律按「未隔离／未验证」报告，等隔离虚拟机里的跨 Agent 实测。第 2 步编辑器与第 5 步收尾进行中。取代 [project-instructions-design.md](project-instructions-design.md)。
 
 ## 目标
 
@@ -56,24 +56,29 @@ Project 树、指令、记忆、技能、MCP、插件只存在 SQLite（`project
 
 没有工作目录的 Project，开第一个对话时要求选目录。
 
+2026-11-09 实现（`kernel/drivers/launch_delivery.py`，在 `session_options_for` 里算、`start_runtime` 里落到进程）：Claude 经 claude-agent-acp 的 `session/new` `_meta.claudeCode.options.systemPrompt = {type: preset, preset: claude_code, append}`，Codex 经 codex-acp 的 `CODEX_CONFIG.developer_instructions`；其余有指令文件约定的预设在开对话前写受管块（同目录另有会话在跑时照写并报 `workspace_in_use`）；没有约定的报 `no_convention`。文件通道缺工作目录时会话不启动，发送接口回 409 `workspace_required`。外部终端启动尚未带 `--append-system-prompt`。
+
 ### 3a. 原生 MCP 隔离
 
 接入时读到的 Agent 全局 MCP 已能分配到 Project（2026-11-03 起），但源 Agent 仍加载自己全部的全局 MCP。每次启动时，驱动算出「该 Agent 自带、但未分配给当前 Project」的 MCP 名称，用该 Agent 自己的机制只在本次启动中排除，不改用户配置文件，不保存密钥：
 
 | Agent | 机制 | 状态 |
 | --- | --- | --- |
-| Copilot | 启动参数 `--disable-mcp-server=<名称>`（可重复） | 官方文档有，需实测 |
-| Codex | 启动配置覆盖 `mcp_servers.<名称>.enabled=false` | 需实测 |
-| Gemini、Qwen | `--allowed-mcp-server-names`（列出允许的），或配置中的排除名单 | 新旧键名不一，需实测 |
-| OpenCode | `OPENCODE_CONFIG_CONTENT` 传入 `enabled: false` | 部分条目能否通过校验需实测 |
-| Claude Code | 无按名禁用参数；用严格模式只加载 Kaus 传入的 MCP：启动时读原配置，把已分配的完整定义在内存里传给子进程 | 需实测，注意用户在 `~/.claude.json` 手动禁用的项 |
-| Cursor | 未找到按会话禁用的方式 | 标「未隔离」 |
+| Copilot | 启动参数 `--disable-mcp-server=<名称>`（可重复） | 已实现（argv）；官方命令参考有，ACP 页未提全局参数是否生效，需实测 |
+| Codex | 启动配置覆盖 `mcp_servers.<名称>.enabled=false` | 已实现（经 codex-acp 的 `CODEX_CONFIG` 深合并进 `thread/start` / `thread/resume` 配置）；需实测 |
+| Gemini | `--allowed-mcp-server-names`（白名单，排他） | 已实现（argv；白名单 = 已分配的自带 MCP + Kaus 项目 MCP 名；空表等于不过滤，用占位名 `kaus:none` 表达「一个都不留」）；白名单对 ACP 传入的 MCP 是否也生效，需实测 |
+| Qwen | `--disable-mcp-server=<名称>`（可重复；源码有，文档未列） | 已实现（argv）；需实测 |
+| OpenCode | `OPENCODE_CONFIG_CONTENT` 传入 `mcp.<名称>.enabled: false` | 已实现（v1 schema 明确接受只有 `enabled` 的条目；v2 改为 `mcp.servers.<名称>.disabled`，未适配）；需实测 |
+| Claude Code | 无按名禁用参数；用严格模式只加载 Kaus 传入的 MCP：启动时读原配置，把已分配的完整定义在内存里传给子进程 | 已实现（`session/new` `_meta.claudeCode.options.strictMcpConfig=true` + `mcpServers`；跳过 `~/.claude.json` 里 `projects[<cwd>].disabledMcpServers` 的项，保留该目录的本地作用域 MCP；工作目录 `.mcp.json` 在严格模式下不加载，启动时提示）；需实测 |
+| Cursor | 未找到按会话禁用的方式（只有持久化的 `agent mcp disable`） | 标「未隔离」（`native_not_isolated`） |
 
-未实测通过的 Agent，项目页在其 MCP 分组上标「未隔离」。
+未实测通过的 Agent，项目页在其 MCP 分组上标「未隔离」。实现：`kernel/drivers/launch_delivery.py` 算名单（自带清单来自 `mcp_inventory`，与接入时同一套 id；一条分配/屏蔽行都没有的 Agent 视为「未整理」，不动），各 `kernel/drivers/skill_execution/<agent>.py` 的 `exclude_native_mcp` 钩子落到本次进程；`NATIVE_MCP_EXCLUSION_VERIFIED` 全部为 `False`，会话 `projection.summary.nativeMcp` 报 `unverified`。
 
 ### 4. 接入已有文件夹
 
 发现工作目录已有 `AGENTS.md` / `CLAUDE.md` 时默认「导入」：内容进编辑器，原文件这部分换成托管段。也可选「保留原文件」。之后文件里的托管段被手动改过，项目页提示「文件中有改动」，由用户选采用哪边。
+
+2026-11-09 后端原语已实现（`kernel/app/api/workspace_instructions.py`）：`GET /api/projects/{id}/instructions/workspace-files` 发现（文件名向各 Driver 要；`pending` = 块外有内容且未决定），`POST /api/projects/{id}/instructions/import` `{file, mode: import|keep}`：导入存为能力行 `imported-<文件名 slug>`（config `{body, order: 100, title: <文件名>}`），文件只剩受管块（读文件的引擎写当前有效指令，启动注入的引擎写空块占位），备份照留；`keep` 只记决定。界面未接；「托管段被手动改过」的提示仍走既有 drift 接口。
 
 ### 5. Project 记忆
 

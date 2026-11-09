@@ -24,6 +24,21 @@ export interface SidebarConversation {
   terminalWaiting?: string;
   /** 有一张审批 / 提问卡在等用户回答。 */
   awaitingInput?: boolean;
+  /** 最新事件序号与用户看到的序号；两者都有且前者更大 = 有没看过的新内容。 */
+  lastSequence?: number | null;
+  viewedSequence?: number | null;
+}
+
+/** 侧栏行上的状态（产品决策「会话状态显示」）：已查看的空闲会话为 null，不显示。 */
+export type ConversationStatus = "failed" | "awaiting" | "running" | "unread";
+
+export function conversationStatus(conversation: SidebarConversation): ConversationStatus | null {
+  if (conversation.state === "error") return "failed";
+  if (conversation.awaitingInput || conversation.state === "paused" || conversation.terminalWaiting !== undefined) return "awaiting";
+  if (isRunning(conversation.state)) return "running";
+  const last = conversation.lastSequence;
+  if (typeof last === "number" && last > (conversation.viewedSequence ?? -1)) return "unread";
+  return null;
 }
 
 export interface SidebarGroup {
@@ -100,44 +115,6 @@ export function buildConversationGroups(
  * 那一段），随概览页一起删了——那一段是侧栏的复印件。
  */
 
-/** 「需要处理」里的一条：索引行 + 它属于哪个项目（那一段要显示项目名）。
- *  batch42：「继续」那一段随概览页一起删了，这个形状只剩 `AttentionItem` 在用。 */
-export interface RecentConversation extends SidebarConversation {
-  projectDisplayName: string;
-}
-
-/** 「需要处理」的三档。`awaiting` = 会话停在那儿等人（审批/暂停），`failed` = 上一次没发出去，
- *  `terminal` = 外部终端里的 Agent 在等人（hook 上报，审批仍在终端里完成）。 */
-export type AttentionKind = "awaiting" | "failed" | "terminal";
-
-export interface AttentionItem extends RecentConversation {
-  kind: AttentionKind;
-}
-
-/**
- * 「需要处理」：**只认索引行已经有的那个 `status`**。
- *
- * 后端没有"跨会话的待审批清单"这样一个端点，索引行给的是一个封闭集合
- * （idle | running | paused | ended | error）。所以这一段的口径就写死在这里：
- *   - `awaitingInput` / `paused` → 这条会话停在那儿等人（审批或提问未答、或被暂停）；
- *   - `error`  → 上一轮没跑成 / 上一句没发出去。
- * 别的档一律不进这一段——**不猜**（AD-71）。一条都没有时页面整段不渲染。
- */
-export function buildAttentionItems(groups: SidebarGroup[]): AttentionItem[] {
-  const items: AttentionItem[] = [];
-  for (const group of groups) {
-    for (const conversation of group.conversations) {
-      const kind: AttentionKind | null = conversation.terminalWaiting !== undefined ? "terminal"
-        : conversation.awaitingInput || conversation.state === "paused" ? "awaiting" : conversation.state === "error" ? "failed" : null;
-      if (kind === null) continue;
-      items.push({ ...conversation, projectDisplayName: group.displayName, kind });
-    }
-  }
-  // 失败排在等待前面：没发出去比停着更需要人动手。
-  const rank: Record<AttentionKind, number> = { failed: 0, terminal: 1, awaiting: 2 };
-  return items.sort((a, b) => rank[a.kind] - rank[b.kind] || activityOf(b) - activityOf(a));
-}
-
 export interface ConversationIndex {
   groups: SidebarGroup[];
   /** batch40：概览页的「项目」一段要**全部**项目（含还没有会话的那些）。 */
@@ -188,6 +165,8 @@ export function useConversationIndex(refreshToken: number, enabled = true): Conv
           backendId: entry.backendId,
           ...(entry.terminalStatus?.state === "waiting" ? { terminalWaiting: entry.terminalStatus.message ?? "" } : {}),
           ...(entry.awaitingInput ? { awaitingInput: true } : {}),
+          // 老后端没有 viewedSequence 时不判未读，避免整列冒蓝点。
+          ...(entry.viewedSequence !== undefined ? { lastSequence: entry.lastSequence, viewedSequence: entry.viewedSequence } : {}),
         }));
         const known = new Set(flat.map(item => item.id));
         const projectIds = new Set(projects.map(project => project.id));

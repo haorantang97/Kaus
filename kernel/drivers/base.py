@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import (
     Any,
     AsyncIterator,
+    Final,
     Literal,
     Mapping,
     Protocol,
@@ -129,6 +130,18 @@ class UnsupportedCapabilityError(DriverError, NotImplementedError):
 
     N §13.1：不支持项必须返回明确状态——抛这个异常，而不是返回空对象假装支持。
     """
+
+
+class WorkspaceRequiredError(UnsupportedCapabilityError):
+    """这个 Project 有要送达的指令，但送达通道需要工作目录，而它没有（2026-11-09）。
+
+    会话**不**启动：没有目录就没有引擎读得到的文件，静默开起来等于把项目配置丢在
+    门外（D-03）。接入层按 ``failure.code``（:data:`WORKSPACE_REQUIRED`）回稳定码，
+    界面据它让用户先选文件夹；这里不替他编一个目录。
+    """
+
+
+WORKSPACE_REQUIRED: Final[str] = "workspace_required"
 
 
 class ModelRejectedError(DriverError):
@@ -1108,6 +1121,8 @@ __all__ = [
     "AuthRequiredError",
     "TurnAlreadyRunningError",
     "UnsupportedCapabilityError",
+    "WORKSPACE_REQUIRED",
+    "WorkspaceRequiredError",
     "describe_driver",
     "plain_text",
     "redact_account",

@@ -47,6 +47,8 @@ class WorkbenchService:
         self.registry = registry
         self.execution_policy_hook = execution_policy_hook
         self.module_change_hook = None
+        #: 其他关心模块变化的一方（模块 MCP 登记），在 `module_change_hook` 之后依次调用。
+        self.module_change_listeners: list = []
         self._tasks: dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
         self._closing = False
@@ -62,6 +64,12 @@ class WorkbenchService:
                         step["status"] = "interrupted"
                 job["errorCode"] = "service_restarted"
                 self._save_job(job)
+
+    async def _module_changed(self, module_id):
+        if self.module_change_hook:
+            await self.module_change_hook(module_id)
+        for listener in tuple(self.module_change_listeners):
+            await listener(module_id)
 
     def _new_module(self, manifest, *, asset_root=None):
         return {**manifest, "kind": "external", "builtin": False,
@@ -188,8 +196,7 @@ class WorkbenchService:
             for job in self.jobs(module_id):
                 if job["status"] in ACTIVE:
                     await self._cancel_job(module_id, job["id"], bypass_permission=True)
-        if self.module_change_hook:
-            await self.module_change_hook(module_id)
+        await self._module_changed(module_id)
         return self.module(module_id)
 
     async def set_pins(self, module_ids):
@@ -234,8 +241,7 @@ class WorkbenchService:
         finally:
             if not published:
                 shutil.rmtree(package, ignore_errors=True)
-        if self.module_change_hook:
-            await self.module_change_hook(manifest.id)
+        await self._module_changed(manifest.id)
         return self.module(manifest.id)
 
     async def uninstall(self, module_id):
@@ -252,8 +258,7 @@ class WorkbenchService:
             module["installed"] = False
             self.store.put("modules", module_id, module)
             self.frame_tokens.revoke_module(module_id)
-        if self.module_change_hook:
-            await self.module_change_hook(module_id)
+        await self._module_changed(module_id)
         return {"removed": True}
 
     def workflow(self, module_id):

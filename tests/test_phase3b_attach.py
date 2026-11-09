@@ -205,11 +205,12 @@ def test_background_task_is_only_scheduled_when_enabled(tmp_path, monkeypatch):
         log=lambda _m: None,
     )
     try:
-        # Reconciliation and module registration are independent of maintenance.
-        # On-demand jobs must still release their runtimes when maintenance is off.
-        assert len(without.router.on_startup) == 2
+        # Reconciliation, module registration and the daily backup are independent
+        # of maintenance. On-demand jobs must still release their runtimes when
+        # maintenance is off.
+        assert len(without.router.on_startup) == 3
         assert len(without.router.on_shutdown) == 1
-        assert len(with_task.router.on_startup) == 3
+        assert len(with_task.router.on_startup) == 4
         assert len(with_task.router.on_shutdown) == 1
     finally:
         asyncio.run(quiet.aclose())

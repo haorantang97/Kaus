@@ -2,6 +2,20 @@
 
 截至 2026-11-02。这里不把历史上已解决的失败重新列为待办，也不把未验收写成不支持。
 
+## 执行顺序（2026-11-09 项目负责人确认）
+
+新用户引导单独处理：先调研同类产品，再和项目负责人逐屏打磨交互，暂不开发。其余按下列顺序做：
+
+1. 内置备份（已完成，见 `verification.md` 11 月 9 日）
+2. 第一期：11 月 9 日完成（编辑器、自动送达、原生 MCP 排除、送达状态与导入、删除手动应用）。真实 Agent 上的送达与排除待实测（见 `docs/product/project-config-generalization-20261102.md`）
+3. 第二期：项目记忆（同一设计稿第 5 节）
+4. 会话状态点与基础操作（Esc、`/`、`@`、侧栏删除、系统通知）：11 月 9 日完成，系统通知与真实命令列表待实测
+5. 模块自带 MCP 与工作台模块的三个缺口
+6. 排队发送、Codex app-server、Claude Agent SDK
+7. 第三期：插件与能力库
+8. 跨 Agent 实测：编写隔离环境、任务书和验收标准，交给 Antigravity 执行，验收由 Kaus 开发方对照事件库与数据库完成。测试对象：Claude Code、Codex、Gemini CLI、Antigravity、Hermes、OpenCode、Cursor、GitHub Copilot。隔离环境倾向本机临时 macOS 虚拟机（Tart），还没有最终确定。
+9. 可安装桌面版放在实测之后。签名和公证需要项目负责人开通 Apple 开发者账号。
+
 | 项目 | 当前状态/原因 | 下一步与完成标准 |
 | --- | --- | --- |
 | 数据位置设置 | 用户提出需求；目前有分项路径覆盖，没有完整迁移界面 | 建议在设置中提供 Kaus 数据位置，原生 Agent 路径放各连接高级设置。先盘点 DB、附件、模块、索引与外部路径；停止写入、一致性复制、校验、重启与回滚通过后开放。工作目录选择不承担历史迁移功能；本轮未移动现有数据 |
@@ -25,13 +39,11 @@
 | 外部终端增强实测 | 目录信任、更新提示、实时预览、Claude 状态 hook、草稿预填、控制 MCP 只有单元与 Mock 验证 | 装好 Claude Code / Codex 后按[设计文末记录](../product/external-terminal-enhancement-design.md)逐项实测；重点是 Claude `--settings` 与用户已有 hook 是否合并，以及 `--prefill` 与 `--resume` 同用 |
 | 终端状态覆盖 | cmux 的 Claude 包装器会把 Kaus 的 `--settings` 并入自己的 hook（依赖 `node`，缺失时 Kaus 不附加）；Codex 未接 | 在 cmux 下实测 Kaus 状态与 cmux 通知同时生效；Codex 只在 Kaus 托管 `CODEX_HOME` 时考虑 |
 | 运行中引导与回撤 | 普通对话运行中发送被拒绝；没有排队、引导和回撤 | 先做通用的排队发送；引导、回撤随 Claude Agent SDK、Codex app-server 直连驱动接入，ACP 等协议提案落地后再扩。Claude 改用 Agent SDK 前先核对 Anthropic 对第三方产品使用 claude.ai 订阅登录的限制，可能要求用户改用 API key |
-| Project 配置通用化 | 第 1 步「唯一存储」已完成（2026-11-03，见现状）；对非 Hermes Agent 只有 MCP、技能（托管模式）、模型/权限、工作目录在启动时自动送达，指令需手动应用、界面没有通用指令与 MCP 编辑入口，插件类型无实现，Hermes 运行配置对其他 Agent 不提示未生效；部分写入路径不同步到域库 | 2026-11-03 设计确认，第一期五步见设计稿「分期」，之后依次做模块自带 MCP、状态点、排队发送、Codex app-server、Claude Agent SDK |
+| Project 配置通用化 | 第 1 步「唯一存储」已完成（2026-11-03）；第 3 步「自动送达」与第 4 步「原生 MCP 排除」已实现（2026-11-09，见验收记录）：Claude Code / Codex 启动时注入，其余有指令文件约定的预设开对话前写受管块，没有约定的报 `no_convention`；没有工作目录时发送回 409 `workspace_required`；接入已有文件夹的发现 / 导入接口已有、界面未接。未做：外部终端的 `--append-system-prompt`；Claude Code 启动注入与已有 `CLAUDE.md` 受管块可能同时送达（导入或清掉旧块后消失）；Hermes 守则仍只经 `SOUL.md`；插件类型无实现；Hermes 运行配置对其他 Agent 不提示未生效 | 第 2 步编辑器并行开发中；第 5 步收尾（删「应用项目配置」按钮等）在后；各 Agent 真实启动参数在隔离虚拟机里逐个实测（见第 8 项） |
 | 模块令牌的已知边界 | 2026-11-02 起模块资源只经短时路径令牌提供；令牌泄露时外站仍可在过期前以 no-cors 方式执行（不能读取）该模块的经典脚本；页面休眠超过 15 分钟或后端重启后需点重试 | 失败的续期目前不提示 |
 | 主 Agent 代办的边界 | 同意由主 Agent 自报，Kaus 无法核实；`kaus_pending` 只扫最近 100 条且只含本进程内活跃的会话，外部终端里的审批不能代答；`kaus_module_request` 允许 DELETE 模块数据（2026-11-02 确认保留） | 同意的可核实方式随手机入口设计 |
 | 清理后的遗留 | 2026-11-02 删除死代码后仍保留：协作组旧「组长轮流」房间循环（`group_router.py`、`room.py`；生产默认走协调者，但 `GroupHarness` 默认关闭协调者，约 5000 行组测试跑在这条路径上）；根目录 `native_archives.py` 的 backup/recover/raw_page/archive/link/trash/restore_to_project 已无生产调用方但有安全测试；只读的「成员近况」`GET /groups/{id}/context-packet` 按资料契约保留 | 组长轮流需先把组测试改到协调者模式再删 |
 | 仅终端接入 | 2026-11-02 暂缓，[详细设计](../product/terminal-only-agents-design.md)保留备查 | 有具体需求时按单个 Agent 评估，优先官方无界面 JSON 模式 |
-| 会话状态点 | 已决定替换「需要处理」（见产品决策「会话状态显示」），未实现；「已结束未查看」需要新增后端的会话查看记录 | 排在配置通用化之前做，改动集中在侧栏、协作组入口与新会话页 |
-| 基础交互缺口 | 对照成熟产品：Esc 只关菜单、不中断运行；没有 `/` 命令和 `@` 文件；删除对话只在归档列表；系统通知只有终端等待一种 | 排队发送之后逐项做 |
 | 补充 ACP 预设 | 2026-11-01 计划补 Kimi、Vibe、Auggie、Cline、Droid、Kiro、Qoder、Muse 八个预设，未开始；2026-11-02 定为只保留主流 Agent | 与现有预设一起按「主流」重新评估后再定增删 |
 | 删除与协作组边界 | 级联删除中途失败不回滚，上级路径按名称比较；组内新建成员的第一句话不经组长；外部终端启动时未生效的 Project 能力不在对话里提示 | 有实际复现时修 |
 | 待实测 | Gemini 会话内选模型；cmux 下的状态 hook；目录信任预写 | 装好对应 Agent 后在隔离环境验收 |
@@ -39,10 +51,10 @@
 | 有删除动作的迁移 | v19（删已关闭组）、v20（删上下文包消息）执行前不自动备份数据库 | 给删除数据的迁移加执行前自动备份 |
 | 结构重构的后续 | 2026-11-03 完成第一轮（见验收记录）。刻意未拆：`server.py` 的项目树、删除与恢复（测试直接替换模块全局）；`AgentGraph.tsx`（轮盘物理模型共用 ref）；会话页的投递逻辑；`exhaustive-deps` 等需改写法的 ESLint 规则未开；各入口模型目录读取失败的处理仍不同 | 相关功能改动时顺带处理 |
 | 手机入口 | 2026-11-02 项目负责人：暂不需要。现有只有控制 MCP；没有事件主动推送；Ghostty 终端暂缓 | 需要时再设计 |
-| 模块自带 MCP | Kith 有自己的 MCP（`kith_capture`、`kith_search`、`kith_person_brief`、`kith_upcoming` 等十个工作流工具），Kith 文档把「登记为 Kaus 项目能力」列为二期；但模块合同不支持声明 MCP，单独运行时 `KITH_DB_PATH` 默认指向 `kith/data/kith.db` 旧副本而非模块数据，与模块后端同时读写同一库未验证。控制 MCP 的 `kaus_module_request` 只能调原始接口 | 2026-11-03 项目负责人：排在配置通用化第一期之后。在模块清单里支持声明 MCP，Kaus 用模块数据目录启动并登记为启用该模块的 Project 能力；先验证 SQLite 多进程读写 |
+| 模块自带 MCP | 2026-11-09 Kaus 侧完成（清单 `mcp` + `mcp:serve`，自动登记为所选 Project 的 `mcp` 能力，见 `verification.md`） | Kith 侧：清单声明、MCP 构建、改读 `KAUS_MODULE_DATA_DIR`、验证 SQLite 双进程读写；重新安装会碰真实数据，需项目负责人确认 |
 | 测试隔离缺口 | 2026-11-03 已解决：树操作只写领域库，`DASH_DOMAIN_DB` 指向临时库时不写代码目录（`tests/test_project_tree_storage.py`）；`test_dashboard.py` 真机脚本仍引用已删除的 `*_FILE` 常量 | 真机脚本在下次真机验收时按库重写或删除 |
 | 组长配置文案 | `CoordinatorSettings` 大部分标签写死中文，英文界面下仍显示中文 | 改入 i18n |
-| 原生 MCP 只整理不隔离 | 接入时读到的 Agent 全局 MCP 可在树里分配到 Project，但源 Agent 仍加载自己全部全局 MCP；Kaus 投射时排除这些条目以免重复。Hermes、OpenClaw、Pi/omp、Goose、Kilo、Crush、Command Code、Grok、ZCode、DeepSeek、Antigravity 未覆盖；插件自带 MCP、工作区 `.mcp.json` 不读 | 2026-11-03 定为配置通用化第一期第 4 步，机制见设计稿第 3a 节；未实现前项目页应标明 |
+| 原生 MCP 排除未经真机验证 | 2026-11-09 起每次启动按 Agent 自己的机制排除「自带但未分配给当前 Project」的 MCP（Copilot / Qwen 参数、Codex `CODEX_CONFIG`、Gemini 白名单、OpenCode `OPENCODE_CONFIG_CONTENT`、Claude Code 严格模式内存传定义；Cursor 无机制报 `native_not_isolated`），不改用户配置文件。全部 `NATIVE_MCP_EXCLUSION_VERIFIED=False`，会话 `projection.summary.nativeMcp` 报 `unverified`，项目页应据此标「未隔离」。从未整理过（没有任何分配/屏蔽行）的 Agent 不动。Hermes、OpenClaw、Pi/omp、Goose、Kilo、Crush、Command Code、Grok、ZCode、DeepSeek、Antigravity 没有自带 MCP 清单来源，不参与；插件自带 MCP、工作区 `.mcp.json` 不读（Claude Code 严格模式下 `.mcp.json` 不会加载，启动时有提示） | 隔离虚拟机里逐个实测后把对应适配器的 `NATIVE_MCP_EXCLUSION_VERIFIED` 改为 `True`；Gemini 还要确认白名单是否也过滤 ACP 传入的项目 MCP、Copilot 确认 `--acp` 模式接受全局参数 |
 | 主 Agent 分身（通用化） | 原实现：主 Agent（根 Project）的 Hermes 分身档案把 `memories/` 软链到主 Agent，共享记忆；`SOUL.md` 头部标出模式与权限档（如「配置模式·高权限」「后台模式·低权限」）。2026-11-03 随 Hermes 遗留删除了这套文件机制；领域模型里同一 Project 挂多条同 Agent Binding（AD-01 第四段 discriminator）仍在 | 待项目负责人确认后设计通用版：根 Project 的主 Agent 可有多个角色（各自的权限档、指令），共享 Project 记忆（配置通用化第二期），经控制 MCP 调度 |
 | 项目地图（原上下文索引） | 原设计：给所有 Agent 一份「谁知道什么、什么任务找谁」的索引（INDEX.md），只在 Hermes 上部分实现，已删除。控制 MCP 的 `kaus_overview` 每次调用直接读库，Project、接入的 Agent 与模块始终最新，但没有各 Project 的职责描述 | 2026-11-03 定：职责描述不是 Project 指令（AGENTS.md 一类），不要求手工维护。取自 Project 记忆里的「项目概述」条目，由在该 Project 工作的 Agent 随记忆静默更新；新建 Project 时可选填一句；用户也可在对话里让 Agent 改。`kaus_overview` 带上它，主 Agent 按需读取。随配置通用化第二期（记忆）实现 |
 | Hermes 驱动防御的边界 | 2026-11-03 已在 `kernel/drivers/hermes/` 实现：托管运行结束或停止时把技能用量回写到来源 `skills/.usage.json`（Kaus 唯一写入用户 Hermes 目录的内容，只改已有记录的时间与计数，持 Hermes 自己的锁）；技能被 Hermes 归档时返回 409 `skill_archived_by_engine` 与恢复命令；执行目录写 `curator.enabled: false`；复制 `SOUL.md` 时剥离旧宪法块；投射遇软链接目标报 `target_linked` 不替换。边界：用户只用站外 `hermes chat` 时用量要等下一次 Kaus 运行才回写；已标 stale 的技能等 curator 下一轮自行恢复；归档识别依赖 Hermes 当前的 `.archive/` 布局；非 POSIX 平台无文件锁 | 装好 Hermes 后实测一轮托管会话的回写与归档提示 |

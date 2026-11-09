@@ -7,10 +7,11 @@ import { SIDEBAR_GROUPS_KEY, readCollapsedGroups } from "../lib/shellPrefs";
 import type { ProjectWire } from "../lib/sessionApi";
 import { readSidebarPins, SIDEBAR_PINS_KEY } from "../lib/sidebarPins";
 import { useGroupDrop, type GroupDropPayload } from "../lib/groupDrop";
+import { ConfirmHost } from "./ui";
 
-const actions = vi.hoisted(() => ({ patchConversation: vi.fn(), archiveConversation: vi.fn() }));
+const actions = vi.hoisted(() => ({ patchConversation: vi.fn(), archiveConversation: vi.fn(), deleteConversation: vi.fn() }));
 vi.mock("../lib/sessionApi", async importOriginal => ({ ...(await importOriginal<typeof import("../lib/sessionApi")>()), ...actions }));
-beforeEach(() => { actions.patchConversation.mockReset(); actions.archiveConversation.mockReset(); });
+beforeEach(() => { actions.patchConversation.mockReset(); actions.archiveConversation.mockReset(); actions.deleteConversation.mockReset(); });
 
 const project = (slug: string, displayName: string): ProjectWire => ({
   id: `project:${slug}`,
@@ -33,7 +34,7 @@ describe("会话行菜单", () => {
     const user = userEvent.setup(), { onOpen } = setup();
     expect(screen.queryByRole("button", { name: /置顶/ })).toBeNull();
     await user.click(screen.getByRole("button", { name: "接口层重构 对话菜单" }));
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["置顶", "重命名", "归档"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["置顶", "重命名", "归档", "删除"]);
     expect(screen.getByRole("menu").parentElement).toBe(document.body);
     await user.click(screen.getByRole("menuitem", { name: "置顶" }));
     expect(readSidebarPins()["project:pronto"]).toEqual(["c1"]);
@@ -93,6 +94,22 @@ describe("会话行菜单", () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalledWith({ conversationId: "c1", projectId: "project:pronto", archived: true }));
     expect(screen.queryByText("接口层重构")).toBeNull(); expect(readSidebarPins()["project:pronto"]).toEqual([]);
   });
+  it("删除先确认；取消不删，确认后收起该行", async () => {
+    const user = userEvent.setup(), { onChanged } = setup();
+    render(<ConfirmHost />);
+    actions.deleteConversation.mockResolvedValue({ conversationId: "c1", deleted: true });
+    await user.click(screen.getByRole("button", { name: "接口层重构 对话菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    expect(screen.getByText(/只删除 Kaus 里的这条对话记录/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(actions.deleteConversation).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "接口层重构 对话菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    await user.click(screen.getByRole("button", { name: "删除" }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith({ conversationId: "c1", projectId: "project:pronto", archived: true }));
+    expect(actions.deleteConversation).toHaveBeenCalledWith("c1");
+    expect(screen.queryByText("接口层重构")).toBeNull();
+  });
   it("运行中的会话可以整理名称与置顶，但不允许归档", async () => {
     const user = userEvent.setup(); setup("running");
     await user.click(screen.getByRole("button", { name: "接口层重构 对话菜单" }));
@@ -121,7 +138,7 @@ const conversation = (
 describe("会话侧栏", () => {
   const projects = [project("default", "X"), project("pronto", "Pronto")];
 
-  it("按项目分组，运行中的会话置顶并带脉冲点；没有会话的项目不出现", () => {
+  it("按项目分组，运行中的会话置顶且标题流光；没有会话的项目不出现", () => {
     const groups = buildConversationGroups(projects, [
       conversation("旧会话", "pronto", { updatedAt: "2026-09-01T10:00:00Z" }),
       conversation("新会话", "pronto", { updatedAt: "2026-09-02T10:00:00Z" }),
@@ -143,9 +160,10 @@ describe("会话侧栏", () => {
 
     const rows = screen.getAllByRole("button").filter((el) => el.hasAttribute("data-conversation-id"));
     expect(rows.map((row) => row.getAttribute("data-conversation-id"))).toEqual(["跑着的", "新会话", "旧会话"]);
-    // 运行中那条带脉冲点（非 is-idle）
-    expect(rows[0].querySelector(".kaus-run-dot:not(.is-idle)")).not.toBeNull();
-    expect(rows[1].querySelector(".kaus-run-dot.is-idle")).not.toBeNull();
+    // 运行中：标题流光，读屏读到「运行中」；看过的空闲会话不显示状态。
+    expect(rows[0].querySelector(".kaus-title-running")).not.toBeNull();
+    expect(rows[0].querySelector('[data-status="running"]')).toHaveAttribute("aria-label", "运行中");
+    expect(rows[1].querySelector("[data-status]")).toBeNull();
     // 引擎信息保留在整行的悬停提示中。
     expect(rows[0].querySelector(".kaus-engine-tag")).toBeNull();
     expect(rows[0].getAttribute("title")).toBe("跑着的 · Hermes");

@@ -902,6 +902,8 @@ class SessionRuntime:
     external_monitor: Any = None
     _task: Any = None
     _monitor_task: Any = None
+    _backup_task: Any = None
+    attention_notifier: Any = None
 
     async def aclose(self) -> None:
         if self.module_intakes is not None:
@@ -910,7 +912,9 @@ class SessionRuntime:
             await self.module_backends.aclose()
         if self.workbench is not None:
             await self.workbench.aclose()
-        for task in (self._task, self._monitor_task):
+        if self.attention_notifier is not None:
+            await self.attention_notifier.aclose()
+        for task in (self._task, self._monitor_task, self._backup_task):
             if task is not None and not task.done():
                 task.cancel()
                 try:
@@ -1267,8 +1271,16 @@ def open_session_runtime(
         repositories=repositories, session_host=session_host, registry=registry)
     install_execution_policy(workbench)
     module_backends = ModuleBackends(workbench)
+    from app.workbench.module_mcp import ModuleMcpRegistry
+    module_mcp = ModuleMcpRegistry(workbench, repositories)
+    workbench.mcp_registry = module_mcp
     module_intakes = ModuleIntakes(workbench)
     session_host.workspace_override_resolver = module_intakes.workspace_for
+    from app.conversations.attention_notifier import AttentionNotifier
+    attention_notifier = AttentionNotifier(
+        repositories=repositories, notify=macos_notify,
+        hidden_conversation_ids=workbench.module_conversation_ids)
+    session_host.add_event_observer(attention_notifier)
     router = build_session_router(
         session_host=session_host,
         repositories=repositories,
@@ -1291,6 +1303,10 @@ def open_session_runtime(
     router.routes.extend(terminal_router.routes)
     from local_workspace import build_workspace_router
     router.routes.extend(build_workspace_router(auth_policy=auth_policy).routes)
+    # 接入已有文件夹（设计稿第 4 节）：发现并导入工作目录里已有的指令文件。
+    from app.api.workspace_instructions import build_workspace_instructions_router
+    router.routes.extend(build_workspace_instructions_router(
+        repositories, auth_policy=auth_policy, registry=registry).routes)
     from app.account_quotas import AccountQuotaService
     from app.api.account_quotas import build_account_quota_router
     from app.quota_connections import QuotaConnections
@@ -1438,6 +1454,7 @@ def open_session_runtime(
         maintenance=maintenance,
         surface_coordinator=surface_coordinator,
         external_monitor=external_monitor,
+        attention_notifier=attention_notifier,
     )
 
 
@@ -1702,9 +1719,23 @@ def attach_session_api(
     async def _start_workbench() -> None:
         if runtime.workbench is not None:
             await runtime.workbench.initialize()
+            registry = getattr(runtime.workbench, "mcp_registry", None)
+            if registry is not None:
+                await registry.sync_all()
         if runtime.module_intakes is not None:
             await runtime.module_intakes.initialize()
     _add_lifecycle_handler(fastapi_app, "on_startup", _start_workbench, log=log)
+
+    # 数据目录（token 文件所在）下的 SQLite 每天备份一次；领域库另指别处时一并带上。
+    from app.persistence.sqlite.backups import daily_backup_loop
+    backup_extra = [runtime.unit_of_work.database.path] if runtime.unit_of_work is not None else []
+
+    async def _start_backups() -> None:
+        runtime._backup_task = asyncio.create_task(  # noqa: SLF001
+            daily_backup_loop(runtime.token_path.parent, backup_extra, log=log), name="daily-backup"
+        )
+    if runtime.token_path is not None:
+        _add_lifecycle_handler(fastapi_app, "on_startup", _start_backups, log=log)
 
     async def _stop() -> None:
         await runtime.aclose()

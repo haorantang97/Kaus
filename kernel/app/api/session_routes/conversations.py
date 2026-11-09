@@ -37,6 +37,7 @@ from drivers.base import (
 from app.api.session_routes.common import (
     ArchiveConversationBody,
     BookmarkBody,
+    ViewedBody,
     CreateConversationBody,
     MoveConversationBody,
     RouteSpec,
@@ -162,6 +163,7 @@ def build_conversation_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
         groups = await group_labels_for_conversations(
             repositories, [c.id for c in conversations]
         )
+        viewed = await repositories.conversations.viewed_sequences([c.id for c in conversations])
         entries = []
         for conversation in conversations:
             timeline = host.timeline(conversation.id)
@@ -183,6 +185,8 @@ def build_conversation_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
             )
             if awaiting_input(timeline):
                 entry["awaitingInput"] = True
+            # 侧栏「已结束未查看」：与 lastSequence 比较；从没看过时为 null。
+            entry["viewedSequence"] = viewed.get(conversation.id)
             # Hook-reported state of an agent in an external terminal (advisory).
             if surface_coordinator is not None and entry.get("surface") == "external-cli":
                 if (terminal := surface_coordinator.terminal_status(conversation.id)) is not None:
@@ -246,6 +250,15 @@ def build_conversation_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
                 host.session_projection(conversation_id)
             ),
         }
+
+    @ctx.endpoint
+    async def mark_viewed(conversation_id: str, body: ViewedBody = Body(...)) -> Any:
+        """会话页看到哪儿了。只前进不后退；不占运行租约、不碰引擎。"""
+        await ctx.load_conversation(conversation_id)
+        if body.locale is not None:
+            from app.conversations.attention_notifier import LOCALE_SETTING_KEY
+            await repositories.settings.save(LOCALE_SETTING_KEY, {"value": body.locale})
+        return {"viewedSequence": await repositories.conversations.mark_viewed(conversation_id, body.sequence)}
 
     @ctx.endpoint
     async def set_bookmark(conversation_id: str, body: BookmarkBody = Body(...)) -> Any:
@@ -405,6 +418,7 @@ def build_conversation_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
         RouteSpec('/conversations/{conversation_id}/archive', archive_conversation, ["PATCH"], 'session_archive_conversation'),
         RouteSpec('/conversations/{conversation_id}/move', move_conversation, ["POST"], 'session_move_conversation'),
         RouteSpec('/conversations/{conversation_id}/bookmarks', set_bookmark, ["PUT"], 'session_set_bookmark'),
+        RouteSpec('/conversations/{conversation_id}/viewed', mark_viewed, ["PUT"], 'session_mark_viewed'),
         RouteSpec('/conversations/{conversation_id}', delete_conversation, ["DELETE"], 'session_delete_conversation'),
         RouteSpec('/conversations/{conversation_id}/history', get_history, ["GET"], 'session_history'),
     ]

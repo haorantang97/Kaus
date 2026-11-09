@@ -12,6 +12,7 @@ const copy = {
   archived: ["所选技能已被引擎归档，请恢复后重试", "A selected skill was archived by the engine. Restore it and try again."],
   limit: ["已达到使用限额，请稍后重试", "Usage limit reached. Try again later."],
   size: ["文件过大，请选择较小的文件", "Choose a smaller file."],
+  workspace: ["这个项目有指令，请先点「选择工作位置」选一个文件夹", "This Project has instructions. Choose a working folder first."],
 } as const;
 type Message = keyof typeof copy;
 const label = (key: Message) => copy[key][currentLocale() === "zh" ? 0 : 1];
@@ -43,6 +44,7 @@ export function failureSummary(failure: unknown): string {
   if (/permission_denied|access_denied|\beacces\b|\beperm\b/.test(text) || record.status === 403) return label("denied");
   if (/attachment_too_large|file_too_large|payload_too_large/.test(text) || record.status === 413) return label("size");
   if (/skill_archived_by_engine/.test(code)) return label("archived");
+  if (code === "workspace_required") return label("workspace");
   if (/unsupported|not_supported/.test(code)) return label("unsupported");
   if (/failed to fetch|networkerror|network request failed|econnrefused|econnreset|etimedout|fetch failed/.test(text)) return label("connection");
   if (/\benoent\b|source_missing|source_unavailable|not_found/.test(text) || record.status === 404) return label("unavailable");

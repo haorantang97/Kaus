@@ -7,7 +7,7 @@ from typing import Any
 from app.api.session_views import session_projection_to_wire
 from app.capabilities.models import EffectiveCapabilities, EffectiveCapability
 from app.projects.models import AgentBinding
-from drivers.base import UnappliedCapability, UnsupportedCapabilityError
+from drivers.base import FailureHint, UnappliedCapability, UnsupportedCapabilityError, WorkspaceRequiredError
 from runtime.event_envelope import ExtensionEvent
 from runtime.session_host import PROJECT_UNAPPLIED_NAME
 
@@ -133,3 +133,21 @@ async def test_delivered_capabilities_emit_no_notice() -> None:
     assert world.host.session_projection(conversation.id).unapplied == ()
     assert await _notices(world, conversation.id) == []
     await world.host.stop_runtime(conversation.id)
+
+
+async def test_workspace_required_stops_the_start_with_its_code() -> None:
+    """项目有要送达的指令却没有工作目录：不开会话，稳定码原样上抛（2026-11-09）。"""
+    world = make_world()
+    driver, conversation = await world.add_backend()
+    _install(world)
+
+    async def refuse(conversation, effective):
+        raise WorkspaceRequiredError("先选文件夹", failure=FailureHint(code="workspace_required", message="没有工作目录"))
+
+    driver.session_options_for = refuse
+    import pytest
+    with pytest.raises(WorkspaceRequiredError) as caught:
+        await world.host.start_runtime(conversation)
+    assert caught.value.failure.code == "workspace_required"
+    assert conversation.id not in world.host._runtimes  # noqa: SLF001
+    assert world.host.session_projection(conversation.id) is None

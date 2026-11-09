@@ -211,6 +211,8 @@ def test_entry_carries_everything_the_sidebar_needs(client, harness):
         "archivedAt": None,
         "updatedAt": entry["updatedAt"],
         "lastSequence": None,
+        # 侧栏「已结束未查看」：从没在会话页看过时为 null。
+        "viewedSequence": None,
     }
 
 

@@ -308,3 +308,55 @@ async def prepare_runtime_spec(spec, conversation, metadata):
 async def load_local_native_history(spec, binding, native_session_id):
     """Filesystem-only full-session reader; never starts a model or gateway."""
     return await load_native_history(spec, binding, native_session_id)
+
+
+# --------------------------------------------------------------------------- #
+# 开对话前的自动送达（2026-11-09，设计稿第 3 / 3a 节）
+# --------------------------------------------------------------------------- #
+
+#: ``mcp_servers.<name>.enabled=false`` 经 CODEX_CONFIG 这条路还没在真实 Codex 上跑过。
+NATIVE_MCP_EXCLUSION_VERIFIED = False
+
+
+def _codex_config(spec):
+    raw = spec.build_env().get("CODEX_CONFIG")
+    config = json.loads(raw) if raw else {}
+    if not isinstance(config, dict):
+        raise UnsupportedCapabilityError("原生配置覆盖必须为对象")
+    return config
+
+
+def deliver_instructions(spec, metadata, body):
+    """Project instructions become Codex ``developer_instructions`` for this process.
+
+    codex-acp (TypeScript, v1.10.0 ``src/index.ts``) parses the ``CODEX_CONFIG``
+    environment variable as a JSON object and sends it as the ``config`` of every
+    ``thread/start`` / ``thread/resume``; the app-server applies it as the CLI
+    override layer. ``developer_instructions`` is a top-level Codex config key
+    (``codex-rs/config/src/config_toml.rs``: "Developer instructions inserted as a
+    `developer` role message"). No file is written; AGENTS.md stays as the user has it.
+    """
+    config = _codex_config(spec)
+    config["developer_instructions"] = body
+    return spec.with_env(CODEX_CONFIG=json.dumps(config)), metadata
+
+
+def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
+    """``mcp_servers.<name>.enabled = false`` as a per-process override.
+
+    ``McpServerConfig.enabled`` ("When `false`, Codex skips initializing this MCP
+    server", ``codex-rs/config/src/mcp_types.rs``); the app-server deep-merges the
+    request config onto ``config.toml`` tables (``codex-rs/config/src/merge.rs``), so
+    only the ``enabled`` key of each named table changes. Nothing is written to
+    ``~/.codex``.
+    """
+    config = _codex_config(spec)
+    servers = dict(config.get("mcp_servers") or {})
+    for row in excluded:
+        name = row.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        current = servers.get(name)
+        servers[name] = {**(current if isinstance(current, dict) else {}), "enabled": False}
+    config["mcp_servers"] = servers
+    return spec.with_env(CODEX_CONFIG=json.dumps(config)), metadata, ()

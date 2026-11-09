@@ -7,7 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
-PERMISSIONS = frozenset({"agent:run", "data:read", "data:write", "backend:run", "editor:chatcut", "surface:midjourney"})
+PERMISSIONS = frozenset({"agent:run", "data:read", "data:write", "backend:run", "mcp:serve", "editor:chatcut", "surface:midjourney"})
 MODULE_ID = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 
 
@@ -42,6 +42,8 @@ class Manifest(WireModel):
     capabilities: list[Literal["workflow"]] = Field(default_factory=list, max_length=1)
     execution_policy: Literal["project", "context-only"] = "project"
     backend: ModuleBackend | None = None
+    #: 模块自带的 MCP（stdio）。授权 `mcp:serve` 后登记为模块所选 Project 的能力。
+    mcp: ModuleBackend | None = None
 
     @field_validator("id")
     @classmethod
@@ -59,6 +61,8 @@ class Manifest(WireModel):
     def backend_permission(self):
         if self.backend is not None and "backend:run" not in self.permissions:
             raise ValueError("A backend requires backend:run permission")
+        if self.mcp is not None and "mcp:serve" not in self.permissions:
+            raise ValueError("An MCP server requires mcp:serve permission")
         return self
 
     @field_validator("permissions")

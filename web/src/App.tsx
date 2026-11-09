@@ -389,9 +389,6 @@ export function App() {
               key={route.name === "new" ? `${route.projectId ?? ""}:${route.bindingId ?? ""}` : ""}
               initialProjectId={route.name === "new" ? route.projectId : null}
               initialBindingId={route.name === "new" ? route.bindingId : null}
-              indexGroups={conversationIndex.groups}
-              indexProjectCount={conversationIndex.projects.length}
-              onOpenConversation={(id) => navigate(conversationPath(id))}
               onCreated={(conversationId, pending) => {
                 refreshSidebar();
                 // AD-94：草稿页的首句把占位交给会话页，别让跳转后出现一段空白。

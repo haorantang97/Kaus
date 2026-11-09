@@ -35,6 +35,7 @@ import {
   fetchConversation,
   fetchMessageReceipt,
   interruptConversation,
+  fetchWorkspaceFiles,
   focusExternalSurface,
   // batch52
   patchConversation,
@@ -84,6 +85,8 @@ import {
 import { ConversationHeader } from "./conversation/ConversationHeader";
 import { PendingMessageRows } from "./conversation/PendingMessageRows";
 import { useConversationEvents } from "./conversation/useConversationEvents";
+import { useMarkViewed } from "./conversation/useMarkViewed";
+import { agentCommands, buildSuggestions } from "../lib/composerSuggestions";
 import { useConversationSettings } from "./conversation/useConversationSettings";
 import { useConversationSurface } from "./conversation/useConversationSurface";
 import { useTimelineFollow } from "./conversation/useTimelineFollow";
@@ -336,6 +339,7 @@ export function ConversationPage({
     onRunState: setSnapshot,
     runningRef,
   });
+  useMarkViewed(conversationId, lastSequenceRef);
 
   /* 占位落盘（第 5 件）：每次变动写一次当前会话的那把。已确认的条目此前已被
      `pendingReducer` 从数组里摘掉，所以这一写同时也是"从存储里删"。 */
@@ -594,6 +598,24 @@ export function ConversationPage({
   const runtimeLost = !running && timeline.error?.code === "runtime_lost";
   /* 8 秒本地窗口，或后端直接说 `stopping-unconfirmed`：两条都归到这一句提示上。 */
   const showStopUnconfirmed = (stopping && stopUnconfirmed) || resolved.stoppingUnconfirmed;
+
+  /* 输入框候选：`/` 用 Agent 推送的命令列表，`@` 用工作目录文件（第一次输入 `@` 时取一次）。 */
+  const commands = useMemo(() => agentCommands(items), [items]);
+  const [workspaceFiles, setWorkspaceFiles] = useState<string[] | null>(null);
+  const wantsFiles = text.includes("@");
+  useEffect(() => { setWorkspaceFiles(null); }, [conversationId]);
+  useEffect(() => {
+    if (!wantsFiles || workspaceFiles !== null) return;
+    const controller = new AbortController();
+    fetchWorkspaceFiles(conversationId, controller.signal)
+      .then(result => setWorkspaceFiles(result.files))
+      .catch(() => { if (!controller.signal.aborted) setWorkspaceFiles([]); });
+    return () => controller.abort();
+  }, [conversationId, wantsFiles, workspaceFiles]);
+  const suggest = useCallback(
+    (value: string, caret: number) => buildSuggestions(value, caret, { commands, files: workspaceFiles ?? [] }),
+    [commands, workspaceFiles],
+  );
   /* 第 1 件的收敛点：`run.*` 任意一条把 runState 带离 running，停止态就结束。
      没等到就在 8 秒后把按钮放开（`stopUnconfirmed`），状态文字仍旧说实话。 */
   useEffect(() => {
@@ -1026,6 +1048,13 @@ export function ConversationPage({
           placeholder={archived ? t("conversation.archived") : external ? t("surface.composer.placeholder") : t("conversation.composer.placeholder")}
           rows={2}
           onSend={() => void send()}
+          suggest={readOnly ? undefined : suggest}
+          onEscape={() => {
+            // 与「停止」按钮同一条路：运行中、能中断、不在外部终端里。
+            if (!running || !canInterrupt || external || (stopping && !showStopUnconfirmed)) return false;
+            void stop();
+            return true;
+          }}
         />
         {storageFailed && <div className="kaus-composer-caption" role="status">{t("conversation.draft.failed")}</div>}
         {/* batch39 第 1 件：运行中按了 Enter 之后的那一句。中性到底（★H）——它说的是

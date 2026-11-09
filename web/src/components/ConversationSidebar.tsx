@@ -3,17 +3,18 @@ import { readSidebarPins, reorderSidebarPin, SIDEBAR_PINS_KEY, type SidebarPins 
 import { useScrollFade } from "../hooks/useScrollFade";
 import { ChevronDown, ChevronRight, Terminal } from "lucide-react";
 import { useLocale } from "../i18n";
-import { cream, toast } from "./ui";
+import { confirmAsync, cream, toast } from "./ui";
 import { AddExistingConversationsDialog } from "./AddExistingConversationsDialog";
 import { ProjectHistoryMenu } from "./ProjectHistoryMenu";
 import { ProjectHistoryViewer } from "./ProjectHistoryViewer";
 import { ADD_EXISTING_CONVERSATIONS, projectHistoryApi, useProjectHistory, type HistoryProject } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
 import { useExternalSurfaceIds } from "../lib/externalSurface";
-import { isRunning, type SidebarGroup } from "../lib/conversationIndex";
+import { conversationStatus, isRunning, type SidebarGroup } from "../lib/conversationIndex";
+import { ConversationStatusMark } from "./ConversationStatusMark";
 import { backendDisplay } from "../lib/backend-display";
 import { readCollapsedGroups, writeCollapsedGroups } from "../lib/shellPrefs";
-import { archiveConversation, patchConversation } from "../lib/sessionApi";
+import { archiveConversation, deleteConversation, patchConversation } from "../lib/sessionApi";
 import { ConversationRowMenu } from "./ConversationRowMenu";
 import { usePointerDrag, type DragPosition } from "../lib/pointerDrag";
 
@@ -136,6 +137,19 @@ export function ConversationSidebar({
     finally { setBusyId(null); }
   };
 
+  const remove = async (conversationId: string, projectId: string, title: string) => {
+    if (busyId) return;
+    if (!await confirmAsync(t("conversation.row.deleteConfirm", { title }), { okLabel: t("conversation.row.delete"), danger: true })) return;
+    setBusyId(conversationId);
+    try {
+      await deleteConversation(conversationId);
+      setArchivedIds(current => [...current, conversationId]);
+      savePins({ ...pins, [projectId]: (pins[projectId] ?? []).filter(id => id !== conversationId) });
+      onConversationChanged?.({ conversationId, projectId, archived: true });
+    } catch { toast(t("sidebar.deleteFailed"), "bad"); }
+    finally { setBusyId(null); }
+  };
+
   const toggle = useCallback((projectId: string) => {
     setCollapsed((current) => {
       const next = current.includes(projectId)
@@ -197,9 +211,10 @@ export function ConversationSidebar({
               {open &&
                 ordered.map((conversation) => {
                   const historical = historyByRow.get(conversation.id);
-                  if (historical) return <button key={conversation.id} type="button" className="sidebar-agent-row kaus-conversation-row flex cursor-pointer items-center gap-1.5" title={conversation.title} onClick={() => setViewHistory(historical)}><span className="kaus-run-dot is-idle" aria-hidden="true" /><span className="flex-1 truncate">{conversation.title}</span></button>;
+                  if (historical) return <button key={conversation.id} type="button" className="sidebar-agent-row kaus-conversation-row flex cursor-pointer items-center gap-1.5" title={conversation.title} onClick={() => setViewHistory(historical)}><span className="kaus-status-slot" aria-hidden="true" /><span className="flex-1 truncate">{conversation.title}</span></button>;
                   const isPinned = pinned.includes(conversation.id);
                   const running = isRunning(conversation.state);
+                  const status = conversationStatus(conversation);
                   const movablePins = pinned.filter(id => group.conversations.some(item => item.id === id && isRunning(item.state) === running));
                   // 引擎名只在真有 backendId 时才拼进 title（AD-71：不编「未知引擎」）。
                   const engineName = conversation.backendId ? backendDisplay(conversation.backendId).displayName : "";
@@ -255,11 +270,7 @@ export function ConversationSidebar({
                          最先被挤掉的恰恰是标题（真机上就是这样）。 */
                       title={engineName ? `${conversation.title} · ${engineName}` : conversation.title}
                     >
-                      {running ? (
-                        <span className="kaus-run-dot" title={t("sidebar.running")} aria-label={t("sidebar.running")} />
-                      ) : (
-                        <span className="kaus-run-dot is-idle" aria-hidden="true" />
-                      )}
+                      <ConversationStatusMark status={status} />
                       {renaming?.id === conversation.id ? <input className="kaus-sidebar-title-input" autoFocus aria-label={t("sidebar.renameField")}
                         value={renaming.title} disabled={busyId === conversation.id} onChange={event => setRenaming({ id: conversation.id, title: event.target.value })}
                         onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()} onFocus={event => event.currentTarget.select()}
@@ -268,7 +279,7 @@ export function ConversationSidebar({
                           if (event.nativeEvent.isComposing) return;
                           if (event.key === "Escape") { event.preventDefault(); setRenaming(null); }
                           if (event.key === "Enter") { event.preventDefault(); void rename(conversation.id, group.projectId, conversation.title); }
-                        }} /> : <span className="flex-1 truncate">{conversation.title}</span>}
+                        }} /> : <span className={`flex-1 truncate${status === "running" ? " kaus-title-running" : ""}`}>{conversation.title}</span>}
                       {externalIds.includes(conversation.id) && (
                         <Terminal
                           className="size-3 shrink-0"
@@ -279,7 +290,8 @@ export function ConversationSidebar({
                       <ConversationRowMenu title={conversation.title} pinned={isPinned} canArchive={!running && !externalIds.includes(conversation.id)} busy={busyId === conversation.id}
                         onPin={() => savePins({ ...pins, [group.projectId]: isPinned ? pinned.filter(id => id !== conversation.id) : [...pinned, conversation.id] })}
                         onRename={() => setRenaming({ id: conversation.id, title: conversation.title })}
-                        onArchive={() => { void archive(conversation.id, group.projectId); }} />
+                        onArchive={() => { void archive(conversation.id, group.projectId); }}
+                        onDelete={() => { void remove(conversation.id, group.projectId, conversation.title); }} />
                     </div>
                   );
                 })}

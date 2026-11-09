@@ -329,6 +329,91 @@ def materialize_block(
 
 
 # --------------------------------------------------------------------------- #
+# 接入已有文件夹（设计稿第 4 节，2026-11-09）
+# --------------------------------------------------------------------------- #
+
+
+def user_content(text: str, marker: str) -> str:
+    """文件里**不属于受管块**的部分（用户自己写的那些），首尾空行去掉。"""
+    stripped = text
+    for block in reversed(managed_block.find_blocks(text, marker)):
+        stripped = stripped[: block.start] + stripped[block.end :]
+    return stripped.strip("\n")
+
+
+def adopt_file_into_block(
+    *,
+    rows: Sequence[tuple[str, str]],
+    body: str,
+    workspace_root: str,
+    filename: str,
+    marker: str,
+    project_id: str,
+    now: datetime | None = None,
+) -> BlockOutcome:
+    """把整份文件换成一个受管块：块外的内容已经进了 Kaus，这里不再保留。
+
+    与 :func:`materialize_block` 的区别只有一条——它**会**删块外内容。所以它只能
+    由「导入」这一个动作调用，而且调用方必须先把块外内容存进数据库；备份照留，
+    复读校验照做，出处账照记。``body`` 为空时写一个只有首尾两行的空块（启动时
+    注入的引擎不读文件，占位只是标明这份文件归 Kaus 管）。
+    """
+    if not rows:
+        return BlockOutcome()
+    denial = workspace_denial(workspace_root)
+    if denial is not None:
+        return _refused(rows, REASON_DENIED, denial)
+    directory = resolve_directory(workspace_root)
+    target = directory / filename
+    if target.is_symlink():
+        return _refused(rows, REASON_LINKED, LINKED_DETAIL)
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError:
+        text = ""
+    existing = managed_block.read_block(text, marker)
+    if existing is not None and existing[0] and existing[0] != project_id:
+        return _refused(rows, REASON_SHARED, f"这个文件里的受管块属于另一个项目（{existing[0]}）")
+    wanted = managed_block.normalize_body(body)
+    newline = "\r\n" if "\r\n" in text else "\n"
+    new_text = managed_block.render_block(marker, wanted, project_id, newline=newline) + newline
+    key_path = key_path_of(filename, marker)
+
+    def _verify(written: str) -> None:
+        reread = managed_block.read_block(written, marker)
+        if reread is None or reread[1] != wanted:
+            raise VerificationError("写完复读，受管块里的正文与算出来的不一致")
+        if user_content(written, marker):
+            raise VerificationError("导入后文件里仍有受管块之外的内容——已回滚")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    backup = write_and_verify(target, new_text, verify=_verify)
+    provenance = Provenance.load(directory)
+    stamp = (now or _now()).astimezone(timezone.utc).isoformat()
+    for capability_type, capability_id in rows:
+        provenance.claim(
+            key_path,
+            project_id=project_id,
+            capability_type=capability_type,
+            capability_id=capability_id,
+            version=body_digest(wanted),
+            applied_at=stamp,
+        )
+    provenance.save()
+    applied = _rows(
+        rows,
+        level=SupportLevel.ADAPTED,
+        key_path=key_path,
+        target_ref=target_ref(target, marker),
+        before=existing[1] if existing is not None else None,
+        after=wanted,
+        action="set",
+        detail="已导入块外内容，文件只剩受管块",
+    )
+    return BlockOutcome(applied=applied, backup_path=str(backup) if backup is not None else None)
+
+
+# --------------------------------------------------------------------------- #
 # 对账
 # --------------------------------------------------------------------------- #
 
@@ -420,6 +505,7 @@ __all__ = [
     "REASON_NO_WORKSPACE",
     "REASON_SHARED",
     "BlockOutcome",
+    "adopt_file_into_block",
     "block_outside",
     "body_digest",
     "inspect_block_drift",
@@ -427,5 +513,6 @@ __all__ = [
     "materialize_block",
     "resolve_directory",
     "target_ref",
+    "user_content",
     "workspace_denial",
 ]

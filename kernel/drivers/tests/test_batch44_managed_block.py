@@ -204,3 +204,40 @@ def test_compose_on_nothing_is_empty() -> None:
 def test_malformed_entries_are_dropped_not_rendered_as_empty_sections() -> None:
     effective = _effective(_entry("ok", "有内容"), _entry("blank", "   "))
     assert compose_instructions(effective) == "## ok\n\n有内容"
+
+
+def _titled(capability_id: str, config: dict, *, chain=("project:root",)) -> EffectiveCapability:
+    return EffectiveCapability(
+        capability_type="instructions", capability_id=capability_id, config=config,
+        source_project_id=chain[-1], inherited=len(chain) > 1, contributing_project_ids=chain,
+    )
+
+
+def test_compose_uses_the_section_title_and_falls_back_to_the_id() -> None:
+    """编辑器（2026-11-09）给每节一个 ``title``；没写或只有空白仍用 capability_id。"""
+    effective = _effective(
+        _titled("sec-a1b2", {"body": "先读规矩。", "order": 100, "title": "工作方式"}),
+        _titled("sec-c3d4", {"body": "少说废话。", "order": 100, "title": "   "}),
+        _titled("wrapped", {"value": {"body": "包装形状。", "title": "包装"}}),
+        _titled("project-persona", {"body": "我是项目人设。"}),
+    )
+    assert compose_instructions(effective) == (
+        "## project-persona\n\n我是项目人设。\n\n"
+        "## sec-a1b2\n\n先读规矩。".replace("sec-a1b2", "工作方式") + "\n\n"
+        "## sec-c3d4\n\n少说废话。\n\n"
+        "## 包装\n\n包装形状。"
+    )
+
+
+def test_compose_drops_the_legacy_rule_heading_line_but_keeps_order() -> None:
+    """旧守则行正文以 ``### [rule:id] 标题`` 开头：标题已在节标题里，这一行不重复。"""
+    effective = _effective(
+        _titled("rule-tone", {"body": "### [rule:tone] Tone\nbe brief\nreally", "title": "Tone", "order": 10}),
+        _titled("rule-only-heading", {"body": "### [override:x] Only", "title": "Only", "order": 20}),
+        _titled("house", {"body": "#### not a rule heading\nkeep", "order": 30}),
+    )
+    assert compose_instructions(effective) == (
+        "## Tone\n\nbe brief\nreally\n\n"
+        "## Only\n\n"
+        "## house\n\n#### not a rule heading\nkeep"
+    )

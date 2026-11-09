@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Archive, EllipsisVertical, Pencil, Pin, PinOff } from "lucide-react";
+import { Archive, EllipsisVertical, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import "./conversation-row-menu.css";
 
@@ -95,7 +95,7 @@ export function RowMenu({ triggerLabel, menuLabel, busy = false, items, point, t
   </span>;
 }
 
-export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, onRename, onArchive }: {
+export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, onRename, onArchive, onDelete }: {
   title: string;
   pinned: boolean;
   canArchive: boolean;
@@ -103,6 +103,8 @@ export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, on
   onPin: () => void;
   onRename: () => void;
   onArchive: () => void;
+  /** 删除与归档同样要求不在运行、不在外部终端里。 */
+  onDelete?: () => void;
 }) {
   const { t } = useLocale();
   return <RowMenu busy={busy}
@@ -113,5 +115,7 @@ export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, on
       { id: "rename", icon: <Pencil size={16} aria-hidden />, label: t("conversation.title.rename"), onSelect: onRename },
       { id: "archive", icon: <Archive size={16} aria-hidden />, label: t("conversation.row.archive"), onSelect: onArchive, separated: true,
         disabled: !canArchive, title: !canArchive ? t("conversation.row.archiveBlocked") : undefined },
+      ...(onDelete ? [{ id: "delete", icon: <Trash2 size={16} aria-hidden />, label: t("conversation.row.delete"), onSelect: onDelete,
+        disabled: !canArchive, title: !canArchive ? t("conversation.row.archiveBlocked") : undefined }] : []),
     ]} />;
 }

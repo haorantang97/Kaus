@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
-from typing import Any, Sequence
+from datetime import datetime, timezone
+from typing import Any, Mapping, Sequence
 
 from app.conversations.models import Conversation
 from app.conversations.repository import DEFAULT_RECENT_LIMIT
@@ -226,6 +226,7 @@ class SqliteConversationRepository:
         """v1.0 §16.6：删除 Conversation 不删除原生 Session，也不级联删别的表。"""
         with self._db.transaction() as connection:
             connection.execute("DELETE FROM conversation_bookmarks WHERE conversation_id = ?", (conversation_id,))
+            connection.execute("DELETE FROM conversation_views WHERE conversation_id = ?", (conversation_id,))
             connection.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
 
     async def bookmarks(self, conversation_id: str) -> Sequence[str]:
@@ -248,6 +249,28 @@ class SqliteConversationRepository:
         else:
             self._db.run("DELETE FROM conversation_bookmarks WHERE conversation_id = ? AND message_id = ?",
                          (conversation_id, message_id))
+
+
+    async def viewed_sequences(self, conversation_ids: Sequence[str]) -> Mapping[str, int]:
+        if not conversation_ids:
+            return {}
+        marks = ",".join("?" for _ in conversation_ids)
+        return {row["conversation_id"]: int(row["viewed_sequence"]) for row in self._db.query_all(
+            f"SELECT conversation_id, viewed_sequence FROM conversation_views WHERE conversation_id IN ({marks})",
+            tuple(conversation_ids),
+        )}
+
+    async def mark_viewed(self, conversation_id: str, sequence: int) -> int:
+        self._db.run(
+            "INSERT INTO conversation_views (conversation_id, viewed_sequence, viewed_at)"
+            " SELECT id, ?, ? FROM conversations WHERE id = ?"
+            " ON CONFLICT(conversation_id) DO UPDATE SET"
+            " viewed_sequence = MAX(viewed_sequence, excluded.viewed_sequence), viewed_at = excluded.viewed_at",
+            (sequence, datetime.now(tz=timezone.utc).isoformat(), conversation_id),
+        )
+        row = self._db.query_one("SELECT viewed_sequence FROM conversation_views WHERE conversation_id = ?",
+                                 (conversation_id,))
+        return int(row["viewed_sequence"]) if row is not None else sequence
 
 
 __all__ = ["SqliteConversationRepository"]

@@ -36,6 +36,8 @@ const REASON_KEYS: Record<string, DictKey> = {
   workspace_denied: "materialize.reason.workspace_denied",
   invalid_config: "materialize.reason.invalid_config",
   target_linked: "materialize.reason.target_linked",
+  workspace_in_use: "timeline.projectUnapplied.reason.workspace_in_use",
+  native_not_isolated: "timeline.projectUnapplied.reason.native_not_isolated",
 };
 
 export function projectUnappliedItems(data: unknown): UnappliedItem[] {

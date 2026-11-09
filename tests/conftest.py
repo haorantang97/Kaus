@@ -20,4 +20,5 @@ os.environ["DASH_DOMAIN_DB"] = str(_ROOT / "domain.sqlite3")
 os.environ.pop("DASH_SESSION_API_TOKEN_FILE", None)  # defaults to next to the database
 os.environ["KAUS_COMPUTER_USE_HOME"] = str(_ROOT / "computer-use")
 os.environ["HERMES_HOME"] = str(_ROOT / "native-home")
+os.environ["KAUS_SYSTEM_NOTIFICATIONS"] = "0"  # fake runs must not pop real notifications
 (_ROOT / "native-home").mkdir()

@@ -268,3 +268,24 @@ def external_cli_command(plan, command, *, conversation, binding, spec):
         path = immutable(spec, conversation, json.dumps(settings, sort_keys=True), suffix='.json')
         command = environment(spec, conversation, command, {'QWEN_CODE_SYSTEM_SETTINGS_PATH': str(path)})
     return command
+
+
+# 开对话前的原生 MCP 排除（2026-11-09，设计稿第 3a 节）。
+#: ``--disable-mcp-server`` 只在源码里有（``packages/cli/src/config/top-level-options.ts``），
+#: 用户文档未列出，未实测。
+NATIVE_MCP_EXCLUSION_VERIFIED = False
+
+
+def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
+    """Repeat ``--disable-mcp-server=<name>`` (Qwen Code's per-invocation deny list).
+
+    ``top-level-options.ts``: "MCP server names to disable for this invocation";
+    ``config.ts`` splits each value on commas and adds the names to the excluded
+    set after ``mcp.excluded``; ``llm.tsx`` passes the same parsed config to
+    ``runAcpAgent``. ``~/.qwen/settings.json`` is not modified.
+    """
+    names = [row.get("name") for row in excluded if isinstance(row.get("name"), str) and row.get("name")]
+    if any("," in name for name in names):
+        return spec, metadata, ("含逗号的 MCP 名称无法通过 --disable-mcp-server 表达，本次未排除自带 MCP",)
+    flags = tuple(f"--disable-mcp-server={name}" for name in names)
+    return spec.model_copy(update={"command": (*spec.command, *flags)}), metadata, ()

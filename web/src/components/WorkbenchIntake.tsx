@@ -6,7 +6,7 @@ import { useWorkbenchRuntime } from "../hooks/useWorkbenchRuntime";
 import { WorkbenchRuntimeFields } from "./WorkbenchRuntimeFields";
 import { activeWorkbenchIntake, cancelWorkbenchIntake, fetchWorkbenchIntake, installWorkbenchIntake, notifyWorkbenchChanged, retryWorkbenchIntake, startWorkbenchIntake, workbenchFailure, type WorkbenchIntake as Intake, type WorkbenchModule } from "../lib/workbenchApi";
 
-const OPT_IN_GRANTS = new Set(["backend:run", "editor:chatcut"]);
+const OPT_IN_GRANTS = new Set(["backend:run", "mcp:serve", "editor:chatcut"]);
 export function defaultGrants(permissions: readonly string[] | null | undefined): string[] {
   return (permissions ?? []).filter(permission => !OPT_IN_GRANTS.has(permission));
 }

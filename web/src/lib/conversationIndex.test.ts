@@ -81,18 +81,8 @@ describe("useConversationIndex", () => {
   });
 });
 
-/* batch40 / DESIGN ★L 第 1 条：概览页三段的算法住在这里（页面只负责摆）。
-   两条都只吃**索引行已经有的字段**——没有"跨会话待审批清单"那样一个端点，
-   所以这里不猜，只按那个封闭集合的 `status` 分档。 */
-describe("概览页的两个纯函数（★L）", () => {
-  const project = (slug: string, displayName: string) => ({
-    id: `project:${slug}`,
-    slug,
-    displayName,
-    parentProjectId: null,
-    workspaceRoot: null,
-    status: "active",
-  });
+/* 侧栏状态点只吃索引行已有的字段（产品决策「会话状态显示」）。 */
+describe("会话状态点", () => {
   const conv = (id: string, slug: string, over: Record<string, unknown> = {}) => ({
     id,
     projectId: `project:${slug}`,
@@ -103,42 +93,19 @@ describe("概览页的两个纯函数（★L）", () => {
     ...over,
   });
 
-  it("buildAttentionItems：只认 paused / error，失败排前面，别的档一条都不进来", async () => {
-    const { buildConversationGroups, buildAttentionItems } = await import("./conversationIndex");
-    const projects = [project("p", "Pronto")];
-    const groups = buildConversationGroups(projects, [
-      conv("空闲", "p"),
-      conv("跑着", "p", { state: "running" }),
-      conv("结束", "p", { state: "ended" }),
-      conv("等着", "p", { state: "paused" }),
-      conv("失败", "p", { state: "error" }),
-    ] as never);
-    const items = buildAttentionItems(groups);
-    expect(items.map((item) => [item.id, item.kind])).toEqual([
-      ["失败", "failed"],
-      ["等着", "awaiting"],
-    ]);
-  });
-
-  it("外部终端里等人的会话排在失败之后、普通等待之前", async () => {
-    const { buildConversationGroups, buildAttentionItems } = await import("./conversationIndex");
-    const groups = buildConversationGroups([project("p", "Pronto")], [
-      conv("等着", "p", { state: "paused" }),
-      conv("终端", "p", { state: "running", terminalWaiting: "Claude needs your permission" }),
-      conv("失败", "p", { state: "error" }),
-    ] as never);
-    expect(buildAttentionItems(groups).map((item) => [item.id, item.kind])).toEqual([
-      ["失败", "failed"], ["终端", "terminal"], ["等着", "awaiting"],
-    ]);
-  });
-
-  it("运行中但有审批卡等人回答的会话也进「需要处理」", async () => {
-    const { buildConversationGroups, buildAttentionItems } = await import("./conversationIndex");
-    const groups = buildConversationGroups([project("p", "Pronto")], [
-      conv("审批", "p", { state: "running", awaitingInput: true }),
-      conv("在跑", "p", { state: "running" }),
-    ] as never);
-    expect(buildAttentionItems(groups).map((item) => [item.id, item.kind])).toEqual([["审批", "awaiting"]]);
+  it("状态点：失败 > 等待处理 > 运行中 > 未查看；看过的空闲会话不显示", async () => {
+    const { conversationStatus } = await import("./conversationIndex");
+    const status = (over: Record<string, unknown>) => conversationStatus(conv("x", "p", over) as never);
+    expect(status({ state: "error", awaitingInput: true })).toBe("failed");
+    expect(status({ state: "running", awaitingInput: true })).toBe("awaiting");
+    expect(status({ state: "paused" })).toBe("awaiting");
+    expect(status({ state: "running", terminalWaiting: "" })).toBe("awaiting");
+    expect(status({ state: "running", lastSequence: 9, viewedSequence: 1 })).toBe("running");
+    expect(status({ state: "idle", lastSequence: 9, viewedSequence: 4 })).toBe("unread");
+    expect(status({ state: "ended", lastSequence: 9, viewedSequence: null })).toBe("unread");
+    expect(status({ state: "idle", lastSequence: 9, viewedSequence: 9 })).toBeNull();
+    // 老后端没有序号：不判未读。
+    expect(status({ state: "idle" })).toBeNull();
   });
 });
 

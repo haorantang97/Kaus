@@ -5,11 +5,8 @@ import { FileText, LoaderCircle, ArrowUp } from "lucide-react";
 import { useLocale } from "../i18n";
 import { BarMenu, type BarMenuOption } from "../components/ComposerBar";
 import { Composer, type ComposerChip } from "../components/Composer";
-import { AttentionBlock } from "../components/AttentionBlock";
-import { useModuleAttention } from "../lib/moduleAttention";
 import { backendDisplay, engineBrand, engineFamily } from "../lib/backend-display";
 import { bindingConnected, engineSelectionChoices, preferredBinding } from "../lib/engineSelection";
-import type { SidebarGroup } from "../lib/conversationIndex";
 import {
   createConversation,
   ensureProjectBinding,
@@ -94,13 +91,6 @@ export interface NewConversationPageProps {
   initialBindingId?: string | null;
   /** 第二个参数是首句的占位（AD-94）：跳转时把它带到会话页，那边接着等回声。 */
   onCreated: (conversationId: string, pending?: { clientRef: string; text: string; attachments?: ConversationAttachment[] }) => void;
-  /* batch42（2026-09-13 用户裁决：概览页取消）：铭牌与「需要处理」搬到了这一页
-     顶上。两样都从**已有的**会话索引算，所以数据由外壳传进来（`App.tsx` 里那份
-     `useConversationIndex`），这一页不另开一路取数。缺省 = 两样都不渲染，
-     `/new` 之外的调用方（测试、项目页）不受影响。 */
-  indexGroups?: SidebarGroup[];
-  indexProjectCount?: number | null;
-  onOpenConversation?: (conversationId: string) => void;
 }
 
 const DRAFT_OPTIONS_TTL_MS = 30_000;
@@ -114,12 +104,9 @@ export function NewConversationPage({
   initialProjectId = null,
   initialBindingId = null,
   onCreated,
-  indexGroups,
-  onOpenConversation,
 }: NewConversationPageProps) {
   const { t } = useLocale();
   const [greetingKey] = useState(() => pickGreetingKey(new Date()));
-  const moduleAttention = useModuleAttention();
   const [projects, setProjects] = useState<ProjectWire[]>([]);
   const [projectId, setProjectId] = useState<string>(() => matchProjectId([], initialProjectId || readDefaultDestination()));
   const [bindings, setBindings] = useState<BindingWire[] | null>(null);
@@ -472,10 +459,6 @@ export function NewConversationPage({
   return (
     <div className="kaus-draft-page" data-testid="draft-page">
       <div className="kaus-draft-window">
-        {indexGroups && onOpenConversation && (
-          <AttentionBlock groups={indexGroups} modules={moduleAttention} onOpenConversation={onOpenConversation} />
-        )}
-
         <div className="kaus-draft-empty">
           <h1 data-testid="draft-greeting">{t(greetingKey)}</h1>
         </div>

@@ -543,6 +543,15 @@ MIGRATIONS: Final[tuple[Migration, ...]] = (
         " restored_at TEXT)",
         "CREATE INDEX project_archives_by_project ON project_archives(project_id, archived_at DESC)",
     )),
+    # 侧栏「已结束未查看」：用户在会话页看到的最后一个事件序号，按会话记在后端，
+    # 手机与电脑一致。已有会话视为看过，升级后不会突然冒出一片蓝点。
+    Migration(version=22, name="conversation_views", statements=(
+        "CREATE TABLE conversation_views (conversation_id TEXT PRIMARY KEY,"
+        " viewed_sequence INTEGER NOT NULL, viewed_at TEXT NOT NULL)",
+        "INSERT INTO conversation_views (conversation_id, viewed_sequence, viewed_at)"
+        " SELECT conversation_id, MAX(sequence), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
+        " FROM event_store GROUP BY conversation_id",
+    )),
 )
 """按版本升序排列的全部迁移。新的往后追加，旧的一律不动。"""
 
@@ -567,6 +576,7 @@ EXPECTED_TABLES: Final[frozenset[str]] = frozenset(
         "app_settings",
         "conversation_bookmarks",
         "project_archives",
+        "conversation_views",
     }
 )
 
@@ -583,11 +593,17 @@ def migrate(
 ) -> tuple[int, ...]:
     """把库推进到 ``target_version``（默认最新）。返回本次实际应用的版本号。
 
-    幂等：已应用过的版本不会重跑，重复调用返回空元组。
+    幂等：已应用过的版本不会重跑，重复调用返回空元组。已有数据的文件库在升级前
+    自动备份（见 :mod:`app.persistence.sqlite.backups`）。
     """
     database.run(SCHEMA_VERSION_TABLE)
     applied_before = current_version(database)
     ceiling = MIGRATIONS[-1].version if target_version is None else target_version
+    pending = [m.version for m in MIGRATIONS if applied_before < m.version <= ceiling]
+    if pending and applied_before > 0 and database.path.name != ":memory:":
+        # 已有数据的库升级前先整份留底；新建的空库没什么可丢的。
+        from app.persistence.sqlite.backups import backup_before_migration
+        backup_before_migration(database.connection, database.path, pending[-1])
     applied: list[int] = []
     for migration in MIGRATIONS:
         if migration.version <= applied_before or migration.version > ceiling:

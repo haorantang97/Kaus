@@ -180,6 +180,9 @@ class AcpDriver(
         self._computer_use_contexts: dict[str, tuple[Any, dict]] = {}
         self._computer_use_effective: dict[str, Any] = {}
         self._binding_skill_plans: dict[str, Any] = {}
+        #: conversation_id -> 这次启动的送达计划（指令通道、原生 MCP 排除；2026-11-09）。
+        #: 由 ``session_options_for`` 写、``start_runtime`` 读。
+        self._launch_plans: dict[str, Any] = {}
         self._skill_projection_verification = None
         self._runtime_counter = 0
 

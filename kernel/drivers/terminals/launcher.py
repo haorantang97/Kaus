@@ -127,8 +127,12 @@ def _applescript_text(value: str) -> str:
 
 
 def macos_notify(title: str, body: str) -> None:
-    """Fire-and-forget system notification; failures are silent by design."""
-    if shutil.which("osascript") is None:
+    """Fire-and-forget system notification; failures are silent by design.
+
+    ``KAUS_SYSTEM_NOTIFICATIONS=0`` turns it off (the test suites set it, so fake
+    runs never pop notifications on the developer's Mac).
+    """
+    if os.environ.get("KAUS_SYSTEM_NOTIFICATIONS") == "0" or shutil.which("osascript") is None:
         return
     script = f"display notification {_applescript_text(body)} with title {_applescript_text(title)}"
     try:

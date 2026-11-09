@@ -66,6 +66,7 @@ from drivers.base import (
     SessionProjection,
     TurnAlreadyRunningError,
     UnsupportedCapabilityError,
+    WorkspaceRequiredError,
 )
 from drivers.registry import BackendDriverRegistry
 from runtime.event_envelope import (
@@ -732,6 +733,10 @@ class SessionHost:
         try:
             effective = await self._capability_projector(binding)
             projection = await hook(conversation, effective)
+        except WorkspaceRequiredError:
+            # 2026-11-09：项目有要送达的指令却没有工作目录——这不是「算不出来」，
+            # 是用户要先选文件夹；带稳定码上抛，接入层回 409 让界面去问。
+            raise
         except Exception:  # noqa: BLE001 - 投射算不出来不该拦住会话起来
             required = getattr(driver, "requires_project_projection", None)
             if required is not None and required(binding):

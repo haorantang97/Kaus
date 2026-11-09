@@ -1,10 +1,11 @@
-import { useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useState, type ReactNode, type RefObject } from "react";
 import { Paperclip, X } from "lucide-react";
 
 import { useLocale } from "../i18n";
 import { useComposerAutosize, useComposerInputGuard } from "../hooks/useComposerInput";
 import { AttachmentFilename } from "./AttachmentFilename";
 import { ComposerBar, type ComposerBarProps } from "./ComposerBar";
+import type { Suggestion, SuggestionSet } from "../lib/composerSuggestions";
 
 /* 输入区（会话页与草稿页共用）：拖放区 + 工具栏 + 隐藏的文件选择框 + 附件托盘 +
  * 文本框。两页的差别全部由 props 说出来——附件的生命周期（草稿页先攒 `File[]`
@@ -12,7 +13,10 @@ import { ComposerBar, type ComposerBarProps } from "./ComposerBar";
  * 负责把它们画成同一种 chip。
  *
  * 键位（第 4 件①）：Enter 发送、Shift+Enter 换行，⌘/Ctrl+Enter 继续可用；输入法
- * 组字期间的 Enter 是选词，不发送（`useComposerInputGuard`）。 */
+ * 组字期间的 Enter 是选词，不发送（`useComposerInputGuard`）。
+ *
+ * 候选（`suggest`）：`/` 命令与 `@` 文件。列表开着时 ↑↓ 选、Enter / Tab 插入、Esc 收起；
+ * 列表没开时 Esc 交给页面（会话页用来中断运行）。 */
 
 export interface ComposerChip {
   key: string;
@@ -48,6 +52,10 @@ export interface ComposerProps {
   rows: number;
   disabled: boolean;
   onSend: () => void;
+  /** 光标处的候选；不传 = 不弹。 */
+  suggest?: (text: string, caret: number) => SuggestionSet | null;
+  /** 没有候选列表时按 Esc；返回 true 表示已处理。 */
+  onEscape?: () => boolean;
 }
 
 export function Composer({
@@ -66,9 +74,26 @@ export function Composer({
   rows,
   disabled,
   onSend,
+  suggest,
+  onEscape,
 }: ComposerProps) {
   const { t } = useLocale();
   const [dragging, setDragging] = useState(false);
+  const [caret, setCaret] = useState(0);
+  const [active, setActive] = useState(0);
+  // Esc 收起后，同一段文字不再弹；一改字就恢复。
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const listId = useId();
+  const suggestions = suggest && dismissed !== text ? suggest(text, caret) : null;
+  const shownKey = suggestions ? `${suggestions.kind}:${suggestions.from}:${suggestions.items.map(item => item.key).join("|")}` : "";
+  useEffect(() => setActive(0), [shownKey]);
+  const pick = (set: SuggestionSet, item: Suggestion) => {
+    const next = text.slice(0, set.from) + item.insert + text.slice(set.to);
+    const position = set.from + item.insert.length;
+    onTextChange(next);
+    setCaret(position);
+    requestAnimationFrame(() => textareaRef.current?.setSelectionRange(position, position));
+  };
   useComposerAutosize(textareaRef, text);
   const composerInput = useComposerInputGuard();
   return (
@@ -104,6 +129,18 @@ export function Composer({
           </div>
         )}
         {dragging && <div className="kaus-drop-hint"><Paperclip size={18} />{t("conversation.attach.drop")}</div>}
+        {suggestions && (
+          <div className="kaus-suggest" id={listId} role="listbox" aria-label={t(`composer.suggest.${suggestions.kind}`)}>
+            {suggestions.items.map((item, index) => (
+              <button key={item.key} id={`${listId}-${index}`} type="button" role="option" aria-selected={index === active}
+                className={`kaus-suggest-item${index === active ? " is-active" : ""}`}
+                onMouseDown={event => event.preventDefault()} onMouseEnter={() => setActive(index)} onClick={() => pick(suggestions, item)}>
+                <span className="kaus-suggest-label">{item.label}</span>
+                {item.detail && <span className="kaus-suggest-detail">{item.detail}</span>}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="kaus-composer-row">
           <textarea
             ref={textareaRef}
@@ -112,7 +149,12 @@ export function Composer({
             disabled={disabled}
             placeholder={placeholder}
             value={text}
-            onChange={(event) => onTextChange(event.target.value)}
+            aria-autocomplete={suggest ? "list" : undefined}
+            aria-expanded={suggest ? Boolean(suggestions) : undefined}
+            aria-controls={suggestions ? listId : undefined}
+            aria-activedescendant={suggestions ? `${listId}-${active}` : undefined}
+            onChange={(event) => { setCaret(event.target.selectionStart ?? event.target.value.length); onTextChange(event.target.value); }}
+            onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
             onPaste={event => {
               if (!event.clipboardData.files.length || filesBlocked) return;
               event.preventDefault();
@@ -122,6 +164,28 @@ export function Composer({
             onCompositionEnd={composerInput.onCompositionEnd}
             onKeyDown={(event) => {
               if (composerInput.guardKeyDown(event)) return;
+              if (suggestions) {
+                const count = suggestions.items.length;
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setActive(index => (index + (event.key === "ArrowDown" ? 1 : count - 1)) % count);
+                  return;
+                }
+                if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+                  event.preventDefault();
+                  pick(suggestions, suggestions.items[Math.min(active, count - 1)]);
+                  return;
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setDismissed(text);
+                  return;
+                }
+              }
+              if (event.key === "Escape" && onEscape?.()) {
+                event.preventDefault();
+                return;
+              }
               if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
               event.preventDefault();
               /* 运行态的判定住在页面的 `send()` 里（batch39 第 1 件）：按钮和 Enter

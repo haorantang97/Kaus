@@ -199,3 +199,36 @@ async def load_native_history(spec, binding, native_session_id):
 
 async def load_local_native_history(spec, binding, native_session_id):
     return await load_native_history(spec, binding, native_session_id)
+
+
+# 开对话前的原生 MCP 排除（2026-11-09，设计稿第 3a 节）。
+#: v1 配置形状（``mcp.<name>.enabled``）按 opencode-ai 1.18/1.19 的 schema；未实测。
+NATIVE_MCP_EXCLUSION_VERIFIED = False
+
+
+def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
+    """``mcp.<name> = {"enabled": false}`` through ``OPENCODE_CONFIG_CONTENT``.
+
+    OpenCode v1 merges the inline config env var last-but-managed
+    (``packages/opencode/src/config/config.ts``, ``mergeDeep``), and its schema
+    accepts an MCP entry that is only ``{enabled: boolean}``
+    (``packages/core/src/v1/config/config.ts``). V2 renamed the shape to
+    ``mcp.servers.<name>.disabled``; this hook targets the v1 line Kaus pins.
+    The user's ``opencode.json`` is not modified.
+    """
+    env = spec.build_env()
+    try:
+        config = json.loads(env.get("OPENCODE_CONFIG_CONTENT") or "{}")
+    except ValueError as exc:
+        raise UnsupportedCapabilityError("原生 MCP 启动配置无效") from exc
+    if not isinstance(config, dict):
+        raise UnsupportedCapabilityError("原生 MCP 启动配置无效")
+    servers = dict(config.get("mcp") or {}) if isinstance(config.get("mcp"), dict) else {}
+    for row in excluded:
+        name = row.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        current = servers.get(name)
+        servers[name] = {**(current if isinstance(current, dict) else {}), "enabled": False}
+    config["mcp"] = servers
+    return spec.with_env(OPENCODE_CONFIG_CONTENT=json.dumps(config)), metadata, ()

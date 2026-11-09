@@ -223,6 +223,12 @@ class EffectiveCapabilities(DomainModel):
     #: 空元组 = 这次合并没有任何越界。**不是错误**：越界的字段保留了祖先值，
     #: 结果照常可用，这里只是把「你写的那个值没生效、为什么」说出来。
     warnings: tuple[str, ...] = ()
+    #: 该 Agent **自带**的全局 MCP 里分配给这个 Project 的记录（``<agent>:mcp``，
+    #: 2026-11-09）。它们不进 ``entries``——源 Agent 自己会加载，再投一次就是重复；
+    #: 留在这里是让驱动算得出「自带但未分配」的那部分，按它自己的机制在本次启动中
+    #: 排除（设计稿第 3a 节）。两者都空 = 这个 Agent 的自带 MCP 还没整理过。
+    native_mcp: tuple[EffectiveCapability, ...] = ()
+    native_mcp_blocked: tuple[BlockedCapability, ...] = ()
 
     def get(self, capability_type: str, capability_id: str) -> EffectiveCapability | None:
         for entry in self.entries:

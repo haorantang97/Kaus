@@ -126,3 +126,37 @@ async def load_native_history(spec, binding, native_session_id):
 async def load_local_native_history(spec, binding, native_session_id):
     """Filesystem-only full-session reader; never starts a model or gateway."""
     return await load_native_history(spec, binding, native_session_id)
+
+
+# 开对话前的原生 MCP 排除（2026-11-09，设计稿第 3a 节）。
+#: 白名单语义对 ACP ``session/new`` 传入的 MCP 是否也生效，未实测。
+NATIVE_MCP_EXCLUSION_VERIFIED = False
+
+#: 空白名单在 Gemini 里等于「不过滤」（``allowedNames.length > 0`` 才生效），所以
+#: 「一个自带的都不留」要用一个不会命中任何服务器的名字表达。
+ALLOW_NOTHING_SENTINEL = "kaus:none"
+
+
+def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
+    """Gemini CLI only has an allow-list: ``--allowed-mcp-server-names``.
+
+    ``packages/cli/src/config/config.ts`` defines the option (``type: 'array'``,
+    comma-separated, same yargs builder as ``--acp`` / ``--experimental-acp``);
+    ``packages/core/src/tools/mcp-client-manager.ts`` blocks every server not in a
+    non-empty list. The list carries the assigned native names plus the project MCP
+    names Kaus sends over ACP (in case the filter applies to them too); an empty
+    result uses a sentinel because an empty list disables the filter.
+    ``~/.gemini/settings.json`` is not modified.
+    """
+    allowed = [row.get("name") for row in assigned if isinstance(row.get("name"), str) and row.get("name")]
+    for server in metadata.get("mcpServers", []) or ():
+        name = server.get("name") if isinstance(server, dict) else None
+        if isinstance(name, str) and name and name not in allowed:
+            allowed.append(name)
+    warnings = ()
+    if any("," in name for name in allowed):
+        return spec, metadata, ("含逗号的 MCP 名称无法通过 --allowed-mcp-server-names 表达，本次未排除自带 MCP",)
+    if not allowed:
+        allowed = [ALLOW_NOTHING_SENTINEL]
+    command = (*spec.command, "--allowed-mcp-server-names", ",".join(allowed))
+    return spec.model_copy(update={"command": command}), metadata, warnings

@@ -3,11 +3,125 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 9 日第一期收尾：送达状态、导入与删除手动应用
+
+- 核对第 3、4 步（由 Fable 实现）：在主目录重跑，内核 4,336 通过 / 124 跳过，宿主 `tests/` 382 通过，与它报告的数字一致。抽查确认：`~/.claude.json` 只读不写；`launch_delivery.py` 不认任何引擎名，各引擎的通道都写在适配器的可选钩子里。
+- 指令卡片底部新增「送达」：数据来自 `GET /api/projects/{id}/instructions/workspace-files`，列出每个指令文件、读它的 Agent，以及送达方式（启动时注入 / 已写入文件 / 开对话时写入）。文件里已有用户自己写的内容且尚未决定时，显示预览和「导入 / 保留原文件」按钮（`POST …/instructions/import`）。项目没有工作目录、但已经有指令时，显示一行提示；还没有指令时不显示。
+- 发送消息遇到 `workspace_required` 时，提示「这个项目有指令，请先点『选择工作位置』选一个文件夹」（`userFacingErrors.ts`）。
+- 新增两种未生效原因的文案：`workspace_in_use`（同一文件夹有别的对话在运行，指令仍已写入）、`native_not_isolated`（这个 Agent 自带的 MCP 无法按项目隔离）。
+- 删除：能力卡片右上角的「应用项目配置」按钮（`ProjectConfigurationApply`、`MaterializeModal` 及其测试、`project.apply.*` 文案），以及通用运行配置里已经没有作用的 `system_prompt_suffix`。后端的 materialize 端点暂时保留，EnginePanel 的漂移查看仍在用它。
+
+结果：`npm run check` 120 个文件 / 1,079 项通过。项数下降是因为删掉了两个组件的测试，另新增 `ProjectInstructionsEditor.test.tsx` 2 项（导入流程；没有工作目录时有指令才提示）。内核 binding 相关 84 项通过。8877 重启后启动日志没有新错误，项目页显示正常。
+
+仍未做：Kaus 托管段被手动改过时的提示；外部终端启动时注入指令；各 Agent 送达和 MCP 排除的真实运行验证（放到跨 Agent 实测里）。
+
+## 11 月 9 日 Project 配置通用化第 3、4 步：开对话前自动送达与原生 MCP 排除
+
+设计稿 `docs/product/project-config-generalization-20261102.md` 第 3、3a、4 节。此前项目指令只在用户按「应用项目配置」时写进工作目录文件；现在每次开对话（`SessionHost._session_projection` → `AcpDriver.session_options_for`）自动完成，手动物化端点保留到第 5 步再删。
+
+**送达通道**（`kernel/drivers/launch_delivery.py` 算计划，`kernel/drivers/acp/card_runtime.py` 在 `start_runtime` 把它落到这次进程的 argv / env / `_meta` 上；通道由适配器模块的可选钩子声明，ACP 驱动本体不出现任何引擎名）：
+
+| Agent | 指令 | 依据 |
+| --- | --- | --- |
+| Claude Code | `session/new` `_meta.claudeCode.options.systemPrompt = {type: preset, preset: claude_code, append: <正文>}`，不写文件 | claude-agent-acp `src/acp-agent.ts`（v0.90.0 与 main）`createSession` 把 `_meta.claudeCode.options` 展开进 Agent SDK `query()` 的 options，`session/load` / `resume` 走同一路径；SDK `Options.systemPrompt` 的 preset+append 形状见 code.claude.com/docs/en/agent-sdk/typescript |
+| Codex | `CODEX_CONFIG.developer_instructions = <正文>`（进程环境变量），不写文件 | codex-acp v1.10.0 `src/index.ts` 把 `CODEX_CONFIG` 解析为 JSON 并作为每次 `thread/start` / `thread/resume` 的 `config`；`developer_instructions` 为 Codex 顶层配置键（`codex-rs/config/src/config_toml.rs`：以 developer 角色消息注入） |
+| OpenCode、Gemini、Qwen、Copilot、Cursor、Goose、Kilo、omp、Grok、Crush、Command Code、ZCode | 开对话前写工作目录指令文件的受管块（预设声明的 `AGENTS.md` / `GEMINI.md` / `QWEN.md` / `.goosehints`），块外不动；同目录另有会话在跑时照写并在时间线报 `workspace_in_use` | 既有 `workspace_projection.materialize_block`（备份、复读、出处账） |
+| 没有文件约定的预设（Antigravity、hermes-acp、DSH、DeepSeek、Pi、OpenClaw） | 报 `no_convention`，不猜文件名 | — |
+
+`compose_instructions` 同时改为用能力行 config 的 `title` 作节标题（无则 `capability_id`），正文首行若是旧守则的 `### [rule|override:<id>] …` 标题行则去掉（编辑器那边的要求）。
+
+**没有工作目录**：有指令要送、通道是文件、项目和 Binding 都没有工作目录时，驱动抛 `WorkspaceRequiredError`（`drivers/base.py`），Session Host 不吞这个异常，发送接口回 409 `{"error": {"code": "workspace_required", "detail": {"cause": "workspace_required", "hint": …}}}` 并带「会话为空」标记；启动注入的 Agent 不受此限。界面应据此让用户先选文件夹。
+
+**原生 MCP 排除**：`app.capabilities.effective.without_native_mcp` 不再丢掉 `<agent>:mcp` 记录，而是挪到 `EffectiveCapabilities.native_mcp` / `native_mcp_blocked`；驱动用 `mcp_inventory`（与接入时同一来源、同一 id）读该 Agent 此刻的全局 MCP，差集就是「自带但未分配」。一条分配 / 屏蔽行都没有的 Agent 视为「未整理」，一个都不动。机制与依据：
+
+| Agent | 机制 | 依据 | 状态 |
+| --- | --- | --- | --- |
+| Copilot | argv `--disable-mcp-server=<名>`（可重复） | docs.github.com Copilot CLI command reference：「Disable a specific MCP server (can be used multiple times)」；ACP 页未写全局参数是否生效 | 未验证 |
+| Codex | `CODEX_CONFIG.mcp_servers.<名>.enabled = false` | `codex-rs/config/src/mcp_types.rs` `McpServerConfig.enabled`；app-server 把请求 config 当 CLI 覆盖层深合并（`config_manager.rs`、`merge.rs`） | 未验证 |
+| Gemini | argv `--allowed-mcp-server-names <已分配的自带名,项目 MCP 名>`；空表用占位名 `kaus:none` | `packages/cli/src/config/config.ts` 选项定义（与 `--acp` 同一 yargs builder），`mcp-client-manager.ts` 非空白名单外一律阻断 | 未验证（白名单是否也过滤 ACP 传入的 MCP 未知） |
+| Qwen | argv `--disable-mcp-server=<名>`（可重复） | `packages/cli/src/config/top-level-options.ts`（源码有，用户文档未列） | 未验证 |
+| OpenCode | `OPENCODE_CONFIG_CONTENT.mcp.<名> = {enabled: false}` | v1 schema `packages/core/src/v1/config/config.ts` 明确接受只有 `enabled` 的条目；V2 已改为 `mcp.servers.<名>.disabled`，未适配 | 未验证 |
+| Claude Code | `_meta.claudeCode.options.strictMcpConfig = true` + `mcpServers` = 从 `~/.claude.json` 顶层读出的已分配定义（内存传递）+ 该目录的本地作用域定义；跳过 `projects[<cwd>].disabledMcpServers`；适配器再把 Kaus 项目 MCP 合并在上 | 适配器只透传 `strictMcpConfig`、自己不设；SDK 文档：严格模式忽略 `.mcp.json`、用户设置、插件 MCP；`disabledMcpServers` 见 code.claude.com/docs/en/mcp | 未验证；工作目录 `.mcp.json` 在严格模式下不加载，启动时有一条提示 |
+| Cursor | 无按次启动的机制（只有持久化的 `agent mcp disable`） | cursor.com/docs/cli/reference/parameters、/cli/mcp、/cli/acp | 未隔离，报 `native_not_isolated` |
+
+六个适配器的 `NATIVE_MCP_EXCLUSION_VERIFIED` 都是 `False`：会话 `projection.summary.nativeMcp` 报 `unverified`（其他取值 `unmanaged` / `clean` / `unisolated`），`nativeMcpExcluded` / `nativeMcpUnisolated` 列名字，`warnings` 带一句「尚未在真实 Agent 上验证」。真实 Agent 一个都没跑：以上全部来自官方文档与适配器源码（2026-11-09 抓取），等隔离虚拟机里的跨 Agent 实测。
+
+**接入已有文件夹**（设计稿第 4 节，后端原语，界面未接）：`kernel/app/api/workspace_instructions.py`，挂在会话 router 下。
+- `GET /api/projects/{id}/instructions/workspace-files` → `{projectId, workspaceRoot, workspaceDenied, files: [{file, backends, deliveryChannel, hasManagedBlock, managedByOtherProject, hasUserContent, preview, decision, pending}]}`；没有工作目录回 409 `workspace_required`。
+- `POST /api/projects/{id}/instructions/import` body `{file, mode: "import" | "keep"}`：`import` 把块外内容存为能力行 `imported-<文件名 slug>`（config `{body, order: 100, title: <文件名>}`），文件只剩受管块（读文件的引擎写当前有效指令；启动注入的引擎写空块占位，避免同一段话送两遍），备份路径在响应里；`keep` 只记决定（应用设置 `workspace_instructions.decisions.v1`）。错误码：`invalid_import_request`、`file_not_declared`、`file_not_found`、`nothing_to_import`、`workspace_denied`，以及受管块那一面的 `workspace_shared` / `target_linked`。
+- 会话接口新增：`projection.summary.instructions`（送达的指令名）；`kaus/project.unapplied` 新原因码 `workspace_in_use`（已写文件，同目录另一会话重启后才读到）、`native_not_isolated`、`no_workspace_root`；`projection/_meta` 与 `workspace_conventions()` 多一个 `deliveryChannel`（`launch` / `workspace_file` / null）。前端文案（`timeline.projectUnapplied.reason.*`、`materialize.reason.*`）要补这几个码。
+
+结果：内核全量 4,336 通过、124 跳过（含本日其他并行改动；第一轮没有失败）；宿主 `tests/` 382 项通过（第一轮 1 项失败：新 API 模块 docstring 里写了一个引擎名，已改）。新增 `drivers/tests/test_launch_delivery.py` 19 项（通道选择、受管块现写、目录占用提示、缺目录抛 `workspace_required`、未整理 / 已分配 / 未隔离 / 未验证四种原生 MCP 状态、六个适配器钩子的 argv / env / `_meta` 形状，含 Claude 严格模式跳过用户禁用项与 `.mcp.json` 提示）、`drivers/acp/tests/test_launch_delivery_driver.py` 7 项（合成适配器模块：启动注入到达 `start_runtime` 的进程规格与 `_meta`、受管块在会话前写好、缺目录抛错、同目录另一会话在跑的提示、合成清单的排除与未隔离报告、`workspace_conventions` 的通道）、`runtime/tests/test_project_unapplied.py` +1（Host 不吞 `WorkspaceRequiredError`）、`app/tests/test_workspace_instructions_api.py` 6 项（发现、缺目录 409、导入后只剩受管块且备份保留、启动注入引擎留空块、保留决定、参数错误）、`drivers/tests/test_batch44_managed_block.py` +2（标题与旧守则标题行）。全部用假引擎、合成适配器与临时目录，未起任何真实 Agent，未碰真实家目录。
+
+## 11 月 9 日模块自带 MCP（Kaus 侧）
+
+模块清单新增可选字段 `mcp`（与 `backend` 同形：`{"runtime": "node", "entry": "<相对路径>.mjs"}`）和权限 `mcp:serve`。声明 `mcp` 时必须同时声明 `mcp:serve`；安装时这项权限默认不勾选。`app/workbench/module_mcp.py` 的 `ModuleMcpRegistry` 监听模块变化（`WorkbenchService.module_change_listeners`，在原有 `module_change_hook` 之后调用），当模块处于已安装、已启用、已授权 `mcp:serve` 且选了 Project 的状态时，把它登记为该 Project 的 `mcp` 能力 `module-<id>`，像其他 MCP 一样沿项目树继承。停用、卸载、撤销授权、改选 Project 时自动删除或迁移这一行。启动时 `sync_all()` 重新对齐一遍，覆盖包路径或 Node 位置变化的情况。
+
+通用 `mcp` 能力的 `env` 设计上只认变量名，不带值，所以数据目录经参数传入：Agent 启动 `node app/workbench/module_mcp_launcher.mjs <模块根> <入口> <数据目录> <模块 id>`，启动器设置与模块后端相同的 `KAUS_MODULE_ID`、`KAUS_MODULE_DATA_DIR`，切到模块根目录后加载入口；入口不在模块根目录内时直接退出（返回码 2）。
+
+结果：`app/workbench/tests/test_module_mcp.py` 3 项通过，覆盖未授权和未选项目时不登记、授权后登记且参数正确、改选项目时迁移、停用和撤销授权时删除、`sync_all` 恢复、卸载时删除、清单缺权限时拒绝，以及用真实 Node 跑启动器并检查环境变量、工作目录、越界入口被拒。与 `test_workbench.py` 一起共 37 项通过。前端补了「向项目里的 Agent 提供模块工具（MCP）」的权限文案。
+
+未做：
+- Kith 一侧：清单声明 `mcp`、构建 MCP 单文件、改用 `KAUS_MODULE_DATA_DIR`，并验证模块后端和 MCP 两个进程同时读写同一个 SQLite（WAL 与 busy_timeout）。这些改在 Kith 仓库，重新安装到真实 Kaus 会碰真实数据，需要项目负责人确认后再做。
+- 真实 Agent 通过这条 MCP 调用模块工具，放到跨 Agent 实测里验收。
+
+## 11 月 9 日基础操作：Esc、`/`、`@`、侧栏删除、系统通知
+
+对照成熟产品，补齐登记在「基础交互缺口」里的五项：
+
+- **Esc**：输入框里没有候选列表时，按 Esc 中断正在运行的这一轮，走「停止」按钮同一条路（运行中、引擎支持中断、不在外部终端里）；有候选列表时按 Esc 只收起列表。
+- **`/` 命令**：只在整段文字开头生效。命令来自 Agent 自己推送的 `available_commands_update`（ACP 扩展事件，时间线里本来就不显示），选中后插入 `/<名字> `，由 Agent 自己解释。Kaus 不自定义命令。
+- **`@` 文件**：光标前的词以 `@` 开头时，列出会话工作目录里的文件，插入 `@<相对路径> `，只作为文字引用，不上传文件内容。新增 `GET /api/conversations/{id}/workspace-files`：不跟随符号链接，跳过隐藏目录和依赖、构建目录，最多 5000 个；没有工作目录或工作目录是家目录时返回空表，边界与读取文件一致（`ConversationFiles._workspace`）。
+- **侧栏删除**：会话行「⋯」菜单里新增「删除」，先弹确认框，说明只删除 Kaus 里的记录、Agent 原生会话保留、删除后不能恢复。运行中或在外部终端里时不可用，条件与归档相同。删除当前打开的对话会回到它所在的项目页。
+- **系统通知**：新增 `app/conversations/attention_notifier.py`，作为 Session Host 的事件旁观者。一轮完成、失败，或在等审批、提问、登录时，等 3 秒后检查：如果会话页已上报看到了这条事件，就不通知；否则通过 `macos_notify` 发系统通知，标题是会话名，正文按界面语言显示「需要你处理 / 已完成 / 出错了」。模块任务会话和只属于协作组的会话不通知，它们由各自入口上的提示点提醒；用户自己中断的那一轮也不通知。前端只在窗口可见且有焦点时上报「已看到」，并带上界面语言（存在 `ui:locale` 设置里）。`KAUS_SYSTEM_NOTIFICATIONS=0` 可以关闭系统通知，两套测试的 conftest 都设了这个变量，避免假运行在开发机上弹出通知。
+
+结果：内核新增 `test_chat_files.py` 2 项（列表内容与边界、上限与家目录）和 `test_attention_notifier.py` 4 项（三种通知、已看到或中断时不发、模块和组会话不发、英文文案）。前端新增 `lib/composerSuggestions.test.ts` 4 项、`components/composerSuggest.test.tsx` 2 项（↓ + Enter 插入且不发送；Tab 插入命令；第一次 Esc 收起列表，第二次 Esc 才交给页面），侧栏测试加了「删除先确认」一项。`npm run check` 121 个文件 / 1,105 项通过。宿主 `tests/` 382 项通过。内核全量第一轮有 6 项失败，都是本日改动带来的预期变化：4 处迁移版本写死到 v21，会话索引多了 `viewedSequence`，osascript 引号测试被测试期通知开关挡住。修正测试后这些用例全部通过（该测试顺带验证开关关闭时不调用 osascript）。修正后的内核全量结果待与第一期第 3、4 步合并后一起再跑。
+
+未实测：系统通知的实际弹出（需要在桌面版里把窗口切到后台跑一轮），以及真实 Agent 的 `/` 命令列表。两项都放到跨 Agent 实测里一起验收。
+
+## 11 月 9 日会话状态点
+
+按产品决策「会话状态显示」，新会话页去掉「需要处理」区块（删除 `AttentionBlock` 及其测试、样式），改为在侧栏会话行首显示状态位：失败显示红色感叹号，等待处理（审批、提问、外部终端等待、paused）显示橙点，运行中且没在等人时标题流光，已结束未查看显示蓝点，已查看的空闲会话不显示。优先级为失败 > 等待处理 > 运行中 > 未查看。状态不配文字，悬停和读屏读出状态名。模块任务等待和协作组审批原本就在「工作台」「协作组」入口上有提示点，颜色统一改成同一个橙色。
+
+- 后端：迁移 v22 新增 `conversation_views` 表（会话 → 用户看到的最后一个事件序号）。升级时按 `event_store` 中每条会话的最大序号初始化，所以已有会话不会突然全变成未读。新增 `PUT /api/conversations/{id}/viewed`（序号只增不减，不占运行租约，也不调用引擎）。`GET /api/conversations` 每行多一个 `viewedSequence` 字段，删除会话时一并清除。
+- 前端：`conversationStatus()` 在 `lib/conversationIndex.ts`，`ConversationStatusMark` 负责显示，会话页由 `useMarkViewed` 在窗口处于前台时每 1.5 秒上报一次已看到的序号。后端版本较旧、没有 `viewedSequence` 时不判未读。
+
+结果：内核新增 `app/tests/test_conversation_views.py` 3 项（接口鉴权与 404、序号只增不减、重开库后仍在、删除后清除、内存实现、升级初始化），表数量断言改为 18，相关测试共 24 项通过。前端 `npm run check` 119 个文件 / 1,098 项通过（状态优先级的单测替换了旧的「需要处理」单测，侧栏测试改为检查流光和读屏标签）。
+
+实测：
+- 重启 8877，真实库从 v21 升到 v22，升级前自动备份 `state/backups/domain-pre-v22-20261109-162822.sqlite3`（内容为 v21，完整性检查 ok），已有的 3 条会话初始化为已查看。
+- 在隔离实例（8899，mock 引擎）上：两条通过接口发出的会话，在审批卡和提问卡等待时显示橙点；中断后都显示蓝点（「有新内容」）；打开其中一条再回到列表，它的蓝点消失，另一条仍在。
+- 发现等待审批时标题也在流光，改为只在「运行中且没在等人」时流光。
+- 「运行中」的流光没有截到画面（mock 跑得太快），由单测覆盖。隔离实例和测试数据已删除。
+
+## 11 月 9 日项目指令编辑器（第一期第 2 步）
+
+项目页原来的「更多设置 → 指令与守则」折叠区（`ConstitutionEditor`，靠 `### [rule:id]` 语法分层）换成常驻的「指令」卡片 `web/src/components/ProjectInstructionsEditor.tsx`。页头只为打开这个折叠区而存在的「设置」按钮一并删除。
+
+- 一节一条 `instructions` 能力行，config 为 `{body, order, title?}`，读写都走已有的通用能力端点：`effective-capabilities` 读，`PUT …/capabilities/instructions/<id>` 写本级或屏蔽，`DELETE` 删除本级、恢复继承、解除屏蔽。后端没有新增接口。
+- 状态整理在 `web/src/lib/instructionSections.ts`：本级、已改写、继承自某项目、已屏蔽。本级屏蔽的节从上级的有效值取回标题和正文。旧守则行去掉 `### [rule:id]` 标题行，人设行显示为「项目角色」，旧自由文本行显示为「通用」。显示顺序与拼给 Agent 的顺序一致。
+- 新建按钮放在卡片右上角，每行的操作收在「⋯」里；编辑时 Esc 取消，⌘/Ctrl+Enter 保存。
+- 能力表不再重复列出 `instructions`。
+- 旧的 `/api/constitution*` 端点仍保留（兼容）。新格式的节没有 `### [rule:id]` 标题行，经旧端点整体保存会合并成一段，所以前端已不再调用它们。
+
+结果：`npm run check` 120 个文件 / 1,105 项通过（新增 `lib/instructionSections.test.ts` 4 项），lint、类型、边界检查和构建均通过。在隔离实例（8899，临时库、临时 HOME，PATH 里没有 Hermes）上用真实界面走了一遍：子项目显示两条「继承自 X」，然后在本级改写、屏蔽、新建（⌘+Enter 保存）、恢复继承、解除屏蔽，每一步之后列表状态都正确。隔离实例、临时启动配置和测试数据已删除。8877 上的真实项目只做了读取，那里还没有指令。
+
+未完成：设计稿里每个 Agent 一行的送达状态，要等第 3 步自动送达完成后再接进这张卡片。
+
+## 11 月 9 日内置备份
+
+以前只能手动备份，给别人用时不能指望对方自己记得。新增 `kernel/app/persistence/sqlite/backups.py`：
+
+- 升级前：已有数据的文件库有待应用的迁移时，先通过 SQLite 在线备份接口整份存到 `backups/<库名>-pre-v<目标版本>-<时间>.sqlite3`，保留最近 5 份。新建的空库不备份。挂在 `migrations.migrate()` 里。
+- 每天：`session_bootstrap.py` 启动时挂一个后台任务，启动时备份一次，之后每小时检查日期。数据目录（token 文件所在目录）下所有文件头为 SQLite 的文件，按相对路径存进 `backups/daily-<日期>/`，保留最近 7 天；领域库若被环境变量另指到别处，放在 `external/` 下。失败只记日志，不影响服务。附件等非 SQLite 文件不在备份范围内。
+
+结果：`app/tests/test_sqlite_backups.py` 4 项通过（升级前留底且内容是旧版本、新库和最新库不备份、WAL 中未合并的写入也进入备份、模块 `.db` 文件被识别、只保留 7 天）。重启 8877 后日志出现 `[backup] 每日备份：state/backups/daily-20261109`，其中领域库、工作台、原生归档和 Kith `kith.db` 4 个文件 `PRAGMA integrity_check` 均为 ok，原有手动备份未受影响。
+
 ## 11 月 8–9 日新会话页标题
 
 固定标题「Let’s make something sick」改成按时段显示，中文界面不再出现英文。经过两轮讨论，项目负责人定为每个时段一句常驻主句，几个时段另外配随机彩蛋。实现在 `web/src/lib/draftGreeting.ts`：
 
-- 常驻主句：6–12「早，老板」，12–18「今天造点什么？」，18–21「状态还在吗？」「咖啡续上了吗？」两句轮流，21–1「夜还长」，1–6「睡吧，活儿跑不了」。
+- 常驻主句：6–12「早，老板」，12–18「今天做点什么？」（11 月 9 日由「今天造点什么？」改），18–21「状态还在吗？」「咖啡续上了吗？」两句轮流，21–1「夜还长」，1–6「睡吧，活儿跑不了」。
 - 彩蛋：每次打开有 15% 的概率出现，按时间窗口分为 0–2「正是好时候」、6–12「让今天算数」、12–15「火力全开」、15–18「整点狠活」。18–21 点已是两句轮流，2–6 点只劝睡，21–24 点只显示主句，这三段都不放彩蛋。
 - 一次打开固定一句。文案只放在词典 `draft.greeting.*` 里。
 

@@ -106,8 +106,7 @@ GENERIC_RUNTIME_CONFIG_KEYS: frozenset[str] = frozenset(
         # 输出长度上限与采样温度：三家引擎都有的通用旋钮。
         "max_output_tokens",
         "temperature",
-        # 系统提示的追加片段（不是替换——替换属于引擎私有配置）。
-        "system_prompt_suffix",
+        # system_prompt_suffix 2026-11-09 删除：项目指令改由「指令」编辑器统一送达。
     }
 )
 

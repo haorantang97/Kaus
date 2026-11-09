@@ -57,4 +57,4 @@
 /* Module pages integrate an independent app: host Agent overlays stay off it (the sidebar keeps the Groups entry). */
 :root.kaus-module-page .kaus-group-dock{display:none}
 .workbench-pin .shell-nav-icon{position:relative}
-.workbench-pin-dot{position:absolute;top:-2px;right:-3px;width:7px;height:7px;border-radius:50%;background:var(--accent-text)}
+.workbench-pin-dot{position:absolute;top:-2px;right:-3px;width:7px;height:7px;border-radius:50%;background:var(--status-waiting)}

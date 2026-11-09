@@ -16,13 +16,16 @@ Resolver 已经把继承、override 与 block 都算完了（:class:`EffectiveCa
 
 正文形状
 --------
-每条一节：``## <capability_id>`` + 空行 + body；节与节之间空一行。小标题用
-``capability_id`` 而不是某个「显示名」，因为 id 是**用户在项目页上看得见的那个
-名字**，出了问题他能照着找回来。
+每条一节：``## <标题>`` + 空行 + body；节与节之间空一行。标题取 config 里的
+``title``（项目配置编辑器给每节起的名字，2026-11-09 起），没写或只有空白时回落
+到 ``capability_id``——id 是**用户在项目页上看得见的那个名字**，出了问题他能
+照着找回来。旧守则行（``rule-*``）的正文以 ``### [rule:<id>] 标题`` 一行开头，
+标题已经在节标题里了，拼接时把这一行去掉，不让同一个标题出现两遍。
 """
 
 from __future__ import annotations
 
+import re
 from typing import Final
 
 from app.capabilities.instructions import (
@@ -85,21 +88,55 @@ INVALID_DETAIL: Final[str] = (
 )
 
 
+#: 旧守则层的小节标题行：``### [rule:<id>] 标题`` / ``### [override:<id>] 标题``。
+#: 与宿主 ``project_instructions.RULE_HEADING_RE`` 认同一种写法（disable 行不会
+#: 进有效集合，这里不用认）。
+LEGACY_RULE_HEADING_RE: Final[re.Pattern[str]] = re.compile(
+    r"^#{1,6}\s+\[(?:rule|override):[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\]\s*.*$", re.I
+)
+
+
+def section_title(entry: EffectiveCapability) -> str:
+    """这一节的小标题：config 的 ``title``（非空白）优先，否则 ``capability_id``。
+
+    同时认 ``{"value": {...}}`` 包装与裸键值，与 :func:`spec_of` 同一口径。
+    """
+    config = entry.config
+    inner = config.get("value") if isinstance(config.get("value"), dict) else config
+    title = inner.get("title") if isinstance(inner, dict) else None
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    return entry.capability_id
+
+
+def section_body(body: str) -> str:
+    """节正文：去掉首尾空白；首行若是旧守则标题行就整行去掉（标题已在节标题里）。"""
+    text = body.strip()
+    first, newline, rest = text.partition("\n")
+    if LEGACY_RULE_HEADING_RE.match(first):
+        return rest.strip() if newline else ""
+    return text
+
+
 def compose_instructions(effective: EffectiveCapabilities) -> str:
     """有效能力 → 拼好的指令正文。没有任何指令时返回空串。"""
     sections: list[str] = []
     for entry in instruction_entries(effective):
         spec = spec_of(entry.config)
         assert spec is not None  # instruction_entries 已经滤过
-        sections.append(f"## {entry.capability_id}\n\n{spec.body.strip()}")
+        body = section_body(spec.body)
+        sections.append(f"## {section_title(entry)}\n\n{body}" if body else f"## {section_title(entry)}")
     return SECTION_SEPARATOR.join(sections)
 
 
 __all__ = [
     "INSTRUCTIONS_MARKER",
     "INVALID_DETAIL",
+    "LEGACY_RULE_HEADING_RE",
     "SECTION_SEPARATOR",
     "compose_instructions",
     "instruction_entries",
     "invalid_instruction_entries",
+    "section_body",
+    "section_title",
 ]
