@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { connectModuleFrame, dispatchModuleRequest } from "./workbenchBridge";
 import * as api from "./workbenchApi";
-vi.mock("./workbenchApi",()=>({fetchWorkbenchModule:vi.fn(),fetchModuleJobs:vi.fn(),fetchModuleJob:vi.fn(),startModuleJob:vi.fn(),cancelModuleJob:vi.fn(),resumeModuleJob:vi.fn(),readModuleData:vi.fn(),writeModuleData:vi.fn(),fetchWorkflow:vi.fn(),saveWorkflow:vi.fn(),runWorkflow:vi.fn(),moduleBackendRequest:vi.fn()}));
+vi.mock("./workbenchApi",()=>({fetchWorkbenchModule:vi.fn(),fetchModuleJobs:vi.fn(),fetchModuleJob:vi.fn(),startModuleJob:vi.fn(),fetchModuleAgents:vi.fn(),cancelModuleJob:vi.fn(),resumeModuleJob:vi.fn(),readModuleData:vi.fn(),writeModuleData:vi.fn(),fetchWorkflow:vi.fn(),saveWorkflow:vi.fn(),runWorkflow:vi.fn(),moduleBackendRequest:vi.fn()}));
 const ports: {port1:{close:ReturnType<typeof vi.fn>;start:ReturnType<typeof vi.fn>;postMessage:ReturnType<typeof vi.fn>;onmessage:((e:MessageEvent)=>Promise<void>)|null};port2:object}[]=[];
 it("fixed editor requires an enabled module, declared permission, grant and native host",async()=>{
  const request=vi.fn().mockResolvedValue({accepted:true}),ui={surface:{sites:["chatcut","midjourney"],request},confirm:vi.fn(),copy:vi.fn(),external:vi.fn()},open=vi.fn();
@@ -79,4 +79,13 @@ it("accepts valid large workflow definitions without opening unbounded requests"
  const frame=document.createElement("iframe");document.body.append(frame);vi.spyOn(frame.contentWindow!,"postMessage").mockImplementation(()=>{});const stop=connectModuleFrame({frame,moduleId:"safe",onConversation:vi.fn()});frame.dispatchEvent(new Event("load"));window.dispatchEvent(new MessageEvent("message",{source:frame.contentWindow,origin:"null",data:{type:"kaus:module:ready",version:1}}));
  const workflow={name:"Large",steps:Array.from({length:8},(_,i)=>({id:String(i),title:"Step",prompt:"x".repeat(40000)}))};await ports[0].port1.onmessage!(new MessageEvent("message",{data:{id:"valid",method:"workflow.save",params:{workflow}}}));expect(api.saveWorkflow).toHaveBeenCalledWith("safe",workflow);
  await ports[0].port1.onmessage!(new MessageEvent("message",{data:{id:"large",method:"jobs.start",params:{prompt:"x".repeat(300000),idempotencyKey:"key"}}}));expect(api.startModuleJob).not.toHaveBeenCalled();expect(ports[0].port1.postMessage).toHaveBeenCalledWith(expect.objectContaining({id:"large",error:expect.objectContaining({code:"request_too_large"})}));stop();frame.remove();
+});
+
+it("lets a module name another Agent of its Project and list the choices", async () => {
+  vi.mocked(api.startModuleJob).mockResolvedValue({id:"job"} as api.ModuleJob);
+  vi.mocked(api.fetchModuleAgents).mockResolvedValue({agents:[{id:"b2",name:"Codex",backendId:"backend:codex",default:false}]});
+  await dispatchModuleRequest("fixed",{id:"x",method:"jobs.start",params:{prompt:"hi",idempotencyKey:"k",bindingId:"b2"}},vi.fn());
+  expect(api.startModuleJob).toHaveBeenCalledWith("fixed","hi","k","b2");
+  expect(await dispatchModuleRequest("fixed",{id:"y",method:"agents.list"},vi.fn())).toEqual({agents:[expect.objectContaining({id:"b2"})]});
+  await expect(dispatchModuleRequest("fixed",{id:"z",method:"jobs.start",params:{prompt:"hi",idempotencyKey:"k",projectId:"other"}},vi.fn())).rejects.toThrow("invalid_request");
 });

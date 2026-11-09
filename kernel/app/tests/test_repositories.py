@@ -140,7 +140,8 @@ def test_repository_set_covers_every_recommended_table() -> None:
     assert RECOMMENDED_TABLES <= set(REPOSITORY_TABLES.values())
     # 批次二十四（AD-149）新增：物化留账。它**不在**推荐表里，所以单列一条，
     # 免得「十二张」这个数字被悄悄改大而没人发现。
-    assert set(REPOSITORY_TABLES.values()) - RECOMMENDED_TABLES == {"projection_results", "app_settings"}
+    # 2026-11-09：Project 记忆（设计稿第 5 节）同样不在推荐表里。
+    assert set(REPOSITORY_TABLES.values()) - RECOMMENDED_TABLES == {"projection_results", "app_settings", "project_memories"}
     assert RECOMMENDED_TABLES == {
         "projects",
         "project_capabilities",

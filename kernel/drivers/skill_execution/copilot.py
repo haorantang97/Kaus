@@ -440,3 +440,9 @@ def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
     names = [row.get("name") for row in excluded if isinstance(row.get("name"), str) and row.get("name")]
     flags = tuple(f"--disable-mcp-server={name}" for name in names)
     return spec.model_copy(update={"command": (*spec.command, *flags)}), metadata, ()
+
+
+# 2026-11-09：Copilot 有服务端的「Copilot Memory」（docs.github.com/en/copilot/concepts/agents/
+# copilot-memory）。交互式 ``/memory off`` 会保存到以后的会话（持久），程序化运行默认关、按次
+# ``--enable-memory`` 开；``--acp`` 模式的默认值与按次关闭开关都没找到，所以不声明
+# ``disable_native_memory``，Project 记忆在场时按「自带记忆未接管」报告。

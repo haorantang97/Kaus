@@ -125,3 +125,8 @@ async def refresh_inventory_for_package(spec, package_name):
 
 async def refresh_inventory(spec):
     await refresh_inventory_for_package(spec, '@deepseek-ai/dsh')
+
+
+# 2026-11-09：该 Agent 没有自带的跨会话记忆（见 docs/handoff/verification.md 同日「原生记忆改向」），
+# Project 记忆在场时无需关任何东西。
+HAS_NATIVE_MEMORY = False

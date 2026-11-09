@@ -1212,6 +1212,21 @@ def open_session_runtime(
             "在 dashboard-config.json 的 backends 里补上对应配置（见 docs/ops/backends.md）",
             "、".join(orphaned),
         )
+    # 每条会话附上 Project 记忆（索引一节 + 记忆 MCP），见 app/projects/memory_injection.py。
+    from app.projects.memory_injection import with_project_memory
+
+    async def _project_capabilities(binding):
+        effective = await resolve_effective_for_binding(repositories, binding)
+        stored = await repositories.settings.get("ui:locale")
+        locale = stored.get("value") if isinstance(stored, dict) and stored.get("value") in ("zh", "en") else "zh"
+        try:
+            return await with_project_memory(
+                effective, binding, repositories, token_file=resolved_token_path, locale=locale,
+                url=os.environ.get("KAUS_LOCAL_URL", "http://127.0.0.1:8877"))
+        except Exception:  # noqa: BLE001 - 记忆出错不能挡住会话启动
+            LOGGER.warning("附加项目记忆失败（本次会话不带记忆）", exc_info=True)
+            return effective
+
     session_host = SessionHost(
         registry=registry,
         bindings=repositories.bindings,
@@ -1226,9 +1241,7 @@ def open_session_runtime(
         # 只负责问一句「这条 Binding 的有效能力是什么」，翻成哪家协议的什么参数
         # 由 Driver 自己决定（`session_options_for`）。这一行就是那个水龙头：
         # 在它之前，除 Hermes 之外任何引擎一条项目能力都收不到。
-        capability_projector=lambda binding: resolve_effective_for_binding(
-            repositories, binding
-        ),
+        capability_projector=_project_capabilities,
     )
     # Phase 4：Terminal Launcher + 交接编排 + 外部进程监视器。启动脚本与领域库
     # 同级（都是本机运行时状态，回滚时一起删）。
@@ -1269,6 +1282,7 @@ def open_session_runtime(
     from app.api.workbench import build_workbench_router, build_workbench_assets_router
     workbench = WorkbenchService(root=resolved_token_path.parent / "workbench",
         repositories=repositories, session_host=session_host, registry=registry)
+    workbench.examples_root = REPO_ROOT / "examples"
     install_execution_policy(workbench)
     module_backends = ModuleBackends(workbench)
     from app.workbench.module_mcp import ModuleMcpRegistry
@@ -1307,6 +1321,15 @@ def open_session_runtime(
     from app.api.workspace_instructions import build_workspace_instructions_router
     router.routes.extend(build_workspace_instructions_router(
         repositories, auth_policy=auth_policy, registry=registry).routes)
+    # 用户给 Agent 填的 API key（不走订阅）：加密保存，驱动启动进程时按预设变量名注入。
+    from app.agent_credentials import AgentCredentialStore, build_agent_credentials_router
+    from drivers.credentials import set_api_key_provider
+    agent_credentials = AgentCredentialStore(resolved_token_path.parent / "agent-credentials")
+    set_api_key_provider(agent_credentials.get)
+    router.routes.extend(build_agent_credentials_router(agent_credentials, auth_policy=auth_policy).routes)
+    # Project 记忆（设计稿第 5 节）：项目页卡片与记忆 MCP 共用。
+    from app.api.project_memory import build_project_memory_router
+    router.routes.extend(build_project_memory_router(repositories, auth_policy=auth_policy).routes)
     from app.account_quotas import AccountQuotaService
     from app.api.account_quotas import build_account_quota_router
     from app.quota_connections import QuotaConnections

@@ -52,6 +52,13 @@ class AcpHandshakeMixin:
         回合，也就没有替 agent 读写文件这回事。
         """
         actual_spec = agent_spec or self.agent_spec
+        # 用户在设置里给这台引擎填了 API key：只在这一次进程的环境里按预设的变量名设上。
+        env_name = getattr(self.preset, "api_key_env", None)
+        if env_name:
+            from drivers.credentials import api_key_for
+            api_key = api_key_for(self.backend_id)
+            if api_key:
+                actual_spec = actual_spec.with_env(**{env_name: api_key})
         adapter = self._runtime_adapter()
         policy_factory = getattr(adapter, "session_start_retry_policy", None)
         retry_policy = await policy_factory(actual_spec) if policy_factory is not None else None

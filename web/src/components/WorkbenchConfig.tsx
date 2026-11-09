@@ -6,7 +6,7 @@ import { WorkbenchRuntimeFields } from "./WorkbenchRuntimeFields";
 import { useWorkbenchRuntime } from "../hooks/useWorkbenchRuntime";
 import { patchWorkbenchModule, notifyWorkbenchChanged, workbenchFailure, type WorkbenchModule } from "../lib/workbenchApi";
 
-export function WorkbenchConfig({module, onClose}: {module: WorkbenchModule; onClose: () => void}) {
+export function WorkbenchConfig({module, onClose, onConnect}: {module: WorkbenchModule; onClose: () => void; onConnect?: () => void}) {
   const {t,locale} = useLocale();
   const runtime = useWorkbenchRuntime(module);
   const [grants,setGrants] = useState(module.grants);
@@ -18,7 +18,7 @@ export function WorkbenchConfig({module, onClose}: {module: WorkbenchModule; onC
   }
   return <Modal onClose={onClose} width={520}><section className="workbench-config" role="dialog" aria-modal="true" aria-label={t("workbench.config")}>
     <header><h2>{module.name}</h2><button className="kaus-chat-icon-action" aria-label={t("common.close")} onClick={onClose}><X size={18}/></button></header>
-    <WorkbenchRuntimeFields runtime={runtime} disabled={busy}/>
+    <WorkbenchRuntimeFields runtime={runtime} disabled={busy} onConnect={onConnect}/>
     {!!module.permissions.length && <fieldset><legend>{t("workbench.access")}</legend>{module.permissions.map(permission=><label className="workbench-grant" key={permission}><input type="checkbox" disabled={busy} checked={grants.includes(permission)} onChange={event=>setGrants(previous=>event.target.checked?[...previous,permission]:previous.filter(value=>value!==permission))}/><span>{t((`workbench.grant.${permission}`) as DictKey)}</span></label>)}</fieldset>}
     {saveError&&<p role="alert" className="workbench-inline-error">{saveError}</p>}
     <footer><button className="workbench-primary" disabled={busy||runtime.loading||runtime.busy||(grants.includes("agent:run")&&!runtime.ready)} onClick={()=>void save()}>{busy?<LoaderCircle size={16} className="kaus-ui-spin"/>:<Check size={16}/>} {t("workbench.save")}</button></footer>

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from app.collaboration.settings import AppSettingsRepository, InMemoryAppSettingsRepository
+from app.projects.memory import InMemoryMemoryRepository, MemoryRepository
 
 from app.capabilities.projection_records import ProjectionResultRepository
 from app.capabilities.repository import ProjectCapabilityRepository
@@ -92,6 +93,8 @@ class RepositorySet:
     #: Phase 5（AD-149）：v1.0 §11.1 推荐表之外新增的一张——每次物化留一行账。
     projections: ProjectionResultRepository
     settings: AppSettingsRepository = field(default_factory=InMemoryAppSettingsRepository)
+    #: Project 记忆（设计稿第 5 节）。
+    memories: MemoryRepository = field(default_factory=InMemoryMemoryRepository)
 
 
 #: :class:`RepositorySet` 的字段名 → 它对应的 v1.0 §11.1 表名。
@@ -112,6 +115,7 @@ REPOSITORY_TABLES: dict[str, str] = {
     # v1.0 §11.1 推荐的十二张之外，Phase 5 新增的一张（AD-149）。
     "projections": "projection_results",
     "settings": "app_settings",
+    "memories": "project_memories",
 }
 
 

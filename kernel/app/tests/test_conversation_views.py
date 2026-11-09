@@ -52,3 +52,18 @@ def test_upgrade_counts_existing_conversations_as_viewed(tmp_path):
     rows = database.query_all("SELECT conversation_id, viewed_sequence FROM conversation_views")
     assert [(r["conversation_id"], r["viewed_sequence"]) for r in rows] == [("conversation:a", 7)]
     database.close()
+
+
+def test_queue_is_stored_per_conversation_and_bounded(harness, client):
+    cid = harness.new_conversation(client)
+    other = harness.new_conversation(client)
+    url = f"/api/conversations/{cid}/queue"
+    assert client.get(url).json() == {"items": []}
+    items = [{"id": "q1", "text": "然后跑一下测试"}, {"id": "q2", "text": "再提交"}]
+    assert client.put(url, json={"items": items}).json() == {"items": items}
+    assert client.get(url).json() == {"items": items}
+    assert client.get(f"/api/conversations/{other}/queue").json() == {"items": []}
+    assert client.put(url, json={"items": [{"id": "x", "text": ""}]}).status_code in (400, 422)
+    assert client.put(url, json={"items": [{"id": str(n), "text": "t"} for n in range(11)]}).status_code in (400, 422)
+    assert client.put("/api/conversations/conversation:missing/queue", json={"items": []}).status_code == 404
+    assert not harness.host.is_active(cid)

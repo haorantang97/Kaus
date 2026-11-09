@@ -30,6 +30,8 @@ vi.mock("../lib/sessionApi", async () => {
     sendConversationMessage: vi.fn(),
     interruptConversation: vi.fn(),
     fetchSurface: vi.fn(),
+    fetchMessageQueue: vi.fn(async () => ({ items: [] })),
+    saveMessageQueue: vi.fn(async (_id: string, items: unknown[]) => ({ items })),
   };
 });
 
@@ -193,8 +195,8 @@ beforeEach(() => {
   mocked.sendConversationMessage.mockResolvedValue({ accepted: true });
 });
 
-describe("第 1 件：运行中按 Enter 与按发送同一条规矩", () => {
-  it("上一轮还在跑：Enter 不发（没有 POST），草稿留在框里，底下一句中性提示", async () => {
+describe("第 1 件：运行中按 Enter 进队列，这一轮结束后发出", () => {
+  it("运行中：Enter 不发（没有 POST），文字进队列、输入框清空，可以取消", async () => {
     const user = userEvent.setup();
     render(<ConversationPage conversationId="conversation:1" />);
     await attached();
@@ -205,35 +207,28 @@ describe("第 1 件：运行中按 Enter 与按发送同一条规矩", () => {
     await user.type(box, "第二句");
     await user.keyboard("{Enter}");
 
-    // 这一件的全部要点：请求根本没发出去，所以后端不必回 409，界面上也不会多出失败气泡。
     expect(mocked.sendConversationMessage).not.toHaveBeenCalled();
-    expect(box).toHaveValue("第二句");
-    expect(screen.getByTestId("send-blocked-note")).toHaveTextContent(
-      "当前任务未结束",
-    );
-    // 不排队：没有任何占位气泡替用户攒着这句话。
-    expect(screen.queryByRole("button", { name: /未发送|发送结果未确认/ })).toBeNull();
+    expect(box).toHaveValue("");
+    expect(screen.getByTestId("message-queue")).toHaveTextContent("第二句");
+    expect(mocked.saveMessageQueue).toHaveBeenLastCalledWith("conversation:1", [expect.objectContaining({ text: "第二句" })]);
+    await user.click(screen.getByRole("button", { name: "取消这条" }));
+    expect(screen.queryByTestId("message-queue")).toBeNull();
+    expect(mocked.saveMessageQueue).toHaveBeenLastCalledWith("conversation:1", []);
   });
 
-  it("本轮一结束提示自己消失，同一段草稿按 Enter 就发出去了", async () => {
+  it("本轮正常结束：队首自动发出", async () => {
     const user = userEvent.setup();
     render(<ConversationPage conversationId="conversation:1" />);
     await attached();
     push(envelope(9, { type: "run.started", runId: "run:1" }));
     await waitFor(() => expect(screen.getByTestId("conversation-status")).toHaveTextContent("运行中"));
-
-    const box = screen.getByLabelText("消息");
-    await user.type(box, "第二句");
+    await user.type(screen.getByLabelText("消息"), "第二句");
     await user.keyboard("{Enter}");
-    expect(screen.getByTestId("send-blocked-note")).toBeInTheDocument();
 
     push(envelope(10, { type: "run.completed", runId: "run:1" }));
-    await waitFor(() => expect(screen.queryByTestId("send-blocked-note")).toBeNull());
-
-    await user.keyboard("{Enter}");
     await waitFor(() => expect(mocked.sendConversationMessage).toHaveBeenCalledTimes(1));
     expect(mocked.sendConversationMessage.mock.calls[0][1]).toBe("第二句");
-    expect(box).toHaveValue("");
+    await waitFor(() => expect(screen.queryByTestId("message-queue")).toBeNull());
   });
 });
 

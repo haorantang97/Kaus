@@ -1052,7 +1052,9 @@ class HermesDriver:
         if not binding.runtime_config.get("group_execution"):
             from drivers.hermes.skill_projection import selection_of
             from drivers.acp.mcp_projection import project_mcp_servers
-            if project_mcp_servers(effective).servers:
+            from drivers.instructions_projection import without_auxiliary
+            # 宿主附加的辅助 MCP（项目记忆）送不到就算了，不为它拒绝启动。
+            if project_mcp_servers(without_auxiliary(effective)).servers:
                 raise UnsupportedCapabilityError("此连接未启用独立执行，无法应用项目 MCP")
             from drivers.hermes.computer_use import local_http_projection
             computer = await local_http_projection(self, binding, conversation, effective)

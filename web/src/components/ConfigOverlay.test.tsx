@@ -13,7 +13,7 @@ vi.mock("./NewAgentModal", () => ({ NewAgentModal: ({ initialDisplay, initialId,
   <button type="button" onClick={() => onCreated(initialId)}>新建 {initialDisplay} {initialId}</button> }));
 vi.mock("./MoveConversationDialog", () => ({ MoveConversationDialog: ({ item, initialProjectId }: { item: { title: string }; initialProjectId?: string }) =>
   <div role="dialog">移动 {item.title} {initialProjectId ?? ""}</div> }));
-vi.mock("../lib/sessionApi", () => ({ archiveConversation: vi.fn(), deleteConversation: vi.fn(), describeFailure: vi.fn((failure: unknown) => String(failure)), fetchArchivedConversations: vi.fn(), fetchProjects: vi.fn(), fetchConnectedBackends: vi.fn(), sessionRequest: vi.fn() }));
+vi.mock("../lib/sessionApi", () => ({ archiveConversation: vi.fn(), deleteConversation: vi.fn(), describeFailure: vi.fn((failure: unknown) => String(failure)), fetchArchivedConversations: vi.fn(), fetchProjects: vi.fn(), fetchConnectedBackends: vi.fn(), fetchAgentCredentials: vi.fn(async () => ({ configured: [] })), sessionRequest: vi.fn() }));
 vi.mock("./TerminalSettings", () => ({ TerminalSettings: () => <div>终端偏好</div> }));
 vi.mock("./CoordinatorSettings", () => ({ CoordinatorSettings: () => <div>组长偏好</div> }));
 beforeEach(() => {

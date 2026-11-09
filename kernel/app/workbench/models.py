@@ -104,6 +104,8 @@ class Workflow(WireModel):
 class PromptBody(WireModel):
     prompt: str = Field(min_length=1, max_length=100000)
     idempotency_key: str = Field(min_length=1, max_length=128)
+    #: 这一个任务换用模块所在项目里的另一个 Agent（`agents.list` 列出的）；不给就用模块配置的。
+    binding_id: str | None = Field(default=None, max_length=256)
 
 
 class WorkflowRunBody(WireModel):

@@ -24,3 +24,8 @@ def inventory_roots(spec, projects, bindings):
     from .dsh import inventory_roots_for_package
     return inventory_roots_for_package(spec, projects, bindings, 'deepseek-acp',
                                        agent_key='deepseek-acp', label='DeepSeek')
+
+
+# 2026-11-09：该 Agent 没有自带的跨会话记忆（见 docs/handoff/verification.md 同日「原生记忆改向」），
+# Project 记忆在场时无需关任何东西。
+HAS_NATIVE_MEMORY = False

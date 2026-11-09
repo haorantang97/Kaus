@@ -248,7 +248,9 @@ class ModuleBackends:
         if method == "jobs.start":
             from app.workbench.models import PromptBody
             body = PromptBody.model_validate(params)
-            return await self.service.start_job(module_id, body.prompt, body.idempotency_key)
+            return await self.service.start_job(module_id, body.prompt, body.idempotency_key, binding_id=body.binding_id)
+        if method == "agents.list":
+            return await self.service.module_agents(module_id)
         if method == "jobs.list":
             return {"jobs": self.service.jobs(module_id)}
         if method in {"jobs.get", "jobs.cancel", "jobs.resume"}:

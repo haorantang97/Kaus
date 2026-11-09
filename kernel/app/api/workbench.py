@@ -112,7 +112,22 @@ def build_workbench_router(*, service, auth_policy, prefix="/api/workbench"):
     @router.post("/modules/{module_id}/jobs", status_code=202)
     @endpoint
     async def run(module_id: str, body: PromptBody):
-        return await service.start_job(module_id, body.prompt, body.idempotency_key)
+        return await service.start_job(module_id, body.prompt, body.idempotency_key, binding_id=body.binding_id)
+
+    @router.get("/examples")
+    @endpoint
+    async def examples():
+        return service.examples()
+
+    @router.post("/examples/{example_id}/install", status_code=201)
+    @endpoint
+    async def install_example(example_id: str):
+        return await service.install_example(example_id)
+
+    @router.get("/modules/{module_id}/agents")
+    @endpoint
+    async def agents(module_id: str):
+        return await service.module_agents(module_id)
 
     @router.get("/modules/{module_id}/jobs/{job_id}")
     @endpoint

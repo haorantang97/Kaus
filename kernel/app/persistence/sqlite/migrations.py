@@ -552,6 +552,18 @@ MIGRATIONS: Final[tuple[Migration, ...]] = (
         " SELECT conversation_id, MAX(sequence), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
         " FROM event_store GROUP BY conversation_id",
     )),
+    # Project 记忆（设计稿第 5 节）：逐条记录 + 改动历史（可撤销）。
+    Migration(version=23, name="project_memories", statements=(
+        "CREATE TABLE project_memories (id TEXT PRIMARY KEY, project_id TEXT NOT NULL,"
+        " kind TEXT NOT NULL DEFAULT 'note', topic TEXT NOT NULL, body TEXT NOT NULL,"
+        " status TEXT NOT NULL DEFAULT 'active', source TEXT, created_at TEXT NOT NULL,"
+        " updated_at TEXT NOT NULL, invalidated_at TEXT, replaced_by TEXT)",
+        "CREATE INDEX project_memories_by_project ON project_memories(project_id, status)",
+        "CREATE TABLE project_memory_history (id TEXT PRIMARY KEY, memory_id TEXT NOT NULL,"
+        " project_id TEXT NOT NULL, action TEXT NOT NULL, before_json TEXT, after_json TEXT,"
+        " actor TEXT, at TEXT NOT NULL)",
+        "CREATE INDEX project_memory_history_by_project ON project_memory_history(project_id, at DESC)",
+    )),
 )
 """按版本升序排列的全部迁移。新的往后追加，旧的一律不动。"""
 
@@ -577,6 +589,8 @@ EXPECTED_TABLES: Final[frozenset[str]] = frozenset(
         "conversation_bookmarks",
         "project_archives",
         "conversation_views",
+        "project_memories",
+        "project_memory_history",
     }
 )
 

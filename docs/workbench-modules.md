@@ -42,7 +42,8 @@ await kaus.data.set('draft', { text: '草稿' });
 | 方法 | 参数 / 用途 |
 | --- | --- |
 | context.get | 当前模块的绑定、授权和界面主题 |
-| jobs.start | prompt、idempotencyKey |
+| agents.list | 模块所在项目里可用的 Agent（id、name、backendId、default） |
+| jobs.start | prompt、idempotencyKey；可选 bindingId，换用 agents.list 里的另一个 Agent（项目不变，模型与推理档回到引擎默认） |
 | jobs.list / get | 列表；或 jobId 获取状态与输出 |
 | jobs.cancel / resume | jobId，停止或继续未完成任务 |
 | data.get / set | key；保存时另带 value，限本模块 JSON 数据 |

@@ -160,3 +160,51 @@ def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
         allowed = [ALLOW_NOTHING_SENTINEL]
     command = (*spec.command, "--allowed-mcp-server-names", ",".join(allowed))
     return spec.model_copy(update={"command": command}), metadata, warnings
+
+
+# 开对话前关掉自带记忆（2026-11-09，设计稿第 5 节「改向」）。
+#: 系统设置覆盖文件这条路（``GEMINI_CLI_SYSTEM_SETTINGS_PATH``）没在真实 Gemini CLI 上跑过。
+NATIVE_MEMORY_DISABLE_VERIFIED = False
+#: v0.43 及更早的 ``save_memory``（``packages/core/src/tools/definitions/base-declarations.ts``
+#: ``MEMORY_TOOL_NAME = 'save_memory'``）；v0.44.0 起该工具已删除（PR #26941），排除它是空操作。
+MEMORY_TOOL_NAMES = ("save_memory",)
+
+
+def system_settings_path(spec):
+    """Gemini CLI 系统设置文件：``packages/cli/src/config/settings.ts``（环境变量优先）。"""
+    import os
+    import sys
+    env = spec.build_env()
+    if env.get("GEMINI_CLI_SYSTEM_SETTINGS_PATH"):
+        return Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).expanduser()
+    if sys.platform == "darwin":
+        return Path("/Library/Application Support/GeminiCli/settings.json")
+    if os.name == "nt":
+        return Path(r"C:\ProgramData\gemini-cli\settings.json")
+    return Path("/etc/gemini-cli/settings.json")
+
+
+def disable_native_memory(spec, metadata):
+    """One-launch system-settings overlay: ``tools.exclude += save_memory``, ``experimental.autoMemory = false``.
+
+    Gemini CLI has no per-launch tool-exclusion flag (``packages/cli/src/config/
+    config.ts`` yargs options), but the system settings file is merged last
+    ("5. System Settings (as overrides)", ``settings.ts`` ``mergeSettings``) and its
+    path comes from ``GEMINI_CLI_SYSTEM_SETTINGS_PATH``. The current system file is
+    read, the two memory keys merged in, and the result written as an immutable
+    Kaus-owned file; the user's ``~/.gemini/settings.json`` and the real system file
+    are not modified. ``experimental.autoMemory`` (``docs/cli/auto-memory.md``, default
+    false) is the live memory feature; ``tools.exclude`` is deprecated upstream and
+    ``save_memory`` no longer exists on >= 0.44, where the model edits
+    ``~/.gemini/GEMINI.md`` with ordinary file tools — that path is not blocked.
+    """
+    from .copilot import read_jsonc
+    from .settings_overlay import union, write_overlay
+    settings = read_jsonc(system_settings_path(spec))
+    tools = dict(settings["tools"]) if isinstance(settings.get("tools"), dict) else {}
+    tools["exclude"] = union(tools.get("exclude"), MEMORY_TOOL_NAMES)
+    experimental = dict(settings["experimental"]) if isinstance(settings.get("experimental"), dict) else {}
+    experimental["autoMemory"] = False
+    settings["tools"], settings["experimental"] = tools, experimental
+    path = write_overlay(spec, "gemini", json.dumps(settings, sort_keys=True, ensure_ascii=False))
+    return spec.with_env(GEMINI_CLI_SYSTEM_SETTINGS_PATH=str(path)), metadata

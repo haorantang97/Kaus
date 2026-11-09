@@ -2,10 +2,11 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AgentConnections } from "./AgentConnections";
-import { fetchConnectedBackends } from "../lib/sessionApi";
+import { fetchAgentCredentials, fetchConnectedBackends, saveAgentApiKey } from "../lib/sessionApi";
 import { openEngineLogin, refreshEngineConnections, type EngineConnection } from "../lib/enginePresets";
 
-vi.mock("../lib/sessionApi", async original => ({ ...await original<typeof import("../lib/sessionApi")>(), fetchConnectedBackends: vi.fn() }));
+vi.mock("../lib/sessionApi", async original => ({ ...await original<typeof import("../lib/sessionApi")>(), fetchConnectedBackends: vi.fn(),
+  fetchAgentCredentials: vi.fn(async () => ({ configured: [] })), saveAgentApiKey: vi.fn(async () => ({ configured: true })), clearAgentApiKey: vi.fn() }));
 vi.mock("../lib/enginePresets", async original => ({ ...await original<typeof import("../lib/enginePresets")>(), openEngineLogin: vi.fn(), refreshEngineConnections: vi.fn() }));
 vi.mock("./ConnectEngineModal", () => ({ ConnectEngineModal: ({ initialBackendId }: { initialBackendId?: string }) => <div role="dialog">{initialBackendId}</div> }));
 const entry = { id: "backend:codex", key: "codex", displayName: "Codex", productId: "codex", version: "1.10", probeState: "unknown", loginAvailable: true } as EngineConnection;
@@ -35,4 +36,24 @@ it("打开登录终端不宣称已登录，返回后刷新；失败保留重试"
   vi.mocked(openEngineLogin).mockRejectedValueOnce(new Error("未找到原生 CLI"));
   await user.click(screen.getByRole("button", { name: "打开登录终端" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("未找到原生 CLI");
+});
+
+it("能填 API key 的引擎有钥匙按钮；保存后显示「API key」标记", async () => {
+  const user = userEvent.setup();
+  const keyed = { ...entry, apiKeyEnv: "OPENAI_API_KEY" } as EngineConnection;
+  vi.mocked(fetchConnectedBackends).mockResolvedValue({ backends: [keyed], count: 1 });
+  render(<AgentConnections />);
+  await user.click(await screen.findByRole("button", { name: "API key" }));
+  expect(screen.getByText(/OPENAI_API_KEY/)).toBeInTheDocument();
+  await user.type(screen.getByLabelText("API key"), "sk-test-fake");
+  vi.mocked(fetchAgentCredentials).mockResolvedValue({ configured: [keyed.id] });
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  expect(saveAgentApiKey).toHaveBeenCalledWith(keyed.id, "sk-test-fake");
+  await waitFor(() => expect(screen.getByText("API key", { selector: "span" })).toBeInTheDocument());
+});
+
+it("没有单一 key 变量的引擎不出现钥匙按钮", async () => {
+  render(<AgentConnections />);
+  await screen.findByText("Codex");
+  expect(screen.queryByRole("button", { name: "API key" })).toBeNull();
 });

@@ -280,3 +280,145 @@ def test_opencode_disables_through_inline_config_content() -> None:
 def test_every_exclusion_hook_is_marked_unverified() -> None:
     for module in (claude, codex, copilot, gemini, qwen, opencode):
         assert module.NATIVE_MCP_EXCLUSION_VERIFIED is False
+
+
+# --------------------------------------------------------------------------- #
+# 原生记忆改向（设计稿第 5 节）
+# --------------------------------------------------------------------------- #
+
+from app.projects.memory_injection import MEMORY_MCP_ID  # noqa: E402
+from drivers.launch_delivery import (  # noqa: E402
+    MEMORY_ACTIVE,
+    MEMORY_DISABLED,
+    MEMORY_KIND,
+    MEMORY_NONE,
+    MEMORY_UNVERIFIED,
+    REASON_NATIVE_MEMORY_ACTIVE,
+)
+from drivers.skill_execution import crush, cursor, deepseek, dsh, grok, pi  # noqa: E402
+
+MEMORY_MCP = EffectiveCapability(capability_type="mcp", capability_id=MEMORY_MCP_ID,
+                                 config={"value": {"command": "python", "args": ["memory.py"]}},
+                                 source_project_id=PROJECT, inherited=False)
+OTHER_MCP = EffectiveCapability(capability_type="mcp", capability_id="docs-mcp",
+                                config={"value": {"command": "docs"}}, source_project_id=PROJECT, inherited=False)
+DISABLING_ADAPTER = SimpleNamespace(disable_native_memory=lambda spec, metadata: (
+    spec.with_env(MEMORY_OFF="1"), {**metadata, "memoryOff": True}))
+VERIFIED_DISABLING_ADAPTER = SimpleNamespace(NATIVE_MEMORY_DISABLE_VERIFIED=True,
+                                             disable_native_memory=DISABLING_ADAPTER.disable_native_memory)
+MEMORYLESS_ADAPTER = SimpleNamespace(HAS_NATIVE_MEMORY=False)
+
+
+def _memory_plan(adapter, *entries, tmp_path: Path):
+    return plan_launch(_effective(*entries), adapter=adapter, instructions_file=None,
+                       workspace_root=str(tmp_path), project_id=PROJECT)
+
+
+def test_without_project_memory_native_memory_is_left_alone(tmp_path: Path) -> None:
+    # 组内成员会话等：有效能力里没有记忆 MCP，既不关也不报。
+    plan = _memory_plan(DISABLING_ADAPTER, OTHER_MCP, tmp_path=tmp_path)
+    assert plan.native_memory_mode is None and "nativeMemory" not in plan.summary and plan.unapplied == ()
+    spec, metadata, _w = apply_launch_plan(plan, _spec(), {}, adapter=DISABLING_ADAPTER, cwd=None)
+    assert "MEMORY_OFF" not in spec.env and "memoryOff" not in metadata
+
+
+def test_project_memory_disables_native_memory_and_marks_unverified(tmp_path: Path) -> None:
+    plan = _memory_plan(DISABLING_ADAPTER, MEMORY_MCP, OTHER_MCP, tmp_path=tmp_path)
+    assert plan.native_memory_mode == MEMORY_UNVERIFIED
+    assert plan.summary["nativeMemory"] == [MEMORY_UNVERIFIED] and plan.unapplied == ()
+    assert not any("记忆" in warning for warning in plan.warnings)  # 未验证只记在摘要里，不在每次启动时提醒
+    spec, metadata, warnings = apply_launch_plan(plan, _spec(), {}, adapter=DISABLING_ADAPTER, cwd=None)
+    assert spec.env["MEMORY_OFF"] == "1" and metadata["memoryOff"] is True and warnings == ()
+
+
+def test_verified_adapter_reports_disabled_without_warning(tmp_path: Path) -> None:
+    plan = _memory_plan(VERIFIED_DISABLING_ADAPTER, MEMORY_MCP, tmp_path=tmp_path)
+    assert plan.native_memory_mode == MEMORY_DISABLED and plan.summary["nativeMemory"] == [MEMORY_DISABLED]
+    assert plan.warnings == () and plan.unapplied == ()
+
+
+def test_adapter_without_native_memory_reports_none(tmp_path: Path) -> None:
+    plan = _memory_plan(MEMORYLESS_ADAPTER, MEMORY_MCP, tmp_path=tmp_path)
+    assert plan.native_memory_mode == MEMORY_NONE and plan.summary["nativeMemory"] == [MEMORY_NONE]
+    assert plan.unapplied == () and plan.warnings == ()
+
+
+def test_adapter_without_a_switch_reports_native_memory_active(tmp_path: Path) -> None:
+    plan = _memory_plan(FILE_ADAPTER, MEMORY_MCP, tmp_path=tmp_path)
+    assert plan.native_memory_mode == MEMORY_ACTIVE and plan.summary["nativeMemory"] == [MEMORY_ACTIVE]
+    assert [gap for gap in plan.unapplied if gap.kind == MEMORY_KIND] == []  # 只在摘要里，不打扰会话
+    spec, metadata, _w = apply_launch_plan(plan, _spec(), {}, adapter=FILE_ADAPTER, cwd=None)
+    assert spec.env == {} and metadata == {}
+
+
+def test_claude_disables_auto_memory_in_env_and_session_meta() -> None:
+    spec, metadata = claude.disable_native_memory(
+        _spec(CLAUDE_CONFIG_DIR="/synthetic"), {"_meta": {"claudeCode": {"options": {"plugins": ["x"], "env": {"KEEP": "1"}}}}})
+    assert spec.env == {"CLAUDE_CONFIG_DIR": "/synthetic", "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
+    options = metadata["_meta"]["claudeCode"]["options"]
+    assert options["plugins"] == ["x"] and options["env"] == {"KEEP": "1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
+
+
+def test_codex_memories_off_keeps_other_overrides() -> None:
+    spec = _spec(CODEX_CONFIG=json.dumps({"model": "m", "memories": {"version": "v2"}, "features": {"other": True}}))
+    spec, metadata = codex.disable_native_memory(spec, {"k": 1})
+    config = json.loads(spec.env["CODEX_CONFIG"])
+    assert config["model"] == "m" and metadata == {"k": 1}
+    assert config["memories"] == {"version": "v2", "generate_memories": False, "use_memories": False}
+    assert config["features"] == {"other": True, "memories": False}
+
+
+def test_gemini_system_settings_overlay_merges_and_leaves_the_source_alone(tmp_path: Path) -> None:
+    system = tmp_path / "system.json"
+    system.write_text('{"tools": {"exclude": ["web_fetch"]}, // note\n "ui": {"theme": "x"}}', encoding="utf-8")
+    before = system.read_bytes()
+    spec = _spec(GEMINI_CLI_SYSTEM_SETTINGS_PATH=str(system), KAUS_SKILL_STATE_ROOT=str(tmp_path / "state"))
+    spec, metadata = gemini.disable_native_memory(spec, {})
+    overlay = Path(spec.env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"])
+    assert overlay != system and overlay.is_relative_to(tmp_path / "state") and metadata == {}
+    written = json.loads(overlay.read_text(encoding="utf-8"))
+    assert written["tools"]["exclude"] == ["web_fetch", "save_memory"]
+    assert written["experimental"] == {"autoMemory": False} and written["ui"] == {"theme": "x"}
+    assert system.read_bytes() == before
+    # 同一内容再来一次：同一个文件，不报错。
+    again, _m = gemini.disable_native_memory(_spec(GEMINI_CLI_SYSTEM_SETTINGS_PATH=str(system),
+                                                   KAUS_SKILL_STATE_ROOT=str(tmp_path / "state")), {})
+    assert again.env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"] == str(overlay)
+
+
+def test_gemini_overlay_without_a_system_file_starts_from_empty(tmp_path: Path) -> None:
+    spec = _spec(GEMINI_CLI_SYSTEM_SETTINGS_PATH=str(tmp_path / "missing.json"),
+                 KAUS_SKILL_STATE_ROOT=str(tmp_path / "state"))
+    spec, _m = gemini.disable_native_memory(spec, {})
+    written = json.loads(Path(spec.env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).read_text(encoding="utf-8"))
+    assert written == {"tools": {"exclude": ["save_memory"]}, "experimental": {"autoMemory": False}}
+
+
+def test_qwen_system_settings_overlay_turns_managed_memory_off(tmp_path: Path) -> None:
+    system = tmp_path / "system.json"
+    system.write_text(json.dumps({"memory": {"enableManagedAutoMemory": True, "other": 1},
+                                  "model": {"reasoningEffort": "high"}}), encoding="utf-8")
+    spec = _spec(QWEN_CODE_SYSTEM_SETTINGS_PATH=str(system), KAUS_SKILL_STATE_ROOT=str(tmp_path / "state"))
+    spec, metadata = qwen.disable_native_memory(spec, {})
+    overlay = Path(spec.env["QWEN_CODE_SYSTEM_SETTINGS_PATH"])
+    assert overlay != system and metadata == {}
+    written = json.loads(overlay.read_text(encoding="utf-8"))
+    assert written["memory"] == {"enableManagedAutoMemory": False, "enableManagedAutoDream": False, "other": 1}
+    assert written["tools"]["exclude"] == ["save_memory", "manage_memory", "search_memory"]
+    assert written["model"] == {"reasoningEffort": "high"}
+    assert json.loads(system.read_text())["memory"]["enableManagedAutoMemory"] is True
+
+
+def test_every_memory_hook_is_marked_unverified_and_memoryless_adapters_say_so() -> None:
+    for module in (claude, codex, gemini, qwen):
+        assert callable(module.disable_native_memory) and module.NATIVE_MEMORY_DISABLE_VERIFIED is False
+    for module in (opencode, crush, pi, grok, cursor, dsh, deepseek):
+        assert module.HAS_NATIVE_MEMORY is False and not hasattr(module, "disable_native_memory")
+    # 有自带记忆却没有按次关闭开关的，既不声明钩子也不声明「没有」。
+    assert not hasattr(copilot, "disable_native_memory") and not hasattr(copilot, "HAS_NATIVE_MEMORY")
+
+
+def test_without_an_adapter_native_memory_is_not_judged(tmp_path: Path) -> None:
+    # 没有预设的裸 ACP：不知道是哪个 Agent，既不关也不报「未接管」。
+    plan = _memory_plan(None, MEMORY_MCP, tmp_path=tmp_path)
+    assert plan.native_memory_mode is None and "nativeMemory" not in plan.summary and plan.unapplied == ()

@@ -7,6 +7,8 @@ export interface EngineSetupFields {
   nativePath?: string | null;
   canSelectExecutable?: boolean;
   loginAvailable?: boolean;
+  /** 填 API key 时 Kaus 在启动这台引擎的进程里设的变量名；没有就不提供 API key 入口。 */
+  apiKeyEnv?: string | null;
   runtimeIdentity?: {
     adapterVersion?: string | null; engineVersion?: string | null;
     protocolVersion?: string | number | null; nativePath?: string | null;

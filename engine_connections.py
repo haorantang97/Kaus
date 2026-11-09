@@ -118,6 +118,8 @@ def build_engine_connection_router(*, registry: Any, repositories: Any, auth_pol
         return {"nativePath": native or (shutil.which(preset.native_executable or preset.executable) if preset and preset.executable else None),
                 "canSelectExecutable": supports_native_cli(preset) and (driver is None or preset.id in read_connections(path)),
                 "loginAvailable": bool(preset and preset.login_command),
+                # 设置里可以填 API key（不走订阅）的引擎：Kaus 启动它时设这个变量。
+                "apiKeyEnv": preset.api_key_env if preset else None,
                 "runtimeIdentity": runtime}
 
     def identity(driver, record):

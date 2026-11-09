@@ -8,10 +8,10 @@
 
 1. 内置备份（已完成，见 `verification.md` 11 月 9 日）
 2. 第一期：11 月 9 日完成（编辑器、自动送达、原生 MCP 排除、送达状态与导入、删除手动应用）。真实 Agent 上的送达与排除待实测（见 `docs/product/project-config-generalization-20261102.md`）
-3. 第二期：项目记忆（同一设计稿第 5 节）
+3. 第二期：项目记忆（11 月 9 日完成存储、接口、记忆 MCP、注入与界面；自带记忆改向同日完成后端——Claude / Codex / Gemini / Qwen 按次关闭钩子均未实测，Copilot / Goose / Hermes 等报「自带记忆未接管」，前端 `nativeMemory` 状态与 `native_memory_active` 文案待补；原生记忆导入未做）
 4. 会话状态点与基础操作（Esc、`/`、`@`、侧栏删除、系统通知）：11 月 9 日完成，系统通知与真实命令列表待实测
-5. 模块自带 MCP 与工作台模块的三个缺口
-6. 排队发送、Codex app-server、Claude Agent SDK
+5. 模块自带 MCP（Kaus 侧完成，Kith 侧待确认）与工作台模块的三个缺口（11 月 9 日完成）
+6. 排队发送（11 月 9 日完成）、Codex app-server；Claude Agent SDK 不单独做（见产品决策「订阅与 API key」），改为补了 API key 入口
 7. 第三期：插件与能力库
 8. 跨 Agent 实测：编写隔离环境、任务书和验收标准，交给 Antigravity 执行，验收由 Kaus 开发方对照事件库与数据库完成。测试对象：Claude Code、Codex、Gemini CLI、Antigravity、Hermes、OpenCode、Cursor、GitHub Copilot。隔离环境倾向本机临时 macOS 虚拟机（Tart），还没有最终确定。
 9. 可安装桌面版放在实测之后。签名和公证需要项目负责人开通 Apple 开发者账号。
@@ -46,8 +46,7 @@
 | 仅终端接入 | 2026-11-02 暂缓，[详细设计](../product/terminal-only-agents-design.md)保留备查 | 有具体需求时按单个 Agent 评估，优先官方无界面 JSON 模式 |
 | 补充 ACP 预设 | 2026-11-01 计划补 Kimi、Vibe、Auggie、Cline、Droid、Kiro、Qoder、Muse 八个预设，未开始；2026-11-02 定为只保留主流 Agent | 与现有预设一起按「主流」重新评估后再定增删 |
 | 删除与协作组边界 | 级联删除中途失败不回滚，上级路径按名称比较；组内新建成员的第一句话不经组长；外部终端启动时未生效的 Project 能力不在对话里提示 | 有实际复现时修 |
-| 待实测 | Gemini 会话内选模型；cmux 下的状态 hook；目录信任预写 | 装好对应 Agent 后在隔离环境验收 |
-| 工作台模块的三个缺口 | `jobs.start` 不能选 Agent（模块只用配置里绑定的一个 Agent，控制 MCP 可选）；工作台为空时没有可一键安装的示例模块；模块配置里选到未接入的 Agent 时旁边没有「去连接」 | 2026-11-03 项目负责人确认是真实问题、保留；与「模块自带 MCP」同一批，在配置通用化第一期之后做 |
+| 待实测 | Gemini 会话内选模型；cmux 下的状态 hook；目录信任预写；自带记忆按次关闭（Claude 环境变量、Codex `CODEX_CONFIG.memories`、Gemini / Qwen 系统设置覆盖文件） | 装好对应 Agent 后在隔离环境验收；记忆项每个 Agent 核一次「关掉后原生记忆目录不再新增、Project 记忆 MCP 正常」，通过后把对应 `NATIVE_MEMORY_DISABLE_VERIFIED` 置真 |
 | 有删除动作的迁移 | v19（删已关闭组）、v20（删上下文包消息）执行前不自动备份数据库 | 给删除数据的迁移加执行前自动备份 |
 | 结构重构的后续 | 2026-11-03 完成第一轮（见验收记录）。刻意未拆：`server.py` 的项目树、删除与恢复（测试直接替换模块全局）；`AgentGraph.tsx`（轮盘物理模型共用 ref）；会话页的投递逻辑；`exhaustive-deps` 等需改写法的 ESLint 规则未开；各入口模型目录读取失败的处理仍不同 | 相关功能改动时顺带处理 |
 | 手机入口 | 2026-11-02 项目负责人：暂不需要。现有只有控制 MCP；没有事件主动推送；Ghostty 终端暂缓 | 需要时再设计 |

@@ -232,3 +232,8 @@ def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
         servers[name] = {**(current if isinstance(current, dict) else {}), "enabled": False}
     config["mcp"] = servers
     return spec.with_env(OPENCODE_CONFIG_CONTENT=json.dumps(config)), metadata, ()
+
+
+# 2026-11-09：OpenCode 没有自带的跨会话记忆（官方文档 opencode.ai/docs 无记忆功能，持久化只有
+# AGENTS.md 规则与会话；跨会话记忆只存在于第三方插件），Project 记忆在场时无需关任何东西。
+HAS_NATIVE_MEMORY = False

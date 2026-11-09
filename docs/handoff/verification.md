@@ -3,6 +3,86 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 9 日第二期：原生记忆改向
+
+> 核对与调整（同日）：调整后在主目录重跑，内核 4,371 通过 / 124 跳过，宿主 `tests/` 382 通过，前端 122 个文件 / 1,085 项及构建通过（含 API key 入口与本节改动）。「自带记忆未接管」原本作为 `project.unapplied`（`kind: memory`，`native_memory_active`）出现在每条会话里，「机制未验证」也会在每次启动时提醒。关不掉自带记忆的 Agent 很常见（包括日常用的 Hermes），这样每条会话都会冒提示，所以改为只记在 `projection.summary.nativeMemory`，会话里不再提示，项目页的「未接管」标记待做。相应 2 项测试改为断言不提示。
+
+
+设计稿 `docs/product/project-config-generalization-20261102.md` 第 5 节「各 Agent 自带的记忆 → 改向」。Project 记忆（`kaus-memory` MCP）在场的会话，Kaus 启动的进程里只在本次启动中关掉该 Agent 自带的记忆；用户全局配置一个字节不改。组内成员会话拿不到 Project 记忆，自带记忆照旧。
+
+**接线**（`kernel/drivers/launch_delivery.py`，沿用送达层的可选适配器钩子，中央层不出现引擎名）：
+- 适配器可选钩子 `disable_native_memory(spec, metadata) -> (spec, metadata)` 与 `NATIVE_MEMORY_DISABLE_VERIFIED: bool`（缺省 `False`）；可选声明 `HAS_NATIVE_MEMORY = False`（「这个 Agent 没有自带记忆」）。
+- `plan_launch` 只在有效能力里带着 `app.projects.memory_injection.MEMORY_MCP_ID`（`mcp` 类型、id `kaus-memory`）且有适配器（没有预设的裸 ACP 不知道是哪个 Agent，不判）时处理这一组：有钩子 → `disabled`（已验证）/ `unverified`（未验证，另加一句提醒）；声明没有记忆 → `none`；两者都没有 → `active`，并报进 `unapplied`。`apply_launch_plan` 在 `start_runtime` 里调钩子。
+- 会话接口新增：`projection.summary.nativeMemory` 取值 `disabled` / `unverified` / `active` / `none`（没有 Project 记忆时这个键不出现）；`kaus/project.unapplied` 新增 `kind: "memory"`（`names: ["kaus-memory"]`）与原因码 `native_memory_active`。前端需补 `timeline.projectUnapplied.memory`（kind 标签）与 `timeline.projectUnapplied.reason.native_memory_active`（「自带记忆未接管」）两条文案，以及项目页按 `nativeMemory` 标状态。
+
+**各 Agent 的机制与依据**（全部来自 2026-11-09 抓取的官方文档与适配器源码，真实 Agent 一个都没跑）：
+
+| Agent | 机制 | 依据 | 状态 |
+| --- | --- | --- | --- |
+| Claude Code | 进程环境 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`，同时写进 `session/new` `_meta.claudeCode.options.env` | code.claude.com/docs/en/env-vars：「When disabled, Claude does not create or load auto memory files」；settings-reference：该变量对 `autoMemoryEnabled` 「takes precedence … for one session」；claude-agent-acp v0.90.0 与 main `src/acp-agent.ts` `createSession` 把 SDK `env` 拼成 `{...process.env, ...userProvidedOptions.env, …}`，适配器进程环境会被子进程继承 | 未验证。设置文件 `env` 块若强制该变量为 `0` 仍会盖过 |
+| Codex | `CODEX_CONFIG.memories = {generate_memories: false, use_memories: false}` + `features.memories = false` | 配置参考（learn.chatgpt.com/docs/config-file/config-reference）：`generate_memories` 「newly created threads are not stored as memory-generation inputs」、`use_memories` 「skips injecting existing memories」、`features.memories` 「Enable Memories (off by default)」（`codex-rs/features/src/lib.rs`，`memory_tool` 是旧别名）；请求 `config` 作为 SessionFlags 层深合并（`codex-rs/config/src/merge.rs`、`app-server/src/config_manager.rs`） | 未验证。state DB 仍会把新线程记为 `memory_mode = disabled`；已有记忆不动 |
+| Gemini CLI | `GEMINI_CLI_SYSTEM_SETTINGS_PATH` 指向 Kaus 写的不可变覆盖文件：读现有系统设置，合并 `tools.exclude += save_memory`、`experimental.autoMemory = false` | `packages/cli/src/config/settings.ts`：系统设置「5. System Settings (as overrides)」最后合并、路径由该环境变量覆盖；没有按次排除工具的 CLI 参数；`save_memory` 在 v0.44.0 已删除（PR #26941），之后模型用普通文件工具改 `~/.gemini/GEMINI.md`，那条路没挡；`experimental.autoMemory`（`docs/cli/auto-memory.md`，默认关）是现行记忆功能；`tools.exclude` 上游已标弃用 | 未验证。该环境变量会让这次启动不读真实系统设置文件（已读进覆盖文件，内容不丢） |
+| Qwen Code | `QWEN_CODE_SYSTEM_SETTINGS_PATH` 同上：`memory.enableManagedAutoMemory = false`、`memory.enableManagedAutoDream = false`、`tools.exclude += save_memory, manage_memory, search_memory` | `docs/users/features/memory.md`（v0.24.7）：「Auto-memory is on by default」，存 `~/.qwen/projects/<p>/memory/`；`settings.ts` 合并顺序 `systemDefaults, user, safeWorkspace, system`；`llm.tsx` 把同一份 `config` 传给 `runAcpAgent`；`tools.exclude` 「still honoured at startup」，整工具 deny 不注册（`permission-manager.ts`）。`--exclude-tools` 在 0.24.0–0.24.6 是否存在未核实，未用 | 未验证 |
+| OpenCode、Crush、Pi、Grok、Cursor、DSH、DeepSeek | 声明 `HAS_NATIVE_MEMORY = False`，报 `none` | OpenCode 文档无记忆功能（跨会话记忆只在第三方插件）；Crush README、Pi coding-agent README 无记忆功能；Grok CLI（superagent-ai）只有 AGENTS.md 与 `--session`（xAI 另一款 Grok Build CLI 有 `--experimental-memory`，不是这个预设）；Cursor「Memories」已随 2.1.x 移除、文档页跳转到 Rules、CLI 参数页无记忆项；DSH 的记忆都是插件 | 文档结论，未在真机上核 |
+| Copilot | 无钩子，报 `active`（`native_memory_active`） | docs.github.com Copilot Memory：服务端记忆；交互式 `/memory off` 会保存到以后的会话（持久），程序化运行默认关、按次 `--enable-memory` 开；`--acp` 模式的默认值和按次关闭开关都没找到 | 未接管 |
+| Goose | 无钩子，报 `active` | 内置 `memory` 扩展按配置启用；ACP 「use the same extensions that are enabled in your goose configuration」；没有按次减扩展的参数或环境变量 | 未接管 |
+| Hermes | 无钩子，报 `active` | 内置 `MEMORY.md` / `USER.md` 记忆，`memory.memory_enabled` 是 config.yaml 键；`--ignore-rules` 是否对 `hermes acp` 生效、是否也挡写入未核实。Kaus 已给每个 Project 一个私有 `HERMES_HOME`（`drivers/hermes/project_scope.py`），记忆落在那里而不是用户家目录；协作组启动器另已 `skip_memory`。要接管需在 `kernel/drivers/hermes/` 里改私有 home 的 config.yaml | 未接管 |
+| Kilo、Antigravity、Command Code、omp、ZCode 及其余预设 | 无钩子也无声明，报 `active` | Kilo Memory 默认关、只有 `/memory on|off`（持久）；Antigravity 的 Knowledge 对 CLI 是否生效资料矛盾；Command Code 有「taste」学习无关闭参数；omp `memory.backend` 默认 `off`、`--config` 覆盖未核实；ZCode 未找到记忆功能但未对照 Z.AI 文档 | 未接管（「未接管」只表示 Kaus 没有替它关，不断言它一定在写） |
+
+结果：内核全量第一轮 4,369 通过 / 124 跳过 / 1 失败——失败的是同日另一位工程师的 `app/tests/test_project_memory.py`（`plan_launch(adapter=None)` 期望不报未生效），改为「没有适配器不判」后复跑全量 4,371 通过 / 124 跳过（含同日其他并行改动）；宿主 `tests/` 382 项通过。新增 `drivers/tests/test_launch_delivery.py` 12 项（没有 Project 记忆时不动不报；没有适配器不判；未验证 / 已验证 / 没有记忆 / 无开关四种状态与 `unapplied` 形状；Claude 的 env 与 `_meta`；Codex 保留其他覆盖；Gemini、Qwen 覆盖文件的合并、源文件不动、同内容复用、缺源文件从空开始；每个钩子都标未验证、无记忆的适配器都已声明），`drivers/acp/tests/test_launch_delivery_driver.py` 4 项（合成适配器：钩子在 `start_runtime` 落到进程规格；无 Project 记忆的会话不调；无开关报 `active` + `native_memory_active`；声明无记忆报 `none`）。全部用合成适配器与临时目录，未起真实 Agent，未碰任何真实家目录。
+
+未做：真实 Agent 上的验收（放进跨 Agent 实测，每个 Agent 核一次：关掉后原生记忆目录确实不再新增、Project 记忆 MCP 正常）；Hermes / Goose / Copilot 的接管；前端文案与项目页状态；设计稿里的「导入」。
+
+## 11 月 9 日 Agent 的 API key 入口
+
+以前只能在 `dashboard-config.json` 的 `backends[].env_keys` 白名单里列变量名，再把 key 放进 Kaus 进程自己的环境变量，界面上没有入口。现在在设置 → Agent 里，每台支持的引擎有一个钥匙按钮：填了 API key，Kaus 启动它时就不走订阅、按 API 计费；清除后回到订阅登录。
+
+- 变量名由驱动层的预设声明（`AcpPreset.api_key_env`，界面经 `apiKeyEnv` 拿到）：Claude Code `ANTHROPIC_API_KEY`、Codex `OPENAI_API_KEY`、Gemini `GEMINI_API_KEY`、DeepSeek 两款 `DEEPSEEK_API_KEY`、Cursor `CURSOR_API_KEY`、Copilot `COPILOT_GITHUB_TOKEN`、Grok `XAI_API_KEY`、Command Code `COMMAND_CODE_API_KEY`。除 `ANTHROPIC_API_KEY` 外，都取自原有的 `env_keys_hint`。OpenCode（多服务商）、Hermes（凭据由它自己的配置文件管）等没有单一变量的引擎，不显示入口。
+- 保存：`app/agent_credentials.py`，Fernet 加密，目录 0700、文件 0600，接口只回答填没填，从不回传明文（`GET/PUT/DELETE /api/agent-credentials[/{backendId}]`）。
+- 注入：`drivers/credentials.py` 只放一个取值挂钩，由 `session_bootstrap` 挂上加密存储。所有 ACP 引擎启动进程的唯一入口 `AcpHandshakeMixin._connect` 只在这一次进程的环境里设这个变量，不写任何用户配置文件；没填就什么都不做。
+- 未覆盖：外部终端里打开的会话仍用终端自己的登录；可选的服务地址（base URL，用于兼容服务商）没有做。
+
+结果：内核新增 `test_agent_credentials.py` 4 项（磁盘上没有明文、权限正确、多行 key 被拒、清除后取不到；接口不回明文、鉴权；预设变量名；启动时有 key 才注入）。前端新增 `AgentConnections.test.tsx` 2 项；`ConfigOverlay.test.tsx` 的接口桩补上了新函数。`npm run check` 122 个文件 / 1,083 项通过（未计入新增的 2 项）。
+
+## 11 月 9 日排队发送
+
+参照同类产品：Agent 正在回复时按 Enter，文字先进入队列，输入框清空；这一轮正常结束后自动按顺序发出。排队期间每条都能取消。用户手动「停止」的那一轮结束后不自动发出，输入框上方出现「继续发送」，由用户决定。只排文字；带附件时仍保留原来的「当前任务未结束」提示，附件在发送时才上传。
+
+- 队列保存在后端，手机和电脑看到同一份：`GET / PUT /api/conversations/{id}/queue`（存在 `app_settings` 的 `queue:<会话>` 里，最多 10 条，每条最长 10 万字）。
+- 由打开着的会话页负责发出：`useMessageQueue` 读写队列，`ConversationPage` 在「不在运行、不在停止、没被暂停」时取队首，先从队列里拿掉，再走与首发相同的路（占位气泡 + `POST /messages`）。后端的发送管线、运行租约和归属都没改。
+- 已知限制：一轮结束时如果没有任何页面打开着这条会话，排队消息要等下次打开会话页时才发出。
+
+全量（记忆与排队发送一起，含当时 Fable 进行中的驱动改动）：内核 4,350 通过 / 124 跳过，宿主 `tests/` 382 通过，前端 122 个文件 / 1,083 项及构建通过。
+
+同轮修正：记忆 MCP 自动附加后，Hermes HTTP 驱动「未启用独立执行时有项目 MCP 就拒绝启动」会挡住所有这类会话（`test_session_router_hermes_fake` 测出）。现在记忆 MCP 也标 `auxiliary`；`instructions_projection.is_auxiliary` 同时识别顶层的标记，`without_auxiliary` 供这类判断使用，`projection_gaps.unapplied_kinds` 跳过辅助项。送不到 MCP 的 Agent 不拒绝启动、不报未生效，仍能从注入的索引里看到记忆。新增断言 1 项。迁移 v23 带来的版本号与表数量断言已同步。
+
+结果：内核新增队列测试 1 项（存取、按会话隔离、条数与空文字被拒、404、不占运行租约）。前端把 `conversationComposerRunning.test.tsx` 第 1 组改写为新行为：运行中按 Enter 不 POST、文字进队列、可以取消；本轮正常结束后队首自动发出。改写后共 4 项通过。
+
+## 11 月 9 日第二期：Project 记忆
+
+按设计稿第 5 节实现。Kaus 为每个 Project 保存唯一一份记忆，换 Agent 也不变；由 Agent 在对话中静默维护，用户只做查看、修改、删除和撤销。
+
+- **存储**：迁移 v23 新增 `project_memories`（逐条记录：主题、正文、`kind`（note / overview）、状态（有效 / 已失效 / 已删除）、来源、失效时间、取代者）和 `project_memory_history`（每次改动的前后快照，可撤销）。`RepositorySet.memories` 有内存与 SQLite 两套实现（`app/projects/memory.py`、`app/persistence/sqlite/memories.py`）。下级读得到上级的有效条目，但上级条目只能在上级改（`memory_inherited`，403）。「项目概述」每个 Project 只有一条，再写一次就是更新；还没有概述时，索引先用新建项目时填的描述（`metadata.description`）顶上。
+- **检索**：不依赖分词库，拉丁文按词、中日韩按相邻两字切片后算重合度。
+- **接口**（`app/api/project_memory.py`）：列表、检索、历史、新建、修改、删除、撤销，以及给 Agent 用的 `POST …/memories/write`（add / update / invalidate / keep）。add 时如果有相似条目、又没带 `confirm`，只返回相似条目，让 Agent 选择补充、作废还是确认新增（参考 Mem0）；每次都返回索引的行数、字数和上限，超出上限时要求在这次写入里顺带合并或作废旧条目。
+- **记忆 MCP**（`mcp_servers/kaus_memory_mcp.py`，只用标准库，走 stdio）：`kaus_memory_search`、`kaus_memory_write`。启动参数里带 Project 和 Agent，来源记为该 Agent 的 backendId。
+- **注入**（`app/projects/memory_injection.py`）：`session_bootstrap` 的 `capability_projector` 外包一层，每条会话的有效能力自动附上一节「项目记忆」指令（说明写什么、不写什么，后面接短索引，order 900）和 `kaus-memory` MCP。注入失败只记日志，不影响会话启动。组内执行的成员会话不附加（组员写的是组内资料）。文案跟随 `ui:locale`。
+- **辅助节**：记忆这一节带 `auxiliary: true`。`instructions_projection.is_auxiliary` 让送达层只按用户写的项目指令来决定是否拦截（`workspace_required`）、是否写工作目录文件、是否报「未生效」。只有记忆、没有项目指令时：启动注入的 Agent 照常带上索引；读文件的 Agent 不拦、不写文件，靠记忆 MCP 使用记忆。有项目指令时，记忆索引随它们一起送达。
+- **控制 MCP**：`kaus_overview` 为每个 Project 返回 `overview`（项目概述），主 Agent 可以据此决定把任务派给哪个 Project。
+- **界面**：项目页新增「记忆」卡片（`ProjectMemoryCard`）。项目概述排在最上面，可以直接改写；上级条目标「继承自 X」，只读；本级条目的「⋯」里有编辑、删除；右上角是「改动历史」，每条都能撤销。按设计不放「整理」或「审批」按钮，想整理就在对话里说一句。指令卡片的「⋯」改为共用的 `CardRowMenu`。
+
+结果：内核新增 `test_project_memory.py` 6 项（上下级读写与撤销、中文检索与概述排序、写入的「先选择」流程与上限、注入与组成员不附加、只有记忆一节时不拦也不写文件、有指令时索引随同写入、记忆 MCP 协议与转发）。控制 MCP 测试 8 项通过。前端新增 `ProjectMemoryCard.test.tsx` 2 项，`npm run check` 121 个文件 / 1,081 项通过（未计入该新文件）。隔离实例（8899）实测：启动真实的记忆 MCP 进程，通过 JSON-RPC 写入概述和一条约定；再写相似内容时返回 `choose` 和相似条目；检索命中；项目页卡片显示来源「Codex · 现在」；在界面上撤销「新增」后条目消失，历史里多出「撤销 · 测试约定 · 你」。隔离实例和测试数据已删除。
+
+未做：各 Agent 自带记忆的改向（交给 Fable，结果见它的章节）；从 Agent 原生记忆一次性导入；真实 Agent 在对话中自发调用记忆工具的效果，放到跨 Agent 实测里验收。
+
+## 11 月 9 日工作台模块的三个缺口
+
+- **任务可以换 Agent**：`jobs.start` 新增可选参数 `bindingId`；新方法 `agents.list`（REST 为 `GET /api/workbench/modules/{id}/agents`）列出模块所在项目里可用的 Agent。项目范围不变，只能换成同一项目里的 Agent；换了 Agent 后，模型和推理档回到引擎默认。任务记录 `agentOverride`，之后只核对项目有没有变，不会因为 Agent 不同而判成「配置已变更」。不存在或属于别的项目的 Agent 返回 404 / 400，其余未知参数（比如 `projectId`）照旧拒绝。四处入口一起改了：服务层、REST、模块后端通道、前端通道；SDK `kaus.jobs.start(prompt, key, {bindingId})`、`kaus.agents()` 和 `docs/workbench-modules.md` 也已更新。
+- **空工作台可以装示例**：`GET /api/workbench/examples` 列出仓库 `examples/` 里校验通过的模块（任务便笺、自动化工作流、Midjourney），`POST …/examples/{id}/install` 一步安装，装好后进入该模块；权限仍为空，要用户在模块配置里勾选。
+- **未接通的 Agent 有「去连接」**：模块配置里选中的 Agent 没有接入或探测不可用时，旁边显示「这个 Agent 还没接通 · 去连接」，点击后关闭弹窗，跳到 `/config?section=agents`。设置页现在认 `?section=` 参数。
+
+结果：内核 `test_module_mcp.py` 新增 2 项（换 Agent 的范围与校验、示例列表与安装）；旧用例「传 bindingId 一律 422」改为「不存在的 Agent 返回 404、传 projectId 仍 422」。工作台测试共 78 项通过。前端新增通道测试 1 项、`WorkbenchRuntimeFields.test.tsx` 1 项，`npm run check` 120 个文件 / 1,080 项通过（未计入新测试文件）。全量：内核 4,338 通过 / 124 跳过，宿主 382 通过。
+
 ## 11 月 9 日第一期收尾：送达状态、导入与删除手动应用
 
 - 核对第 3、4 步（由 Fable 实现）：在主目录重跑，内核 4,336 通过 / 124 跳过，宿主 `tests/` 382 通过，与它报告的数字一致。抽查确认：`~/.claude.json` 只读不写；`launch_delivery.py` 不认任何引擎名，各引擎的通道都写在适配器的可选钩子里。

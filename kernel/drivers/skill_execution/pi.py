@@ -215,3 +215,8 @@ def external_cli_command(plan, command, *, conversation, binding, spec):
     command = arguments(command, ('--model', selected(conversation, 'model_id', 'model')), ('--thinking', effort))
     command = cli_command(plan, command) if plan is not None else command
     return _mcp.terminal(spec, conversation, command, kind="pi")
+
+
+# 2026-11-09：该 Agent 没有自带的跨会话记忆（见 docs/handoff/verification.md 同日「原生记忆改向」），
+# Project 记忆在场时无需关任何东西。
+HAS_NATIVE_MEMORY = False

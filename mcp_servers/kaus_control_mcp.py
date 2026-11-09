@@ -47,7 +47,8 @@ def _schema(properties: dict, required: tuple[str, ...] = ()) -> dict:
 
 TOOLS = [
     {"name": "kaus_overview",
-     "description": "列出 Kaus 的 Project、每个 Project 已接入的 Agent（bindingId）和已安装的工作台模块。派任务前先用它找到 bindingId 或 moduleId。",
+     "description": "列出 Kaus 的 Project（含项目概述：这个 Project 做什么、当前目标）、每个 Project 已接入的 Agent（bindingId）"
+                    "和已安装的工作台模块。派任务前先用它按项目概述选 Project，再找到 bindingId 或 moduleId。",
      "inputSchema": _schema({})},
     {"name": "kaus_conversations",
      "description": "最近的会话：所在 Project、引擎、运行状态、所在界面（card = Kaus 对话，external-cli = 外部终端）和终端状态（waiting = 等用户处理）。",
@@ -256,7 +257,14 @@ def call_tool(name: str, args: dict) -> dict:
             overview = []
             for project in projects:
                 bindings = _http("GET", f"/api/projects/{_quote(project['id'])}/bindings").get("bindings", [])
+                try:
+                    memories = _http("GET", f"/api/projects/{_quote(project['id'])}/memories").get("memories", [])
+                except KausError:
+                    memories = []
+                summary = next((m.get("body") for m in memories
+                                if m.get("kind") == "overview" and m.get("projectId") == project["id"]), None)
                 overview.append({"projectId": project["id"], "name": project.get("displayName") or project.get("slug"),
+                                 "overview": summary,
                                  "agents": [{"bindingId": b.get("id"), "name": b.get("displayName"),
                                              "backendId": b.get("backendId")} for b in bindings]})
             try:

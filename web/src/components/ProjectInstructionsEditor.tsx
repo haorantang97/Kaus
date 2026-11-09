@@ -7,8 +7,10 @@
  * 卡片底部是送达：每个指令文件由哪些 Agent 读、启动时注入还是写进文件；文件里已有
  * 用户自己写的内容时，问一次导入还是保留（设计稿第 3、4 节）。 */
 
-import { useEffect, useRef, useState } from "react";
-import { FileText, MoreHorizontal, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { FileText, Plus } from "lucide-react";
+
+import { CardRowMenu } from "./CardRowMenu";
 
 import { useLocale } from "../i18n";
 import {
@@ -146,7 +148,8 @@ export function ProjectInstructionsEditor({
                   {section.state === "inherited" && <Pill tone="muted">{t("instructions.state.inherited", { name: projectLabel(section.sourceProjectId) })}</Pill>}
                   {section.state === "overridden" && <Pill tone="gold">{t("instructions.state.overridden")}</Pill>}
                   {section.state === "blocked" && <Pill tone="muted">{t("instructions.state.blocked")}</Pill>}
-                  <SectionMenu actions={ACTIONS[section.state]} busy={busy || draft !== null} onPick={action => pick(section, action)} />
+                  <CardRowMenu label={t("instructions.menu")} actions={ACTIONS[section.state]} busy={busy || draft !== null}
+                    actionLabel={action => t(`instructions.action.${action}`)} onPick={action => pick(section, action)} />
                 </div>
                 {section.body && <p className="kaus-instruction-body">{section.body}</p>}
               </>}
@@ -158,38 +161,6 @@ export function ProjectInstructionsEditor({
       )}
       {effective !== null && <InstructionDelivery projectId={projectId} revision={effective} hasSections={sections.length > 0} onImported={onChanged} />}
     </Card>
-  );
-}
-
-function SectionMenu({ actions, busy, onPick }: { actions: Action[]; busy: boolean; onPick: (action: Action) => void }) {
-  const { t } = useLocale();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: MouseEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
-  }, [open]);
-  return (
-    <span className="kaus-cap-menu" ref={ref}>
-      <button type="button" className="kaus-cap-menu-button" aria-label={t("instructions.menu")} title={t("instructions.menu")}
-        aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen(value => !value)}>
-        <MoreHorizontal className="size-3.5" />
-      </button>
-      {open && (
-        <span className="kaus-bar-pop" role="menu" aria-label={t("instructions.menu")}>
-          {actions.map(action => (
-            <button key={action} type="button" role="menuitem" className="kaus-bar-pop-item"
-              onClick={() => { setOpen(false); onPick(action); }}>
-              {t(`instructions.action.${action}`)}
-            </button>
-          ))}
-        </span>
-      )}
-    </span>
   );
 }
 

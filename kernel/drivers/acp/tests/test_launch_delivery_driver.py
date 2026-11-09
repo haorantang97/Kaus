@@ -185,3 +185,76 @@ def test_workspace_conventions_report_the_channel(tmp_path, monkeypatch) -> None
     _adapter(monkeypatch, launch=False, exclude=False)
     assert _driver(tmp_path).workspace_conventions()["deliveryChannel"] == "workspace_file"
     assert _driver(tmp_path, instructions_file=None).workspace_conventions()["deliveryChannel"] is None
+
+
+# --------------------------------------------------------------------------- #
+# 原生记忆改向（设计稿第 5 节）：只有带 Project 记忆 MCP 的会话才关自带记忆
+# --------------------------------------------------------------------------- #
+
+from app.projects.memory_injection import MEMORY_MCP_ID  # noqa: E402
+
+MEMORY_MCP = _entry("mcp", MEMORY_MCP_ID, {"value": {"command": "python", "args": ["memory.py"]}})
+
+
+def _memory_adapter(monkeypatch, *, switch: bool, memoryless: bool = False):
+    module = _adapter(monkeypatch, launch=False, exclude=False)
+    if switch:
+        def disable(spec, metadata):
+            module.seen["memory"] = "off"
+            return spec.with_env(MEMORY_OFF="1"), metadata
+        module.disable_native_memory = disable
+    if memoryless:
+        module.HAS_NATIVE_MEMORY = False
+    return module
+
+
+async def test_project_memory_turns_native_memory_off_at_launch(tmp_path, monkeypatch) -> None:
+    module = _memory_adapter(monkeypatch, switch=True)
+    driver = _driver(tmp_path, instructions_file=None)
+    _, _, conversation = _wire(driver, tmp_path)
+    projection = await driver.session_options_for(conversation, _effective(MEMORY_MCP))
+    assert projection.summary["nativeMemory"] == ["unverified"]
+    assert projection.summary["mcpServers"] == [MEMORY_MCP_ID]
+    assert not any("记忆" in warning for warning in projection.warnings)  # 未验证只记在摘要里
+    assert await driver.unapplied_project_capabilities(conversation, _effective(MEMORY_MCP)) == ()
+    handle = await driver.start_runtime(conversation, "card", session_options=projection.options)
+    try:
+        state = driver._runtimes[handle.runtime_id]
+        assert module.seen.get("memory") == "off"
+        assert state.runtime_spec is None or state.runtime_spec.env.get("MEMORY_OFF") == "1"
+    finally:
+        await driver.stop_runtime(handle)
+
+
+async def test_session_without_project_memory_keeps_native_memory(tmp_path, monkeypatch) -> None:
+    module = _memory_adapter(monkeypatch, switch=True)
+    driver = _driver(tmp_path, instructions_file=None)
+    _, _, conversation = _wire(driver, tmp_path)
+    other = _entry("mcp", "docs-mcp", {"value": {"command": "docs"}})
+    projection = await driver.session_options_for(conversation, _effective(other))
+    assert "nativeMemory" not in projection.summary
+    handle = await driver.start_runtime(conversation, "card", session_options=projection.options)
+    try:
+        assert "memory" not in module.seen
+    finally:
+        await driver.stop_runtime(handle)
+
+
+async def test_adapter_without_a_memory_switch_reports_native_memory_active(tmp_path, monkeypatch) -> None:
+    _memory_adapter(monkeypatch, switch=False)
+    driver = _driver(tmp_path, instructions_file=None)
+    _, _, conversation = _wire(driver, tmp_path)
+    projection = await driver.session_options_for(conversation, _effective(MEMORY_MCP))
+    assert projection.summary["nativeMemory"] == ["active"]
+    gaps = await driver.unapplied_project_capabilities(conversation, _effective(MEMORY_MCP))
+    # 只在摘要里，不打扰会话。
+    assert [gap for gap in gaps if gap.kind == "memory"] == []
+
+
+async def test_memoryless_adapter_reports_none(tmp_path, monkeypatch) -> None:
+    _memory_adapter(monkeypatch, switch=False, memoryless=True)
+    driver = _driver(tmp_path, instructions_file=None)
+    _, _, conversation = _wire(driver, tmp_path)
+    projection = await driver.session_options_for(conversation, _effective(MEMORY_MCP))
+    assert projection.summary["nativeMemory"] == ["none"]
+    assert await driver.unapplied_project_capabilities(conversation, _effective(MEMORY_MCP)) == ()

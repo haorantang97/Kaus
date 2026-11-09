@@ -132,7 +132,10 @@ async def test_grants_binding_provider_scope_and_payload_override(tmp_path):
             assert (await client.patch("/api/workbench/modules/automation", json=body)).status_code == 400
         other = await repos.projects.save(Project.create(slug="elsewhere", display_name="Elsewhere"))
         assert (await client.patch("/api/workbench/modules/automation", json={"projectId": other.id})).status_code == 400
+        # A module may name another Agent of its Project, never one that does not exist there.
         response = await client.post("/api/workbench/modules/automation/jobs", json={"prompt": "hi", "idempotencyKey": "none", "bindingId": "forged"})
+        assert response.status_code == 404 and response.json()["error"]["code"] == "configuration_unavailable"
+        response = await client.post("/api/workbench/modules/automation/jobs", json={"prompt": "hi", "idempotencyKey": "none", "projectId": "forged"})
         assert response.status_code == 422
         response = await client.patch("/api/workbench/modules/automation", json={"grants": ["content:write"]})
         assert response.status_code == 400

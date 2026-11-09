@@ -86,6 +86,8 @@ import { ConversationHeader } from "./conversation/ConversationHeader";
 import { PendingMessageRows } from "./conversation/PendingMessageRows";
 import { useConversationEvents } from "./conversation/useConversationEvents";
 import { useMarkViewed } from "./conversation/useMarkViewed";
+import { useMessageQueue } from "./conversation/useMessageQueue";
+import { QueuedMessages } from "./conversation/QueuedMessages";
 import { agentCommands, buildSuggestions } from "../lib/composerSuggestions";
 import { useConversationSettings } from "./conversation/useConversationSettings";
 import { useConversationSurface } from "./conversation/useConversationSurface";
@@ -189,6 +191,10 @@ export function ConversationPage({
      运行中 / 正在停止时 Enter 不发，草稿原样留在输入框，底下出一句中性小字说明为什么。
      **不排队**：替用户攒着一句话等会儿自己发出去，比拒绝更难解释（AD-105 的同一口径）。 */
   const [sendBlocked, setSendBlocked] = useState(false);
+  /* 排队发送：运行中按 Enter 的文字先进队列，这一轮结束后按顺序发出。用户手动停止的那一轮
+     结束后不自动发，等用户点「发送」。 */
+  const queue = useMessageQueue(conversationId);
+  const [queuePaused, setQueuePaused] = useState(false);
   /* 第 1 件：后端的运行态快照（`GET /conversations/{id}.runState` 与 `interrupt`
      的对账结果都写这里）。null = 后端没这个字段，退回时间线推断。 */
   const [snapshot, setSnapshot] = useState<RunStateSnapshot | null>(null);
@@ -412,7 +418,9 @@ export function ConversationPage({
        所以这一档写在 send() 里，两个入口自动一致。草稿不动（下面那句 setText("")
        在这一行之后），只把提示打开；提示由运行态结束时的 effect 自己收。 */
     if (runningRef.current || stopping) {
-      setSendBlocked(true);
+      // 附件要在发送时上传，不排队；文字进队列。
+      if (draft.attachments.length || !queue.add({ id: newClientRef(), text: body })) setSendBlocked(true);
+      else updateDraft({ text: "" });
       return;
     }
     sendLockRef.current = true;
@@ -430,7 +438,21 @@ export function ConversationPage({
       sendLockRef.current = false;
       setSending(false);
     }
-  }, [archived, archiveBusy, surface, draft.attachments, settingsBusy, stopping, submit, text, updateDraft, uploading.length]);
+  }, [archived, archiveBusy, surface, draft.attachments, settingsBusy, stopping, submit, text, updateDraft, uploading.length, queue]);
+
+  /* 发出队列里的一条：走与首发相同的路（占位 + POST），先从队列里拿掉，避免两端重复发。 */
+  const sendQueued = useCallback(async (item: { id: string; text: string }) => {
+    if (sendLockRef.current) return;
+    sendLockRef.current = true;
+    setSending(true);
+    queue.remove(item.id);
+    const clientRef = newClientRef();
+    dispatch({ type: "pending", action: { type: "send", clientRef, text: item.text, now: Date.now(), attachments: [] } });
+    setError(null);
+    setFollow(true);
+    try { await submit(clientRef, item.text, []); }
+    finally { sendLockRef.current = false; setSending(false); }
+  }, [queue, submit]);
 
   const addFiles = useCallback(async (files: File[]) => {
     if (archived || archiveBusy || surface === "external-cli") return;
@@ -467,6 +489,7 @@ export function ConversationPage({
      idle 冒充成功——收敛的唯一依据是 `run.interrupted` / `run.completed` /
      `run.failed` 中任意一条到达（见下面那个 effect）。 */
   const stop = useCallback(async () => {
+    setQueuePaused(true);
     setStopping(true);
     setStopUnconfirmed(false);
     try {
@@ -634,6 +657,13 @@ export function ConversationPage({
   useEffect(() => {
     if (!running && !stopping) setSendBlocked(false);
   }, [running, stopping]);
+
+  // 这一轮结束（不是用户停的）就发队首；新一轮开始时解除「已暂停」。
+  useEffect(() => {
+    if (running) { setQueuePaused(false); return; }
+    if (stopping || queuePaused || !queue.items.length || archived || surface === "external-cli") return;
+    void sendQueued(queue.items[0]);
+  }, [running, stopping, queuePaused, queue.items, archived, surface, sendQueued]);
 
   /* 第 4 件：重发一段已有正文（走的还是首发那条路：新编号 + 占位 + POST）。 */
   const resendText = useCallback(
@@ -1060,6 +1090,10 @@ export function ConversationPage({
         {/* batch39 第 1 件：运行中按了 Enter 之后的那一句。中性到底（★H）——它说的是
             "现在还轮不到这一句"，不是一个错误，所以不上红、没有图标、也没有关闭键：
             本轮一结束它自己消失（上面那个 effect）。草稿仍在输入框里，原样等着。 */}
+        {queue.items.length > 0 && (
+          <QueuedMessages items={queue.items} paused={queuePaused && !running} onRemove={queue.remove}
+            onSendNow={() => { setQueuePaused(false); }} />
+        )}
         {sendBlocked && (
           <div className="kaus-composer-note" data-testid="send-blocked-note">
             {t("conversation.composer.blockedWhileRunning")}

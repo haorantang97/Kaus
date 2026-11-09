@@ -58,6 +58,7 @@ from app.persistence.sqlite.runtimes import (
 )
 from app.persistence.sqlite.group_materials import SqliteGroupMaterialsRepository
 from app.persistence.sqlite.settings import SqliteAppSettingsRepository
+from app.persistence.sqlite.memories import SqliteMemoryRepository
 
 
 def build_repository_set(database: SqliteDatabase) -> RepositorySet:
@@ -77,6 +78,7 @@ def build_repository_set(database: SqliteDatabase) -> RepositorySet:
         events=SqliteEventStoreRepository(database),
         projections=SqliteProjectionResultRepository(database),
         settings=SqliteAppSettingsRepository(database),
+        memories=SqliteMemoryRepository(database),
     )
 
 

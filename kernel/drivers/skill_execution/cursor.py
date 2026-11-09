@@ -144,3 +144,8 @@ def inventory_roots(spec, projects, bindings):
         result.extend(NativeSkillRoot(workspace / folder, 'cursor', 'Cursor', project)
                       for folder in ('.cursor/skills', '.agents/skills'))
     return (*result, *cached_roots(spec, 'cursor', 'Cursor', projects, bindings))
+
+
+# 2026-11-09：该 Agent 没有自带的跨会话记忆（见 docs/handoff/verification.md 同日「原生记忆改向」），
+# Project 记忆在场时无需关任何东西。
+HAS_NATIVE_MEMORY = False

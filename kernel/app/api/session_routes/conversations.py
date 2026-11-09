@@ -37,6 +37,7 @@ from drivers.base import (
 from app.api.session_routes.common import (
     ArchiveConversationBody,
     BookmarkBody,
+    QueueBody,
     ViewedBody,
     CreateConversationBody,
     MoveConversationBody,
@@ -252,6 +253,20 @@ def build_conversation_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
         }
 
     @ctx.endpoint
+    async def get_queue(conversation_id: str) -> Any:
+        """排队消息：保存在后端，手机与电脑看到同一份；由开着的会话页在这一轮结束后发出。"""
+        await ctx.load_conversation(conversation_id)
+        stored = await repositories.settings.get(f"queue:{conversation_id}")
+        return {"items": list(stored.get("items", [])) if isinstance(stored, dict) else []}
+
+    @ctx.endpoint
+    async def put_queue(conversation_id: str, body: QueueBody = Body(...)) -> Any:
+        await ctx.load_conversation(conversation_id)
+        items = [item.model_dump() for item in body.items]
+        await repositories.settings.save(f"queue:{conversation_id}", {"items": items})
+        return {"items": items}
+
+    @ctx.endpoint
     async def mark_viewed(conversation_id: str, body: ViewedBody = Body(...)) -> Any:
         """会话页看到哪儿了。只前进不后退；不占运行租约、不碰引擎。"""
         await ctx.load_conversation(conversation_id)
@@ -419,6 +434,8 @@ def build_conversation_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
         RouteSpec('/conversations/{conversation_id}/move', move_conversation, ["POST"], 'session_move_conversation'),
         RouteSpec('/conversations/{conversation_id}/bookmarks', set_bookmark, ["PUT"], 'session_set_bookmark'),
         RouteSpec('/conversations/{conversation_id}/viewed', mark_viewed, ["PUT"], 'session_mark_viewed'),
+        RouteSpec('/conversations/{conversation_id}/queue', get_queue, ["GET"], 'session_get_queue'),
+        RouteSpec('/conversations/{conversation_id}/queue', put_queue, ["PUT"], 'session_put_queue'),
         RouteSpec('/conversations/{conversation_id}', delete_conversation, ["DELETE"], 'session_delete_conversation'),
         RouteSpec('/conversations/{conversation_id}/history', get_history, ["GET"], 'session_history'),
     ]

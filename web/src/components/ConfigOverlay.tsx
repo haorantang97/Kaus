@@ -20,6 +20,7 @@ import { AsyncState, Overlay } from "./ui";
 import "./settings.css";
 
 type Section = "general" | "agents" | "usage" | "coordinator" | "archive" | "about";
+const SECTIONS: readonly Section[] = ["general", "agents", "usage", "coordinator", "archive", "about"];
 
 /* AGPL 第 13 条：通过网络使用修改版的人要能拿到源码，这里给出许可证与源码入口。 */
 const SOURCE_URL = "https://github.com/haorantang97/Kaus";
@@ -32,7 +33,11 @@ const ABOUT_LINKS = [
 export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThemeChange }: { onClose: () => void; refreshKey?: number; theme?: "light" | "dark"; onThemeChange?: (theme: "light" | "dark") => void }) {
   const { t, pref, setPref } = useLocale();
   const navigate = useNavigate();
-  const [section, setSection] = useState<Section>("general");
+  // `/config?section=agents` opens a section directly (e.g. 「去连接」 from a module's settings).
+  const [section, setSection] = useState<Section>(() => {
+    const requested = new URLSearchParams(window.location.search).get("section");
+    return SECTIONS.includes(requested as Section) ? requested as Section : "general";
+  });
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectWire[] | null>(null);
   const [archived, setArchived] = useState<ArchivedConversationWire[] | null>(null);

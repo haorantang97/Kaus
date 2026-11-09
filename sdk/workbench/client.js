@@ -40,8 +40,9 @@ export function connectKaus(moduleId, { timeoutMs = 15000 } = {}) {
   return {
     request,
     context: () => request('context.get'),
+    agents: () => request('agents.list'),
     jobs: {
-      start: (prompt, idempotencyKey = crypto.randomUUID()) => request('jobs.start', { prompt, idempotencyKey }),
+      start: (prompt, idempotencyKey = crypto.randomUUID(), { bindingId } = {}) => request('jobs.start', { prompt, idempotencyKey, ...(bindingId ? { bindingId } : {}) }),
       get: jobId => request('jobs.get', { jobId }),
       list: () => request('jobs.list'),
       cancel: jobId => request('jobs.cancel', { jobId }),

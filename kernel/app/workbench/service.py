@@ -47,6 +47,8 @@ class WorkbenchService:
         self.registry = registry
         self.execution_policy_hook = execution_policy_hook
         self.module_change_hook = None
+        #: 随 Kaus 一起分发的示例模块目录（仓库的 `examples/`）；工作台为空时可一键安装。
+        self.examples_root: Path | None = None
         #: 其他关心模块变化的一方（模块 MCP 登记），在 `module_change_hook` 之后依次调用。
         self.module_change_listeners: list = []
         self._tasks: dict[str, asyncio.Task] = {}
@@ -261,6 +263,31 @@ class WorkbenchService:
         await self._module_changed(module_id)
         return {"removed": True}
 
+    def _example_dirs(self):
+        from app.workbench.models import Manifest
+        root = self.examples_root
+        if root is None or not root.is_dir():
+            return {}
+        found = {}
+        for path in sorted(root.iterdir()):
+            try:
+                manifest = Manifest.model_validate_json((path / "kaus-module.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            found[manifest.id] = (path, manifest)
+        return found
+
+    def examples(self):
+        installed = {row["id"] for row in self.store.all("modules") if row.get("installed", True)}
+        return {"examples": [{"id": manifest.id, "name": manifest.name, "description": manifest.description, "icon": manifest.icon,
+                              "installed": manifest.id in installed} for _path, manifest in self._example_dirs().values()]}
+
+    async def install_example(self, example_id):
+        found = self._example_dirs().get(example_id)
+        if found is None:
+            raise ApiError(404, "example_not_found", "示例模块不存在。")
+        return await self.install(str(found[0]))
+
     def workflow(self, module_id):
         module = self.require_module(module_id)
         if "workflow" not in module.get("capabilities", []):
@@ -320,10 +347,24 @@ class WorkbenchService:
         job["updatedAt"] = now()
         self.store.put("jobs", job["id"], job)
 
-    async def start_job(self, module_id, prompt, idempotency_key, *, execution_policy="project"):
+    async def start_job(self, module_id, prompt, idempotency_key, *, execution_policy="project", binding_id=None):
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 100000:
             raise ApiError(400, "invalid_prompt", "请输入任务内容。")
-        return await self._start(module_id, [{"id": "task", "title": "任务", "prompt": prompt}], "", idempotency_key, execution_policy)
+        return await self._start(module_id, [{"id": "task", "title": "任务", "prompt": prompt}], "", idempotency_key, execution_policy,
+                                 binding_id=binding_id)
+
+    async def module_agents(self, module_id):
+        """模块所在项目里可用的 Agent，供 `jobs.start` 换用。项目范围不变，只在这些里选。"""
+        module = self.require_module(module_id, "agent:run")
+        if not module.get("projectId"):
+            return {"agents": []}
+        agents = []
+        for binding in await self.repositories.bindings.list_for_project(module["projectId"]):
+            if self.registry.try_get(binding.backend_id) is None:
+                continue
+            agents.append({"id": binding.id, "name": binding.display_name, "backendId": binding.backend_id,
+                           "default": binding.id == module.get("bindingId")})
+        return {"agents": agents}
 
     async def start_workflow(self, module_id, input, idempotency_key):
         workflow = self.workflow(module_id)
@@ -331,7 +372,7 @@ class WorkbenchService:
             raise ApiError(409, "workflow_required", "请先配置工作流。")
         return await self._start(module_id, workflow["steps"], input, idempotency_key, "project")
 
-    async def _start(self, module_id, steps, input, idempotency_key, execution_policy):
+    async def _start(self, module_id, steps, input, idempotency_key, execution_policy, *, binding_id=None):
         if not isinstance(idempotency_key, str) or not 1 <= len(idempotency_key) <= 128:
             raise ApiError(400, "invalid_idempotency_key", "任务标识无效。")
         if execution_policy not in {"project", "context-only"}:
@@ -344,6 +385,10 @@ class WorkbenchService:
             if execution_policy != "project" and self.execution_policy_hook is None:
                 raise ApiError(409, "execution_policy_unsupported", "当前 Agent 尚不支持此模块的执行范围。")
             config = {key: module[key] for key in CONFIG_KEYS}
+            if binding_id and binding_id != config["bindingId"]:
+                # 换 Agent 时模型与推理档回到引擎默认：它们是按原 Agent 选的。
+                config = {**config, "bindingId": binding_id, "modelId": None, "providerId": None, "reasoningMode": None}
+                await self._validate_config(config, required=True)
             digest = fingerprint([steps, input, config, execution_policy])
             previous = self.store.idempotent(module_id, idempotency_key)
             if previous:
@@ -355,6 +400,7 @@ class WorkbenchService:
             timestamp = now()
             job = {"id": uuid.uuid4().hex, "moduleId": module_id, "status": "queued", "input": input, "output": "", "errorCode": None,
                    "createdAt": timestamp, "updatedAt": timestamp, "config": config, "executionPolicy": execution_policy,
+                   "agentOverride": config["bindingId"] != module["bindingId"],
                    "steps": [{**step, "status": "pending", "output": "", "conversationId": None, "errorCode": None} for step in steps]}
             self.store.create_job(module_id, idempotency_key, digest, job)
             self._schedule(job["id"])
@@ -367,7 +413,9 @@ class WorkbenchService:
 
     async def _assert_job_scope(self, job):
         module = self.require_module(job["moduleId"], "agent:run")
-        if any(module[key] != job["config"][key] for key in CONFIG_KEYS):
+        # 换用了 Agent 的任务只要求项目没变；Agent 本身仍要在该项目里、仍可用（下面的校验）。
+        keys = ("projectId",) if job.get("agentOverride") else CONFIG_KEYS
+        if any(module[key] != job["config"][key] for key in keys):
             raise ApiError(409, "configuration_changed", "模块配置已变更。")
         if module["requiredExecutionPolicy"] == "context-only" and job["executionPolicy"] != "context-only":
             raise ApiError(409, "execution_policy_changed", "模块执行范围已变更。")

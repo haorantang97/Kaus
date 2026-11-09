@@ -23,6 +23,7 @@ import { ProjectHistoryViewer } from "../components/ProjectHistoryViewer";
 import { useProjectHistory } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
 import { ProjectInstructionsEditor } from "../components/ProjectInstructionsEditor";
+import { ProjectMemoryCard } from "../components/ProjectMemoryCard";
 import { Button, Card, Modal, Pill, cream, toast } from "../components/ui";
 import { type NetworkResp } from "../lib/api";
 import { openProjectTerminal } from "../lib/terminalApi";
@@ -296,6 +297,9 @@ export function ProjectDetailPage({
         {/* ③ 指令 */}
         {projectId && <ProjectInstructionsEditor projectId={projectId} effective={capabilities}
           projectLabel={projectLabel} onChanged={reloadCapabilities} />}
+
+        {/* ③b 记忆 */}
+        {projectId && <ProjectMemoryCard projectId={projectId} projectLabel={projectLabel} />}
 
         {/* ④ 能力 */}
         <CapabilitiesSection

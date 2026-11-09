@@ -360,3 +360,33 @@ def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
         servers[name] = {**(current if isinstance(current, dict) else {}), "enabled": False}
     config["mcp_servers"] = servers
     return spec.with_env(CODEX_CONFIG=json.dumps(config)), metadata, ()
+
+
+# --------------------------------------------------------------------------- #
+# 开对话前关掉自带记忆（2026-11-09，设计稿第 5 节「改向」）
+# --------------------------------------------------------------------------- #
+
+#: ``[memories]`` 覆盖经 CODEX_CONFIG 这条路还没在真实 Codex 上跑过。
+NATIVE_MEMORY_DISABLE_VERIFIED = False
+
+
+def disable_native_memory(spec, metadata):
+    """Codex memories off for this process: ``[memories]`` + ``features.memories``.
+
+    Config reference (learn.chatgpt.com/docs/config-file/config-reference):
+    ``memories.generate_memories`` "When `false`, newly created threads are not stored
+    as memory-generation inputs"; ``memories.use_memories`` "When `false`, Codex skips
+    injecting existing memories into future sessions"; ``features.memories`` is the
+    subsystem switch ("Enable Memories (off by default)", ``codex-rs/features/src/
+    lib.rs`` key ``memories``; ``memory_tool`` is its legacy alias). The request
+    ``config`` is deep-merged onto ``config.toml`` as the SessionFlags layer
+    (``codex-rs/config/src/merge.rs``), so only these keys change; nothing is written
+    to ``~/.codex``. The state DB still records new threads as ``memory_mode =
+    "disabled"``; existing memories are untouched.
+    """
+    config = _codex_config(spec)
+    memories = config.get("memories") if isinstance(config.get("memories"), dict) else {}
+    features = config.get("features") if isinstance(config.get("features"), dict) else {}
+    config["memories"] = {**memories, "generate_memories": False, "use_memories": False}
+    config["features"] = {**features, "memories": False}
+    return spec.with_env(CODEX_CONFIG=json.dumps(config)), metadata

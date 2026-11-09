@@ -95,3 +95,8 @@ async def load_native_history(spec, binding, native_session_id):
     import asyncio
     from .crush_history import read
     return await asyncio.to_thread(read, spec, binding, native_session_id)
+
+
+# 2026-11-09：该 Agent 没有自带的跨会话记忆（见 docs/handoff/verification.md 同日「原生记忆改向」），
+# Project 记忆在场时无需关任何东西。
+HAS_NATIVE_MEMORY = False

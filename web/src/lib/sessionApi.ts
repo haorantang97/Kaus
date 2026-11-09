@@ -435,6 +435,45 @@ export function setConversationBookmark(conversationId: string, messageId: strin
   return request(`/api/conversations/${encodeURIComponent(conversationId)}/bookmarks`, { method: "PUT", body: { messageId, saved } });
 }
 
+/* ---- Project 记忆（设计稿第 5 节） ---------------------------------- */
+
+export interface MemoryWire {
+  id: string;
+  projectId: string;
+  /** `overview` = 项目概述（只有一条）；其余为 `note`。 */
+  kind: "note" | "overview";
+  topic: string;
+  body: string;
+  status: "active" | "invalidated" | "deleted";
+  /** 写入者：Agent 的 backendId 或 `user`。 */
+  source: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryHistoryWire { id: string; memoryId: string; action: "add" | "update" | "invalidate" | "delete" | "undo"; before: MemoryWire | null; after: MemoryWire | null; actor: string | null; at: string }
+
+const memoryPath = (projectId: string) => `/api/projects/${encodeURIComponent(projectId)}/memories`;
+
+export function fetchProjectMemories(projectId: string, signal?: AbortSignal): Promise<{ memories: MemoryWire[]; overLimit: boolean }> {
+  return request(memoryPath(projectId), { signal });
+}
+export function createProjectMemory(projectId: string, body: { topic: string; body: string; kind?: "note" | "overview" }): Promise<MemoryWire> {
+  return request(memoryPath(projectId), { method: "POST", body });
+}
+export function patchProjectMemory(projectId: string, memoryId: string, body: { topic?: string; body?: string }): Promise<MemoryWire> {
+  return request(`${memoryPath(projectId)}/${encodeURIComponent(memoryId)}`, { method: "PATCH", body });
+}
+export function deleteProjectMemory(projectId: string, memoryId: string): Promise<MemoryWire> {
+  return request(`${memoryPath(projectId)}/${encodeURIComponent(memoryId)}`, { method: "DELETE" });
+}
+export function fetchMemoryHistory(projectId: string, signal?: AbortSignal): Promise<{ history: MemoryHistoryWire[] }> {
+  return request(`${memoryPath(projectId)}/history`, { signal });
+}
+export function undoMemoryChange(projectId: string, historyId: string): Promise<MemoryWire> {
+  return request(`${memoryPath(projectId)}/history/${encodeURIComponent(historyId)}/undo`, { method: "POST" });
+}
+
 /** 项目指令送达到工作目录里的哪些文件（设计稿第 3、4 节）。没有工作目录时 409 `workspace_required`。 */
 export interface InstructionFileWire {
   file: string;
@@ -457,6 +496,26 @@ export function fetchInstructionFiles(projectId: string, signal?: AbortSignal): 
 /** 把文件里已有的内容导入成一节指令（文件改成受管块），或保留原文件不再提示。 */
 export function importInstructionFile(projectId: string, file: string, mode: "import" | "keep"): Promise<unknown> {
   return request(`/api/projects/${encodeURIComponent(projectId)}/instructions/import`, { method: "POST", body: { file, mode } });
+}
+
+/** 用户给 Agent 填的 API key（不走订阅）。接口只回答填没填，从不回传明文。 */
+export function fetchAgentCredentials(signal?: AbortSignal): Promise<{ configured: string[] }> {
+  return request("/api/agent-credentials", { signal });
+}
+export function saveAgentApiKey(backendId: string, apiKey: string): Promise<{ configured: boolean }> {
+  return request(`/api/agent-credentials/${encodeURIComponent(backendId)}`, { method: "PUT", body: { apiKey } });
+}
+export function clearAgentApiKey(backendId: string): Promise<{ configured: boolean }> {
+  return request(`/api/agent-credentials/${encodeURIComponent(backendId)}`, { method: "DELETE" });
+}
+
+/** 运行中排队、等这一轮结束再发的消息（只收文字，最多 10 条）。存在后端，各端一致。 */
+export interface QueuedMessageWire { id: string; text: string }
+export function fetchMessageQueue(conversationId: string, signal?: AbortSignal): Promise<{ items: QueuedMessageWire[] }> {
+  return request(`/api/conversations/${encodeURIComponent(conversationId)}/queue`, { signal });
+}
+export function saveMessageQueue(conversationId: string, items: QueuedMessageWire[]): Promise<{ items: QueuedMessageWire[] }> {
+  return request(`/api/conversations/${encodeURIComponent(conversationId)}/queue`, { method: "PUT", body: { items } });
 }
 
 /** 输入框 `@` 的候选：会话工作目录里的文件（相对路径，最多 5000 个）。 */

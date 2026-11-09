@@ -289,3 +289,52 @@ def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
         return spec, metadata, ("含逗号的 MCP 名称无法通过 --disable-mcp-server 表达，本次未排除自带 MCP",)
     flags = tuple(f"--disable-mcp-server={name}" for name in names)
     return spec.model_copy(update={"command": (*spec.command, *flags)}), metadata, ()
+
+
+# 开对话前关掉自带记忆（2026-11-09，设计稿第 5 节「改向」）。
+#: 系统设置覆盖文件这条路（``QWEN_CODE_SYSTEM_SETTINGS_PATH``）没在真实 Qwen Code 上跑过。
+NATIVE_MEMORY_DISABLE_VERIFIED = False
+#: ``packages/core/src/tools/tool-names.ts``：``save_memory`` 常量仍在（v0.24 未注册该工具），
+#: v0.24.7 新增 ``manage_memory`` / ``search_memory``。
+MEMORY_TOOL_NAMES = ("save_memory", "manage_memory", "search_memory")
+
+
+def system_settings_path(spec):
+    """Qwen Code 系统设置文件：``packages/cli/src/config/storage-paths-lite.ts``（环境变量优先）。"""
+    import os
+    import sys
+    env = spec.build_env()
+    if env.get("QWEN_CODE_SYSTEM_SETTINGS_PATH"):
+        return Path(env["QWEN_CODE_SYSTEM_SETTINGS_PATH"]).expanduser()
+    if sys.platform == "darwin":
+        return Path("/Library/Application Support/QwenCode/settings.json")
+    if os.name == "nt":
+        return Path(r"C:\ProgramData\qwen-code\settings.json")
+    return Path("/etc/qwen-code/settings.json")
+
+
+def disable_native_memory(spec, metadata):
+    """One-launch system-settings overlay for Qwen Code's managed auto-memory.
+
+    Qwen Code 0.24 turns memory on by default (``docs/users/features/memory.md``:
+    "Auto-memory is on by default", keys ``memory.enableManagedAutoMemory`` /
+    ``memory.enableManagedAutoDream``) and stores it under ``~/.qwen/projects/<p>/
+    memory/``. The system settings layer merges last (``settings.ts``:
+    ``systemDefaults, user, safeWorkspace, system``) and its path comes from
+    ``QWEN_CODE_SYSTEM_SETTINGS_PATH``; the same ``config`` object reaches
+    ``runAcpAgent`` (``llm.tsx``). The current system file is read, the memory keys
+    and ``tools.exclude`` (deprecated but "still honoured at startup"; whole-tool
+    deny unregisters the tool, ``permission-manager.ts``) merged in, and the result
+    written as an immutable Kaus-owned file. ``~/.qwen/settings.json`` is not modified.
+    ``--exclude-tools`` is not used: its presence on 0.24.0–0.24.6 is unverified.
+    """
+    from .copilot import read_jsonc
+    from .settings_overlay import union, write_overlay
+    settings = read_jsonc(system_settings_path(spec))
+    memory = dict(settings["memory"]) if isinstance(settings.get("memory"), dict) else {}
+    memory.update(enableManagedAutoMemory=False, enableManagedAutoDream=False)
+    tools = dict(settings["tools"]) if isinstance(settings.get("tools"), dict) else {}
+    tools["exclude"] = union(tools.get("exclude"), MEMORY_TOOL_NAMES)
+    settings["memory"], settings["tools"] = memory, tools
+    path = write_overlay(spec, "qwen", json.dumps(settings, sort_keys=True, ensure_ascii=False))
+    return spec.with_env(QWEN_CODE_SYSTEM_SETTINGS_PATH=str(path)), metadata

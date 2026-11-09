@@ -1,7 +1,7 @@
 import { currentLocale } from "../i18n";
 import { SessionApiError } from "./sessionApi";
 import { siteRule } from "./siteSurface";
-import { cancelModuleJob, fetchModuleJob, fetchModuleJobs, fetchWorkbenchModule, moduleBackendRequest, readModuleData, resumeModuleJob, startModuleJob, writeModuleData, fetchWorkflow, saveWorkflow, runWorkflow, type WorkbenchModule, type WorkflowDefinition } from "./workbenchApi";
+import { cancelModuleJob, fetchModuleAgents, fetchModuleJob, fetchModuleJobs, fetchWorkbenchModule, moduleBackendRequest, readModuleData, resumeModuleJob, startModuleJob, writeModuleData, fetchWorkflow, saveWorkflow, runWorkflow, type WorkbenchModule, type WorkflowDefinition } from "./workbenchApi";
 export interface BridgeRequest { id: string; method: string; params?: Record<string, unknown> }
 const text = (value: unknown, limit = 200_000) => { if (typeof value !== "string" || !value || value.length > limit) throw new Error("invalid_request"); return value; };
 const paramsObject = (value: unknown): Record<string, unknown> => {
@@ -59,10 +59,12 @@ export async function dispatchModuleRequest(moduleId: string, request: BridgeReq
     case "jobs.list": return fetchModuleJobs(moduleId);
     case "jobs.get": return fetchModuleJob(moduleId, text(p.jobId, 200));
     case "jobs.start": {
-      // Reject attempted scope overrides rather than silently interpreting them.
-      if (Object.keys(p).some(key => !["prompt", "idempotencyKey"].includes(key))) throw new Error("invalid_request");
-      return startModuleJob(moduleId, text(p.prompt), text(p.idempotencyKey, 200));
+      // Project scope stays fixed; only another Agent of the same Project may be named (checked by the host).
+      if (Object.keys(p).some(key => !["prompt", "idempotencyKey", "bindingId"].includes(key))) throw new Error("invalid_request");
+      const prompt = text(p.prompt), key = text(p.idempotencyKey, 200);
+      return p.bindingId === undefined ? startModuleJob(moduleId, prompt, key) : startModuleJob(moduleId, prompt, key, text(p.bindingId, 256));
     }
+    case "agents.list": return fetchModuleAgents(moduleId);
     case "jobs.cancel": return cancelModuleJob(moduleId, text(p.jobId, 200));
     case "jobs.resume": return resumeModuleJob(moduleId, text(p.jobId, 200));
     case "data.get": return readModuleData(moduleId, text(p.key, 120));

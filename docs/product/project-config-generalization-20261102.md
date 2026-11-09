@@ -1,6 +1,6 @@
 # Project 配置通用化（设计稿）
 
-2026-11-02 起草，2026-11-03 项目负责人确认（记忆按第 5 节、分期按下文，原生 MCP 隔离并入第一期）。第一期第 1 步（唯一存储，2026-11-03）、第 3 步（自动送达，含第 4 节的后端原语）与第 4 步（原生 MCP 排除）已实现（2026-11-09，见 `docs/handoff/verification.md` 同日条目）；各 Agent 的真实启动参数均未实测，排除机制一律按「未隔离／未验证」报告，等隔离虚拟机里的跨 Agent 实测。第 2 步编辑器与第 5 步收尾进行中。取代 [project-instructions-design.md](project-instructions-design.md)。
+2026-11-02 起草，2026-11-03 项目负责人确认（记忆按第 5 节、分期按下文，原生 MCP 隔离并入第一期）。第一期第 1 步（唯一存储，2026-11-03）、第 3 步（自动送达，含第 4 节的后端原语）与第 4 步（原生 MCP 排除）已实现（2026-11-09，见 `docs/handoff/verification.md` 同日条目）；各 Agent 的真实启动参数均未实测，排除机制一律按「未隔离／未验证」报告，等隔离虚拟机里的跨 Agent 实测。第 2 步编辑器与第 5 步收尾进行中。取代 [project-instructions-design.md](project-instructions-design.md)。 第二期 Project 记忆的存储、接口、记忆 MCP、开对话注入与项目页卡片已于 2026-11-09 实现（见 `docs/handoff/verification.md`）；第 5 节「自带记忆改向」同日实现（Claude、Codex、Gemini、Qwen 有按次关闭钩子，均未实测；OpenCode 等 7 个声明无自带记忆；其余报「自带记忆未接管」），「导入」未做。
 
 ## 目标
 
@@ -108,6 +108,7 @@ Project 树、指令、记忆、技能、MCP、插件只存在 SQLite（`project
 
 **各 Agent 自带的记忆**：
 - **改向**：Kaus 启动的进程里关掉原生记忆，只用 Project 记忆。已知开关（需实测）：Claude `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`；Codex `[memories] generate_memories=false`、`use_memories=false`；Gemini 屏蔽 `save_memory` 工具。只作用于 Kaus 启动的进程，不改用户全局配置。关不掉的 Agent，项目页标「自带记忆未接管」。
+  2026-11-09 实现（`kernel/drivers/launch_delivery.py` 可选钩子 `disable_native_memory` / `NATIVE_MEMORY_DISABLE_VERIFIED` / `HAS_NATIVE_MEMORY`，只在有效能力带 `kaus-memory` MCP 时生效，组员会话不动）：Claude 走进程环境变量 + `_meta.claudeCode.options.env`；Codex 走 `CODEX_CONFIG.memories` + `features.memories=false`；Gemini 与 Qwen 没有按次参数，走系统设置路径环境变量（`GEMINI_CLI_SYSTEM_SETTINGS_PATH` / `QWEN_CODE_SYSTEM_SETTINGS_PATH`）指向 Kaus 写的不可变覆盖文件——Gemini ≥0.44 已无 `save_memory`，实际关的是 `experimental.autoMemory`，模型用文件工具改 `~/.gemini/GEMINI.md` 那条路没挡；Qwen 0.24 关 `memory.enableManagedAutoMemory` / `enableManagedAutoDream` 并排除 `save_memory` / `manage_memory` / `search_memory`。会话 `projection.summary.nativeMemory` 报 `disabled` / `unverified` / `active` / `none`，关不掉的报 `unapplied` `kind: memory`、`native_memory_active`。四个钩子均未在真实 Agent 上验证；依据与逐 Agent 结论见 `docs/handoff/verification.md` 同日条目。
 - **导入**：接入已有文件夹时，可把该 Agent 按项目存的记忆导入一次。不做持续同步。
 
 **协作组**：组员写入的是组内资料，不进 Project 记忆。

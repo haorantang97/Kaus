@@ -58,3 +58,9 @@
 :root.kaus-module-page .kaus-group-dock{display:none}
 .workbench-pin .shell-nav-icon{position:relative}
 .workbench-pin-dot{position:absolute;top:-2px;right:-3px;width:7px;height:7px;border-radius:50%;background:var(--status-waiting)}
+.workbench-examples{grid-column:1/-1;display:flex;flex-direction:column;gap:8px;max-width:560px;margin:0 auto;width:100%}
+.workbench-examples h2{margin:0 0 2px;font-size:12px;font-weight:500;color:color-mix(in srgb,var(--midground-base) 55%,transparent)}
+.workbench-example{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;border:1px solid color-mix(in srgb,var(--midground-base) 10%,transparent)}
+.workbench-example-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.workbench-example-text span{font-size:12px;color:color-mix(in srgb,var(--midground-base) 55%,transparent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.workbench-connect-hint{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:color-mix(in srgb,var(--midground-base) 60%,transparent)}

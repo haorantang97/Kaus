@@ -346,6 +346,9 @@ class AcpPreset:
     auth_model: str = AUTH_MODEL
     #: 只有变量名的提示，**不自动放行**（AD-10 / AD-48）。
     env_keys_hint: tuple[str, ...] = ()
+    #: 用户在设置里填 API key（不走订阅）时，Kaus 在启动这台引擎的进程里设的变量名。
+    #: ``None`` = 这家没有单一的 API key 变量（多服务商配置、或凭据由它自己的配置文件管）。
+    api_key_env: str | None = None
     #: ``initialize`` 里 ``authMethods[].id`` 的取证记录（AD-156）。只有 id。
     auth_method_ids: tuple[str, ...] = ()
     #: 「先在终端运行这一句」。``None`` = 不确定这家 CLI 怎么登录（AD-157）。
@@ -426,6 +429,8 @@ class AcpPreset:
             payload["catalogStatus"] = self.catalog_status
         if self.env_keys_hint:
             payload["envKeysHint"] = list(self.env_keys_hint)
+        if self.api_key_env:
+            payload["apiKeyEnv"] = self.api_key_env
         if self.auth_method_ids:
             payload["authMethodIds"] = list(self.auth_method_ids)
         if self.login_command:
@@ -462,6 +467,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="claude-code",
+                api_key_env="ANTHROPIC_API_KEY",
                 restricted_execution_adapter="drivers.workbench_execution.claude",
                 executable="claude",
                 setup_url="https://github.com/agentclientprotocol/claude-agent-acp",
@@ -528,6 +534,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="codex",
+                api_key_env="OPENAI_API_KEY",
                 executable="codex",
                 setup_url="https://github.com/agentclientprotocol/codex-acp",
                 config_root_env="CODEX_HOME",
@@ -626,6 +633,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="gemini",
+                api_key_env="GEMINI_API_KEY",
                 account_quota_adapter="drivers.gemini.quota",
                 skill_projection_adapter="drivers.skill_execution.gemini",
                 executable="gemini",
@@ -983,6 +991,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="dsh",
+                api_key_env="DEEPSEEK_API_KEY",
                 account_quota_adapter="drivers.dsh.quota",
                 skill_projection_adapter="drivers.skill_execution.dsh",
                 host_approval=True,
@@ -1036,6 +1045,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="deepseek-acp",
+                api_key_env="DEEPSEEK_API_KEY",
                 account_quota_adapter="drivers.dsh.quota",
                 skill_projection_adapter="drivers.skill_execution.deepseek",
                 session_creation_proves_auth=False,
@@ -1194,6 +1204,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="cursor",
+                api_key_env="CURSOR_API_KEY",
                 account_quota_adapter="drivers.cursor.quota",
                 skill_projection_adapter="drivers.skill_execution.cursor",
                 host_approval=True,
@@ -1240,6 +1251,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="copilot",
+                api_key_env="COPILOT_GITHUB_TOKEN",
                 account_quota_adapter="drivers.copilot.quota",
                 skill_projection_adapter="drivers.skill_execution.copilot",
                 host_approval=True,
@@ -1315,6 +1327,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="grok",
+                api_key_env="XAI_API_KEY",
                 account_quota_adapter="drivers.grok.quota",
                 skill_projection_adapter="drivers.skill_execution.grok",
                 host_approval=True,
@@ -1396,6 +1409,7 @@ PRESETS: Mapping[str, AcpPreset] = dict(
         _preset(
             AcpPreset(
                 id="commandcode",
+                api_key_env="COMMAND_CODE_API_KEY",
                 project_mcp_via_runtime=True,
                 skill_projection_adapter="drivers.skill_execution.commandcode",
                 native_cli_flag="--command",

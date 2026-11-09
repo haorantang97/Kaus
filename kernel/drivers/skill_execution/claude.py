@@ -202,3 +202,30 @@ def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
     if cwd and (Path(cwd) / ".mcp.json").is_file():
         warnings.append("严格 MCP 模式下不会加载工作目录 .mcp.json 里的 MCP")
     return spec, _with_options(metadata, meta, claude, options), tuple(warnings)
+
+
+# --------------------------------------------------------------------------- #
+# 开对话前关掉自带记忆（2026-11-09，设计稿第 5 节「改向」）
+# --------------------------------------------------------------------------- #
+
+#: ``CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`` 经 claude-agent-acp 这条路还没在真实 Claude Code 上跑过。
+NATIVE_MEMORY_DISABLE_VERIFIED = False
+AUTO_MEMORY_ENV = "CLAUDE_CODE_DISABLE_AUTO_MEMORY"
+
+
+def disable_native_memory(spec, metadata):
+    """Turn Claude Code's auto memory off for this process only.
+
+    ``CLAUDE_CODE_DISABLE_AUTO_MEMORY=1``: "When disabled, Claude does not create or
+    load auto memory files" (code.claude.com/docs/en/env-vars); it "takes precedence
+    over [``autoMemoryEnabled``] for one session, in either direction"
+    (code.claude.com/docs/en/settings-reference#automemoryenabled). claude-agent-acp
+    (v0.90.0 and main, ``src/acp-agent.ts`` ``createSession``) builds the SDK ``env``
+    as ``{...process.env, ...userProvidedOptions.env, ...}``, so the adapter process
+    environment is inherited and ``_meta.claudeCode.options.env`` is layered on top;
+    both are set here. ``~/.claude/settings.json`` is not modified. A settings-file
+    ``env`` block that forces the variable to ``0`` would still win.
+    """
+    meta, claude, options = _claude_code_options(metadata)
+    options["env"] = {**(options.get("env") or {}), AUTO_MEMORY_ENV: "1"}
+    return spec.with_env(**{AUTO_MEMORY_ENV: "1"}), _with_options(metadata, meta, claude, options)

@@ -20,6 +20,18 @@
     这条排除机制有没有在真实 Agent 上跑通过。缺省 ``False``：报告里把这一组标成
     「未验证」，而不是装成已隔离（AD-71）。
 
+``disable_native_memory(spec, metadata) -> (spec, metadata)``
+    只在本次启动中关掉该 Agent 自带的记忆（设计稿第 5 节「改向」）：Project 记忆
+    （``kaus-memory`` MCP）在场时，不让两份记忆并存。不改用户全局配置。只有有效能力里
+    带着 Project 记忆 MCP 时才调用——组内成员会话没有 Project 记忆，原生行为照旧。
+
+``NATIVE_MEMORY_DISABLE_VERIFIED: bool``
+    同上，缺省 ``False`` → ``nativeMemory`` 报 ``unverified``。
+
+``HAS_NATIVE_MEMORY: bool``
+    适配器声明「这个 Agent 根本没有自带记忆」（``False``）时报 ``none``；没有钩子也没有
+    这条声明的，一律按「自带记忆未接管」报（``active`` + ``native_memory_active``）。
+
 两个阶段
 --------
 1. :func:`plan_launch`——在 ``session_options_for`` 里算：拼正文、选通道、必要时
@@ -43,6 +55,7 @@ from drivers.instructions_projection import (
     compose_instructions,
     instruction_entries,
     invalid_instruction_entries,
+    is_auxiliary,
 )
 from drivers.projection_gaps import INSTRUCTIONS, INVALID_CONFIG, MCP, UNSUPPORTED
 from drivers.workspace_projection import REASON_NO_WORKSPACE, materialize_block, resolve_directory
@@ -56,6 +69,17 @@ CHANNEL_WORKSPACE_FILE: Final[str] = "workspace_file"
 REASON_WORKSPACE_IN_USE: Final[str] = "workspace_in_use"
 #: 该 Agent 自带的这些 MCP 未分配给当前 Project，但它没有按次启动排除的机制。
 REASON_NATIVE_NOT_ISOLATED: Final[str] = "native_not_isolated"
+#: Project 记忆在场，但该 Agent 自带的记忆没有按次启动关掉的机制（「自带记忆未接管」）。
+REASON_NATIVE_MEMORY_ACTIVE: Final[str] = "native_memory_active"
+
+#: ``unapplied`` 里记忆这一组的 ``kind``。
+MEMORY_KIND: Final[str] = "memory"
+
+#: 原生记忆这一组的状态（``summary["nativeMemory"]`` 只有一个词；没有 Project 记忆时不出现）。
+MEMORY_NONE: Final[str] = "none"              # 适配器声明该 Agent 没有自带记忆
+MEMORY_DISABLED: Final[str] = "disabled"      # 本次启动关掉了，且机制在真实 Agent 上验证过
+MEMORY_UNVERIFIED: Final[str] = "unverified"  # 本次启动关掉了，但机制没验证过
+MEMORY_ACTIVE: Final[str] = "active"          # 关不掉（或不知道能不能关）：自带记忆未接管
 
 #: 原生 MCP 这一组的状态（``summary["nativeMcp"]`` 只有一个词）。
 MCP_NONE: Final[str] = "none"          # 该 Agent 没有自带的全局 MCP
@@ -76,6 +100,8 @@ class LaunchPlan:
     native_mcp_mode: str = MCP_NONE
     native_excluded: tuple[dict[str, Any], ...] = ()
     native_assigned: tuple[dict[str, Any], ...] = ()
+    #: ``None`` = 这条会话没有 Project 记忆（组内成员等），自带记忆不动也不报。
+    native_memory_mode: str | None = None
     #: 第 1 步就能确定的「没送出去」（D-03）。
     unapplied: tuple[UnappliedCapability, ...] = ()
     warnings: tuple[str, ...] = ()
@@ -134,6 +160,11 @@ def plan_launch(
         if _hook(adapter, "deliver_instructions") is not None:
             plan.instructions_channel = CHANNEL_LAUNCH
             plan.summary["instructions"] = list(names)
+        elif all(is_auxiliary(entry) for entry in valid):
+            # 只有宿主附加的辅助节（例如项目记忆索引）：不为它拦住启动、不往用户文件夹里
+            # 写东西，也不报「未生效」；这类内容另有通道（记忆 MCP）。
+            plan.instructions_body = ""
+            plan.instruction_names = ()
         elif instructions_file:
             if not (workspace_root and str(workspace_root).strip()):
                 if require_workspace:
@@ -198,6 +229,21 @@ def plan_launch(
                 warnings.append("原生 MCP 排除机制尚未在真实 Agent 上验证；项目页按「未隔离」对待")
     if plan.native_mcp_mode != MCP_NONE:
         plan.summary["nativeMcp"] = [plan.native_mcp_mode]
+
+    # ---------------------------------------------------------- 原生记忆
+    memory_id = project_memory_id(effective)
+    # 没有适配器 = 不知道这是哪个 Agent（没有预设的裸 ACP），这一组无从判断，不报。
+    if memory_id is not None and adapter is not None:
+        if _hook(adapter, "disable_native_memory") is not None:
+            verified = getattr(adapter, "NATIVE_MEMORY_DISABLE_VERIFIED", False) is True
+            plan.native_memory_mode = MEMORY_DISABLED if verified else MEMORY_UNVERIFIED
+        elif getattr(adapter, "HAS_NATIVE_MEMORY", True) is False:
+            plan.native_memory_mode = MEMORY_NONE
+        else:
+            plan.native_memory_mode = MEMORY_ACTIVE
+        # 只记在送达摘要里，不进会话里的「未生效」提示：关不掉自带记忆的 Agent 很常见，
+        # 每条会话都提醒一遍太吵；设计稿要的是项目页上标「未接管」。
+        plan.summary["nativeMemory"] = [plan.native_memory_mode]
     plan.unapplied = tuple(unapplied)
     plan.warnings = tuple(warnings)
     return plan
@@ -228,7 +274,25 @@ def apply_launch_plan(
                 spec, metadata, excluded=plan.native_excluded, assigned=plan.native_assigned, cwd=cwd)
             metadata = dict(metadata)
             warnings.extend(extra or ())
+    if plan.native_memory_mode in (MEMORY_DISABLED, MEMORY_UNVERIFIED):
+        disable = _hook(adapter, "disable_native_memory")
+        if disable is not None:
+            spec, metadata = disable(spec, metadata)
+            metadata = dict(metadata)
     return spec, metadata, tuple(warnings)
+
+
+def project_memory_id(effective: EffectiveCapabilities) -> str | None:
+    """有效能力里带着 Project 记忆 MCP 时返回它的 id，否则 ``None``。
+
+    这一层不认识「记忆」是什么，只认宿主在 ``memory_injection`` 里声明的那一个 MCP id；
+    组内成员会话拿不到它，自带记忆就不动。
+    """
+    from app.projects.memory_injection import MEMORY_MCP_ID
+    for entry in effective.entries:
+        if entry.capability_type == "mcp" and entry.capability_id == MEMORY_MCP_ID:
+            return entry.capability_id
+    return None
 
 
 def same_directory(left: str | None, right: str | None) -> bool:
@@ -257,10 +321,17 @@ __all__ = [
     "MCP_UNISOLATED",
     "MCP_UNMANAGED",
     "MCP_UNVERIFIED",
+    "MEMORY_ACTIVE",
+    "MEMORY_DISABLED",
+    "MEMORY_KIND",
+    "MEMORY_NONE",
+    "MEMORY_UNVERIFIED",
+    "REASON_NATIVE_MEMORY_ACTIVE",
     "REASON_NATIVE_NOT_ISOLATED",
     "REASON_WORKSPACE_IN_USE",
     "apply_launch_plan",
     "home_of",
     "plan_launch",
+    "project_memory_id",
     "same_directory",
 ]

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { Plug, Plus, RefreshCw, Settings2, Terminal } from "lucide-react";
+import { KeyRound, Plug, Plus, RefreshCw, Settings2, Terminal } from "lucide-react";
 import { useLocale } from "../i18n";
-import { fetchConnectedBackends, describeFailure } from "../lib/sessionApi";
+import { fetchAgentCredentials, fetchConnectedBackends, describeFailure } from "../lib/sessionApi";
+import { AgentApiKeyDialog } from "./AgentApiKeyDialog";
 import { openEngineLogin, preferredEngineConnections, refreshEngineConnections, type EngineConnection } from "../lib/enginePresets";
 import { backendDisplay, engineBrand } from "../lib/backend-display";
 import { EngineIcon } from "./EngineIcon";
 import { ConnectEngineModal } from "./ConnectEngineModal";
-import { Button, toast } from "./ui";
+import { Button, Pill, toast } from "./ui";
 
 export function AgentConnections({ refreshKey = 0 }: { refreshKey?: string | number }) {
   const { t } = useLocale();
@@ -16,11 +17,16 @@ export function AgentConnections({ refreshKey = 0 }: { refreshKey?: string | num
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingLogin, setPendingLogin] = useState<string | null>(null);
+  // 填了 API key 的引擎（启动时不走订阅），以及正在编辑 key 的那一台。
+  const [withKey, setWithKey] = useState<string[]>([]);
+  const [keyFor, setKeyFor] = useState<EngineConnection | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     setError("");
     fetchConnectedBackends(controller.signal).then(data => { if (!controller.signal.aborted) setConnections(data.backends); })
       .catch(e => { if (!controller.signal.aborted) setError(describeFailure(e)); });
+    fetchAgentCredentials(controller.signal).then(data => { if (!controller.signal.aborted) setWithKey(Array.isArray(data?.configured) ? data.configured : []); })
+      .catch(() => {});
     return () => controller.abort();
   }, [reload, refreshKey]);
   useEffect(() => {
@@ -67,11 +73,16 @@ export function AgentConnections({ refreshKey = 0 }: { refreshKey?: string | num
       <div><strong><EngineIcon engine={item.productId ?? item.id} size={20} />{engineBrand(item.productId ?? item.id)?.name ?? item.productName ?? backendDisplay(item.id).displayName}</strong>
         <small>{item.runtimeIdentity?.engineVersion ?? item.version}</small></div>
       <div className="flex items-center gap-2">
+        {withKey.includes(item.id) && <Pill tone="muted">{t("engines.apiKey.inUse")}</Pill>}
         <small>{t(item.runtimeIdentity?.updateState === "pending_idle" ? "engines.connect.pendingUpdate" : item.probeState === "available" ? "engines.connect.available" : item.probeState === "unavailable" ? "engines.connect.unavailable" : "engines.connect.registered")}</small>
+        {item.apiKeyEnv && <Button onClick={() => setKeyFor(item)} aria-label={t("engines.apiKey.open")} title={t("engines.apiKey.open")}><KeyRound size={15} /></Button>}
         {item.loginAvailable && <Button disabled={busy} onClick={() => void login(item.id)} aria-label={t("engines.connect.openLogin")} title={t("engines.connect.openLogin")}><Terminal size={15} /></Button>}
         <Button onClick={() => setOpen(item.id)} aria-label={t("engines.connect.details")} title={t("engines.connect.details")}><Settings2 size={15} /></Button>
       </div>
     </div>)}</div>
+    {keyFor && keyFor.apiKeyEnv && <AgentApiKeyDialog backendId={keyFor.id} envName={keyFor.apiKeyEnv} configured={withKey.includes(keyFor.id)}
+      name={engineBrand(keyFor.productId ?? keyFor.id)?.name ?? keyFor.productName ?? backendDisplay(keyFor.id).displayName}
+      onClose={changed => { setKeyFor(null); if (changed) setReload(n => n + 1); }} />}
     {open !== null && <ConnectEngineModal initialBackendId={open || undefined} onClose={() => { setOpen(null); setReload(n => n + 1); }} />}
   </div>;
 }

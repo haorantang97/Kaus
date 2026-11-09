@@ -6,11 +6,12 @@ import { confirmAsync } from "../components/ui";
 import { WorkspacePicker } from "../components/WorkspacePicker";
 import { WorkbenchConfig } from "../components/WorkbenchConfig";
 import { WorkbenchIntake } from "../components/WorkbenchIntake";
+import { WorkbenchExamples } from "../components/WorkbenchExamples";
 import { ModuleFrame } from "../components/ModuleFrame";
 import { writeModuleDrag } from "../components/WorkbenchNav";
 import { chooseNativeWorkspace } from "../lib/workspaceApi";
 import { activeWorkbenchIntake, dismissWorkbenchIntake, fetchWorkbenchIntake, fetchWorkbenchIntakes, inspectWorkbenchProject, notifyWorkbenchChanged, patchWorkbenchModule, removeWorkbenchModule, workbenchFailure, type WorkbenchModule, type WorkbenchIntake as Intake } from "../lib/workbenchApi";
-import { workbenchPath } from "../lib/routes";
+import { shellViewPath, workbenchPath } from "../lib/routes";
 import "../components/workbench.css";
 export function WorkbenchPage({moduleId,modules,loading,failed,onRefresh,navigate,onConversation,intakeId=null,onIntakeConversation}: {moduleId:string|null; modules:WorkbenchModule[];loading:boolean;failed:boolean;onRefresh:()=>void;navigate:(path:string)=>void;onConversation:(id:string,moduleId:string)=>void;intakeId?:string|null;onIntakeConversation?:(id:string,intakeId:string)=>void}) {
   const {t,locale} = useLocale();
@@ -64,6 +65,7 @@ export function WorkbenchPage({moduleId,modules,loading,failed,onRefresh,navigat
     {!moduleId&&intakes.some(item=>item.status!=="installed")&&<div className="workbench-intake-list" aria-label={t("workbench.intake.tasks")}>{intakes.filter(item=>item.status!=="installed").map(item=><div key={item.id} className="workbench-intake-row"><button className="workbench-intake-open" onClick={()=>setSelectedIntake(item)}>{activeWorkbenchIntake(item)?<LoaderCircle size={15} className="kaus-ui-spin"/>:<ArrowUpRight size={15}/>}<strong>{item.moduleName||item.displayName}</strong><span>{t((`workbench.intake.status.${item.status}`) as import("../i18n").DictKey)}</span></button>{!activeWorkbenchIntake(item)&&<button className="kaus-chat-icon-action" disabled={busy} aria-label={`${item.moduleName||item.displayName} · ${t("workbench.intake.dismiss")}`} title={t("workbench.intake.dismiss")} onClick={()=>void dismiss(item)}><X size={15}/></button>}</div>)}</div>}
     {loading&&!modules.length?<div className="workbench-empty"><LoaderCircle size={22} className="kaus-ui-spin" aria-label={t("ui.loading")}/></div>:failed&&!modules.length?<div className="workbench-empty"><span>{t("workbench.unavailable")}</span><button className="workbench-subtle" onClick={onRefresh}><RefreshCw size={16}/>{t("workbench.retry")}</button></div>:moduleId?module?module.enabled?module.permissions.length&&!module.grants.length?<div className="workbench-empty"><button className="workbench-primary" onClick={()=>setConfig(module.id)}><Settings2 size={17}/>{t("workbench.config")}</button></div>:<ModuleFrame key={`frame:${module.id}`} module={module} onConfigure={()=>setConfig(module.id)} onConversation={id=>onConversation(id,module.id)}/>:<div className="workbench-empty"><span>{t("workbench.disabled")}</span><button className="workbench-primary" disabled={busy} onClick={()=>void mutate(()=>patchWorkbenchModule(module.id,{enabled:true}))}><Power size={16}/>{t("workbench.enable")}</button></div>:<div className="workbench-empty">{t("workbench.noModule")}</div>:<div className="workbench-library">
       {!modules.length&&<div className="workbench-empty">{t("workbench.empty")}</div>}
+      {!modules.length&&<WorkbenchExamples onInstalled={item=>{notifyWorkbenchChanged();onRefresh();navigate(workbenchPath(item.id));}}/>}
       {modules.map(item=><article key={item.id} className={`workbench-card ${!item.enabled?"is-disabled":""}`} draggable={item.enabled} onDragStart={event=>writeModuleDrag(event,item.id)}>
         <div className="workbench-card-top"><div className="workbench-module-icon"><WorkbenchModuleIcon module={item} size={25}/></div><button className="kaus-chat-icon-action" aria-label={`${item.name} · ${t("common.more")}`} onClick={()=>setMenu(menu===item.id?null:item.id)}><MoreHorizontal size={18}/></button>{menu===item.id&&actions(item)}</div>
         <button className="workbench-card-open" onClick={()=>navigate(workbenchPath(item.id))}><h2>{item.name}</h2>{item.description&&<p>{item.description}</p>}<footer><span>{t(!item.enabled?"workbench.disabled":"workbench.external")}</span><ArrowUpRight size={18}/></footer></button>
@@ -71,6 +73,6 @@ export function WorkbenchPage({moduleId,modules,loading,failed,onRefresh,navigat
     </div>}
     {picker&&<WorkspacePicker initialPath={null} title={t("workbench.pickFolder")} onSelect={inspect} onClose={()=>setPicker(false)}/>}
     {selectedIntake&&<WorkbenchIntake key={`intake:${selectedIntake.id}`} initial={selectedIntake} onClose={closeIntake} onUpdate={updateIntake} onInstalled={item=>{setInstalled(item);setSelectedIntake(null);navigate(workbenchPath(item.id));}} onConversation={(id,source)=>{setSelectedIntake(null);onIntakeConversation?.(id,source);}}/>}
-    {configure&&<WorkbenchConfig key={`config:${configure.id}`} module={configure} onClose={()=>setConfig(null)}/>}
+    {configure&&<WorkbenchConfig key={`config:${configure.id}`} module={configure} onClose={()=>setConfig(null)} onConnect={()=>{setConfig(null);navigate(`${shellViewPath("config")}?section=agents`);}}/>}
   </div>;
 }

@@ -41,6 +41,10 @@ export const fetchWorkbenchModule = (id: string) => sessionRequest<WorkbenchModu
 export const patchWorkbenchModule = (id: string, patch: Partial<ModuleConfig & Pick<WorkbenchModule, "enabled" | "pinned">>) => sessionRequest<WorkbenchModule>(modulePath(id), {method:"PATCH",body:patch});
 export const reorderWorkbenchPins = (moduleIds: string[]) => sessionRequest<{modules: WorkbenchModule[]}>(`${root}/pins`, {method:"PUT",body:{moduleIds}});
 export const installWorkbenchModule = (path: string) => sessionRequest<WorkbenchModule>(`${root}/install`, {method:"POST",body:{path}});
+export interface WorkbenchExample { id: string; name: string; description: string; icon: string; installed: boolean }
+/** 随 Kaus 分发的示例模块；工作台为空时一键安装。 */
+export const fetchWorkbenchExamples = (signal?: AbortSignal) => sessionRequest<{examples: WorkbenchExample[]}>(`${root}/examples`, {signal});
+export const installWorkbenchExample = (id: string) => sessionRequest<WorkbenchModule>(`${root}/examples/${encodeURIComponent(id)}/install`, {method:"POST"});
 export const removeWorkbenchModule = (id: string) => sessionRequest<void>(modulePath(id), {method:"DELETE"});
 export interface ModuleFrameGrant { url: string; token: string; expiresIn: number }
 /** Module code is served only under a per-open capability path; relative assets inherit it. */
@@ -49,7 +53,9 @@ export const renewModuleFrame = (id: string, token: string) => sessionRequest<{e
 export const releaseModuleFrame = (id: string, token: string) => sessionRequest<{released: true}>(`${modulePath(id)}/frames/${encodeURIComponent(token)}`, {method:"DELETE"});
 export const fetchModuleJobs = (id: string, signal?: AbortSignal) => sessionRequest<{jobs: ModuleJob[]}>(`${modulePath(id)}/jobs`, {signal});
 export const fetchModuleJob = (id: string, jobId: string) => sessionRequest<ModuleJob>(`${modulePath(id)}/jobs/${encodeURIComponent(jobId)}`);
-export const startModuleJob = (id: string, prompt: string, idempotencyKey: string) => sessionRequest<ModuleJob>(`${modulePath(id)}/jobs`, {method:"POST",body:{prompt,idempotencyKey}});
+export const startModuleJob = (id: string, prompt: string, idempotencyKey: string, bindingId?: string) => sessionRequest<ModuleJob>(`${modulePath(id)}/jobs`, {method:"POST",body:{prompt,idempotencyKey,...(bindingId?{bindingId}:{})}});
+/** 模块所在项目里可换用的 Agent（`jobs.start` 的 `bindingId` 只能取这里的值）。 */
+export const fetchModuleAgents = (id: string) => sessionRequest<{agents: {id: string; name: string; backendId: string; default: boolean}[]}>(`${modulePath(id)}/agents`);
 export const cancelModuleJob = (id: string, jobId: string) => sessionRequest<ModuleJob>(`${modulePath(id)}/jobs/${encodeURIComponent(jobId)}/cancel`, {method:"POST"});
 export const resumeModuleJob = (id: string, jobId: string) => sessionRequest<ModuleJob>(`${modulePath(id)}/jobs/${encodeURIComponent(jobId)}/resume`, {method:"POST"});
 export const fetchWorkflow = (id: string) => sessionRequest<WorkflowDefinition | null>(`${modulePath(id)}/workflow`);

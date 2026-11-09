@@ -151,6 +151,17 @@ class BookmarkBody(_Body):
     saved: bool
 
 
+class QueuedMessage(_Body):
+    id: str = Field(min_length=1, max_length=64)
+    text: str = Field(min_length=1, max_length=100000)
+
+
+class QueueBody(_Body):
+    """``PUT /conversations/{id}/queue``：运行中排队、等这一轮结束再发的消息（只收文字）。"""
+
+    items: list[QueuedMessage] = Field(default_factory=list, max_length=10)
+
+
 class ViewedBody(_Body):
     """``PUT /conversations/{id}/viewed``：会话页看到的最后一个事件序号。"""
 

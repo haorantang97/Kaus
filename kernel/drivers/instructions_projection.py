@@ -118,6 +118,24 @@ def section_body(body: str) -> str:
     return text
 
 
+def is_auxiliary(entry: EffectiveCapability) -> bool:
+    """宿主附加的辅助能力（config ``auxiliary: true``，例如项目记忆的索引节与记忆 MCP）。
+
+    它们不是用户配置的项目能力：送得到就送，送不到不拦启动、不写用户文件、不报「未生效」。
+    指令节在有项目指令时随它们一起送达。
+    """
+    if entry.config.get("auxiliary"):
+        return True
+    inner = entry.config.get("value")
+    return bool(isinstance(inner, dict) and inner.get("auxiliary"))
+
+
+def without_auxiliary(effective: EffectiveCapabilities) -> EffectiveCapabilities:
+    """去掉辅助能力：给「有项目能力就要求某种运行方式」这类判断用。"""
+    kept = tuple(entry for entry in effective.entries if not is_auxiliary(entry))
+    return effective if len(kept) == len(effective.entries) else effective.model_copy(update={"entries": kept})
+
+
 def compose_instructions(effective: EffectiveCapabilities) -> str:
     """有效能力 → 拼好的指令正文。没有任何指令时返回空串。"""
     sections: list[str] = []
@@ -135,6 +153,8 @@ __all__ = [
     "LEGACY_RULE_HEADING_RE",
     "SECTION_SEPARATOR",
     "compose_instructions",
+    "is_auxiliary",
+    "without_auxiliary",
     "instruction_entries",
     "invalid_instruction_entries",
     "section_body",

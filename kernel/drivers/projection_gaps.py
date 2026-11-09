@@ -14,6 +14,7 @@ from drivers.instructions_projection import (
     compose_instructions,
     instruction_entries,
     invalid_instruction_entries,
+    is_auxiliary,
 )
 
 INSTRUCTIONS = "instructions"
@@ -58,7 +59,7 @@ def unapplied_kinds(
     grouped: dict[str, list[str]] = {}
     for entry in effective.entries:
         kind = _kind_of(entry)
-        if kind is None:
+        if kind is None or is_auxiliary(entry):
             continue
         if kind == SKILLS and entry.capability_type == SELECTION_TYPE and selection_of(effective) is None:
             continue
@@ -85,8 +86,8 @@ def instructions_gap(
 
     valid = instruction_entries(effective)
     invalid = invalid_instruction_entries(effective)
-    if not valid and not invalid:
-        return None
+    if not invalid and all(is_auxiliary(entry) for entry in valid):
+        return None  # 没有项目指令（只有宿主附加的辅助节）
     if valid:
         outcome = materialize_block(
             rows=tuple((entry.capability_type, entry.capability_id) for entry in valid),
