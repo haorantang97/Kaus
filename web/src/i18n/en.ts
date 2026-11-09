@@ -262,7 +262,16 @@ export const en: Record<keyof typeof zh, string> = {
   "conversation.pending.retry": "Resend",
   "conversation.pending.unconfirmed": "Delivery unconfirmed",
 
-  "draft.heading": "Let’s make something sick",
+  "draft.greeting.lateNight": "Get some sleep. It’ll keep.",
+  "draft.greeting.morning": "Morning, boss.",
+  "draft.greeting.afternoon": "What are we building?",
+  "draft.greeting.evening.zone": "Still in the zone?",
+  "draft.greeting.evening.coffee": "Coffee refilled?",
+  "draft.greeting.night": "The night is young.",
+  "draft.greeting.egg.primeTime": "Prime time.",
+  "draft.greeting.egg.makeItCount": "Make it count.",
+  "draft.greeting.egg.fullSpeed": "Full speed ahead.",
+  "draft.greeting.egg.sick": "Let’s make something sick.",
   "draft.sub":
     "Choose a project and engine, then write your first message. Text drafts are saved; attachments are uploaded when you send.",
   "draft.field.project": "Project",

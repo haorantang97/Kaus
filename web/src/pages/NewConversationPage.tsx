@@ -33,6 +33,7 @@ import { composerReasoning, observeComposerSettings, readComposerSettings, type 
 import { findProject, matchProjectId } from "../lib/projectRef";
 import { isConfirmedMessageRejection } from "../lib/messageDelivery";
 import { newClientRef } from "../lib/pendingMessages";
+import { pickGreetingKey } from "../lib/draftGreeting";
 import {
   readDefaultDestination,
   readDraftText,
@@ -117,6 +118,7 @@ export function NewConversationPage({
   onOpenConversation,
 }: NewConversationPageProps) {
   const { t } = useLocale();
+  const [greetingKey] = useState(() => pickGreetingKey(new Date()));
   const moduleAttention = useModuleAttention();
   const [projects, setProjects] = useState<ProjectWire[]>([]);
   const [projectId, setProjectId] = useState<string>(() => matchProjectId([], initialProjectId || readDefaultDestination()));
@@ -475,7 +477,7 @@ export function NewConversationPage({
         )}
 
         <div className="kaus-draft-empty">
-          <h1>{t("draft.heading")}</h1>
+          <h1 data-testid="draft-greeting">{t(greetingKey)}</h1>
         </div>
 
         {error && <div className="kaus-draft-error" role="alert">{error}</div>}

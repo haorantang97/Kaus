@@ -268,7 +268,16 @@ export const zh = {
   "conversation.pending.unconfirmed": "发送结果未确认",
 
   /* ---- 新会话草稿页 ---- */
-  "draft.heading": "Let’s make something sick",
+  "draft.greeting.lateNight": "睡吧，活儿跑不了。",
+  "draft.greeting.morning": "早，老板。",
+  "draft.greeting.afternoon": "今天造点什么？",
+  "draft.greeting.evening.zone": "状态还在吗？",
+  "draft.greeting.evening.coffee": "咖啡续上了吗？",
+  "draft.greeting.night": "夜还长。",
+  "draft.greeting.egg.primeTime": "正是好时候。",
+  "draft.greeting.egg.makeItCount": "让今天算数。",
+  "draft.greeting.egg.fullSpeed": "火力全开。",
+  "draft.greeting.egg.sick": "整点狠活。",
   "draft.sub": "选择项目与引擎，写下第一条消息。文字草稿会保留，附件将在发送时上传。",
   "draft.field.project": "项目",
   "draft.field.engine": "引擎",
