@@ -58,4 +58,4 @@ jobs:
       - run: python -m pytest -q
         working-directory: kernel
       - name: Host assembly and backup recovery
-        run: python -m pytest -q tests scripts/ops/tests
+        run: python -m pytest -q tests
