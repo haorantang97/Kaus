@@ -18,7 +18,7 @@ import stat
 from drivers.base import UnsupportedCapabilityError
 from drivers.acp.client import AcpRpcError, AcpTransportError
 from drivers.skill_execution.common import materialize, state_root
-from .computer_use import _explicit_policy, _option, source_agent_id
+from .tool_policy import _option, source_agent_id
 from .driver import OpenClawGateway
 
 
@@ -68,42 +68,21 @@ def owns_session(spec, key, ownership):
         hmac.compare_digest(receipt["receipt"], ownership["receipt"]))
 
 
-def check_native_controls(config, source, controls):
-    for capability, tool in (("browser", "browser"), ("desktop", "computer")):
-        if controls.get(capability) is not False:
-            continue
-        disabled = _explicit_policy(config, source, tool) is False
-        if capability == "browser":
-            plugins = config.get("plugins", {})
-            disabled |= (config.get("browser", {}).get("enabled") is False or
-                         plugins.get("enabled") is False or
-                         plugins.get("entries", {}).get("browser", {}).get("enabled") is False)
-        if not disabled:
-            raise UnsupportedCapabilityError("原生 Agent 无法按会话关闭电脑工具，请调整原生工具权限")
-
-
-async def prepare(spec, binding, effective, conversation, controls):
+async def prepare(spec, binding, effective, conversation):
     gateway = SourceSessionGateway(spec, timeout=5)
     try:
         snapshot = await gateway.call("config.get", {})
         config = snapshot.get("config")
         if not isinstance(config, dict):
-            if any(value is False for value in controls.values()):
-                raise UnsupportedCapabilityError("无法核验 OpenClaw 原生 Agent")
             await gateway.close()
             return None
         source = source_agent_id(config, spec, binding)
         if not isinstance(source, str) or not _AGENT.fullmatch(source):
-            if any(value is False for value in controls.values()):
-                raise UnsupportedCapabilityError("无法确定 OpenClaw 原生 Agent")
             await gateway.close()
             return None
-        check_native_controls(config, source, controls)
         if _option(spec, "--session") or _option(spec, "--session-label"):
             # A fixed launch selector already refers to a native conversation.
-            # Computer-use discovery must not silently redirect it.
-            if _option(spec, "--session-label") and any(value is False for value in controls.values()):
-                raise UnsupportedCapabilityError("无法核验指定原生会话的电脑工具权限")
+            # Session tools must not silently redirect it.
             await gateway.close()
             return None
         identity = hashlib.sha256((binding.id + ":" + conversation.id).encode()).hexdigest()[:24]
@@ -144,12 +123,9 @@ async def prepare(spec, binding, effective, conversation, controls):
         plan.manage_skills = False
         plan.runtime_mcp_servers = ()
         plan.mcp_overrides, plan.mcp_config = {}, {}
-        plan.computer_controls = dict(controls)
         return plan
     except (AcpRpcError, AcpTransportError, OSError, asyncio.TimeoutError):
         await gateway.close()
-        if any(value is False for value in controls.values()):
-            raise UnsupportedCapabilityError("无法核验原生电脑工具权限") from None
         # Native ACP may remain usable when operator config/status scopes are
         # unavailable. Preserve its original session; cancellation is read-only.
         return None
@@ -165,7 +141,6 @@ async def validate(plan):
     config = snapshot.get("config")
     if not isinstance(config, dict) or plan.agent_id not in config.get("agents", {}).get("entries", {}):
         raise UnsupportedCapabilityError("OpenClaw 原生 Agent 不可用")
-    check_native_controls(config, plan.agent_id, plan.computer_controls)
 
     from .source_mcp import validate as validate_mcp
     await validate_mcp(plan, snapshot)

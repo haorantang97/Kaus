@@ -22,8 +22,6 @@ from drivers.codex.companions import HOST, resolve_companion, matching_tui
 from .common import materialize, selection_of, unsupported
 from .managed_builds import resolve_managed_binary, file_hash
 
-COMPUTER_USE_TERMINAL_MCP = False
-
 
 def _executable(spec):
     env = spec.build_env()

@@ -83,7 +83,6 @@ async def test_runtime_hook_failure_closes_connected_process(tmp_path,monkeypatc
 
 
 async def test_external_precreation_uses_conversation_snapshot_and_closes_without_prompt(tmp_path, monkeypatch):
-    monkeypatch.setattr("drivers.computer_use.probe.probe_fallbacks", AsyncMock(return_value=()))
     driver = AcpDriver(fake_agent_spec(cwd=str(tmp_path)), backend_key='acp')
     harness = FakeAcpHarness(workspace_root=str(tmp_path))
     project = harness.make_project()

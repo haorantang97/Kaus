@@ -259,22 +259,11 @@ class AcpProjectionMixin:
         if mcp_projection.servers:
             metadata["mcpServers"] = [dict(s) for s in mcp_projection.servers]
             summary["mcpServers"] = list(mcp_projection.names)
-        from drivers.computer_use.integration import prepare_projection
         prepared = self._skill_plans.get(conversation.id)
-        metadata = await prepare_projection(
-            prepared.spec if prepared is not None and prepared.spec is not None else self.agent_spec,
-            self._runtime_adapter(), binding, conversation, effective, metadata,
-            supports_mcp=bool(self.quirks.mcp_via_session_new or
-                              (self.preset and self.preset.project_mcp_via_runtime)),
-        )
-        self._computer_use_effective[conversation.id] = effective
-        self._computer_use_plans[conversation.id] = dict(metadata.get("_kausComputerUse", {}))
-        self._computer_use_contexts[conversation.id] = (
+        self._session_contexts[conversation.id] = (
             prepared.spec if prepared is not None and prepared.spec is not None else self.agent_spec,
             metadata,
         )
-        if "mcpServers" in metadata:
-            summary["mcpServers"] = [server["name"] for server in metadata["mcpServers"]]
         # 2026-11-09：开对话前自动送达（设计稿第 3 / 3a 节）。算出这次要怎么送：
         # 适配器有启动注入就注入；否则**现在**写工作目录指令文件的受管块；自带 MCP
         # 里未分配给本 Project 的那些记下来，启动时按适配器自己的机制排除。
@@ -425,19 +414,6 @@ class AcpProjectionMixin:
         from importlib import import_module
         module = self.preset.runtime_adapter if self.preset else None
         return import_module(module) if module else self._skill_adapter()
-
-    async def computer_use_status(self, binding=None):
-        from drivers.computer_use.integration import ambient_mcp, native_status
-        adapter = self._runtime_adapter()
-        result = dict(await native_status(adapter, self.agent_spec, binding, force=True))
-        for candidate in ambient_mcp(self.agent_spec, adapter):
-            if result.get(candidate.capability, {}).get("status") != "ready":
-                result[candidate.capability] = candidate.to_dict()
-        return result
-
-    async def recover_computer_use(self, reference):
-        recover = getattr(self._runtime_adapter(), "recover_computer_use", None)
-        return await recover(self.agent_spec, reference) is True if recover is not None else False
 
     def skill_inventory_roots(self, projects, bindings):
         adapter = self._skill_adapter()

@@ -8,7 +8,7 @@
 2. [产品决策](product-decisions.md)：持续有效的行为与交互约定，以及为何如此设计。
 3. [代码导航](architecture-map.md)：公共层、驱动、数据、界面、模块和控制权的入口。
 4. [开发过程](development-history.md)：演进阶段、发现的问题、解决方式和追溯文档。
-5. [电脑操作覆盖](computer-use-coverage.md)：原生与通用工具如何选择、哪些已有真实证据。
+5. [电脑操作覆盖](computer-use-coverage.md)：工具从哪里来、谁占用屏幕、哪些已有真实证据。
 6. [换设备开发](device-setup.md)：干净安装、隔离验证、桌面运行与私人数据迁移。
 7. [验收记录](verification.md) 与 [待办及边界](open-items.md)：已检查的范围、仍需登录或实战验证的部分。
 

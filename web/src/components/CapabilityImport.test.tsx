@@ -48,7 +48,7 @@ describe("capability import and change report", () => {
     expect(await screen.findByTestId("capability-changes-dot")).toBeVisible();
     await user.click(await screen.findByRole("button", { name: /Hermes\s*1/ }));
     expect(await screen.findByRole("img", { name: "Agent 绑定能力" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "有新的能力变化" }));
+    await user.click(screen.getByRole("button", { name: "有新的配置变动" }));
     await waitFor(() => expect(markCapabilityChangesSeen).toHaveBeenCalled());
     expect(await screen.findByText("new-skill")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "导入" }));

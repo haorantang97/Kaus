@@ -127,9 +127,6 @@ async def test_project_runtime_uses_shared_acp_events_and_restores_same_native_i
     from drivers.acp.testing.fake_acp_agent import fake_agent_spec
     from drivers.base import MessageInput
     from drivers.contract_tests.harness import collect_until_run_terminal
-    from drivers.computer_use import probe
-    # This protocol fake must not mount tools from the developer's machine.
-    monkeypatch.setattr(probe, "probe_fallbacks", AsyncMock(return_value=()))
     root, owner = seeded(tmp_path, monkeypatch)
     project = Project.create(slug="one")
     binding = owner.prepare_project_binding(AgentBinding.create(project=project, backend="hermes",
@@ -153,7 +150,7 @@ async def test_project_runtime_uses_shared_acp_events_and_restores_same_native_i
             child, child_handle = owner._isolated_runtimes[runtime.runtime_id]
             assert child_handle.runtime_id != runtime.runtime_id
             child_state = child._state(child_handle)
-            child_state.transport_retired = True
+            child_state.closed = True
             await child_state.connection.aclose()
             assert not owner.runtime_reusable(runtime)
     finally:

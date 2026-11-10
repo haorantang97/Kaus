@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { ConfigOverlay } from "./ConfigOverlay";
@@ -33,20 +33,13 @@ it("设置顶栏没有手动刷新，后台推送刷新 Agent 连接且不离开
   await waitFor(() => expect(fetchConnectedBackends).toHaveBeenCalledTimes(2));
   expect(screen.getByRole("button", { name: "Agent" })).toHaveAttribute("aria-current", "page");
 });
-it("返回系统授权或收到后台刷新时保留已展开的引导", async () => {
-  vi.mocked(sessionRequest).mockResolvedValue({enabled:true,setup:{status:"ready",permissions:{accessibility:true,"screen-recording":true}},agents:[],fallbacks:[],pendingResources:[]});
+it("Agent 设置页没有电脑操作的启用、安装或授权", async () => {
   const user = userEvent.setup();
-  const view = render(<MemoryRouter><ConfigOverlay onClose={() => {}} refreshKey={0}/></MemoryRouter>);
+  render(<MemoryRouter><ConfigOverlay onClose={() => {}} refreshKey={0}/></MemoryRouter>);
   await user.click(screen.getByRole("button", {name:"Agent"}));
-  const details=screen.getByText("电脑操作").closest("details")!;
-  details.open=true;fireEvent(details,new Event("toggle"));
-  await user.click(await screen.findByRole("button", {name:"授权"}));
-  view.rerender(<MemoryRouter><ConfigOverlay onClose={() => {}} refreshKey={1}/></MemoryRouter>);
-  await waitFor(()=>expect(sessionRequest).toHaveBeenLastCalledWith("/api/computer-use/permissions",{signal:expect.any(AbortSignal)}));
-  expect(screen.getByText("电脑操作").closest("details")).toBe(details);
-  expect(details).toHaveAttribute("open");
-  expect(screen.getByRole("region",{name:"电脑操作授权"})).toBeVisible();
-  expect(screen.getAllByText("已开启")).toHaveLength(2);
+  await waitFor(() => expect(fetchConnectedBackends).toHaveBeenCalled());
+  expect(screen.queryByText("电脑操作")).toBeNull();
+  expect(sessionRequest).not.toHaveBeenCalledWith(expect.stringContaining("/api/computer-use"), expect.anything());
 });
 it("设置不再提供运行概况或只读原生配置", () => {
   render(<MemoryRouter><ConfigOverlay onClose={() => {}} /></MemoryRouter>);

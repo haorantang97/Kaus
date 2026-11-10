@@ -15,7 +15,6 @@ import { TerminalSettings } from "./TerminalSettings";
 import { SelectPopover } from "./SelectPopover";
 import { AgentConnections } from "./AgentConnections";
 import { AccountQuotaSettings } from "./AccountQuotaSettings";
-import { ComputerUseSettings } from "./ComputerUseSettings";
 import { AsyncState, Overlay } from "./ui";
 import "./settings.css";
 
@@ -151,7 +150,7 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThem
             <TerminalSettings key={reload} />
           </div>
         </>}
-        {section === "agents" && <><AgentConnections refreshKey={`${refreshKey}:${reload}`} /><ComputerUseSettings refreshKey={`${refreshKey}:${reload}`} /></>}
+        {section === "agents" && <AgentConnections refreshKey={`${refreshKey}:${reload}`} />}
         {section === "usage" && <AccountQuotaSettings key={`${refreshKey}:${reload}`} />}
         {section === "coordinator" && <div className="kaus-settings-section"><h2>{t("group.coordinator.default")}</h2><CoordinatorSettings global /></div>}
         {section === "archive" && <>

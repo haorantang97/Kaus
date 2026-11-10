@@ -1233,19 +1233,19 @@ def open_session_runtime(
             "在 dashboard-config.json 的 backends 里补上对应配置（见 docs/ops/backends.md）",
             "、".join(orphaned),
         )
-    # 每条会话附上 Project 记忆（索引一节 + 记忆 MCP），见 app/projects/memory_injection.py。
-    from app.projects.memory_injection import with_project_memory
+    # 每条会话附上 Kaus 内置 MCP（项目记忆、占用 / 释放屏幕）和说明，见 app/projects/builtin_mcp.py。
+    from app.projects.builtin_mcp import with_builtin_mcp
 
     async def _project_capabilities(binding):
         effective = await resolve_effective_for_binding(repositories, binding)
         stored = await repositories.settings.get("ui:locale")
         locale = stored.get("value") if isinstance(stored, dict) and stored.get("value") in ("zh", "en") else "zh"
         try:
-            return await with_project_memory(
+            return await with_builtin_mcp(
                 effective, binding, repositories, token_file=resolved_token_path, locale=locale,
                 url=os.environ.get("KAUS_LOCAL_URL", "http://127.0.0.1:8877"))
-        except Exception:  # noqa: BLE001 - 记忆出错不能挡住会话启动
-            LOGGER.warning("附加项目记忆失败（本次会话不带记忆）", exc_info=True)
+        except Exception:  # noqa: BLE001 - 内置 MCP 出错不能挡住会话启动
+            LOGGER.warning("附加 Kaus 内置 MCP 失败（本次会话不带它）", exc_info=True)
             return effective
 
     session_host = SessionHost(
@@ -1358,9 +1358,6 @@ def open_session_runtime(
     quota_connections = QuotaConnections(resolved_token_path.parent / 'quota-connections')
     router.routes.extend(build_quota_connections_router(quota_connections, auth_policy=auth_policy).routes)
     router.routes.extend(build_account_quota_router(AccountQuotaService(registry, connections=quota_connections), auth_policy=auth_policy).routes)
-    from computer_use_settings import ComputerUseSettings
-    from app.api.computer_use import build_computer_use_router
-    router.routes.extend(build_computer_use_router(ComputerUseSettings(registry), auth_policy=auth_policy).routes)
     # Skill arrangement shares the existing Project and capability repositories.
     # The driver inventory is read-only; native materialization remains separate.
     from app.api.skill_tree import build_skill_tree_router
@@ -1773,13 +1770,6 @@ def attach_session_api(
     # **与后台任务开关无关**——上一个进程死在半路留下的失配，与要不要跑 60s 周期
     # 是两件事；而且它只跑一次，不是循环。
     async def _reconcile() -> None:
-        try:
-            from drivers.computer_use.durable import reconcile_persisted
-            await reconcile_persisted()
-        except Exception:
-            # Durable reservations continue blocking their resources even when
-            # the configured native service cannot be inspected during startup.
-            log("[session_host_v1] 原生工具状态暂未确认，将保留控制权并稍后重试。")
         try:
             healed = await runtime.session_host.reconcile_startup()
         except Exception as exc:  # noqa: BLE001 - 自愈坏掉不能让服务起不来

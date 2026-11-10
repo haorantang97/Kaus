@@ -295,7 +295,7 @@ def test_every_exclusion_hook_is_marked_unverified() -> None:
 # 原生记忆改向（设计稿第 5 节）
 # --------------------------------------------------------------------------- #
 
-from app.projects.memory_injection import MEMORY_MCP_ID  # noqa: E402
+from app.projects.builtin_mcp import BUILTIN_MCP_ID as MEMORY_MCP_ID  # noqa: E402
 from drivers.launch_delivery import (  # noqa: E402
     MEMORY_ACTIVE,
     MEMORY_DISABLED,
@@ -307,7 +307,7 @@ from drivers.launch_delivery import (  # noqa: E402
 from drivers.skill_execution import crush, cursor, deepseek, dsh, grok, pi  # noqa: E402
 
 MEMORY_MCP = EffectiveCapability(capability_type="mcp", capability_id=MEMORY_MCP_ID,
-                                 config={"value": {"command": "python", "args": ["memory.py"]}},
+                                 config={"value": {"command": "python", "args": ["memory.py"]}, "memory": True},
                                  source_project_id=PROJECT, inherited=False)
 OTHER_MCP = EffectiveCapability(capability_type="mcp", capability_id="docs-mcp",
                                 config={"value": {"command": "docs"}}, source_project_id=PROJECT, inherited=False)

@@ -17,36 +17,6 @@ from .driver import OpenClawGateway
 from .source_session import owns_session, _connection_id
 
 
-def discard_automatic_fallback(metadata):
-    """Keep an older native route usable without claiming injected tools exist."""
-    from drivers.computer_use.integration import server_fingerprint
-    info = metadata.get('_kausComputerUse', {})
-    rows = info.get('autoInjectedServers', [])
-    servers, removed = [], set()
-    for server in metadata.get('mcpServers', []):
-        matched = next((row for row in rows if row.get('name') == server.get('name')
-            and row.get('fingerprint') == server_fingerprint(server)), None)
-        if matched:
-            removed.update(matched.get('capabilities', []))
-        else:
-            servers.append(server)
-    metadata['mcpServers'] = servers
-    retired_resources, retained_resources = set(), set()
-    for cap in ('browser', 'desktop'):
-        selection = info.get(cap, {})
-        resource = selection.get('resource')
-        if cap in removed and selection.get('source') == 'fallback':
-            if resource:
-                retired_resources.add(resource)
-            info[cap] = {'status': 'unavailable', 'requirements': ['new-session'], 'exposed': False}
-        elif resource and (selection.get('exposed') or selection.get('status') == 'ready'):
-            retained_resources.add(resource)
-    if 'browser:shared' in retired_resources and 'browser:shared' not in retained_resources:
-        retired_resources.add('desktop:local')
-    info['resources'] = sorted(set(info.get('resources', [])) - (retired_resources - retained_resources))
-    info['autoInjectedServers'] = [row for row in rows if not set(row.get('capabilities', [])) & removed]
-
-
 class SourceMcpGateway(OpenClawGateway):
     allowed_methods = frozenset({'config.get', 'config.patch', 'sessions.describe', 'sessions.patch'})
 

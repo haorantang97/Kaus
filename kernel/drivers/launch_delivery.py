@@ -22,7 +22,7 @@
 
 ``disable_native_memory(spec, metadata) -> (spec, metadata)``
     只在本次启动中关掉该 Agent 自带的记忆（设计稿第 5 节「改向」）：Project 记忆
-    （``kaus-memory`` MCP）在场时，不让两份记忆并存。不改用户全局配置。只有有效能力里
+    （内置 MCP ``kaus`` 带着记忆）在场时，不让两份记忆并存。不改用户全局配置。只有有效能力里
     带着 Project 记忆 MCP 时才调用——组内成员会话没有 Project 记忆，原生行为照旧。
 
 ``NATIVE_MEMORY_DISABLE_VERIFIED: bool``
@@ -549,14 +549,15 @@ def expand_plugins(effective: EffectiveCapabilities, *, adapter: Any, can_projec
 
 
 def project_memory_id(effective: EffectiveCapabilities) -> str | None:
-    """有效能力里带着 Project 记忆 MCP 时返回它的 id，否则 ``None``。
+    """有效能力里带着提供 Project 记忆的内置 MCP 时返回它的 id，否则 ``None``。
 
-    这一层不认识「记忆」是什么，只认宿主在 ``memory_injection`` 里声明的那一个 MCP id；
-    组内成员会话拿不到它，自带记忆就不动。
+    这一层不认识「记忆」是什么，只认宿主在 ``builtin_mcp`` 里声明的那一个 MCP id 及其
+    ``memory`` 标记；组内成员会话的内置 MCP 不带记忆，自带记忆就不动。
     """
-    from app.projects.memory_injection import MEMORY_MCP_ID
+    from app.projects.builtin_mcp import BUILTIN_MCP_ID
     for entry in effective.entries:
-        if entry.capability_type == "mcp" and entry.capability_id == MEMORY_MCP_ID:
+        if (entry.capability_type == "mcp" and entry.capability_id == BUILTIN_MCP_ID
+                and entry.config.get("memory") is True):
             return entry.capability_id
     return None
 

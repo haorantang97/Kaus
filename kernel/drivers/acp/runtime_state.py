@@ -141,12 +141,8 @@ class _RuntimeState:
     fs_writes: dict[str, _PendingFsWrite] = field(default_factory=dict)
     queue: "asyncio.Queue[Any]" = field(default_factory=asyncio.Queue)
     prompt_task: "asyncio.Task[None] | None" = None
-    computer_waiting: bool = False
-    computer_use_enabled: bool | None = None
-    computer_use_revision: str | None = None
     interrupt_requested: bool = False
     client_interactions: Any = None
-    transport_retired: bool = False
     closed: bool = False
 
 

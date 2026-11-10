@@ -11,8 +11,6 @@ from pathlib import Path
 from drivers.base import UnsupportedCapabilityError
 from .common import materialize, unsupported
 
-COMPUTER_USE_TERMINAL_MCP = True
-
 
 def _version(value):
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", value or "")

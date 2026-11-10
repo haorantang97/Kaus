@@ -72,33 +72,18 @@ async def test_conversation_and_group_scopes_preserve_existing_agents(tmp_path):
     assert first.metadata=={'sessionKey':f'agent:{first.agent_id}:kaus'}
 
 
-async def test_project_computer_use_off_overrides_source_grant_only_in_owned_agent(tmp_path):
+async def test_legacy_computer_use_policy_row_no_longer_changes_the_owned_agent(tmp_path):
+    # 2026-11-10: the Project-level browser / desktop switch is gone; the owned
+    # Agent keeps exactly the source Agent's own tool policy.
     spec,binding,conversation,effective=setup(tmp_path)
     source=Gateway.config['agents']['entries']['existing']
     source['tools']={'alsoAllow':['browser','computer'],'deny':['exec']}
     control=EffectiveCapability(capability_type='policies',capability_id='computer_use',
-        source_project_id=binding.project_id,inherited=False,config={'value':{'desktop':'off','browser':'auto'}})
+        source_project_id=binding.project_id,inherited=False,config={'value':{'desktop':'off','browser':'off'}})
     effective=effective.model_copy(update={'entries':(*effective.entries,control)})
     plan=await adapter.project_session(spec,binding,effective,tmp_path,conversation=conversation)
-    assert plan.agent_config['tools']['deny']==['exec','computer']
-    assert plan.agent_config['tools']['alsoAllow']==['browser','computer']
+    assert plan.agent_config['tools']=={'alsoAllow':['browser','computer'],'deny':['exec']}
     assert source['tools']=={'alsoAllow':['browser','computer'],'deny':['exec']}
-
-
-@pytest.mark.parametrize("capability,tool", [('browser','browser'),('desktop','computer')])
-async def test_project_off_materializes_even_without_skills_or_mcp(tmp_path, capability, tool):
-    spec,binding,conversation,_=setup(tmp_path)
-    source=Gateway.config['agents']['entries']['existing']
-    source['tools']={'alsoAllow':[tool]}
-    effective=EffectiveCapabilities(project_id=binding.project_id,entries=(
-        EffectiveCapability(capability_type='policies',capability_id='computer_use',
-            source_project_id=binding.project_id,inherited=False,config={capability:'off'}),
-    ))
-    plan=await adapter.project_session(spec,binding,effective,tmp_path,conversation=conversation)
-    assert plan.agent_config['tools']=={'alsoAllow':[tool],'deny':[tool]}
-    assert plan.manage_skills is False
-    assert source['tools']=={'alsoAllow':[tool]}
-    assert capability in adapter.COMPUTER_USE_POLICY_SCOPES
 
 
 async def test_existing_native_session_and_legacy_owner_are_never_changed(tmp_path):
@@ -181,10 +166,8 @@ async def test_runtime_preparation_keeps_existing_skill_selection_and_metadata(t
     plan=await adapter.project_session(spec,binding,effective,tmp_path,conversation=conversation)
     plans={conversation.id:plan}
     adapter.remember_runtime_context(conversation,binding,effective,plans,str(tmp_path))
-    metadata={'_meta':{**plan.metadata,'fixture':'retained'},'mcpServers':[],
-              '_kausComputerUse':{'controls':{'desktop':False},'resources':[]}}
+    metadata={'_meta':{**plan.metadata,'fixture':'retained'},'mcpServers':[]}
     await adapter.prepare_runtime_spec(spec,conversation,metadata)
     assert plans[conversation.id].names==plan.names
     assert plans[conversation.id].agent_config['skills']==plan.agent_config['skills']
-    assert plans[conversation.id].agent_config['tools']['deny']==['computer']
     assert metadata['_meta']=={**plan.metadata,'fixture':'retained'}

@@ -177,3 +177,20 @@ def test_import_entry_lists_agents_with_what_is_still_importable(tmp_path):
         assert rows["beta"]["status"] is None  # arranged before the rule; can still be imported
     finally:
         uow.close()
+
+
+def test_capabilities_the_native_agent_cannot_isolate_are_locked_in_the_tree(tmp_path):
+    import pytest
+    from app.api.api_errors import ApiError
+    uow = world(tmp_path)
+    try:
+        skill(tmp_path / "alpha", "core")
+        tree = SkillTreeService(uow.database, discover=lambda: annotate(discover_skills(roots(tmp_path)), supported={"alpha": ("mcp",)}))
+        view = tree.snapshot()
+        core = next(s for s in view["skills"] if s["name"] == "core")
+        assert core["boundReason"] == "not_isolable"
+        with pytest.raises(ApiError) as failure:
+            tree.act({"revision": view["revision"], "action": "block", "skillId": core["id"], "targetProjectId": "project:work"})
+        assert failure.value.code == "capability_not_isolable"
+    finally:
+        uow.close()

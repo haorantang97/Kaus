@@ -28,12 +28,6 @@ INSTRUCTIONS_FILE = "ENGINE-NOTES.md"
 ADAPTER_MODULE = "drivers.synthetic_launch_adapter"
 
 
-@pytest.fixture(autouse=True)
-def isolated_optional_computer_providers(monkeypatch):
-    from unittest.mock import AsyncMock
-    monkeypatch.setattr("drivers.computer_use.probe.probe_fallbacks", AsyncMock(return_value=()))
-
-
 def _adapter(monkeypatch, *, launch: bool, exclude: bool):
     seen = {}
     module = SimpleNamespace(seen=seen)
@@ -191,9 +185,9 @@ def test_workspace_conventions_report_the_channel(tmp_path, monkeypatch) -> None
 # 原生记忆改向（设计稿第 5 节）：只有带 Project 记忆 MCP 的会话才关自带记忆
 # --------------------------------------------------------------------------- #
 
-from app.projects.memory_injection import MEMORY_MCP_ID  # noqa: E402
+from app.projects.builtin_mcp import BUILTIN_MCP_ID as MEMORY_MCP_ID  # noqa: E402
 
-MEMORY_MCP = _entry("mcp", MEMORY_MCP_ID, {"value": {"command": "python", "args": ["memory.py"]}})
+MEMORY_MCP = _entry("mcp", MEMORY_MCP_ID, {"value": {"command": "python", "args": ["memory.py"]}, "memory": True})
 
 
 def _memory_adapter(monkeypatch, *, switch: bool, memoryless: bool = False):

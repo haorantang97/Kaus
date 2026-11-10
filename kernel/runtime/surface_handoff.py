@@ -217,23 +217,14 @@ class SurfaceCoordinator:
 
         launch_uuid = uuid4().hex
         reserved_id = terminal_launch_id(launch_uuid)
-        computer_hook = getattr(driver, "external_computer_use", None)
-        computer = computer_hook(conversation) if computer_hook is not None else {}
-        resources = tuple(computer.get("resources", ()))
-        if resources:
-            import os
-            from drivers.terminals.managed_process import process_identity
-            computer = {**computer, "owner": process_identity(os.getpid())}
-        computer_metadata = {"computerUse": computer} if resources else {}
         acquisition = await self._host.leases.try_acquire_external_cli(
             conversation.id, owner_id=reserved_id,
-            metadata={"launchId": reserved_id, "backendId": binding.backend_id, **computer_metadata},
+            metadata={"launchId": reserved_id, "backendId": binding.backend_id},
             at=self._clock(), force=force,
         )
         if not acquisition.granted:
             raise SurfaceConflictError("lease_held", "这条会话正在被另一个窗口使用",
                                        detail=_lease_detail(acquisition.conflict))
-        pending_launch = None
         try:
             try:
                 baseline = await self._load_history(conversation)
@@ -245,32 +236,15 @@ class SurfaceCoordinator:
                     data={"lastEntryId": baseline.entries[-1].entry_id,
                           "nativeSessionId": baseline.native_session_id},
                 ))
-            if resources:
-                pending_launch = TerminalLaunch.create(
-                    conversation_id=conversation.id, launcher=self._launcher.selected_app(),
-                    command_summary="Native Agent", correlation_id=reserved_id,
-                    metadata=computer_metadata, launch_uuid=launch_uuid, launched_at=self._clock(),
-                )
-                # Recovery can find this launch even if the backend exits while
-                # the terminal is opening. Only resource IDs are persisted here.
-                await self._repositories.terminal_launches.save(pending_launch)
-                await self._reserve_computer_resources(pending_launch)
             result: LaunchResult = await self._launcher.launch(
                 spec, conversation_id=conversation.id, launch_uuid=launch_uuid,
                 **({"draft": draft} if draft else {}),
             )
-            launch = await self._repositories.terminal_launches.save(result.launch.evolve(
-                metadata={**result.launch.metadata, **computer_metadata}))
+            launch = await self._repositories.terminal_launches.save(result.launch)
         except BaseException:
-            stopped = True
-            if pending_launch is not None:
-                stopped = await self._stop_computer_launch(pending_launch, conversation, driver)
-            if stopped:
-                await self._host.leases.release(conversation.id, expected_owner_id=reserved_id)
+            await self._host.leases.release(conversation.id, expected_owner_id=reserved_id)
             raise
         if not result.launched:
-            if resources and not await self._stop_computer_launch(launch, conversation, driver):
-                raise SurfaceConflictError("external_stop_failed", "终端任务尚未结束，请稍后重试")
             await self._host.leases.release(conversation.id, expected_owner_id=reserved_id)
             conversation = await self._save_conversation(conversation, state="idle", preferred_surface="card")
             return ExternalHandoff(conversation=conversation, launch=launch, lease=None,
@@ -279,8 +253,7 @@ class SurfaceCoordinator:
         # only after launch and retain the same owner throughout.
         await self._host.leases.try_acquire_external_cli(
             conversation.id, owner_id=reserved_id, backend_process_id=launch.external_process_ref,
-            metadata={"launchId": reserved_id, "launcher": launch.launcher, "backendId": binding.backend_id,
-                      **computer_metadata},
+            metadata={"launchId": reserved_id, "launcher": launch.launcher, "backendId": binding.backend_id},
             at=self._clock(),
         )
         if previous_external is not None and previous_external.owner_type == "external-cli" and acquisition.previous is None:
@@ -378,68 +351,11 @@ class SurfaceCoordinator:
         launch = await self._repositories.terminal_launches.get(description.owner_id)
         if launch is None:
             raise SurfaceConflictError("external_stop_failed", "无法确认终端进程，请先退出终端中的 Agent")
-        computer = launch.metadata.get("computerUse", {})
-        if computer.get("resources"):
-            conversation = await self._repositories.conversations.get(description.conversation_id)
-            if conversation is None:
-                raise SurfaceConflictError("external_stop_failed", "终端会话尚未恢复，请先退出终端中的 Agent")
-            _, driver = await self._driver_for(conversation)
-            stopped = await self._stop_computer_launch(launch, conversation, driver)
-            reason = "终端工具仍在运行，请先结束任务"
-        else:
-            stopped, reason = await self._launcher.stop(launch)
+        stopped, reason = await self._launcher.stop(launch)
         if not stopped:
             raise SurfaceConflictError("external_stop_failed", reason or "终端尚未结束，请稍后重试")
         if launch.status not in ("exited", "failed"):
             await self._repositories.terminal_launches.save(launch.mark_exited(exit_code=-1, at=self._clock()))
-
-    async def _reserve_computer_resources(self, launch: TerminalLaunch) -> None:
-        from drivers.computer_use.lease import ResourceLease, ResourceBusyError
-        from drivers.computer_use.integration import reconcile_resources
-        await reconcile_resources()
-        computer = launch.metadata["computerUse"]
-        directory = Path(self._launcher.root) / launch.id
-        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        held = []
-        try:
-            for resource in sorted(set(computer["resources"])):
-                lease = ResourceLease(resource, timeout=0)
-                await lease.acquire()
-                held.append(lease)
-            for lease in held:
-                lease.reserve_external(launch.id, directory, remote=computer.get("remote") is True)
-        except ResourceBusyError as exc:
-            raise SurfaceConflictError("computer_in_use", "电脑工具正在使用中，请稍后打开终端") from exc
-        finally:
-            for lease in reversed(held):
-                lease.release()
-
-    async def _stop_computer_launch(self, launch, conversation, driver) -> bool:
-        """Use the native process-group guard, then confirm any remote work."""
-        from drivers.computer_use.lease import ResourceLease
-        directory = Path(self._launcher.root) / launch.id
-        computer = launch.metadata.get("computerUse", {})
-        try:
-            if not (directory / "native.json").exists():
-                # This reserved launch never reached the native entrypoint.
-                directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-                (directory / "revoked").touch(mode=0o600)
-                stopped = True
-            else:
-                stopped, _ = await self._launcher.stop(launch)
-            if not stopped:
-                return False
-            # A revoked entrypoint that never exec'd the CLI cannot own a
-            # remote operation. Failed opens must not strand a writer lease.
-            if computer.get("remote") and (directory / "process.json").exists():
-                confirm = getattr(driver, "stop_external_computer_use", None)
-                if confirm is None or not await confirm(conversation):
-                    return False
-            for resource in computer.get("resources", ()):
-                await ResourceLease(resource).clear_external(launch.id)
-            return True
-        except Exception:
-            return False
 
     # --- 回站 ----------------------------------------------------------- #
 

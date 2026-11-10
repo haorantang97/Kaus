@@ -1,15 +1,11 @@
-"""External terminal surface: resume command, environment and resource handoff.
+"""External terminal surface: resume command and environment.
 
 ACP prescribes no command line, so ``build_external_cli_launch`` exists only
-when the preset declares a resume template (AD-71). Computer-use resources
-owned by the card are handed to the terminal lifecycle through
-``external_computer_use`` / ``stop_external_computer_use``.
+when the preset declares a resume template (AD-71).
 """
 
 from __future__ import annotations
 
-import asyncio
-import logging
 import os
 from pathlib import Path
 
@@ -35,47 +31,6 @@ class AcpExternalSurfaceMixin:
         adapter = self._skill_adapter()
         if adapter is not None and plan is not None:
             adapter.cli_command(plan, ())
-
-    def external_computer_use(self, conversation: Conversation) -> dict:
-        """Pass resource ownership to the existing terminal handoff lifecycle."""
-        plan = self._computer_use_plans.get(conversation.id, {})
-        resources = set(plan.get("resources", ()))
-        adapter = self._runtime_adapter()
-        # These native entrypoints do not forward ACP session/new MCP options.
-        # A server merely installed/injected for the card is not a TUI tool.
-        native_only = getattr(adapter, "COMPUTER_USE_TERMINAL_MCP", True) is False
-        known, carried = set(), set()
-        for capability in ("browser", "desktop"):
-            candidate = plan.get(capability, {})
-            resource = candidate.get("resource")
-            if not resource:
-                continue
-            known.add(resource)
-            card_only = candidate.get("source") in {"project", "fallback"} and native_only
-            card_only = card_only or (adapter is None and candidate.get("source") == "fallback")
-            if not card_only:
-                carried.add(resource)
-        if "browser:shared" in known:
-            known.add("desktop:local")
-        if "browser:shared" in carried:
-            carried.add("desktop:local")
-        # Mixed-purpose or unknown adapters retain their existing conservative
-        # ownership; this filtering only removes confirmed card-only providers.
-        resources = tuple(sorted((resources - known) | (resources & carried)))
-        return {"resources": resources, "remote": bool(resources and
-            getattr(adapter, "stop_computer_use", None) is not None)}
-
-    async def stop_external_computer_use(self, conversation: Conversation) -> bool:
-        stop = getattr(self._runtime_adapter(), "stop_computer_use", None)
-        if stop is None:
-            return True
-        spec, metadata = self._computer_use_contexts.get(conversation.id, (self.agent_spec, {}))
-        try:
-            return await asyncio.wait_for(stop(spec, conversation.native_session_id, metadata), timeout=10) is True
-        except Exception:  # noqa: BLE001 - adapter code; an unconfirmed stop keeps the resources reserved
-            logging.getLogger(__name__).warning(
-                "Native computer-use stop unconfirmed (%s, conversation %s)", self.backend_id, conversation.id, exc_info=True)
-            return False
 
     async def build_external_cli_launch(
         self, conversation: Conversation
@@ -109,21 +64,13 @@ class AcpExternalSurfaceMixin:
         native_command = (executable, *preset.terminal_args, *command[1:])
         plan = self._skill_plans.get(conversation.id)
         adapter = self._runtime_adapter()
-        from drivers.computer_use.native_policy import prepare_spec as prepare_computer_policy
-        metadata = self._computer_use_contexts.get(conversation.id, (None, {}))[1]
-        if plan is not None and getattr(plan, "spec", None) is not None:
-            plan.spec = prepare_computer_policy(plan.spec, adapter, metadata)
-        else:
-            prepare_computer_policy(self.agent_spec, adapter, metadata)
+        metadata = self._session_contexts.get(conversation.id, (None, {}))[1]
         external_command = getattr(adapter, "external_cli_command", None)
         if external_command is not None:
             native_command = external_command(plan, native_command, conversation=conversation,
                 binding=self._bindings.get(conversation.agent_binding_id), spec=self.agent_spec)
         elif plan is not None and adapter is not None:
             native_command = adapter.cli_command(plan, native_command)
-        from drivers.computer_use.native_policy import external_command as computer_external_command
-        metadata = self._computer_use_contexts.get(conversation.id, (None, {}))[1]
-        native_command = computer_external_command(native_command, adapter, metadata, scoped=plan is not None)
         from drivers.terminals.environment import selected_environment
         # The card may have a per-conversation loader/configuration overlay.
         # The terminal must receive that same environment, not the unprepared

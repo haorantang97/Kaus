@@ -16,15 +16,13 @@ from drivers.base import FailureHint, UnsupportedCapabilityError
 from drivers.acp.client import AcpRpcError
 from drivers.projection_store import atomic_write_text
 from drivers.skill_inventory import NativeSkillRoot
-from .antigravity_harness import (binary_hash, diagnostic_secrets, mcp_transport_fingerprint,
-                                 read_computer_receipt, read_receipt, redact_diagnostic)
+from .antigravity_harness import binary_hash, diagnostic_secrets, read_receipt, redact_diagnostic
 from .common import materialize, selection_of, state_root, unsupported
 from .inventory import project_workspaces
 
 PAR_HASH = '9d900b93031fc42397f88206e14eba4193729bbef631a70b18e7a19631a6dfac'
 HARNESS_HASH = 'e0a8ef9d80a1ffb178f945159dda33f73d4a5be65516642542352584b834fa2a'
 OWNER = 'Kaus Antigravity Skill projections v1\n'
-COMPUTER_USE_POLICY_SCOPES = frozenset({'browser'})
 # Cover the owned harness's EOF/TERM/KILL budget before ACP group escalation.
 GRACEFUL_SHUTDOWN_TIMEOUT = 15.0
 
@@ -234,71 +232,14 @@ async def prepare_runtime_spec(spec, conversation, metadata):
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise UnsupportedCapabilityError('无法验证原生 MCP 运行接口') from exc
     if not verified:
-        if manifest or metadata.get('mcpServers') or metadata.get('_kausComputerUse'):
+        if manifest or metadata.get('mcpServers'):
             raise UnsupportedCapabilityError('当前引擎版本的 MCP 运行接口需要适配')
         return spec
-    from drivers.computer_use.integration import server_fingerprint
-    plan = metadata.setdefault('_kausComputerUse', {})
-    browser_enabled = plan.get('controls', {}).get('browser', True) is True
-    automatically_injected = []
-    for entry in plan.get('autoInjectedServers', []):
-        server = next((value for value in metadata.get('mcpServers', [])
-                       if value.get('name') == entry.get('name')
-                       and server_fingerprint(value) == entry.get('fingerprint')), None)
-        if server is not None:
-            automatically_injected.append({'name': server['name'],
-                'capabilities': list(entry.get('capabilities', [])),
-                'transportFingerprint': mcp_transport_fingerprint(server)})
-    scope = {**scope, 'computerUse': {'browserEnabled': browser_enabled,
-                                    'autoFallbacks': automatically_injected}}
-    # Enterprise administration can enable its browser while a prompt is
-    # rebuilding the native harness. Reserve before the prompt, not after that
-    # first tool has already been exposed. The proxy reapplies policy on every
-    # harness initialization, including model and administrator changes.
-    resources = set(plan.get('resources', []))
-    if browser_enabled:
-        resources.update(('browser:shared', 'desktop:local'))
-    plan['resources'] = sorted(resources)
-    plan.setdefault('browser', {'status': 'unavailable'})
-    metadata['_kausAntigravityBaseBrowser'] = dict(plan['browser'])
     parent = state_root(spec) / 'antigravity-runtime'
     parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     root = Path(tempfile.mkdtemp(prefix='runtime-', dir=parent))
     return wrap_harness(spec, scope, root).with_env(
-        KAUS_AGY_MCP_RECEIPT=str(root / 'mcp-receipt.json'),
-        KAUS_AGY_COMPUTER_RECEIPT=str(root / 'computer-receipt.json'))
-
-
-def _refresh_computer_selection(spec, metadata, *, required=False):
-    path = spec.build_env().get('KAUS_AGY_COMPUTER_RECEIPT') if spec else None
-    if not path:
-        return
-    try:
-        receipt = read_computer_receipt(path)
-    except (OSError, ValueError) as exc:
-        raise AcpRpcError('computer_use.receipt_failed', '无法核验电脑工具配置') from exc
-    if receipt is None:
-        if required:
-            raise AcpRpcError('computer_use.receipt_failed', '无法核验电脑工具配置')
-        return
-    plan = metadata.get('_kausComputerUse', {})
-    value = dict(metadata.get('_kausAntigravityBaseBrowser', {'status': 'unavailable'}))
-    if receipt['browserDisabled']:
-        value = {'status': 'disabled', 'exposed': False, 'requirements': ['project-disabled']}
-    elif receipt['nativeBrowser']:
-        # Registration is proven by the native initialization frame. It does
-        # not itself prove the optional upstream MCP finished loading.
-        value = {'source': 'native', 'provider': 'antigravity-native', 'status': 'unknown',
-                 'exposed': True, 'verified': False, 'requirements': ['native_browser_registered'],
-                 'resource': 'browser:shared'}
-    selection = plan.setdefault('browser', {})
-    selection.clear()
-    selection.update(value)
-    plan['suppressedAutoServers'] = list(receipt['removedAutoServers'])
-
-
-async def after_runtime_session(connection, spec, conversation, metadata, session_id):
-    _refresh_computer_selection(spec, metadata, required=True)
+        KAUS_AGY_MCP_RECEIPT=str(root / 'mcp-receipt.json'))
 
 
 def runtime_receipt(spec):
@@ -312,7 +253,6 @@ def runtime_receipt(spec):
 
 
 async def before_runtime_prompt(connection, spec, conversation, metadata, session_id, params):
-    _refresh_computer_selection(spec, metadata)
     # The verified ACP server handles this exact control command before invoking
     # the harness. Its successful RPC response has no trajectory state event.
     blocks = params.get('prompt', [])
@@ -324,7 +264,6 @@ async def before_runtime_prompt(connection, spec, conversation, metadata, sessio
 
 
 async def after_runtime_prompt(connection, spec, conversation, metadata, session_id, params, result, token):
-    _refresh_computer_selection(spec, metadata)
     if token == {'control': 'logout'}:
         return {'auth_state': 'unknown'}
     if token is None:

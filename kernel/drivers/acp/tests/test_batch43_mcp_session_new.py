@@ -33,9 +33,6 @@ import sys
 PROJECT = "project:batch43"
 
 
-@pytest.fixture(autouse=True)
-def isolated_optional_computer_providers(monkeypatch):
-    monkeypatch.setattr("drivers.computer_use.probe.probe_fallbacks", AsyncMock(return_value=()))
 
 
 def _driver(scenario: str = "mcp-ping", *, quirks: AgentQuirks | None = None) -> AcpDriver:

@@ -21,7 +21,7 @@ if not state.is_relative_to(root / "output"):
 if not (package / "kaus-module.json").is_file():
     parser.error("Supply a built module package")
 state.mkdir(parents=True, exist_ok=True, mode=0o700)
-os.environ.update(HERMES_HOME=str(state / "hermes"), KAUS_COMPUTER_USE_HOME=str(state / "computer-use"),
+os.environ.update(HERMES_HOME=str(state / "hermes"),
                   DASH_FEATURE_SESSION_HOST_BACKGROUND="0", DASH_LOCAL_PORTS="3187")
 sys.path.insert(0, str(root))
 from fastapi import FastAPI

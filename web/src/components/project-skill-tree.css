@@ -90,7 +90,7 @@ body:not(.dark) :is(.skill-tree-icon, .skill-tree-expand, .skill-tree-group, .sk
   .skill-tree-more { opacity: 1; }
 }
 
-/* 能力变化：有没看过的变化时显示黄点，打开面板即消失（capability-import 第 5 节）。 */
+/* 配置变动：有没看过的变化时显示黄点，打开面板即消失（capability-import 第 5 节）。 */
 .skill-tree-changes { position: relative; }
 .skill-tree-dot { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 999px; background: var(--warning, #e5b93a); box-shadow: 0 0 0 2px var(--bg, #141414); }
 .agent-browser-mode-governance { position: relative; }

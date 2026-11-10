@@ -22,14 +22,12 @@
 | 终端 | `kernel/runtime/surface_handoff.py`、`external_cli.py`、`kernel/drivers/terminals/` | 一个写入所有者；原生进程/后台服务结束后才能释放；cmux 集成不能只打开空终端 |
 | 额度 | `kernel/app/account_quotas.py`、`quota_connections.py`、`kernel/drivers/*/quota.py` | 凭据只留后端；按账号来源而非 Agent 数量计额度；部分失败不影响其他卡片 |
 | 用户模块 | `kernel/app/workbench/`、`kernel/app/api/workbench*.py`、`module_backend.py`、`sdk/workbench/client.js` | 独立模块数据/权限、MessageChannel、任务绑定、可取消/恢复、禁止重放副作用 |
-| 电脑操作 | `kernel/drivers/computer_use/`、`computer_use_settings.py`、`kernel/app/api/computer_use.py` | 工具选择、授权、共享资源租约与恢复不可分开修改 |
+| 电脑操作 | `kernel/drivers/computer_use/lease.py`、`mcp_servers/kaus_builtin_mcp.py`、`kernel/app/projects/builtin_mcp.py` | Kaus 不识别工具；只有一块屏幕牌子，由 Agent 自己占用 / 释放 |
 | 原生桌面壳 | `desktop/app.py`、`workspace_bridge.py`、`quota_login.py`、`webview_compat.py` | 使用真实目录选择/授权跳转；浏览器截图不能代替 WKWebView 验收 |
 
 ## 电脑操作调用链
 
-`prepare_projection` 按 browser/desktop 分别选择原生、项目和通用工具 → ACP 的会话 MCP 或驱动扩展装配 → Agent 自己的模型/工具循环 → 原生审批/项目权限 → `ResourceLease` → Cua MCP 代理 → 私有 CuaDriver daemon。
-
-`policy.py` 决定选择；`integration.py` 处理挂载、共享目标和隔离；`installer.py` 管理签名应用、安装与权限宿主；`cua_proxy.py` 限定桌面工具表并保留图片；`cua_guard.py` 保存已发送操作及进程身份；`durable.py` 保留跨后端重启的控制权记录。异常恢复必须先核对旧运行真正结束，再让新成员接管。
+电脑工具和其他能力一样经技能树（能力库插件）或 Agent 自带配置送达，Kaus 不挑选、不补齐、不按回合上锁。`session_bootstrap` 的 `capability_projector` 外包 `app/projects/builtin_mcp.with_builtin_mcp`，给每条会话附上内置 MCP（`kaus`）和「屏幕」说明 → Agent 接管整屏前调 `kaus_screen_occupy` → `ResourceLease("desktop:local")`（`/tmp/kaus-computer-use-<uid>/` 下的 flock + 排队票据）→ 结束调 `kaus_screen_release`，到期或 MCP 进程退出时自动放下。
 
 ## 存储责任
 

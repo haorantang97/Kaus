@@ -48,7 +48,6 @@ def test_native_command_catalog_is_filtered_before_timeline_translation(monkeypa
 
 
 async def test_projection_remember_hook_receives_latest_servers_and_empty_native_scope(monkeypatch):
-    monkeypatch.setattr("drivers.computer_use.probe.probe_fallbacks", AsyncMock(return_value=()))
     from app.capabilities.models import EffectiveCapabilities, EffectiveCapability
     from app.conversations.models import Conversation
     from app.projects.models import AgentBinding

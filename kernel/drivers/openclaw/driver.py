@@ -170,10 +170,6 @@ class OpenClawGateway:
 class OpenClawAcpDriver(AcpDriver):
     """Use the shared ACP lifecycle for both conversations and Group leaders."""
 
-    # Connection-level declaration: source sessions retain native tool policy.
-    # This is metadata only; displaying settings does not query a Gateway.
-    native_computer_use_permission_control = "agent"
-
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._session_gateways: dict[str, OpenClawGateway] = {}
@@ -268,7 +264,6 @@ class OpenClawAcpDriver(AcpDriver):
                     session_options.metadata.get('_kausExecutionPolicy') != 'context-only'):
                 from app.capabilities.models import EffectiveCapabilities
                 from drivers.base import CreateSessionOptions
-                from drivers.computer_use.integration import prepare_projection
                 from .skill_adapter import remember_runtime_context, prepare_runtime_spec
                 effective = getattr(self, '_openclaw_effective', {}).get(conversation.id)
                 effective = effective or EffectiveCapabilities(project_id=conversation.project_id)
@@ -278,11 +273,6 @@ class OpenClawAcpDriver(AcpDriver):
                     self._skill_plans, session_options.workspace_root or self._workspace_root_for(binding.id),
                     workspace_scoped=bool(session_options.workspace_root))
                 metadata = dict(session_options.metadata)
-                from drivers.computer_use.settings import is_enabled, runtime_revision
-                if ('_kausComputerUse' not in metadata or
-                        metadata['_kausComputerUse'].get('revision') != runtime_revision()):
-                    metadata = await prepare_projection(self.agent_spec, self._runtime_adapter(),
-                        binding, conversation, effective, metadata, supports_mcp=True)
                 await prepare_runtime_spec(self.agent_spec, conversation, metadata)
                 session_options = session_options.model_copy(update={'metadata': metadata})
             return await super().start_runtime(conversation, surface, session_options=session_options)
@@ -366,8 +356,7 @@ class OpenClawAcpDriver(AcpDriver):
             if private_scope:
                 plan = await project_session(self.agent_spec, binding, effective,
                     workspace_root or self._workspace_root_for(binding.id), conversation=conversation,
-                    force_workspace=bool(workspace_root), runtime_mcp=metadata.get('mcpServers', []),
-                    computer_controls=metadata.get('_kausComputerUse', {}).get('controls', {}))
+                    force_workspace=bool(workspace_root), runtime_mcp=metadata.get('mcpServers', []))
                 if getattr(plan, 'agent_id', None):
                     self._skill_plans[conversation.id] = plan
                     if previous is not None and previous is not plan and getattr(previous, 'gateway', None):
@@ -505,7 +494,7 @@ class OpenClawAcpDriver(AcpDriver):
 
     def _configured_default_model(self, binding):
         from .skill_inventory import _locations, _config
-        from .computer_use import source_agent_id
+        from .tool_policy import source_agent_id
         _env, _home, _state, path = _locations(self.agent_spec)
         config = _config(self.agent_spec, path) or {}
         agents = config.get("agents") or {}

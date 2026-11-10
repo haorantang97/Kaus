@@ -59,7 +59,7 @@ async def test_startup_logs_native_tail_only_in_redacted_local_diagnostic(failin
     try:
         with pytest.raises(AcpRpcError) as caught:
             await driver.start_runtime(conversation, "card", session_options=CreateSessionOptions(
-                title="fixture", metadata={"_kausComputerUse": {}}))
+                title="fixture", metadata={}))
         assert str(caught.value) == "-32603: Internal error"
         assert "native startup failed" in caplog.text
         assert "native fixture: bind failed" in caplog.text

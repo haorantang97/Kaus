@@ -26,7 +26,7 @@ def overlay(setup, monkeypatch):
     monkeypatch.setattr(source_mcp, 'SourceMcpGateway', OverlayGateway)
     server = {'name': 'playwright', 'command': '/synthetic/browser', 'args': ['--isolated'], 'env': []}
     async def prepare(conversation=conv, servers=None):
-        plan = await source_session.prepare(spec, binding, effective(None), conversation, {})
+        plan = await source_session.prepare(spec, binding, effective(None), conversation)
         await source_mcp.prepare(plan, conversation, [server] if servers is None else servers)
         return plan
     return spec, binding, conv, effective, server, prepare
@@ -180,7 +180,7 @@ async def test_preparation_without_project_scope_does_not_create_private_agent(o
     spec, binding, conv, effective, server, prepare = overlay
     plans = {}
     adapter.remember_runtime_context(conv, binding, effective(None), plans)
-    metadata = {'mcpServers': [server], '_kausComputerUse': {'controls': {}, 'resources': ['browser:isolated']}}
+    metadata = {'mcpServers': [server]}
     await adapter.prepare_runtime_spec(spec, conv, metadata)
     assert plans[conv.id].source_session and plans[conv.id].agent_id == 'user'
     assert 'mcpServers' not in metadata
@@ -190,12 +190,11 @@ async def test_preparation_without_project_scope_does_not_create_private_agent(o
     assert len(Gateway.patches) == 1
 
 
-@pytest.mark.parametrize('turn_off', [False, True])
-async def test_complete_preparation_explicit_empty_removes_old_tools(overlay, turn_off):
+async def test_complete_preparation_explicit_empty_removes_old_tools(overlay):
     spec, binding, conv, effective, server, prepare = overlay
     plans = {}
     adapter.remember_runtime_context(conv, binding, effective(None), plans)
-    metadata = {'mcpServers': [server], '_kausComputerUse': {'controls': {}, 'resources': ['browser:isolated']}}
+    metadata = {'mcpServers': [server]}
     await adapter.prepare_runtime_spec(spec, conv, metadata)
     plan = plans[conv.id]
     name = next(iter(plan.mcp_config))
@@ -204,9 +203,6 @@ async def test_complete_preparation_explicit_empty_removes_old_tools(overlay, tu
     # A fresh projection explicitly supplies an empty set. Re-entry after
     # consumption omits the field instead, so it cannot resurrect this set.
     metadata['mcpServers'] = []
-    if turn_off:
-        Gateway.config['agents']['entries']['user']['tools'] = {'deny': ['browser', 'computer']}
-        metadata['_kausComputerUse'] = {'controls': {'browser': False, 'desktop': False}, 'resources': []}
     await adapter.prepare_runtime_spec(spec, conv, metadata)
     current = plans[conv.id]
     await adapter.apply_session_mcp(current)
@@ -217,45 +213,11 @@ async def test_complete_preparation_explicit_empty_removes_old_tools(overlay, tu
     assert plans[conv.id].runtime_mcp_servers == ()
 
 
-@pytest.mark.parametrize('route', ['existing', 'fixed', 'fixed-label'])
-async def test_old_native_session_skips_only_automatic_fallback(overlay, route):
-    from drivers.computer_use.integration import server_fingerprint
-    spec, binding, conv, effective, server, prepare = overlay
-    if route == 'existing':
-        conv = conv.model_copy(update={'native_session_id': 'existing-native'})
-    else:
-        flag, value = ('--session', 'agent:user:original') if route == 'fixed' else ('--session-label', 'original')
-        spec = spec.model_copy(update={'command': (*spec.command, flag, value)})
-    adapter.remember_runtime_context(conv, binding, effective(None), {})
-    metadata = {'mcpServers': [server], '_kausComputerUse': {
-        'browser': {'source': 'fallback', 'status': 'ready', 'resource': 'browser:isolated'},
-        'desktop': {'source': 'native', 'status': 'ready', 'exposed': True, 'resource': 'desktop:local'},
-        'resources': ['browser:isolated', 'desktop:local'],
-        'autoInjectedServers': [{'name': server['name'], 'capabilities': ['browser'], 'fingerprint': server_fingerprint(server)}]}}
-    before = copy.deepcopy(Gateway.config)
-    await adapter.prepare_runtime_spec(spec, conv, metadata)
-    assert not metadata['mcpServers'] and '_meta' not in metadata
-    assert metadata['_kausComputerUse']['resources'] == ['desktop:local']
-    assert metadata['_kausComputerUse']['browser']['status'] == 'unavailable'
-    assert metadata['_kausComputerUse']['desktop']['status'] == 'ready'
-    assert Gateway.config == before and not Gateway.patches
-
-
-def test_auto_fallback_receipt_does_not_remove_replaced_user_definition():
-    from drivers.computer_use.integration import server_fingerprint
-    original = {'name': 'same', 'command': '/original'}
-    replacement = {'name': 'same', 'command': '/user'}
-    metadata = {'mcpServers': [replacement], '_kausComputerUse': {
-        'autoInjectedServers': [{'name': 'same', 'capabilities': ['desktop'], 'fingerprint': server_fingerprint(original)}]}}
-    source_mcp.discard_automatic_fallback(metadata)
-    assert metadata['mcpServers'] == [replacement]
-
-
 async def test_unowned_old_session_is_not_redirected(overlay):
     spec, binding, conv, effective, server, prepare = overlay
     conv = conv.model_copy(update={'native_session_id': 'existing-native'})
     adapter.remember_runtime_context(conv, binding, effective(None), {})
-    metadata = {'mcpServers': [server], '_kausComputerUse': {'resources': ['desktop:local']}}
+    metadata = {'mcpServers': [server]}
     before = copy.deepcopy(Gateway.config)
     with pytest.raises(UnsupportedCapabilityError, match='新建对话'):
         await adapter.prepare_runtime_spec(spec, conv, metadata)
@@ -264,7 +226,7 @@ async def test_unowned_old_session_is_not_redirected(overlay):
 
 async def test_gateway_write_guard_rejects_agent_and_foreign_session_changes(setup, monkeypatch):
     spec, binding, conv, effective = setup
-    plan = await source_session.prepare(spec, binding, effective(None), conv, {})
+    plan = await source_session.prepare(spec, binding, effective(None), conv)
     gateway = source_mcp.SourceMcpGateway(plan, 'kaus-source-fixture')
     upstream = AsyncMock(return_value={})
     monkeypatch.setattr(OpenClawGateway, 'call', upstream)

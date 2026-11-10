@@ -3,6 +3,26 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 10 日：电脑操作精简（谁进门谁挂牌）
+
+依据 `product-decisions.md`「电脑操作」11 月 10 日最终决定与问题 4–6 的答复；删除范围见 `docs/product/computer-use-trim-scope-20261110.md`。
+
+**删除**：
+- 托管安装与授权：`kernel/drivers/computer_use/` 的 `installer.py`、`permissions.py`、`peekaboo_host.py`、`probe.py`、`settings.py`；根目录 `computer_use_settings.py`、`kernel/app/api/computer_use.py` 及 `session_bootstrap.py` 的挂载；前端 `ComputerUseSettings.tsx`、`computer-use-settings.css` 及 `ConfigOverlay` 里的挂载。不写清理或迁移代码（本机没有托管安装、没有存量用户）。
+- 工具识别与代理：`cua_proxy.py`、`cua_guard.py`、`discovery.py`、`policy.py`、`integration.py`（`prepare_projection`、隔离与恢复）、`native_policy.py`（按次关 Codex / Claude 原生电脑 MCP）、`durable.py`（跨重启的卡片预约）。项目级 `policies/computer_use` 不再生效。
+- 按回合上锁：`acp/turns._computer_prompt` 的租约、隔离与回执（回合直接调用原生循环），`acp/card_runtime` 与 `runtime/session_host` 按设置版本重建运行，`acp/external_cli.external_computer_use` / `stop_external_computer_use`，`runtime/surface_handoff` 打开终端前的资源预约与 `computer_in_use`，`runtime/external_cli` 的启动所有者检查。`_computer_use_contexts` 改名 `_session_contexts`（终端续接仍沿用会话元数据）。
+- 驱动钩子：Hermes 的 `computer_use.py`、`computer_use_probe.py`、`computer_use_runtime.py`、`http_session_bridge.py`（本机 HTTP 连接只为电脑工具改走 ACP 的那条路），`mcp_launcher` 只保留 MCP 核验；OpenClaw 的就绪探测、停止 / 完成确认 / 恢复链路与 `computer_controls`，`computer_use.py` 改名 `tool_policy.py`，只留继承源 Agent 工具策略；Antigravity 的 `computerUse` 范围、浏览器策略与 `KAUS_AGY_COMPUTER_RECEIPT`；Codex / Claude 的 `COMPUTER_USE_TERMINAL_MCP`。
+
+**新增 / 改动**：
+- 牌子：`drivers/computer_use/lease.py` 重写为同步的 `ResourceLease("desktop:local")`：flock 独占，排队票据先来后到（票据两分钟不刷新或进程已退出就跳过），`hold_seconds` 到期自动放下，记录占用者（Agent、Project、pid、起止时间）。
+- 内置 MCP：`mcp_servers/kaus_memory_mcp.py` 改为 `kaus_builtin_mcp.py`（服务名 `kaus`），新增 `kaus_screen_occupy {minutes, wait_seconds}`（单次最多等 50 秒，返回 `occupied` 或带占用者与位置的 `waiting`；占用中再调即续期）和 `kaus_screen_release`；进程退出时放下牌子。`app/projects/memory_injection.py` 改为 `builtin_mcp.py`（`with_builtin_mcp`、`BUILTIN_MCP_ID = "kaus"`），每条会话附上内置 MCP、「项目记忆」节和新的「屏幕」节（auxiliary，order 901）。组内成员会话改为附 `--no-memory` 的内置 MCP 和「屏幕」节（此前什么都不附）；送达层按 MCP 上的 `memory` 标记判断 Project 记忆是否在场，组员的自带记忆不受影响。
+
+**测试**：删除旧电脑操作测试（`computer_use/tests` 除 `test_lease.py` 外全部、`tests/test_computer_use_settings.py`、`app/tests/test_computer_use.py`、Hermes `test_computer_use.py` 与 `test_http_computer_transport.py`、OpenClaw `test_computer_use.py` 与 `test_computer_use_opt_in.py`、前端 `ComputerUseSettings.test.tsx`），以及各处为它们准备的 conftest 与 `probe_fallbacks` 替身。重写：`test_lease.py` 7 项（一次一个持有者、先来后到、放弃的位置过期、到期与续期、跨线程释放、跨进程且随进程退出放下、只接受桌面资源）；`test_project_memory.py` 新增内置 MCP 的屏幕用例（排队与交接、组员只有屏幕两项、组员不触发关自带记忆）；OpenClaw、Antigravity、ACP 中依赖旧资源链路的用例改为新行为（旧 `policies/computer_use` 行不再改专属 Agent 的工具；无会话工具时不建源会话；Antigravity 原样透传原生浏览器与项目 MCP）；`ConfigOverlay.test.tsx` 改为确认 Agent 设置页没有电脑操作。
+
+**结果**：`cd kernel && ../.venv/bin/python -m pytest -q`：4,162 通过、127 跳过（改动前基线 4,474 通过，差额是删除的电脑操作测试）；`.venv/bin/python -m pytest -q tests`：366 通过（基线 384，差额为删除的设置接口测试）；`cd web && NODE_OPTIONS=--no-experimental-webstorage npm run check`：123 个文件 / 1,070 项通过，构建成功。
+
+**未做 / 限制**：没有用真实 Agent 实测「接管前占用、结束后释放」是否被照做；牌子是协作约定，送不到 MCP（如未启用独立执行的 Hermes 连接）或不照做的 Agent 不受保护；回合结束不自动放下，忘了释放的 Agent 要等到期或运行关闭；Windows 上没有 flock，屏幕两项会报错。
+
 ## 11 月 10 日：能力导入与归属（勾选导入、只认技能树）
 
 依据 [能力导入与归属](../product/capability-import-20261110.md)（第 9 节记与设计的差异）。
@@ -10,12 +30,14 @@
 - **判定 Agent 绑定能力**（`kernel/drivers/capability_binding.py`，约定数据在 `agent_capability_traits.json`）：应用包或 Agent 运行时目录里的 MCP、Agent 自带市场的插件记为 `agent_owned`；技能名就是 Agent 自己记为 `agent_self`；内容调用该 Agent 专有工具 ≥10 次记为 `agent_tools`；该 Agent 对这一类没有关闭方式记为 `not_isolable`（只对当前加载了适配器的 Agent 判断）。每条原生能力同时算指纹。在本机 Hermes 的 44 个自带技能上只读试跑，判出的正好是 `claude-code`、`codex`、`computer-use`、`hermes-agent`。发现时由 `session_bootstrap` 统一标注。
 - **导入服务**（`kernel/app/capabilities/capability_import.py`，接口 `/api/skill-tree/import*`、`/api/skill-tree/changes*`）：首次接入的 Agent 记入 `skill_tree.import_state.v1`，发现时不再自动登记（绑定能力除外）。导入时技能复制进 `<数据目录>/capability-library/skills/<id>/`，记录标 `imported` / `shared`，默认分到根项目；别的 Agent 已导入同一文件夹的技能合并为一条（`importedAs`）；旧规则下接入的 Agent 第一次导入时，没勾的移出树。跳过 = 只保留绑定能力。变化检查按 Agent 对比导入时确认的指纹，分新增、移除、有更新；看过记 `seen`；可导入、忽略、同步（重新复制）。
 - **加载**（`effective.py`、`launch_delivery.py`、`mcp_projection.py`、`native_mcp_raw.py`、`skill_execution/common.py`）：显式导入的 Agent（`tree_managed`）强制托管技能范围；自带 MCP、插件不在树上的一律挡掉，新出现的也不例外。别的 Agent 导入、分到本项目的能力：技能从库副本选入（`shared`），MCP 以 `nativeRef` 进入，开对话时按原格式现读定义、密文只在内存里拼进 `mcpServers`，插件按包位置送达。运行目录里库副本的支持文件改为硬链接（Agent 自己目录里的只复制），超过 7 天的旧运行目录清理。
-- **界面**：接入时先出勾选名单（绑定能力置灰、已在树中的合并、可展开看简介和来源、全选；一项不选或跳过都要确认「以空白状态接入」），导入后再进入原来的分配树。技能树顶栏新增「导入能力」（选 Agent → 同一份名单，旧规则下已在树上的预先勾选）和「能力变化」（有未看过的变化时按钮和「配置」页签显示黄点，打开即消失）。分组标题改为只显示 Agent 名，绑定能力带锁形标记。
+- **界面**：接入时先出勾选名单（绑定能力置灰、已在树中的合并、可展开看简介和来源、全选；一项不选或跳过都要确认「以空白状态接入」），导入后再进入原来的分配树。技能树顶栏新增「导入能力」（选 Agent → 同一份名单，旧规则下已在树上的预先勾选）和「配置变动」（有未看过的变化时按钮和「配置」页签显示黄点，打开即消失）。分组标题改为只显示 Agent 名，绑定能力带锁形标记。
 - **试跑中改掉的问题**：没加载适配器的 Agent 原先被全部判成「不能隔离」而置灰，改为不判断；旧规则下已在树上的条目在「导入能力」里原先默认不勾、导入会误删，改为预先勾选。插件库已有的 `libraryPath` 字段与导入副本字段撞名，改名为 `importCopy`。
 
 结果：新增 `app/tests/test_capability_import.py` 6 项（绑定能力保留且不出现在可选里、公共文件夹合并并供所有 Agent 使用、旧 Agent 首次导入移出未选项且预先勾选、变化检查与看过/忽略/同步、导入的原生 MCP 给别的 Agent 时密文只在内存、导入入口的 Agent 列表），`drivers/tests/test_capability_binding.py` 5 项，`test_launch_delivery.py`、`test_native_plugins.py` 各 +1（只认技能树），`skill_execution/tests/test_common_links.py` 2 项（硬链接与清理）；`app/tests/test_skill_onboarding.py` 3 项按新规则改写。前端新增 `CapabilityImport.test.tsx` 2 项，`CapabilityOnboardingStep.test.tsx` 3 项改写，`ProjectSkillTree.test.tsx` 分组名断言随文案更新。隔离实例（8899，临时家目录与数据库，合成的 Codex 技能）里走了「导入能力 → 只导入一项 → 另一项移出树 → 原处新增与修改 → 黄点出现 → 打开面板黄点消失 → 同步后库副本更新」，试跑用的配置和数据已删除。全量：内核 4,473 通过 / 129 跳过，宿主 384 通过，前端 124 个文件 / 1,090 项及构建通过。
 
 未做：经真实 Agent 开会话的生效验证（任务书 P2）；接入流程里的勾选名单只在单元测试中走过（隔离实例里没有真实接入 Agent）。
+
+同日补充：「能力变化」按项目负责人意见改名为「配置变动」；对照 11 月 2 日的整体核查发现「原生 Agent 关不掉的在树上锁住」只加了锁形标记、仍能拖动和屏蔽，已补上：前端禁用拖动与菜单，后端对 `not_isolable` 条目的分配操作返回 409 `capability_not_isolable`（+1 项测试）。前端 1,090 项及构建通过，内核相关 21 项通过。
 
 ## 11 月 10 日：插件作为整包；Codex 逐个关掉插件；Antigravity 互通未能实测
 
@@ -175,8 +197,8 @@
 - **存储**：迁移 v23 新增 `project_memories`（逐条记录：主题、正文、`kind`（note / overview）、状态（有效 / 已失效 / 已删除）、来源、失效时间、取代者）和 `project_memory_history`（每次改动的前后快照，可撤销）。`RepositorySet.memories` 有内存与 SQLite 两套实现（`app/projects/memory.py`、`app/persistence/sqlite/memories.py`）。下级读得到上级的有效条目，但上级条目只能在上级改（`memory_inherited`，403）。「项目概述」每个 Project 只有一条，再写一次就是更新；还没有概述时，索引先用新建项目时填的描述（`metadata.description`）顶上。
 - **检索**：不依赖分词库，拉丁文按词、中日韩按相邻两字切片后算重合度。
 - **接口**（`app/api/project_memory.py`）：列表、检索、历史、新建、修改、删除、撤销，以及给 Agent 用的 `POST …/memories/write`（add / update / invalidate / keep）。add 时如果有相似条目、又没带 `confirm`，只返回相似条目，让 Agent 选择补充、作废还是确认新增（参考 Mem0）；每次都返回索引的行数、字数和上限，超出上限时要求在这次写入里顺带合并或作废旧条目。
-- **记忆 MCP**（`mcp_servers/kaus_memory_mcp.py`，只用标准库，走 stdio）：`kaus_memory_search`、`kaus_memory_write`。启动参数里带 Project 和 Agent，来源记为该 Agent 的 backendId。
-- **注入**（`app/projects/memory_injection.py`）：`session_bootstrap` 的 `capability_projector` 外包一层，每条会话的有效能力自动附上一节「项目记忆」指令（说明写什么、不写什么，后面接短索引，order 900）和 `kaus-memory` MCP。注入失败只记日志，不影响会话启动。组内执行的成员会话不附加（组员写的是组内资料）。文案跟随 `ui:locale`。
+- **记忆 MCP**（`mcp_servers/kaus_memory_mcp.py`，只用标准库，走 stdio；11 月 10 日扩为 Kaus 内置 MCP `kaus_builtin_mcp.py`）：`kaus_memory_search`、`kaus_memory_write`。启动参数里带 Project 和 Agent，来源记为该 Agent 的 backendId。
+- **注入**（`app/projects/memory_injection.py`，11 月 10 日改为 `builtin_mcp.py`）：`session_bootstrap` 的 `capability_projector` 外包一层，每条会话的有效能力自动附上一节「项目记忆」指令（说明写什么、不写什么，后面接短索引，order 900）和 `kaus-memory` MCP。注入失败只记日志，不影响会话启动。组内执行的成员会话不附加（组员写的是组内资料）。文案跟随 `ui:locale`。
 - **辅助节**：记忆这一节带 `auxiliary: true`。`instructions_projection.is_auxiliary` 让送达层只按用户写的项目指令来决定是否拦截（`workspace_required`）、是否写工作目录文件、是否报「未生效」。只有记忆、没有项目指令时：启动注入的 Agent 照常带上索引；读文件的 Agent 不拦、不写文件，靠记忆 MCP 使用记忆。有项目指令时，记忆索引随它们一起送达。
 - **控制 MCP**：`kaus_overview` 为每个 Project 返回 `overview`（项目概述），主 Agent 可以据此决定把任务派给哪个 Project。
 - **界面**：项目页新增「记忆」卡片（`ProjectMemoryCard`）。项目概述排在最上面，可以直接改写；上级条目标「继承自 X」，只读；本级条目的「⋯」里有编辑、删除；右上角是「改动历史」，每条都能撤销。按设计不放「整理」或「审批」按钮，想整理就在对话里说一句。指令卡片的「⋯」改为共用的 `CardRowMenu`。

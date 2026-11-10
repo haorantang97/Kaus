@@ -27,105 +27,6 @@ MAX_RECEIPT = 32 * 1024
 NATIVE_EOF_TIMEOUT = 8
 NATIVE_TERMINATE_TIMEOUT = 2
 NATIVE_KILL_TIMEOUT = 2
-NATIVE_BROWSER_DESCRIPTION_HASH = '168949a314a39116a14f92c75493c7824d0b2e73dea64b39a587bb44428f7f4b'
-
-
-def mcp_transport_fingerprint(server):
-    """Compare ACP declarations with the verified native transport encoding."""
-    def pairs(value):
-        if isinstance(value, dict):
-            return value
-        if isinstance(value, list) and all(isinstance(item, dict) and
-                isinstance(item.get('name'), str) and isinstance(item.get('value'), str) for item in value):
-            return {item['name']: item['value'] for item in value}
-        raise ValueError('Invalid MCP transport values')
-    if not isinstance(server, dict) or not isinstance(server.get('name'), str):
-        raise ValueError('Invalid MCP declaration')
-    if 'stdio' in server or 'command' in server:
-        transport = server.get('stdio', server)
-        value = {'name': server['name'], 'stdio': {'command': transport.get('command'),
-                 'args': transport.get('args', []), 'env': pairs(transport.get('env', {}))}}
-    elif 'http' in server or 'url' in server:
-        transport = server.get('http', server)
-        value = {'name': server['name'], 'http': {'url': transport.get('url'),
-                 'headers': pairs(transport.get('headers', {}))}}
-    else:
-        raise ValueError('Unsupported MCP transport')
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'),
-                                    ensure_ascii=False).encode()).hexdigest()
-
-
-def _native_browser_agent(agent):
-    return (isinstance(agent, dict) and agent.get('name') == 'browser'
-            and isinstance(agent.get('description'), str)
-            and hashlib.sha256(agent['description'].encode()).hexdigest() == NATIVE_BROWSER_DESCRIPTION_HASH)
-
-
-def apply_computer_policy(config, policy):
-    """Apply only this verified native registration and host-owned fallbacks."""
-    servers = config.get('mcpServers', [])
-    agents = config.get('customSubagents', [])
-    if not isinstance(servers, list) or not isinstance(agents, list):
-        raise ValueError('Invalid native computer configuration')
-    native = [server for server in servers if isinstance(server, dict)
-              and server.get('name') == 'chrome_devtools'
-              and isinstance(server.get('stdio'), dict)
-              and server['stdio'].get('command') == 'npx'
-              and server['stdio'].get('args', [])[:4] == [
-                  '-y', 'chrome-devtools-mcp@latest', '--no-usage-statistics', '--no-performance-crux']]
-    native_present = bool(native and any(_native_browser_agent(agent) for agent in agents))
-    enabled = policy.get('browserEnabled') is True
-    removed = []
-    retained = []
-    for server in servers:
-        if native_present and not enabled and server in native:
-            continue
-        owned = next((entry for entry in policy.get('autoFallbacks', [])
-                      if entry.get('name') == server.get('name')
-                      and entry.get('capabilities') == ['browser']
-                      and entry.get('transportFingerprint') == mcp_transport_fingerprint(server)), None)
-        if owned and (native_present or not enabled):
-            removed.append(server['name'])
-        else:
-            retained.append(server)
-    if retained != servers:
-        config['mcpServers'] = retained
-    if native_present and not enabled:
-        config['customSubagents'] = [agent for agent in agents if not _native_browser_agent(agent)]
-    return {'nativeBrowserPresent': native_present, 'nativeBrowser': native_present and enabled,
-            'browserDisabled': not enabled, 'removedAutoServers': removed}
-
-
-def write_computer_receipt(path, value):
-    path = Path(path)
-    fd, stage = tempfile.mkstemp(prefix='.computer-receipt-', dir=path.parent)
-    try:
-        with os.fdopen(fd, 'w') as stream:
-            json.dump(value, stream)
-        os.replace(stage, path)
-    finally:
-        if os.path.exists(stage):
-            os.unlink(stage)
-
-
-def read_computer_receipt(path):
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    except FileNotFoundError:
-        return None
-    with os.fdopen(fd, 'rb') as stream:
-        info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_RECEIPT:
-            raise ValueError('Invalid native computer receipt')
-        value = json.loads(stream.read(MAX_RECEIPT + 1))
-    if (not isinstance(value, dict) or set(value) != {
-            'nativeBrowserPresent', 'nativeBrowser', 'browserDisabled', 'removedAutoServers'}
-            or any(type(value.get(key)) is not bool for key in (
-                'nativeBrowserPresent', 'nativeBrowser', 'browserDisabled'))
-            or not isinstance(value['removedAutoServers'], list)
-            or any(not isinstance(name, str) for name in value['removedAutoServers'])):
-        raise ValueError('Invalid native computer receipt')
-    return value
 
 
 def diagnostic_secrets(config):
@@ -209,21 +110,14 @@ def output_config(data):
     return port, key.decode('utf-8')
 
 
-def rewrite_init(raw, scope, *, computer_receipt=None):
+def rewrite_init(raw, scope):
     was_binary = isinstance(raw, bytes)
     payload = json.loads(raw)
     if not isinstance(payload, dict) or set(payload) != {'config'} or not isinstance(payload['config'], dict):
         raise ValueError('Native harness initialization protocol requires verification')
     config = payload['config']
-    if 'computerUse' in scope:
-        receipt = apply_computer_policy(config, scope['computerUse'])
-        if computer_receipt:
-            write_computer_receipt(computer_receipt, receipt)
     if scope.get('nativeSkills') is True:
-        if 'computerUse' not in scope:
-            return raw
-        encoded = json.dumps(payload, ensure_ascii=False)
-        return encoded.encode('utf-8') if was_binary else encoded
+        return raw
     if 'skills_paths' in config:
         raise ValueError('Unexpected native Skill field')
     config['skillsPaths'] = list(scope['roots'])
@@ -470,8 +364,7 @@ async def run(scope):
                 async with connect(f'ws://127.0.0.1:{native_port}/', additional_headers={'x-goog-api-key': key},
                                    max_size=MAX_FRAME, proxy=None) as native:
                     first = await asyncio.wait_for(connection.recv(), 20)
-                    rewritten = rewrite_init(first, scope,
-                        computer_receipt=os.environ.get('KAUS_AGY_COMPUTER_RECEIPT'))
+                    rewritten = rewrite_init(first, scope)
                     secrets = diagnostic_secrets({'config': json.loads(rewritten),
                                                   'environment': {key: value for key, value in os.environ.items()
                                                                   if re.search(r'(?i)password|secret|token|api.?key|authorization|credential', key)}})

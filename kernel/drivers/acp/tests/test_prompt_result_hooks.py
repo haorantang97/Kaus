@@ -11,9 +11,6 @@ from drivers.base import CreateSessionOptions, MessageInput
 from drivers.contract_tests.harness import collect_until_run_terminal
 
 
-@pytest.fixture(autouse=True)
-def isolated_optional_computer_providers(monkeypatch):
-    monkeypatch.setattr("drivers.computer_use.probe.probe_fallbacks", AsyncMock(return_value=()))
 
 
 @pytest.mark.parametrize('managed', [False, True])
@@ -32,7 +29,7 @@ async def test_native_failure_receipt_overrides_end_turn_without_marking_login_s
         assert spec.env['RUNTIME_RECEIPT'] == 'fixture'
         assert metadata['scope'] == 'fixture'
         assert metadata['_kausWorkspaceRoot'] == str(tmp_path)
-        assert metadata.get('_kausComputerUse', {}).get('resources', []) == []
+        assert '_kausComputerUse' not in metadata
         assert conv.id == conversation.id and params['sessionId'] == session_id
         seen.append('before')
         return {'sequence': len(seen)}

@@ -569,16 +569,6 @@ class ExternalCliMonitor:
             )
         pid = launch.external_process_ref or read_pid(directory / PID_FILENAME)
         if pid is None:
-            computer = launch.metadata.get("computerUse", {})
-            owner = computer.get("owner")
-            if computer.get("resources") and isinstance(owner, dict):
-                from drivers.terminals.managed_process import process_identity
-                if process_identity(owner["pid"]) != owner:
-                    # The backend stopped during launch, before a shell PID was
-                    # recorded. Existing entrypoint guards make revocation final.
-                    directory.mkdir(mode=LAUNCH_DIR_MODE, parents=True, exist_ok=True)
-                    (directory / "revoked").touch(mode=0o600)
-                    return ExitSignal(conversation_id, launch, -1, "launch-owner-gone")
             # 还没写出 pid：刚拉起，什么都别做——除非脚本始终没开始跑（终端没打开、
             # 用户关掉了窗口）。守卫脚本一开始就建 ``shell-started``，过了宽限期仍没有
             # 它，就撤销这次启动并把写权还给对话，免得会话一直卡在外部态。

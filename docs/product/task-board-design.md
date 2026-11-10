@@ -1,6 +1,6 @@
 # 通用任务板设计（草案）
 
-2026-10-24，待项目负责人审阅。替换已屏蔽的 Hermes 任务板（`/kanban`，`hermes kanban` CLI 封装）。本稿只定设计，未开始实现。
+2026-10-24 草案。**2026-11-03 项目负责人定：暂不开发，本稿留作备查**（见 `docs/handoff/product-decisions.md`「通用任务板」）。原拟替换已屏蔽的 Hermes 任务板（`/kanban`，`hermes kanban` CLI 封装）。本稿只定设计，未开始实现。
 
 ## 目标
 

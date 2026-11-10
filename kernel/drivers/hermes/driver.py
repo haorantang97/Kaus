@@ -393,37 +393,6 @@ class HermesDriver:
             await self.probe()
         return self._apply_live_evidence(self._capabilities or BackendCapabilities())
 
-    @property
-    def native_computer_use_permission_control(self) -> str:
-        # Remote native HTTP sessions cannot be reconfigured by a local launcher.
-        # This declaration reads connection metadata only, without probing tools.
-        for binding in self._bindings.values():
-            if (not project_scope.enabled(binding) and not binding.runtime_config.get("group_execution")
-                    and self.gateway_config_for(binding).host not in {"127.0.0.1", "localhost", "::1"}):
-                return "agent"
-        if (not self._bindings and self.default_gateway is not None
-                and self.default_gateway.host not in {"127.0.0.1", "localhost", "::1"}):
-            return "agent"
-        return "kaus"
-
-    async def computer_use_status(self, binding: AgentBinding | None = None) -> dict[str, Any]:
-        """Inspect the source runtime without creating or refreshing a project home."""
-        from drivers.acp.client import AcpAgentSpec
-        from drivers.hermes.computer_use import probe_native
-        binding = binding or next(iter(self._bindings.values()), None)
-        config = self.gateway_config_for(binding) if binding else self.default_gateway
-        if (config is not None and config.host not in {"127.0.0.1", "localhost", "::1"}
-                and not (binding and (project_scope.enabled(binding) or binding.runtime_config.get("group_execution")))):
-            return {"nativePermissionControl": "agent", **{cap: {
-                "status": "unknown", "provider": "hermes-native",
-                "requirements": ["remote_native_permission_control"],
-            } for cap in ("browser", "desktop")}}
-        source = self.gateway_config_for(binding).hermes_home if binding else self.hermes_root
-        home = project_scope.home_for(self.hermes_root, binding) if binding and project_scope.enabled(binding) else source
-        if not (home / "config.yaml").is_file():
-            home = source
-        return await probe_native(AcpAgentSpec(command=(self.hermes_bin, "acp"), env={"HERMES_HOME": str(home)}))
-
     def conversation_controls(self, binding: AgentBinding) -> dict[str, Any]:
         if project_scope.enabled(binding):
             return self._project_driver(binding).conversation_controls(binding)
@@ -1056,16 +1025,6 @@ class HermesDriver:
             # 宿主附加的辅助 MCP（项目记忆）送不到就算了，不为它拒绝启动。
             if project_mcp_servers(without_auxiliary(effective)).servers:
                 raise UnsupportedCapabilityError("此连接未启用独立执行，无法应用项目 MCP")
-            from drivers.hermes.computer_use import local_http_projection
-            computer = await local_http_projection(self, binding, conversation, effective)
-            if computer is not None:
-                # Keep native Skills as before. The ACP process resumes the
-                # identical native session and only applies computer controls.
-                return computer.model_copy(update={"warnings": (
-                    ("此连接使用原生目录，项目技能尚未应用",) if selection_of(effective) else ())})
-            if (effective.get("policies", "computer_use") is not None
-                    or effective.is_blocked("policies", "computer_use")):
-                raise UnsupportedCapabilityError("此连接需启用独立执行后才能应用电脑权限")
             return SessionProjection(warnings=("此连接使用原生目录，项目技能尚未应用",)) if selection_of(effective) else None
         from drivers.hermes.isolated_runtime import create_driver
         return await create_driver(self, binding).session_options_for(conversation, effective)
@@ -1123,16 +1082,12 @@ class HermesDriver:
             )
         binding = self._binding_for(conversation)
         restricted = bool(session_options and session_options.metadata.get("_kausExecutionPolicy") == "context-only")
-        from drivers.hermes.computer_use import LOCAL_TRANSPORT
-        local_computer = bool(session_options and session_options.metadata.get(LOCAL_TRANSPORT))
-        if local_computer and session_options.metadata.get("_kausHermesHttpSession"):
-            conversation = conversation.evolve(native_session_id=session_options.metadata["_kausHermesHttpSession"])
-        if restricted or local_computer or (session_options and session_options.workspace_root) or binding.runtime_config.get("group_execution") or project_scope.enabled(binding):
+        if restricted or (session_options and session_options.workspace_root) or binding.runtime_config.get("group_execution") or project_scope.enabled(binding):
             from drivers.hermes.isolated_runtime import create_driver, create_context_driver, start
             scope = session_options.metadata.get("kaus_skill_scope") if session_options else None
             from drivers.hermes.skill_snapshots import session_mode
             mode = (session_options.metadata.get("kaus_skill_mode") if session_options else None) or session_mode(self.projection_scope(binding), conversation.id)
-            if not restricted and not local_computer and scope is None and mode != "native":
+            if not restricted and scope is None and mode != "native":
                 from drivers.hermes.skill_launch import policy_required
                 from drivers.hermes.skill_snapshots import pin_session
                 if policy_required(self.projection_scope(binding)):

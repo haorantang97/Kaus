@@ -176,9 +176,8 @@ class AcpDriver(
         self._selection_catalog: dict[tuple[str, str], tuple[tuple, _CatalogSnapshot]] = {}
         self._runtimes: dict[str, _RuntimeState] = {}
         self._skill_plans: dict[str, Any] = {}
-        self._computer_use_plans: dict[str, dict] = {}
-        self._computer_use_contexts: dict[str, tuple[Any, dict]] = {}
-        self._computer_use_effective: dict[str, Any] = {}
+        #: 每条会话最近一次的进程规格与私有元数据，终端续接沿用同一份。
+        self._session_contexts: dict[str, tuple[Any, dict]] = {}
         self._binding_skill_plans: dict[str, Any] = {}
         #: conversation_id -> 这次启动的送达计划（指令通道、原生 MCP 排除；2026-11-09）。
         #: 由 ``session_options_for`` 写、``start_runtime`` 读。

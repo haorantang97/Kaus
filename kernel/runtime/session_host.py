@@ -377,8 +377,6 @@ class _ConversationRuntime:
     metadata: dict[str, Any] = field(default_factory=dict)
     control_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     pending_dispatch: bool = False
-    computer_use_enabled: bool | None = None
-    computer_use_revision: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -453,15 +451,6 @@ class SessionHost:
         self._unapplied_notices: dict[str, tuple] = {}
         #: 批次四十五 a：**每一条落库事件**的旁观者（:meth:`add_event_observer`）。
         self._event_observers: list[Any] = []
-        from drivers.computer_use.durable import register_resolver
-        register_resolver(self._recover_computer_resource)
-
-    async def _recover_computer_resource(self, reference) -> bool:
-        driver = self._registry.try_get(reference.get("backendId"))
-        recover = getattr(driver, "recover_computer_use", None)
-        # Look up the current configured connection every time. Conversation
-        # deletion and driver replacement must not erase or misroute ownership.
-        return await recover(reference) is True if recover is not None else False
 
     # ------------------------------------------------------------------ #
     # 查询
@@ -611,9 +600,6 @@ class SessionHost:
                 "这条会话正由外部终端持有；先在终端里结束，或强制接管后再在站内发送",
                 lease=conflict,
             )
-        from drivers.computer_use.settings import is_enabled, runtime_revision
-        computer_use_enabled = is_enabled()
-        computer_use_revision = runtime_revision()
         try:
             projection = await self._session_projection(conversation, binding, driver)
             if projection is None:
@@ -649,8 +635,6 @@ class SessionHost:
                 next_sequence=await self._event_store.next_sequence(conversation.id),
                 last_activity=now,
                 history_recoverable=await self._history_recoverable(driver),
-                computer_use_enabled=computer_use_enabled,
-                computer_use_revision=computer_use_revision,
             )
             self._runtimes[conversation.id] = runtime
 
@@ -815,11 +799,11 @@ class SessionHost:
         if resolver and resolver(conversation.id):
             raise UnsupportedCapabilityError("适配任务请在工作台中继续。")
         required = getattr(driver, "requires_project_projection", None)
-        if (required is not None and required(binding)) or hasattr(driver, "computer_use_status"):
+        if required is not None and required(binding):
             if self._capability_projector is not None:
                 await self._session_projection(conversation, binding, driver)
             elif (hook := getattr(driver, "session_options_for", None)) is not None:
-                # A cold terminal launch still applies the latest opt-in ceiling.
+                # A cold terminal launch still applies the Project configuration.
                 await hook(conversation, EffectiveCapabilities(project_id=conversation.project_id))
         validate = getattr(driver, "validate_external_session", None)
         if validate is not None:
@@ -922,9 +906,6 @@ class SessionHost:
     def _runtime_reusable(runtime: _ConversationRuntime) -> bool:
         if runtime.pending_dispatch or runtime.state.run_state == "running":
             return True  # Let the current turn publish its terminal event first.
-        from drivers.computer_use.settings import runtime_revision
-        if runtime.computer_use_revision is not None and runtime.computer_use_revision != runtime_revision():
-            return False
         check = getattr(runtime.driver, "runtime_reusable", None)
         return check is None or check(runtime.handle) is not False
 

@@ -53,9 +53,6 @@ class AcpCardRuntimeMixin:
             raise UnsupportedCapabilityError(
                 "Driver 只负责 Card Surface；ACP 不提供站外 CLI 的启动信息"
             )
-        from drivers.computer_use.settings import is_enabled, runtime_revision
-        computer_use_enabled = is_enabled()
-        computer_use_revision = runtime_revision()
         workspace_root = (session_options.workspace_root if session_options and session_options.workspace_root
                           else self._workspace_root_for(conversation.agent_binding_id))
         approval_mode = conversation.approval_mode or self._approval_mode_for(conversation.agent_binding_id)
@@ -75,7 +72,6 @@ class AcpCardRuntimeMixin:
             workspace_root = session_options.workspace_root
             spec, runtime_metadata = await adapter.prepare(self.agent_spec.model_copy(update={"cwd": workspace_root}),
                 runtime_metadata, (self._backend_name, self._backend_version))
-            runtime_metadata.pop("_kausComputerUse", None)
             skill_plan, runtime_adapter, role = None, None, None
         runtime_metadata["_kausWorkspaceRoot"] = self._resolve_cwd(workspace_root)
         if not restricted:
@@ -97,30 +93,11 @@ class AcpCardRuntimeMixin:
             if adapter is not None and not adapter.supported(self.agent_spec):
                 raise UnsupportedCapabilityError("该引擎不支持组长上下文隔离")
             spec = adapter.prepare(spec, role) if adapter else spec
-        old_computer_plan = runtime_metadata.get("_kausComputerUse", {})
-        if not restricted and (not old_computer_plan or
-                old_computer_plan.get("revision") != computer_use_revision):
-            from drivers.computer_use.integration import server_fingerprint
-            old_auto = {row["name"]: row["fingerprint"] for row in old_computer_plan.get("autoInjectedServers", [])}
-            if old_auto:
-                runtime_metadata["mcpServers"] = [server for server in runtime_metadata.get("mcpServers", [])
-                    if old_auto.get(server.get("name")) != server_fingerprint(server)]
-            from drivers.computer_use.integration import prepare_projection
-            runtime_metadata = await prepare_projection(
-                spec, runtime_adapter, binding, conversation,
-                self._computer_use_effective.get(conversation.id) or EffectiveCapabilities(project_id=conversation.project_id),
-                runtime_metadata, supports_mcp=bool(self.quirks.mcp_via_session_new or
-                    (self.preset and self.preset.project_mcp_via_runtime)),
-            )
         prepare = getattr(runtime_adapter, "prepare_runtime_spec", None)
         if prepare is not None:
             spec = await prepare(spec, conversation, runtime_metadata)
             if skill_plan is not None:
                 skill_plan.spec = spec
-        from drivers.computer_use.native_policy import prepare_spec as prepare_computer_policy
-        spec = prepare_computer_policy(spec, runtime_adapter, runtime_metadata)
-        if skill_plan is not None:
-            skill_plan.spec = spec
         if session_options and session_options.workspace_root:
             spec = spec.model_copy(update={"cwd": self._resolve_cwd(workspace_root)})
         connection, _init = await self._connect(workspace_root=None if restricted else workspace_root, agent_spec=spec)
@@ -131,8 +108,7 @@ class AcpCardRuntimeMixin:
             before_session = getattr(runtime_adapter, "before_runtime_session", None)
             if before_session is not None:
                 runtime_metadata = await before_session(connection, spec, conversation, runtime_metadata)
-            self._computer_use_plans[conversation.id] = dict(runtime_metadata.get("_kausComputerUse", {}))
-            self._computer_use_contexts[conversation.id] = (spec, runtime_metadata)
+            self._session_contexts[conversation.id] = (spec, runtime_metadata)
             session_options = (session_options or CreateSessionOptions(title=conversation.title)).model_copy(update={"metadata": runtime_metadata})
             if conversation.native_session_id:
                 result = await self._resume_session(
@@ -245,7 +221,6 @@ class AcpCardRuntimeMixin:
                 "clientFs": bool(
                     self.quirks.needs_client_fs and workspace_root is not None
                 ),
-                "computerUse": runtime_metadata.get("_kausComputerUse", {}),
             },
         )
         translator = AcpTranslator(
@@ -284,8 +259,6 @@ class AcpCardRuntimeMixin:
             skill_plan=skill_plan,
             runtime_spec=spec,
             runtime_metadata=runtime_metadata,
-            computer_use_enabled=computer_use_enabled,
-            computer_use_revision=computer_use_revision,
             prompt_capabilities=dict(
                 (_init.get("agentCapabilities") or {}).get("promptCapabilities") or {}
             ) if isinstance(_init, Mapping) and isinstance(_init.get("agentCapabilities"), Mapping) else {},
@@ -353,9 +326,7 @@ class AcpCardRuntimeMixin:
 
     def runtime_reusable(self, runtime: RuntimeHandle) -> bool:
         state = self._runtimes.get(runtime.runtime_id)
-        from drivers.computer_use.settings import runtime_revision
-        return bool(state is not None and not state.closed and not state.transport_retired and (
-            state.computer_use_revision is None or state.computer_use_revision == runtime_revision()))
+        return bool(state is not None and not state.closed)
 
     async def stop_runtime(self, runtime: RuntimeHandle) -> None:
         state = self._runtimes.pop(runtime.runtime_id, None)

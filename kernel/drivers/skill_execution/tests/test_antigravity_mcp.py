@@ -202,128 +202,16 @@ def test_error_diagnostic_is_bounded_and_unknown_error_envelope_fails(tmp_path):
         proxy.observe_runtime_state(json.dumps({'trajectoryStateUpdate': {'state': 'STATE_FULLY_IDLE', 'error': 'MCP load failed for probe'}}), path)
 
 
-@pytest.fixture
-def native_browser(monkeypatch):
-    description = 'Synthetic native browser persona'
-    monkeypatch.setattr(proxy, 'NATIVE_BROWSER_DESCRIPTION_HASH', hashlib.sha256(description.encode()).hexdigest())
-    return ({'name': 'chrome_devtools', 'stdio': {'command': 'npx', 'args': [
-        '-y', 'chrome-devtools-mcp@latest', '--no-usage-statistics', '--no-performance-crux',
-        '--allowedUrlPattern', 'https://example.test/*']}, 'disabledTools': ['evaluate_script']},
-        {'name': 'browser', 'description': description, 'harnessSideTools': ['VIEW_FILE']})
-
-
-def as_native(server):
-    return {'name': server['name'], 'stdio': {'command': server['command'],
-            'args': server.get('args', []), 'env': {item['name']: item['value'] for item in server.get('env', [])}}}
-
-
-def computer_metadata(*, browser=True, owned=True, scope='browser'):
-    from drivers.computer_use.integration import server_fingerprint
-    fallback = {'name': 'kaus-playwright', 'command': '/fixture/playwright-mcp',
-                'args': ['--isolated'], 'env': [{'name': 'EXAMPLE', 'value': 'fixture-secret'}]}
-    metadata = {'mcpServers': [fallback, {'name': 'project-db', 'command': 'db-mcp'}],
-        '_kausComputerUse': {'browser': {'source': 'fallback', 'status': 'ready', 'provider': fallback['name']},
-                            'controls': {'browser': browser, 'desktop': True},
-                            'resources': ['browser:context:fixture'], 'autoInjectedServers': []}}
-    if owned:
-        metadata['_kausComputerUse']['autoInjectedServers'].append({'name': fallback['name'],
-            'capabilities': [scope], 'fingerprint': server_fingerprint(fallback)})
-    return metadata
-
-
-@pytest.mark.parametrize('owned,scope,changed,removed', [
-    (True, 'browser', False, True),
-    (False, 'browser', False, False),
-    (True, 'desktop', False, False),
-    (True, 'browser', True, False),
-])
-async def test_native_browser_removes_only_exact_auto_browser_declaration(
-        tmp_path, monkeypatch, native_browser, owned, scope, changed, removed):
+async def test_native_browser_and_project_mcp_pass_through_without_a_computer_policy(tmp_path, monkeypatch):
+    # 2026-11-10: Kaus no longer selects, removes or locks computer tools here.
     spec, _ = compatible(tmp_path, monkeypatch)
-    metadata = computer_metadata(owned=owned, scope=scope)
-    spec = await adapter.prepare_runtime_spec(spec, None, metadata)
+    spec = await adapter.prepare_runtime_spec(spec, None, {'mcpServers': [{'name': 'project-db', 'command': 'db-mcp'}]})
+    assert 'KAUS_AGY_COMPUTER_RECEIPT' not in spec.env
     policy = json.loads(Path(spec.env['KAUS_AGY_SCOPE_MANIFEST']).read_text())
-    browser, agent = native_browser
-    automatic = as_native(metadata['mcpServers'][0])
-    if changed:
-        automatic['stdio']['command'] = '/user/replacement'
-    raw = {'config': {'mcpServers': [browser, automatic, {'name': 'project-db', 'stdio': {'command': 'db-mcp'}}],
-                      'customSubagents': [agent], 'skillsPaths': ['/user/skills']}}
-    before = deepcopy(raw)
-    receipt_path = spec.env['KAUS_AGY_COMPUTER_RECEIPT']
-    result = json.loads(proxy.rewrite_init(json.dumps(raw), policy, computer_receipt=receipt_path))
-    names = [server['name'] for server in result['config']['mcpServers']]
-    assert ('kaus-playwright' not in names) is removed
-    assert 'project-db' in names and 'chrome_devtools' in names
-    assert result['config']['customSubagents'] == [agent]
-    assert result['config']['mcpServers'][0]['disabledTools'] == ['evaluate_script']
-    assert result['config']['skillsPaths'] == ['/user/skills']
-    assert raw == before
-    await adapter.after_runtime_session(None, spec, None, metadata, 'fixture')
-    assert metadata['_kausComputerUse']['browser']['source'] == 'native'
-    assert not metadata['_kausComputerUse']['browser']['verified']
-    assert 'fixture-secret' not in Path(receipt_path).read_text()
-
-
-async def test_enterprise_browser_can_appear_and_disappear_between_turns_without_losing_lease(
-        tmp_path, monkeypatch, native_browser):
-    spec, _ = compatible(tmp_path, monkeypatch)
-    metadata = computer_metadata()
-    spec = await adapter.prepare_runtime_spec(spec, None, metadata)
-    assert {'browser:shared', 'desktop:local'} <= set(metadata['_kausComputerUse']['resources'])
-    policy = json.loads(Path(spec.env['KAUS_AGY_SCOPE_MANIFEST']).read_text())
-    browser, agent = native_browser
-    for present in [False, True, False]:
-        raw = {'config': {'mcpServers': [as_native(metadata['mcpServers'][0])] + ([browser] if present else []),
-                          'customSubagents': [agent] if present else []}}
-        result = json.loads(proxy.rewrite_init(json.dumps(raw), policy,
-                           computer_receipt=spec.env['KAUS_AGY_COMPUTER_RECEIPT']))
-        assert any(s['name'] == 'kaus-playwright' for s in result['config']['mcpServers']) is not present
-        await adapter.after_runtime_session(None, spec, None, metadata, 'fixture')
-        assert metadata['_kausComputerUse']['browser']['source'] == ('native' if present else 'fallback')
-        assert {'browser:shared', 'desktop:local'} <= set(metadata['_kausComputerUse']['resources'])
-
-
-@pytest.mark.parametrize('managed', [False, True])
-async def test_browser_off_removes_native_mcp_and_only_its_builtin_persona_on_every_rebuild(
-        tmp_path, monkeypatch, native_browser, managed):
-    spec, binding = compatible(tmp_path, monkeypatch)
-    if managed:
-        spec = (await adapter.project(spec, binding, effective(tmp_path, binding), tmp_path)).spec
-    metadata = computer_metadata(browser=False)
-    spec = await adapter.prepare_runtime_spec(spec, None, metadata)
-    policy = json.loads(Path(spec.env['KAUS_AGY_SCOPE_MANIFEST']).read_text())
-    browser, agent = native_browser
-    user_agent = {'name': 'browser', 'description': 'User-defined analysis persona'}
-    for present in [False, True, True]:
-        raw = {'config': {'mcpServers': [{'name': 'project-db', 'stdio': {'command': 'db-mcp'}}] +
-                          [as_native(metadata['mcpServers'][0])] + ([browser] if present else []),
-                          'customSubagents': [user_agent] + ([agent] if present else []),
-                          'skillsPaths': ['/original']}}
-        result = json.loads(proxy.rewrite_init(json.dumps(raw), policy,
-                           computer_receipt=spec.env['KAUS_AGY_COMPUTER_RECEIPT']))
-        assert [s['name'] for s in result['config']['mcpServers']] == ['project-db']
-        assert result['config']['customSubagents'] == [user_agent]
-        assert result['config']['skillsPaths'] == (policy['roots'] if managed else ['/original'])
-        await adapter.after_runtime_session(None, spec, None, metadata, 'fixture')
-        assert metadata['_kausComputerUse']['browser']['status'] == 'disabled'
-    assert 'browser:shared' not in metadata['_kausComputerUse']['resources']
-
-
-async def test_same_named_user_mcp_without_native_persona_is_not_assumed_to_be_enterprise(
-        tmp_path, monkeypatch, native_browser):
-    spec, _ = compatible(tmp_path, monkeypatch)
-    metadata = computer_metadata()
-    spec = await adapter.prepare_runtime_spec(spec, None, metadata)
-    policy = json.loads(Path(spec.env['KAUS_AGY_SCOPE_MANIFEST']).read_text())
-    browser, _ = native_browser
-    raw = {'config': {'mcpServers': [browser, as_native(metadata['mcpServers'][0])],
-                      'customSubagents': [{'name': 'browser', 'description': 'User persona'}]}}
-    assert json.loads(proxy.rewrite_init(json.dumps(raw), policy)) == raw
-
-
-async def test_unverified_version_cannot_silently_ignore_explicit_browser_off(tmp_path, monkeypatch):
-    spec, _ = compatible(tmp_path, monkeypatch)
-    Path(spec.command[-1]).write_text('new version')
-    with pytest.raises(UnsupportedCapabilityError, match='接口'):
-        await adapter.prepare_runtime_spec(spec, None, {'_kausComputerUse': {'controls': {'browser': False}}})
+    assert 'computerUse' not in policy
+    browser = {'name': 'chrome_devtools', 'stdio': {'command': 'npx', 'args': ['-y', 'chrome-devtools-mcp@latest']}}
+    raw = {'config': {'mcpServers': [browser, {'name': 'project-db', 'stdio': {'command': 'db-mcp'}}],
+                      'customSubagents': [{'name': 'browser', 'description': 'Native persona'}]}}
+    result = json.loads(proxy.rewrite_init(json.dumps(raw), policy))
+    assert result['config']['mcpServers'] == raw['config']['mcpServers']
+    assert result['config']['customSubagents'] == raw['config']['customSubagents']

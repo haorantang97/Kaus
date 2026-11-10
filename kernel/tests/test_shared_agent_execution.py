@@ -120,7 +120,6 @@ async def test_native_binding_reuses_acp_lifecycle_and_retains_identity(tmp_path
 
 async def test_delegated_execution_mounts_project_tools_and_routes_permissions(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
-    monkeypatch.setattr("drivers.computer_use.probe.probe_fallbacks", AsyncMock(return_value=()))
     from drivers.hermes import isolated_runtime
     from drivers.acp.tests.test_batch43_mcp_session_new import _effective
     from drivers.base import InteractionResponse

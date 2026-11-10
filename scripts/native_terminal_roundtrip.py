@@ -33,7 +33,6 @@ async def run(engine: str, output: Path, claude_acp: Path | None = None) -> dict
     output.mkdir(parents=True, exist_ok=True)
     folder = Path(tempfile.mkdtemp(prefix=engine + '-', dir=output))
     folder.chmod(0o700)
-    os.environ['KAUS_COMPUTER_USE_HOME'] = str(folder / 'computer-use')
     from app.capabilities.models import EffectiveCapabilities, EffectiveCapability
     from app.conversations.models import Conversation
     from app.persistence.sqlite import SqliteUnitOfWork

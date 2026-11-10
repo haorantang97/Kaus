@@ -30,7 +30,6 @@ mkdir -p .local/hermes .local/state
 export HERMES_HOME="$PWD/.local/hermes"
 export DASH_DOMAIN_DB="$PWD/.local/state/domain.sqlite3"
 export DASH_SESSION_API_TOKEN_FILE="$PWD/.local/state/session_api.token"
-export KAUS_COMPUTER_USE_HOME="$PWD/.local/computer-use"
 cp dashboard-config.example.json dashboard-config.json
 # 初次纯 UI 验收可把本地配置的 backends 只保留 backend:mock。
 .venv/bin/python server.py
@@ -49,7 +48,7 @@ cp dashboard-config.example.json dashboard-config.json
 
 桌面壳使用当前 8877 服务。自动唤起服务使用兼容 launchd 名 `com.hermes.dashboard.backend`；新设备未安装这个服务时，先手动启动后端即可。仓库包含图标、Info.plist 和壳源码，不包含本机个人路径的 `.app` 启动器或完整签名分发安装器。
 
-电脑操作在设置中明确开启后再安装/授权 CuaDriver。每台 Mac 重新完成辅助功能和屏幕录制授权；通过实际屏幕读取验证。不要迁移 TCC 数据库或将另一台机器的权限状态标为已完成。新系统/架构需重新验收。
+电脑操作工具从能力库按插件安装（或用 Agent 自带的），由该程序自己请求辅助功能和屏幕录制授权；每台 Mac 重新授权，通过实际屏幕读取验证。不要迁移 TCC 数据库或将另一台机器的权限状态标为已完成。新系统/架构需重新验收。
 
 ## 原生终端组件与验收
 

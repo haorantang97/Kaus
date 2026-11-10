@@ -6,7 +6,7 @@ import { fetchCapabilityChanges, ignoreCapabilityChanges, importCapabilities, ma
 import { EngineIcon } from "./EngineIcon";
 import { Button, Modal, ModalTitle, Spinner, cream } from "./ui";
 
-/* 各 Agent 那边的能力变化（新增、移除、有更新），按 Agent 分组（设计稿 capability-import 第 5 节）。
+/* 各 Agent 那边的配置变动（新增、移除、有更新），按 Agent 分组（设计稿 capability-import 第 5 节）。
    打开即视为已看过，入口上的黄点消失，不管有没有处理。 */
 export function CapabilityChangesPanel({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
   const { t } = useLocale();

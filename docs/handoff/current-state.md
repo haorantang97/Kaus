@@ -15,13 +15,13 @@ Kaus 是面向产品使用的本地多 Agent 工作台。它复用原生 Agent �
 | 终端 | 支持的驱动接续原生会话，可选 Terminal、cmux、iTerm2；卡片/终端共享写入控制 | [终端](../terminal-integration.md)、[覆盖](../product/terminal-adapter-completion-20261017.md) |
 | 账号额度 | 优先复用已有登录/密钥；确需额外查询凭据时在对应账号旁补充 | [额度覆盖](../product/account-quota-coverage-20261017.md) |
 | 工作台 | 用户独立开发的模块库；选择本地项目、清单安装或 Agent 适配，共用已有 Agent/模型；可拖到侧栏 | [模块协议](../workbench-modules.md) |
-| 电脑操作 | 设置内手动启用、自动安装签名 CuaDriver、系统授权引导；原生优先、缺口补齐、协作组控制权管理 | [覆盖与限制](computer-use-coverage.md)、[技术契约](../computer-use.md) |
+| 电脑操作 | 来自能力库插件或 Agent 自带工具；全屏接管由 Agent 自己占用和释放（Kaus 内置 MCP 的 `kaus_screen_occupy` / `kaus_screen_release`），后台操作不上锁 | [覆盖与限制](computer-use-coverage.md)、[技术契约](../computer-use.md) |
 
 ## 交付形态
 
 - React/TypeScript 前端由本地 Python 服务托管；主要验收环境为 macOS。桌面壳使用同一个服务和构建产物。
 - 已有完整适配代码不等于每种原生版本、账号和模型全部实测；各项按验收记录判断。
-- 最近一轮真实电脑操作覆盖 Codex + CuaDriver、正式 Kaus 设置界面，以及协作组切换、排队取消、中断和恢复。其他引擎仍须各自完成真实桌面任务验证。
+- 电脑操作 2026-11-10 改为「谁进门谁挂牌」：托管安装、设置页、自动补齐与按回合上锁已删除；新方式只有协议与单元测试，真实 Agent 尚未实测（此前 Codex + 托管 CuaDriver 的真机闭环针对的是已删除的链路）。
 - 本次 GitHub 更新包含此前留在本地的技能、MCP、接续、额度、工作台和电脑操作开发。公开仓库保持通用示例；真实配置、状态库、测试安装目录和聊天不随源码上传。
 
 当前首要工作是按 [待办](open-items.md) 在真实账号与业务场景下扩大验收，再基于明确反馈调整 UI。不要通过新增大面板或解释性文字弥补运行缺口。
@@ -71,4 +71,4 @@ Kaus 是面向产品使用的本地多 Agent 工作台。它复用原生 Agent �
 - 实测（Chrome，mock 后端，1440×900）：连续滚轮 3s 58.3fps（最大帧间隔 34ms）；最后一个滚轮事件后 196ms 静止（含 110ms 无输入判定）；拖拽甩动 1.3 格 248ms 静止，过冲 3.4px 一次回正。截图在 `~/Data/Projects/kaus/.tmp/wheel/`（不入库）。
 - 测试：`AgentGraph.test.tsx` 新增面板开合 / Esc / 关闭钮 / 点空白与平移区分 / 方向键 6 条，`wheelGeometry.test.ts` 新增吸附缓动 3 条；`web npm run check` 115 文件 / 1081 用例与构建通过。未做真机触控板验收；`prefers-reduced-motion` 只走代码路径未实测。
 
-11 月 9 日（未提交）：Codex 官方 `codex app-server` 传输作为可选第二条路（`kernel/drivers/codex_app_server/`，`driver_kind = "native"`）。连接详情「高级」里一个下拉在 `acp`（codex-acp，默认）与 `app-server` 之间切换，写 `engine-connections.json` 的 `transports`，空闲时重建驱动；Project 指令走 `thread/start.developerInstructions`，原生 MCP 排除、Project MCP（含 `kaus-memory`）与自带记忆关闭走 `thread/start.config`，API key 只从加密存储注入子进程；codex-acp 的会话 id 与 app-server 的 `thread.id` 同源，既有对话理论上可直接 `thread/resume`。全部基于协议源码与假服务测试，`codex` 本机未安装，真机验收与是否改默认见[待办](open-items.md)「Codex app-server 传输」。
+11 月 9 日（未提交）：Codex 官方 `codex app-server` 传输作为可选第二条路（`kernel/drivers/codex_app_server/`，`driver_kind = "native"`）。连接详情「高级」里一个下拉在 `acp`（codex-acp，默认）与 `app-server` 之间切换，写 `engine-connections.json` 的 `transports`，空闲时重建驱动；Project 指令走 `thread/start.developerInstructions`，原生 MCP 排除、Project MCP（含内置 MCP `kaus`，11 月 10 日前叫 `kaus-memory`）与自带记忆关闭走 `thread/start.config`，API key 只从加密存储注入子进程；codex-acp 的会话 id 与 app-server 的 `thread.id` 同源，既有对话理论上可直接 `thread/resume`。全部基于协议源码与假服务测试，`codex` 本机未安装，真机验收与是否改默认见[待办](open-items.md)「Codex app-server 传输」。

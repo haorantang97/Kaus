@@ -19,21 +19,29 @@
 ### 11 月 10 日定下、尚未执行
 
 10. 能力导入与归属：**11 月 10 日已实现**（[设计稿](../product/capability-import-20261110.md) 第 9 节记了与设计的差异，验收见 `verification.md` 同日）。待实测：经真实 Agent 开会话时，导入的 MCP 现读定义、共用技能、挡掉不在树上的原生能力是否生效（任务书 P2）。
-11. 电脑操作：删除范围已列出（[computer-use-trim-scope-20261110.md](../product/computer-use-trim-scope-20261110.md)），有 6 个问题待项目负责人确认后执行。
+11. 电脑操作：**11 月 10 日已执行**（「谁进门谁挂牌」：工具来自能力库插件或 Agent 自带，全屏接管由 Agent 自己调用内置 MCP 的占用 / 释放；验收见 `verification.md` 同日）。待实测：真实 Agent 是否照说明在接管前占用、释放（任务书补一项）。
 
 ### 待项目负责人确认
 
-- Agent 绑定能力在导入名单里置灰，已按「固定给所属 Agent 用，不用选」实现，待确认。
-- 电脑操作精简的 6 个问题（见上面第 11 项的文档）。
-- Codex 插件里经 ChatGPT 账号的远程连接（Gmail、日历等）：建议先放着。
-- 跨 Agent 实测环境：本地 Tart 虚拟机，还是云主机。
-- 11 月 9 日至 10 日的改动（Codex app-server、插件与能力库、插件 MCP 修正、插件整包、Codex 逐个关插件、提示文案、任务书用例 P2/Q）尚未提交。
+（11 月 10 日对照 11 月 2 日那次整体核查重新核过一遍。）
+
+- ~~Agent 绑定能力置灰的含义~~：11-11 确认。
+- 「Agent 自查」：11-11 定为要加，形式为对话窗口 + 每条可点击绑定（见 product-decisions），未实现。
+- ~~旧运行副本清理方式~~：11-11 定为保留 7 天。
+- 自带记忆并入导入名单：11-11 定下，未实现。
+- 项目记忆：有效期与重复自动合并已定（11-11），未实现。
+- 主 Agent 分身：11-11 定为后台事务由主 Agent 的「后台分身（低权限）」承担（见 product-decisions），待设计。
+- ~~Codex 远程连接~~：11-11 定为不处理，用树里的 MCP 覆盖。
+- 跨 Agent 实测环境：11-11 定为本地 Tart 虚拟机，准备中。
+- ~~推送与旧分支~~：11-11 已推送到 GitHub，三个已合并分支已删；`claude/external-terminal` 已合并但挂在 App 的工作区上，留给 App 清理。CI 里已删除的测试路径同日修好，检查通过。
+- 项目页标出「未接管的自带记忆」、导入 Agent 自带记忆：11-11 提议并入导入名单（见上面「自带记忆并入导入名单」），不再单独做。
+- ~~Kith 侧 MCP~~：Kith 未开发完，暂不处理。
 
 | 项目 | 当前状态/原因 | 下一步与完成标准 |
 | --- | --- | --- |
 | 数据位置设置 | 用户提出需求；目前有分项路径覆盖，没有完整迁移界面 | 建议在设置中提供 Kaus 数据位置，原生 Agent 路径放各连接高级设置。先盘点 DB、附件、模块、索引与外部路径；停止写入、一致性复制、校验、重启与回滚通过后开放。工作目录选择不承担历史迁移功能；本轮未移动现有数据 |
-| 逐 Agent 真实电脑任务 | 共用接入已实现，真实模型 GUI 闭环只在明确列出的组合验收 | 使用临时原生窗口，对每个目标引擎/模型验证观察→操作→再观察、审批拒绝、取消、恢复和源配置不变；记录版本和账号类型 |
-| 新设备授权 | macOS 授权和原生登录属于设备/账号 | 用户完成原生登录及两项系统授权，再执行设置内屏幕验证；不以本机旧状态代替 |
+| 逐 Agent 真实电脑任务 | 2026-11-10 起工具由能力库插件或 Agent 自带，Kaus 只给一块屏幕牌子；新方式没有任何真实 Agent 实测 | 每个目标引擎/模型：装好电脑操作插件（或用自带工具）后在临时原生窗口验证观察→操作→再观察；两个对话同时要接管时，一个拿到 `occupied`、另一个 `waiting`，释放或到期后排到的那个接手；后台操作不同窗口时不调用占用。记录版本、账号类型，以及 Agent 是否照说明调用 |
+| 新设备授权 | macOS 授权和原生登录属于设备/账号；Kaus 不再有授权引导 | 用户完成原生登录，并给实际操作电脑的插件或 Agent 两项系统授权，再在对话里让 Agent 做一次实际屏幕读取；不以本机旧状态代替 |
 | 跨 Agent 业务质量 | 交接创建、配置、附件及发送链已测；复杂任务推理接续质量尚未覆盖 | 用真实项目进度、观点冲突和未完成任务验收，检查目标是否读到所需公开材料；不尝试迁移隐藏思维链 |
 | 原生升级 | 多处范围适配依赖精确版本/加载层契约 | 新版本先重跑 selected/empty/dynamic、MCP 更新/清空、冷恢复、终端往返与子进程回收；更新能力矩阵 |
 | Cursor 真实模型终端往返 | 同一原生存储、公开历史和项目 MCP 适配已完成；实际 native codec/parser 验证通过，当前原生账号未登录 | 用户登录后完成真实 Kaus → CLI → Kaus 多轮验收；见[终端往返](../product/terminal-roundtrip-acceptance-20261024.md) |
@@ -42,7 +50,7 @@
 | DSH / DeepSeek ACP 日常凭据 | 原生 TUI 自动安装与同会话往返已完成，两条路径各五轮真实模型通过；测试临时复用了现有 DeepSeek 密钥 | 用户日常连接需要其原生配置中的密钥；新原生版本重跑范围与往返验收 |
 | OpenClaw 远程/旧会话 | 远程配置回执、逐会话原生禁用和已有会话所有权有具体限制 | 取得服务端回执/受管会话契约后验收；不能改全局权限或源 Agent 身份冒充隔离 |
 | 额度覆盖 | 多家 reader/连接已实现，部分缺账号或未核实账单契约 | 按[额度清单](../product/account-quota-coverage-20261017.md)逐项验证；账号授权不能代替协议实现，查询失败不能显示为余额 0 |
-| Windows/Linux 与可分发桌面安装器 | macOS 为主；CuaDriver 托管安装与桌面跨平台未交付 | 单独做平台/签名/安装和升级验收。浏览器能打开不等于原生功能全平台可用 |
+| Windows/Linux 与可分发桌面安装器 | macOS 为主；桌面跨平台未交付（屏幕牌子依赖 POSIX flock，Windows 上不可用） | 单独做平台/签名/安装和升级验收。浏览器能打开不等于原生功能全平台可用 |
 | 侧边浏览器后续 | 开发壳已有通用侧边浏览器和“填入浏览器”；Agent 工具未做 | 按 product-decisions 的分级做 Agent 浏览器 MCP（读取、导航、点击、输入；本机地址直接可用，其他网站首次由用户允许，高风险动作确认）；再把日常窗口换成 Chromium 并重验聊天、终端、窗口和下载 |
 | Midjourney 站点后续 | 站点视图、示例模块和侧边浏览器的 MJ 配置已完成；尚未用真实账号验证登录、参考图识别和生成 | 先完成登录实测；侧边浏览器补参考图填入；最后接入视频站点完成串联。都依赖 Chromium 壳接上真实后端 |
 | 固定剪辑模块日常发布 | Chromium 开发预览已完成真实剪辑导出，日常 WKWebView 壳未替换 | 发布前验证现有聊天/终端、窗口和下载生命周期；补全新账号 OAuth、长视频与 4K。跨容器本地素材首次重新关联，不自动复制其他应用缓存 |
@@ -60,7 +68,7 @@
 | 补充 ACP 预设 | 2026-11-01 计划补 Kimi、Vibe、Auggie、Cline、Droid、Kiro、Qoder、Muse 八个预设，未开始；2026-11-02 定为只保留主流 Agent | 与现有预设一起按「主流」重新评估后再定增删 |
 | 删除与协作组边界 | 级联删除中途失败不回滚，上级路径按名称比较；组内新建成员的第一句话不经组长；外部终端启动时未生效的 Project 能力不在对话里提示 | 有实际复现时修 |
 | 待实测 | Gemini 会话内选模型；cmux 下的状态 hook；目录信任预写；自带记忆按次关闭（Claude 环境变量、Codex `CODEX_CONFIG.memories`、Gemini / Qwen 系统设置覆盖文件） | 装好对应 Agent 后在隔离环境验收；记忆项每个 Agent 核一次「关掉后原生记忆目录不再新增、Project 记忆 MCP 正常」，通过后把对应 `NATIVE_MEMORY_DISABLE_VERIFIED` 置真 |
-| Codex app-server 传输 | 2026-11-09 完成驱动与连接级开关（`PUT /api/engine-connections/{id}/transport`，默认 `acp`），只有假服务与契约测试；本机无 `codex` 二进制 | 装好 Codex 后在隔离 `CODEX_HOME` 里：`initialize`（`experimentalApi: false`）→ `thread/start` 带 `config` / `developerInstructions` / 审批三元组 → 一轮 `turn/start` → 命令审批接受与拒绝 → `turn/interrupt` → 在 codex-acp 建的对话上切传输 `thread/resume` → `model/list` 与 `ephemeral` 探测不写 `sessions/`；再核 `OPENAI_API_KEY` 只注入时 `account/read` 的取值、`sandboxPolicy` 与 `item/permissions/requestApproval` 回执。通过后再议是否改默认；项目技能范围与电脑操作在此传输上未接 |
+| Codex app-server 传输 | 2026-11-09 完成驱动与连接级开关（`PUT /api/engine-connections/{id}/transport`，默认 `acp`），只有假服务与契约测试；本机无 `codex` 二进制 | 装好 Codex 后在隔离 `CODEX_HOME` 里：`initialize`（`experimentalApi: false`）→ `thread/start` 带 `config` / `developerInstructions` / 审批三元组 → 一轮 `turn/start` → 命令审批接受与拒绝 → `turn/interrupt` → 在 codex-acp 建的对话上切传输 `thread/resume` → `model/list` 与 `ephemeral` 探测不写 `sessions/`；再核 `OPENAI_API_KEY` 只注入时 `account/read` 的取值、`sandboxPolicy` 与 `item/permissions/requestApproval` 回执。通过后再议是否改默认；项目技能范围在此传输上未接 |
 | 有删除动作的迁移 | v19（删已关闭组）、v20（删上下文包消息）执行前不自动备份数据库 | 给删除数据的迁移加执行前自动备份 |
 | 结构重构的后续 | 2026-11-03 完成第一轮（见验收记录）。刻意未拆：`server.py` 的项目树、删除与恢复（测试直接替换模块全局）；`AgentGraph.tsx`（轮盘物理模型共用 ref）；会话页的投递逻辑；`exhaustive-deps` 等需改写法的 ESLint 规则未开；各入口模型目录读取失败的处理仍不同 | 相关功能改动时顺带处理 |
 | 手机入口 | 2026-11-02 项目负责人：暂不需要。现有只有控制 MCP；没有事件主动推送；Ghostty 终端暂缓 | 需要时再设计 |
@@ -68,7 +76,7 @@
 | 测试隔离缺口 | 2026-11-03 已解决：树操作只写领域库，`DASH_DOMAIN_DB` 指向临时库时不写代码目录（`tests/test_project_tree_storage.py`）；`test_dashboard.py` 真机脚本仍引用已删除的 `*_FILE` 常量 | 真机脚本在下次真机验收时按库重写或删除 |
 | 组长配置文案 | `CoordinatorSettings` 大部分标签写死中文，英文界面下仍显示中文 | 改入 i18n |
 | 原生 MCP 排除未经真机验证 | 2026-11-09 起每次启动按 Agent 自己的机制排除「自带但未分配给当前 Project」的 MCP（Copilot / Qwen 参数、Codex `CODEX_CONFIG`、Gemini 白名单、OpenCode `OPENCODE_CONFIG_CONTENT`、Claude Code 严格模式内存传定义；Cursor 无机制报 `native_not_isolated`），不改用户配置文件。全部 `NATIVE_MCP_EXCLUSION_VERIFIED=False`，会话 `projection.summary.nativeMcp` 报 `unverified`，项目页应据此标「未隔离」。从未整理过（没有任何分配/屏蔽行）的 Agent 不动。Hermes、OpenClaw、Pi/omp、Goose、Kilo、Crush、Command Code、Grok、ZCode、DeepSeek、Antigravity 没有自带 MCP 清单来源，不参与；整理之后新装的自带 MCP 照常加载（`summary.nativeMcpNew`）；Claude Code 严格模式下显式带上已批准的工作区 `.mcp.json` 与插件 MCP（11 月 9 日）。Agent 自装插件（Claude Code、Codex、Gemini）同样导入为初始配置，整理后按 `exclude_native_plugins` 关掉未分配的（Codex 逐个关掉插件里的技能和 MCP）；插件在树上按整包显示，里面的技能不单列；Claude Code 标志层与 Codex 的技能 / MCP 按次关闭已在本机隔离目录里实测，经适配器开会话的一段 `NATIVE_PLUGIN_EXCLUSION_VERIFIED=False` | 隔离虚拟机里逐个实测后把对应适配器的 `NATIVE_MCP_EXCLUSION_VERIFIED` 改为 `True`；Gemini 还要确认白名单是否也过滤 ACP 传入的项目 MCP、Copilot 确认 `--acp` 模式接受全局参数 |
-| 主 Agent 分身（通用化） | 原实现：主 Agent（根 Project）的 Hermes 分身档案把 `memories/` 软链到主 Agent，共享记忆；`SOUL.md` 头部标出模式与权限档（如「配置模式·高权限」「后台模式·低权限」）。2026-11-03 随 Hermes 遗留删除了这套文件机制；领域模型里同一 Project 挂多条同 Agent Binding（AD-01 第四段 discriminator）仍在 | 待项目负责人确认后设计通用版：根 Project 的主 Agent 可有多个角色（各自的权限档、指令），共享 Project 记忆（配置通用化第二期），经控制 MCP 调度 |
+| 主 Agent 分身（通用化） | 原实现：主 Agent（根 Project）的 Hermes 分身档案把 `memories/` 软链到主 Agent，共享记忆；`SOUL.md` 头部标出模式与权限档（如「配置模式·高权限」「后台模式·低权限」）。2026-11-03 随 Hermes 遗留删除了这套文件机制；领域模型里同一 Project 挂多条同 Agent Binding（AD-01 第四段 discriminator）仍在 | 2026-11-11 定：做通用版，先做「后台分身（低权限）」承担定时整理记忆、事后提炼、Agent 自查等后台事务；可选、默认关（见 product-decisions「主 Agent 分身与后台事务」）。待设计 |
 | 项目地图（原上下文索引） | 原设计：给所有 Agent 一份「谁知道什么、什么任务找谁」的索引（INDEX.md），只在 Hermes 上部分实现，已删除。控制 MCP 的 `kaus_overview` 每次调用直接读库，Project、接入的 Agent 与模块始终最新，但没有各 Project 的职责描述 | 2026-11-03 定：职责描述不是 Project 指令（AGENTS.md 一类），不要求手工维护。取自 Project 记忆里的「项目概述」条目，由在该 Project 工作的 Agent 随记忆静默更新；新建 Project 时可选填一句；用户也可在对话里让 Agent 改。`kaus_overview` 带上它，主 Agent 按需读取。随配置通用化第二期（记忆）实现 |
 | Hermes 驱动防御的边界 | 2026-11-03 已在 `kernel/drivers/hermes/` 实现：托管运行结束或停止时把技能用量回写到来源 `skills/.usage.json`（Kaus 唯一写入用户 Hermes 目录的内容，只改已有记录的时间与计数，持 Hermes 自己的锁）；技能被 Hermes 归档时返回 409 `skill_archived_by_engine` 与恢复命令；执行目录写 `curator.enabled: false`；复制 `SOUL.md` 时剥离旧宪法块；投射遇软链接目标报 `target_linked` 不替换。边界：用户只用站外 `hermes chat` 时用量要等下一次 Kaus 运行才回写；已标 stale 的技能等 curator 下一轮自行恢复；归档识别依赖 Hermes 当前的 `.archive/` 布局；非 POSIX 平台无文件锁 | 装好 Hermes 后实测一轮托管会话的回写与归档提示 |
 | 空环境的引擎选择 | 清除默认接入 Hermes 后，一个 Agent 都没接入时，新会话页的引擎下拉是空的，没有去接入的入口 | 下拉为空时给一个「接入 Agent」项，打开设置里的接入 |

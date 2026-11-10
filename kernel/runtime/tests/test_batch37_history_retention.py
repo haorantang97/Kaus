@@ -180,16 +180,6 @@ async def test_acp_content_survives_eight_days() -> None:
         await world.host.aclose()
 
 
-async def test_retention_fake_agent_has_no_host_computer_resources() -> None:
-    world = _World(_acp_driver(), slug='acpretisolated')
-    conversation = await world.seed()
-    try:
-        await world.host.ensure_runtime(conversation)
-        assert not world.driver._computer_use_plans.get(conversation.id, {}).get('resources')
-    finally:
-        await world.host.aclose()
-
-
 async def test_acp_diagnostics_still_expire() -> None:
     """这条规则不是「什么都不删了」：诊断照旧按诊断期走。"""
     world = _World(_acp_driver(), slug="acpdiag")

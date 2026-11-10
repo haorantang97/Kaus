@@ -257,12 +257,12 @@ async def test_launch_delivery_lands_in_thread_start_config(tmp_path, monkeypatc
     record = tmp_path / "record.jsonl"
     driver = make_driver(tmp_path, record=record, preset=get_preset("codex"))
     _, _, conversation = wire(driver, tmp_path)
-    from app.projects.memory_injection import MEMORY_MCP_ID
+    from app.projects.builtin_mcp import BUILTIN_MCP_ID as MEMORY_MCP_ID
     effective = EffectiveCapabilities(project_id="project:p", entries=(
         EffectiveCapability(capability_type="instructions", capability_id="house", config={"body": "Be brief.", "title": "风格"},
                             source_project_id="project:p", inherited=False),
         EffectiveCapability(capability_type="mcp", capability_id=MEMORY_MCP_ID,
-                            config={"value": {"command": sys.executable, "args": ["-m", "kaus_memory"]}},
+                            config={"value": {"command": sys.executable, "args": ["-m", "kaus_memory"]}, "memory": True},
                             source_project_id="project:p", inherited=False),
         EffectiveCapability(capability_type="mcp", capability_id="kept", config={"value": {"command": "uvx", "args": ["kept"]}},
                             source_project_id="project:p", inherited=False),

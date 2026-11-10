@@ -444,6 +444,9 @@ class SkillTreeService:
             record = catalog.get(skill_id)
             if not record:
                 raise ApiError(404, "skill_not_found", "技能不存在")
+            if record.get("boundReason") == "not_isolable" and action != "reorder":
+                # The native Agent cannot leave it out of a launch: arranging it would change nothing.
+                raise ApiError(409, "capability_not_isolable", "原生 Agent 不支持按项目隔离，这项随 Agent 加载")
             target = request.get("targetProjectId") or request.get("sourceProjectId")
             if target not in {p["id"] for p in before["projects"]}:
                 raise ApiError(404, "project_not_found", "项目不存在")

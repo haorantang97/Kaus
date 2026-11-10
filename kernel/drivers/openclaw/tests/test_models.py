@@ -53,9 +53,7 @@ class GatewayFixture:
 def setup_driver():
     driver = OpenClawAcpDriver(fake_agent_spec("text-stream", cwd="/tmp"), backend_key="openclaw", preset=get_preset("openclaw"))
     from drivers.openclaw import skill_adapter
-    adapter = SimpleNamespace(**{**vars(skill_adapter), "computer_use_fallback_allowed": lambda *_args: False, "probe_computer_use": AsyncMock(return_value={
-        cap: {"status": "unavailable", "enabled": False} for cap in ("browser", "desktop")
-    })})
+    adapter = SimpleNamespace(**vars(skill_adapter))
     driver._runtime_adapter = lambda: adapter
     driver.gateway = GatewayFixture()
     driver._configured_default_model = lambda _binding: "first/shared"

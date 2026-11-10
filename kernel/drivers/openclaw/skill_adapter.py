@@ -18,39 +18,15 @@ from drivers.projection_store import atomic_write_text
 from drivers.skill_execution.common import materialize, state_root, selection_of
 from drivers.acp.mcp_projection import McpProjection, project_mcp_servers
 from drivers.session_mcp import projection as session_mcp
-from drivers.computer_use.policy import project_controls
 from .driver import OpenClawGateway
-from .computer_use import (inherited_agent_policy, probe_computer_use, stop_computer_use,
-                          confirm_computer_use_complete, computer_use_reference, recover_computer_use)
+from .tool_policy import inherited_agent_policy
 
 
-COMPUTER_USE_POLICY_SCOPES = frozenset({'browser', 'desktop'})
 _runtime_contexts = {}
 
 def project_scope_selected(effective):
     return selection_of(effective) is not None or any(
         entry.capability_type == 'mcp' for entry in effective.entries)
-
-
-def native_computer_use_permission_control(effective, metadata=None, *, conversation=None):
-    """Native source permissions remain with OpenClaw; owned scopes are controllable."""
-    if project_scope_selected(effective):
-        return "kaus"
-    context = _runtime_contexts.get(getattr(conversation, 'id', None))
-    if context is not None:
-        _binding, _effective, plans, _workspace_root, workspace_scoped = context
-        existing = plans.get(conversation.id)
-        if workspace_scoped or (existing is not None and not getattr(existing, 'source_session', False)):
-            return "kaus"
-    session_key = (metadata or {}).get('_meta', {}).get('sessionKey', '')
-    if session_key.startswith('agent:kaus-'):
-        return "kaus"
-    return "agent"
-
-
-def computer_use_fallback_allowed(effective, metadata=None):
-    # Source sessions use an owned MCP overlay without replacing their Agent.
-    return True
 
 
 def remember_runtime_context(conversation, binding, effective, plans, workspace_root=None, *, workspace_scoped=None):
@@ -66,12 +42,8 @@ def forget_runtime_context(conversation_id):
 async def prepare_runtime_spec(spec, conversation, metadata):
     """Apply the final tool selection even when no project Skill was selected."""
     context = _runtime_contexts.get(conversation.id)
-    computer_use = metadata.get('_kausComputerUse', {})
-    controls = computer_use.get('controls', {})
-    off = any(controls.get(kind) is False for kind in COMPUTER_USE_POLICY_SCOPES)
-    needs_owned = off or bool(computer_use.get('resources'))
     if context is None:
-        if needs_owned or metadata.get('mcpServers'):
+        if metadata.get('mcpServers'):
             raise UnsupportedCapabilityError('无法确定 OpenClaw 项目范围')
         return spec
     binding, effective, plans, workspace_root, _workspace_scoped = context
@@ -81,25 +53,21 @@ async def prepare_runtime_spec(spec, conversation, metadata):
     servers = metadata.get('mcpServers')
     if already_scoped and servers is None:
         servers = getattr(existing, 'runtime_mcp_servers', None)
-    expected_controls = {**project_controls(effective), **controls}
-    if (already_scoped and tuple(servers or ()) == getattr(existing, 'runtime_mcp_servers', ())
-            and expected_controls == getattr(existing, 'computer_controls', None)):
+    if already_scoped and tuple(servers or ()) == getattr(existing, 'runtime_mcp_servers', ()):
         await validate_turn(existing, metadata.get('_kausWorkspaceRoot') or workspace_root or spec.cwd)
         metadata.pop('mcpServers', None)
         if getattr(existing, 'source_session', False):
             metadata['_kausOpenClawOwnership'] = existing.ownership
         return spec
-    if not needs_owned and not servers and existing is None:
+    if not servers and existing is None:
         return spec
     workspace = metadata.get('_kausWorkspaceRoot') or workspace_root
     private_scope = (existing is not None and not getattr(existing, 'source_session', False)
         and getattr(existing, 'agent_id', None)) or project_scope_selected(effective)
     if not private_scope:
         from .source_session import prepare
-        plan = await prepare(spec, binding, effective, conversation, expected_controls)
+        plan = await prepare(spec, binding, effective, conversation)
         if plan is None:
-            from .source_mcp import discard_automatic_fallback
-            discard_automatic_fallback(metadata)
             if metadata.get('mcpServers'):
                 raise UnsupportedCapabilityError('当前原生会话无法添加会话工具，请新建对话')
             return spec
@@ -108,7 +76,7 @@ async def prepare_runtime_spec(spec, conversation, metadata):
     else:
         plan = await project_session(spec, binding, effective,
             workspace or spec.cwd, conversation=conversation, force_workspace=True,
-            runtime_mcp=servers, computer_controls=controls)
+            runtime_mcp=servers)
     plans[conversation.id] = plan
     if existing is not None and existing is not plan and getattr(existing, 'gateway', None):
         await existing.gateway.close()
@@ -318,27 +286,23 @@ async def watch(plan, cwd):
         await validate_turn(plan, cwd)
 
 
-async def project_session(spec, binding, effective, workspace_root, *, conversation, dry_run=False, runtime_info=None, force_workspace=False, runtime_mcp=None, computer_controls=None):
+async def project_session(spec, binding, effective, workspace_root, *, conversation, dry_run=False, runtime_info=None, force_workspace=False, runtime_mcp=None):
     from .config_lock import configuration_lock
     if dry_run:
         return await _project_session(spec, binding, effective, workspace_root, conversation=conversation,
             dry_run=True, runtime_info=runtime_info, force_workspace=force_workspace,
-            runtime_mcp=runtime_mcp, computer_controls=computer_controls)
+            runtime_mcp=runtime_mcp)
     async with configuration_lock(spec):
         return await _project_session(spec, binding, effective, workspace_root, conversation=conversation,
             dry_run=dry_run, runtime_info=runtime_info, force_workspace=force_workspace,
-            runtime_mcp=runtime_mcp, computer_controls=computer_controls)
+            runtime_mcp=runtime_mcp)
 
 
-async def _project_session(spec, binding, effective, workspace_root, *, conversation, dry_run=False, runtime_info=None, force_workspace=False, runtime_mcp=None, computer_controls=None):
+async def _project_session(spec, binding, effective, workspace_root, *, conversation, dry_run=False, runtime_info=None, force_workspace=False, runtime_mcp=None):
     plan = materialize(spec, binding, effective, layout='roots', dry_run=dry_run)
     plan.spec = spec
     mcp = (McpProjection(servers=tuple(dict(server) for server in runtime_mcp))
            if runtime_mcp is not None else project_mcp_servers(effective))
-    controls = {**project_controls(effective), **(computer_controls or {})}
-    plan.computer_controls = controls
-    disabled_tools = [tool for kind, tool in (('browser', 'browser'), ('desktop', 'computer'))
-                      if controls.get(kind) is False]
     plan.runtime_mcp_servers = mcp.servers
     if mcp.warnings:
         raise UnsupportedCapabilityError('项目 MCP 配置无效')
@@ -349,7 +313,7 @@ async def _project_session(spec, binding, effective, workspace_root, *, conversa
     owner = state_root(spec) / 'openclaw-agents' / identity
     marker = owner / 'owner.json'
     provenance = {'schema': 1, 'bindingId': binding.id, 'conversationId': conversation.id, 'agentId': agent_id}
-    if plan.root is None and not mcp.servers and not marker.exists() and not force_workspace and not disabled_tools:
+    if plan.root is None and not mcp.servers and not marker.exists() and not force_workspace:
         return plan
     plan.manage_skills = selection_of(effective) is not None
     if plan.root is None:
@@ -411,9 +375,6 @@ async def _project_session(spec, binding, effective, workspace_root, *, conversa
         # Preserve the source Agent's explicit tool policy without copying its
         # credentials or executor settings. Project scope fields take priority.
         plan.agent_config = {**inherited_agent_policy(config, spec, binding), **plan.agent_config}
-        if disabled_tools:
-            tools = plan.agent_config.setdefault('tools', {})
-            tools['deny'] = list(dict.fromkeys([*tools.get('deny', []), *disabled_tools]))
         previous = _entry(config, agent_id)
         if previous is not None and not marker.exists():
             raise UnsupportedCapabilityError('专属 Agent 标识已被占用')

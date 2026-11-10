@@ -61,6 +61,8 @@
 | P | 插件 | Claude Code：在能力库「添加插件」装一个本地插件（含技能与 MCP），拖到项目上；其他 Agent 各开一条会话 | Claude Code 原样加载插件；其他 Agent 得到其中的技能与 MCP，钩子 / 命令标「未生效」 |
 | P2 | 自装插件 | 虚拟机里先用 Claude Code 自己装两个插件（`/plugin install`）、Codex 装两个插件（`codex plugin add`）、Gemini 装两个扩展；Codex 另测把两个都屏蔽；接入 Kaus 后在技能树里各屏蔽一个，再各开一条会话问「你现在有哪些插件 / 扩展」，并让它调用被屏蔽插件里的 MCP | 技能树里出现这些插件、默认在根项目；被屏蔽的那个在会话里不可用，另一个照常；`~/.claude/settings.json`、`~/.gemini/extensions` 内容不变 |
 | Q | 原生界面可见 | 每个 Agent 在 Kaus 里各开一条会话、说一句话；然后打开该 Agent 自己的桌面版或命令行恢复列表（ChatGPT 的 Codex、`codex resume`、`claude --resume`、Claude 桌面版、Antigravity 桌面版、Gemini `/chat`、Cursor 等） | 逐个记录：Kaus 里开的对话在它自己的界面里看不看得到、能不能接着聊。Antigravity 走 `agy_acp_server`（另一份 Google 登录），与桌面版是否共用对话库是重点 |
+| R | 能力导入 | 每个 Agent 接入时走一遍勾选名单：只导入一部分；在两个子项目里分别分配 | 会话里只出现树上分到这个项目的技能、MCP、插件；没导入的、没分到的都看不到；别的 Agent 导入的共用技能和 MCP 也能用；关不掉的项目在名单里置灰 |
+| S | 全屏占用 | 两个会全屏接管电脑的 Agent，几乎同时各开一个需要接管屏幕的任务 | 先开始的 Agent 在接管前调用内置 MCP 的「占用屏幕」，后者显示等待，前者结束并「释放屏幕」后才开始；后台操作的任务不排队 |
 
 ## 4. 交付的证据
 

@@ -16,9 +16,9 @@ from app.api.session_auth import SessionAuthPolicy  # noqa: E402
 from app.capabilities.models import EffectiveCapabilities, EffectiveCapability  # noqa: E402
 from app.persistence.sqlite import SqliteUnitOfWork  # noqa: E402
 from app.projects.memory import INDEX_LINE_LIMIT, MemoryError_, ProjectMemory  # noqa: E402
-from app.projects.memory_injection import MEMORY_MCP_ID, MEMORY_SECTION_ID, with_project_memory  # noqa: E402
+from app.projects.builtin_mcp import BUILTIN_MCP_ID, MEMORY_SECTION_ID, SCREEN_SECTION_ID, with_builtin_mcp  # noqa: E402
 from app.projects.models import Project  # noqa: E402
-from drivers.launch_delivery import plan_launch  # noqa: E402
+from drivers.launch_delivery import plan_launch, project_memory_id  # noqa: E402
 
 TOKEN = "test-token"
 
@@ -114,18 +114,27 @@ def _binding(project_id, **runtime):
     return SimpleNamespace(project_id=project_id, backend_id="backend:opencode", runtime_config=runtime)
 
 
-def test_every_session_gets_the_index_and_memory_server_but_group_members_do_not(world):
+def test_every_session_gets_the_builtin_server_and_group_members_get_only_the_screen(world):
     async def scenario():
         await world.memory.add(world.child.id, "设计", "首页主色是墨绿")
-        effective = await with_project_memory(_effective(world.child.id), _binding(world.child.id), world.repos,
-                                              token_file=Path("/tmp/token"), url="http://127.0.0.1:8877", python="/usr/bin/python3")
+        effective = await with_builtin_mcp(_effective(world.child.id), _binding(world.child.id), world.repos,
+                                           token_file=Path("/tmp/token"), url="http://127.0.0.1:8877", python="/usr/bin/python3")
         section = next(e for e in effective.entries if e.capability_id == MEMORY_SECTION_ID)
         assert "首页主色是墨绿" in section.config["body"] and section.config["auxiliary"] and section.config["title"] == "项目记忆"
-        server = next(e for e in effective.entries if e.capability_id == MEMORY_MCP_ID).config["value"]
+        screen = next(e for e in effective.entries if e.capability_id == SCREEN_SECTION_ID)
+        assert "kaus_screen_occupy" in screen.config["body"] and screen.config["auxiliary"]
+        builtin = next(e for e in effective.entries if e.capability_id == BUILTIN_MCP_ID)
+        server = builtin.config["value"]
+        assert builtin.config["memory"] is True and server["args"][0].endswith("kaus_builtin_mcp.py")
         assert server["command"] == "/usr/bin/python3" and server["args"][1:4] == ["--project", world.child.id, "--agent"]
-        member = await with_project_memory(_effective(world.child.id), _binding(world.child.id, group_execution=True),
-                                           world.repos, token_file=Path("/tmp/token"), url="x")
-        assert member.entries == ()
+        assert "--no-memory" not in server["args"]
+        member = await with_builtin_mcp(_effective(world.child.id), _binding(world.child.id, group_execution=True),
+                                        world.repos, token_file=Path("/tmp/token"), url="x")
+        assert {e.capability_id for e in member.entries} == {SCREEN_SECTION_ID, BUILTIN_MCP_ID}
+        member_server = next(e for e in member.entries if e.capability_id == BUILTIN_MCP_ID)
+        assert "--no-memory" in member_server.config["value"]["args"] and "memory" not in member_server.config
+        # 组员的内置 MCP 不带记忆，送达层不据此关掉 Agent 自带记忆。
+        assert project_memory_id(member) is None and project_memory_id(effective) == BUILTIN_MCP_ID
         return effective
     effective = asyncio.run(scenario())
     # 只有记忆一节：读文件的 Agent 没有工作目录也不拦、不写文件、不报未生效。
@@ -139,7 +148,7 @@ def test_with_project_instructions_the_index_travels_along(world, tmp_path):
         await world.memory.add(world.child.id, "设计", "首页主色是墨绿")
         rule = EffectiveCapability(capability_type="instructions", capability_id="section-a", config={"body": "先给结论", "title": "沟通"},
                                    source_project_id=world.child.id, inherited=False, contributing_project_ids=(world.child.id,))
-        return await with_project_memory(_effective(world.child.id, [rule]), _binding(world.child.id), world.repos,
+        return await with_builtin_mcp(_effective(world.child.id, [rule]), _binding(world.child.id), world.repos,
                                          token_file=Path("/tmp/token"), url="x")
     effective = asyncio.run(scenario())
     work = tmp_path / "work"
@@ -149,18 +158,30 @@ def test_with_project_instructions_the_index_travels_along(world, tmp_path):
     assert "先给结论" in written and "首页主色是墨绿" in written
 
 
-def test_memory_server_speaks_mcp_and_forwards_to_kaus(monkeypatch):
+def _builtin_module():
     import importlib.util
-    spec = importlib.util.spec_from_file_location("kaus_memory_mcp", Path(__file__).resolve().parents[3] / "mcp_servers" / "kaus_memory_mcp.py")
+    spec = importlib.util.spec_from_file_location("kaus_builtin_mcp", Path(__file__).resolve().parents[3] / "mcp_servers" / "kaus_builtin_mcp.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def _call(module, client, rid, name, arguments=None):
+    result = module.handle_request(client, {"jsonrpc": "2.0", "id": rid, "method": "tools/call",
+                                            "params": {"name": name, "arguments": arguments or {}}})["result"]
+    return result if result.get("isError") else json.loads(result["content"][0]["text"])
+
+
+def test_builtin_server_speaks_mcp_and_forwards_memory_to_kaus(monkeypatch):
+    module = _builtin_module()
     client = module.parse_args(["--project", "project:site", "--agent", "backend:codex", "--token-file", "/nonexistent"])
     calls = []
     monkeypatch.setattr(client, "http", lambda method, path, body=None: calls.append((method, path, body)) or {"ok": True})
     init = module.handle_request(client, {"jsonrpc": "2.0", "id": 1, "method": "initialize"})
-    assert init["result"]["serverInfo"]["name"] == "kaus-memory" and "kaus_memory_write" in init["result"]["instructions"]
+    assert init["result"]["serverInfo"]["name"] == "kaus"
+    assert "kaus_memory_write" in init["result"]["instructions"] and "kaus_screen_occupy" in init["result"]["instructions"]
     tools = module.handle_request(client, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]
-    assert {t["name"] for t in tools} == {"kaus_memory_search", "kaus_memory_write"}
+    assert {t["name"] for t in tools} == {"kaus_memory_search", "kaus_memory_write", "kaus_screen_occupy", "kaus_screen_release"}
     module.handle_request(client, {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "kaus_memory_write",
                           "arguments": {"action": "add", "topic": "t", "body": "b"}}})
     module.handle_request(client, {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "kaus_memory_search",
@@ -171,12 +192,40 @@ def test_memory_server_speaks_mcp_and_forwards_to_kaus(monkeypatch):
     assert missing["isError"] and "token" in missing["content"][0]["text"]
 
 
+def test_group_members_get_only_the_screen_tools():
+    module = _builtin_module()
+    client = module.parse_args(["--project", "project:site", "--agent", "backend:codex", "--no-memory"])
+    tools = module.handle_request(client, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
+    assert {t["name"] for t in tools} == {"kaus_screen_occupy", "kaus_screen_release"}
+    assert _call(module, client, 2, "kaus_memory_write", {"action": "keep"})["isError"]
+
+
+def test_screen_occupy_waits_first_come_first_served_and_release_hands_over(tmp_path):
+    module = _builtin_module()
+    first = module.Client("x", Path("/nonexistent"), "project:a", "backend:codex",
+                          screen=module.Screen({"agent": "backend:codex", "project": "project:a"}, root=tmp_path))
+    second = module.Client("x", Path("/nonexistent"), "project:b", "backend:claude",
+                           screen=module.Screen({"agent": "backend:claude", "project": "project:b"}, root=tmp_path))
+    occupied = _call(module, first, 1, "kaus_screen_occupy", {"minutes": 5, "wait_seconds": 0})
+    assert occupied["status"] == "occupied" and occupied["expiresAt"]
+    waiting = _call(module, second, 2, "kaus_screen_occupy", {"wait_seconds": 0})
+    assert waiting["status"] == "waiting" and waiting["position"] == 1
+    assert waiting["holder"]["agent"] == "backend:codex" and waiting["holder"]["project"] == "project:a"
+    # Renewing while holding keeps the screen.
+    assert _call(module, first, 3, "kaus_screen_occupy", {"wait_seconds": 0})["status"] == "occupied"
+    assert _call(module, first, 4, "kaus_screen_release")["status"] == "released"
+    assert _call(module, first, 5, "kaus_screen_release")["status"] == "not_held"
+    assert _call(module, second, 6, "kaus_screen_occupy", {"wait_seconds": 0})["status"] == "occupied"
+    second.screen.release()
+    assert _call(module, first, 7, "kaus_screen_occupy", {"wait_seconds": "soon"})["isError"]
+
+
 def test_auxiliary_memory_capabilities_are_never_reported_as_unapplied(world):
     from drivers.instructions_projection import without_auxiliary
     from drivers.projection_gaps import unapplied_kinds
 
     async def scenario():
-        return await with_project_memory(_effective(world.child.id), _binding(world.child.id), world.repos,
+        return await with_builtin_mcp(_effective(world.child.id), _binding(world.child.id), world.repos,
                                          token_file=Path("/tmp/token"), url="x")
     effective = asyncio.run(scenario())
     assert unapplied_kinds(effective) == ()

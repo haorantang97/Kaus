@@ -195,58 +195,22 @@ async def test_sensitive_external_edit_blocks_turn_without_showing_value(setup, 
 
 
 @pytest.mark.parametrize("mcp", [None, []])
-async def test_driver_off_without_project_scope_does_not_replace_native_identity(setup, monkeypatch, mcp):
-    from drivers.computer_use.settings import save_enabled
-    save_enabled(False)
+async def test_driver_without_project_scope_does_not_replace_native_identity(setup, monkeypatch, mcp):
     spec,binding,conv,effective=setup
     Gateway.config['agents']['entries']['user']['tools']={'alsoAllow':['computer','browser']}
     driver=OpenClawAcpDriver(spec,backend_key='openclaw',preset=get_preset('openclaw'))
     driver.register_binding(binding)
-    metadata={'_kausComputerUse':{'controls':{'desktop':False,'browser':False},'resources':[]}}
-    if mcp is not None:metadata['mcpServers']=mcp
+    metadata={} if mcp is None else {'mcpServers':mcp}
     start=AsyncMock()
     monkeypatch.setattr(AcpDriver,'start_runtime',start)
     options=CreateSessionOptions(title=conv.title,metadata=metadata)
     await driver.start_runtime(conv,'card',session_options=options)
     start.assert_awaited_once()
-    decision = start.call_args.kwargs['session_options'].metadata['_kausComputerUse']
-    assert decision['nativePermissionControl'] == 'agent'
-    assert decision['controls'] == {'browser': True, 'desktop': True}
-    assert decision['resources'] == ['browser:shared', 'desktop:local']
+    # Kaus no longer decides or locks computer tools for the native Agent.
+    assert '_kausComputerUse' not in start.call_args.kwargs['session_options'].metadata
     assert not Gateway.patches
     assert set(Gateway.config['agents']['entries']) == {'user'}
     assert Gateway.config['agents']['entries']['user']['tools']=={'alsoAllow':['computer','browser']}
-
-
-@pytest.mark.parametrize("native_skills", [[], ["private"]])
-async def test_driver_exposed_native_default_gets_owned_stop_route(setup, monkeypatch, native_skills):
-    spec,binding,conv,effective=setup
-    source=Gateway.config['agents']['entries']['user']
-    source['tools']={'profile':'coding','alsoAllow':['computer']}
-    source['skills']=native_skills
-    source['agentDir']='/native/private'
-    original=json.loads(json.dumps(Gateway.config))
-    driver=OpenClawAcpDriver(spec,backend_key='openclaw',preset=get_preset('openclaw'))
-    driver.register_binding(binding)
-    async def start(_driver, conversation, surface, *, session_options=None):
-        plan=_driver._skill_plans[conversation.id]
-        assert session_options.metadata['_meta']['sessionKey']==plan.session_key
-        assert plan.session_key.startswith('agent:user:kaus-')
-        assert plan.agent_id=='user' and plan.source_session
-        assert source_session.owns_session(spec,plan.session_key,session_options.metadata['_kausOpenClawOwnership'])
-        _driver._bind_session_route('synthetic-acp-uuid', {'sessionKey':plan.session_key})
-        assert _driver._gateway_for('synthetic-acp-uuid').options['--session']==plan.session_key
-        await adapter.validate_turn(plan,spec.cwd)
-        await adapter.apply_session_mcp(plan)  # Never mutates source session tool overrides.
-        return plan
-    monkeypatch.setattr(AcpDriver,'start_runtime',start)
-    monkeypatch.setattr('drivers.computer_use.integration.prepare_projection',AsyncMock(return_value={
-        '_kausComputerUse':{'controls':{'browser':True,'desktop':True},
-            'desktop':{'source':'native','status':'unknown','exposed':True},'resources':['desktop:local']},
-    }))
-    await driver.start_runtime(conv,'card')
-    assert Gateway.config==original
-    assert not Gateway.patches
 
 
 async def test_driver_projection_without_project_scope_keeps_native_agent(setup, monkeypatch):
@@ -256,21 +220,17 @@ async def test_driver_projection_without_project_scope_keeps_native_agent(setup,
     driver=OpenClawAcpDriver(spec,backend_key='openclaw',preset=get_preset('openclaw'))
     driver.register_binding(binding)
     monkeypatch.setattr(AcpDriver,'session_options_for',AsyncMock(return_value=SessionProjection(
-        options=CreateSessionOptions(title=conv.title,metadata={'mcpServers':[],
-            '_kausComputerUse':{'controls':{'browser':True,'desktop':True},'resources':['desktop:local']}}))))
+        options=CreateSessionOptions(title=conv.title,metadata={'mcpServers':[]}))))
     projection=await driver.session_options_for(conv,effective(None))
-    plan=driver._skill_plans[conv.id]
-    assert plan.agent_id=='user' and plan.source_session
-    assert projection.options.metadata['_meta']['sessionKey']==plan.session_key
-    assert projection.options.metadata['_kausOpenClawOwnership']==plan.ownership
+    # Without session tools there is nothing to add: the native route stays as it is.
+    assert conv.id not in driver._skill_plans
+    assert '_kausOpenClawOwnership' not in projection.options.metadata
     assert Gateway.config==original and not Gateway.patches
 
 
-def test_fallback_allowed_without_replacing_source_agent(setup):
+def test_project_scope_is_only_skills_or_mcp(setup):
     spec,binding,conv,effective=setup
-    assert adapter.computer_use_fallback_allowed(effective(None),{'mcpServers':[{'name':'automatic'}]})
     assert not adapter.project_scope_selected(effective(None))
-    assert adapter.computer_use_fallback_allowed(effective('project-mcp'),{})
 
 
 async def test_driver_final_mcp_selection_reaches_gateway_without_redecoding_credentials(setup, monkeypatch):
@@ -282,7 +242,6 @@ async def test_driver_final_mcp_selection_reaches_gateway_without_redecoding_cre
     monkeypatch.setattr(AcpDriver,'session_options_for',AsyncMock(return_value=SessionProjection(
         options=CreateSessionOptions(title=conv.title,metadata={
             'mcpServers':[selected], '_meta':{'unrelated':'retained'},
-            '_kausComputerUse':{'controls':{'browser':True,'desktop':True},'resources':['browser:shared']},
         }))))
     projection=await driver.session_options_for(conv,effective('A'),workspace_root=spec.cwd)
     plan=driver._skill_plans[conv.id]

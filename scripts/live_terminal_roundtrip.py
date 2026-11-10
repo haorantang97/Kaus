@@ -56,8 +56,7 @@ async def run(args):
         scope = Path(scoped.env['KAUS_NATIVE_DISCOVERY_SCOPE'])
         work = Path(scoped.cwd)
         state = scope / 'skills'
-        scoped = scoped.with_env(KAUS_SKILL_STATE_ROOT=str(state), KAUS_COMPUTER_USE_HOME=str(scope / 'computer-use'))
-        os.environ['KAUS_COMPUTER_USE_HOME'] = str(scope / 'computer-use')
+        scoped = scoped.with_env(KAUS_SKILL_STATE_ROOT=str(state))
         # Reuse binaries only; do not reuse mutable managed runtime state.
         registry_path = args.runtime / 'state/skill-projections/managed-runtimes/skill-builds.json'
         if registry_path.is_file() and args.engine == 'codex':

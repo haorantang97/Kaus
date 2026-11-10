@@ -8,8 +8,6 @@ from drivers.hermes.skill_launch import command_for
 from drivers.hermes.skill_snapshots import pin_session, session_mode
 from drivers.skill_execution.common import SkillPlan, unsupported
 
-COMPUTER_USE_POLICY_SCOPES = frozenset({"browser", "desktop"})
-
 
 async def project(spec, binding, effective, workspace_root, *, dry_run=False, runtime_info=None):
     native_env = spec.build_env()
@@ -115,15 +113,8 @@ async def _load_native_history(spec, binding, native_session_id):
 
 async def prepare_runtime_spec(spec, conversation, metadata):
     """Validate the actual native MCP connections before accepting a session."""
-    from .computer_use import prepare_spec
-    spec = prepare_spec(spec, metadata)
     names = [item['name'] for item in metadata.get('mcpServers', ()) if item.get('name')]
     return guarded_spec(spec, names)
-
-
-async def probe_computer_use(spec, binding=None):
-    from .computer_use import probe_native
-    return await probe_native(spec)
 
 
 def guarded_spec(spec, names):
