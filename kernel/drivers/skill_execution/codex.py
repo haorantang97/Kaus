@@ -427,6 +427,26 @@ def deliver_hooks(spec, metadata, hooks):
     return spec.with_env(CODEX_CONFIG=json.dumps(config)), metadata
 
 
+# MCP 单个工具开关（2026-11-11）。Codex 配置的 ``mcp_servers.<名字>.disabled_tools``（配置参考），
+# 经 ``CODEX_CONFIG`` 会话层深合并到同名 server 上，不复制它的定义与密文。
+MCP_TOOL_EXCLUSION_VERIFIED = False
+
+
+def exclude_mcp_tools(spec, metadata, tools):
+    """Tools switched off in the tree: ``mcp_servers.<server>.disabled_tools`` in the session layer."""
+    config = _codex_config(spec)
+    servers = dict(config.get("mcp_servers") or {}) if isinstance(config.get("mcp_servers"), dict) else {}
+    for row in tools:
+        server = dict(servers.get(row["server"]) or {})
+        disabled = [t for t in server.get("disabled_tools") or () if isinstance(t, str)]
+        if row["tool"] not in disabled:
+            disabled.append(row["tool"])
+        server["disabled_tools"] = disabled
+        servers[row["server"]] = server
+    config["mcp_servers"] = servers
+    return spec.with_env(CODEX_CONFIG=json.dumps(config)), metadata, ()
+
+
 # --------------------------------------------------------------------------- #
 # 插件（2026-11-10 在本机 Codex 0.166.0-alpha.6 上实测，隔离的 CODEX_HOME、未调用模型）
 # --------------------------------------------------------------------------- #

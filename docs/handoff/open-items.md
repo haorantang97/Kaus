@@ -30,7 +30,8 @@
 - ~~旧运行副本清理方式~~：11-11 定为保留 7 天。
 - ~~自带记忆并入导入名单~~：11-11 定下并实现（见 verification 同日）。
 - ~~项目记忆：有效期与重复自动合并~~：11-11 定下并实现（见 verification 同日）。
-- 主 Agent 分身：11-11 定为后台事务由主 Agent 的「后台分身（低权限）」承担（见 product-decisions）；设计稿 `docs/product/main-agent-clones-design-20261111.md` 已写，待负责人定三件事（两个分身都做吗、面板位置、主 Agent 怎么选）。
+- 主 Agent 分身：11-11 定为后台事务由主 Agent 的「后台分身（低权限）」承担（见 product-decisions）；设计稿 `docs/product/main-agent-clones-design-20261111.md` 已写，待负责人定三件事（两个分身都做吗、面板位置、主 Agent 怎么选）。 11-11 项目负责人说稍等再说，暂缓。
+- MCP 管理入口：设计稿 `docs/product/mcp-management-design-20261111.md`，第 8 节两个问题待项目负责人定。
 - 11-11 复查 11 月 2 日 Hermes 清理的落实情况：新建 Project 时「可选填一句项目概述」（11-03 定）没有做，11-11 已交给新会话补做；「技能维护」（防止 `hermes update` 装回用户删掉的技能的黑名单）后来判断为不需要，未经项目负责人确认。其余均已落实或另有决定。
 - ~~Codex 远程连接~~：11-11 定为不处理，用树里的 MCP 覆盖。
 - 跨 Agent 实测环境：11-11 定为本地 Tart 虚拟机，准备中。

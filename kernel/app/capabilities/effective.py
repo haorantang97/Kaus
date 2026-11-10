@@ -182,6 +182,30 @@ def with_plugin_locations(effective: EffectiveCapabilities, catalog: Any) -> Eff
     return effective.model_copy(update={"entries": tuple(entries)})
 
 
+MCP_DISABLED_KEY = "skill_tree.mcp_disabled_tools.v1"
+
+
+async def _mcp_switches(repositories: Any) -> dict:
+    settings = getattr(repositories, "settings", None)
+    value = await settings.get(MCP_DISABLED_KEY) if settings else None
+    return value if isinstance(value, dict) else {}
+
+
+def with_mcp_tool_switches(effective: EffectiveCapabilities, catalog: Any, switches: dict) -> EffectiveCapabilities:
+    """MCP 单个工具开关（2026-11-11）设在 MCP 本身：把关闭清单带到每条 MCP 行上，送达层据此按次关掉。"""
+    if not switches:
+        return effective
+    by_key = {(item.get("capabilityType"), item.get("capabilityId")): item.get("id")
+              for item in (catalog or {}).values() if isinstance(item, dict) and item.get("kind") == "mcp"}
+    entries = []
+    for entry in effective.entries:
+        tools = switches.get(by_key.get((entry.capability_type, entry.capability_id)))
+        if tools and entry.capability_type.split(":")[-1] == "mcp":
+            entry = entry.model_copy(update={"config": {**entry.config, "disabledTools": list(tools)}})
+        entries.append(entry)
+    return effective.model_copy(update={"entries": tuple(entries)})
+
+
 IMPORT_STATE_KEY = "skill_tree.import_state.v1"
 
 
@@ -221,6 +245,7 @@ async def _shared_imports(repositories: Any, binding: Any, catalog: dict | None)
     if not shared:
         return ()
     own = {binding.backend_key, await _skill_scope(repositories, binding.backend_key)}
+    switches = await _mcp_switches(repositories)
     full = await resolve_effective_for_project(repositories, binding.project_id)
     result = []
     for entry in full.entries:
@@ -234,7 +259,9 @@ async def _shared_imports(repositories: Any, binding: Any, catalog: dict | None)
         elif ref.name == "mcp":
             result.append(EffectiveCapability(capability_type="mcp", capability_id="shared-" + str(item["id"]),
                 config={"value": {"nativeRef": {key: item.get(key) for key in (
-                    "name", "sourcePath", "sourceFormat", "sourceKey", "sourceShape")}}}, **common))
+                    "name", "sourcePath", "sourceFormat", "sourceKey", "sourceShape")}},
+                    **({"disabledTools": switches[item["id"]]} if switches.get(item["id"]) else {})},
+                **common))
         elif ref.name == "plugins":
             result.append(EffectiveCapability(capability_type=PLUGIN_CAPABILITY_TYPE, capability_id=str(item["id"]),
                 config={"name": item.get("name") or item["id"], "format": item.get("format"),
@@ -278,6 +305,7 @@ async def _resolve_effective_for_binding(
     settings = getattr(repositories, "settings", None)
     catalog = await settings.get("skill_tree.catalog.v1") if settings else None
     effective = with_hook_definitions(without_native_hooks(with_plugin_locations(effective, catalog)), catalog)
+    effective = with_mcp_tool_switches(effective, catalog, await _mcp_switches(repositories))
     shared = await _shared_imports(repositories, binding, catalog)
     if shared:
         effective = effective.model_copy(update={"entries": (*effective.entries, *shared)})

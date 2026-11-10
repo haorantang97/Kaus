@@ -42,6 +42,7 @@ ONBOARDING_KEY = "skill_tree.onboarding.v1"
 IMPORT_KEY = "skill_tree.import_state.v1"
 #: Fields Kaus owns on a native record; a fresh discovery keeps them.
 #: ``userBound``: the user marked it bound to its Agent (Agent 自查, 2026-11-11); kept across refreshes.
+MCP_DISABLED_KEY = "skill_tree.mcp_disabled_tools.v1"
 KAUS_FIELDS = ("imported", "shared", "importedAs", "importCopy", "originFingerprint", "userBound")
 ARRANGED_TYPES_SQL = ("capability_type = 'skills' OR capability_type LIKE '%:skills' "
                       "OR capability_type LIKE '%:mcp' OR capability_type = 'plugins' "
@@ -369,6 +370,11 @@ class SkillTreeService:
                 entry["order"] = index
         skills = [{k: r[k] for k in ("id", "kind", "name", "description", "agentKey", "agentLabel", "sourcePath", "available", "generated", "originProjectId", "sourceConversationId", "replacesId", "format", "version", "pluginId", "bound", "boundReason", "imported", "shared", "event", "agent", "matcher", "command", "timeout") if k in r}
                   for r in catalog.values() if not r.get("importedAs")]
+        # MCP 单个工具开关（2026-11-11）：设在 MCP 本身，所有 Project 共用。
+        switches = self._setting(conn, MCP_DISABLED_KEY)
+        for skill in skills:
+            if skill.get("kind") == "mcp" and switches.get(skill["id"]):
+                skill["disabledTools"] = list(switches[skill["id"]])
         # 插件里的技能随插件整包走（2026-11-10）：不单列，旧的单独分配行也不显示。
         members = {r["id"] for r in catalog.values() if r.get("nativePluginId") or r.get("importedAs")}
         if members:

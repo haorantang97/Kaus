@@ -39,6 +39,11 @@ class SelfCheckReview(BaseModel):
     summary: str | None = None
 
 
+class McpToolSwitches(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    disabledTools: list[str] = []
+
+
 class CapabilitySyncRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str
@@ -50,7 +55,8 @@ class SkillOnboardingResult(BaseModel):
     outcome: Literal["skipped", "done"]
 
 
-def build_skill_tree_router(service: SkillTreeService, *, auth_policy: Any, imports: Any = None, self_check: Any = None):
+def build_skill_tree_router(service: SkillTreeService, *, auth_policy: Any, imports: Any = None, self_check: Any = None,
+                            mcp_tools: Any = None):
     from fastapi import APIRouter, Depends
     from fastapi.responses import JSONResponse
     from app.api.session_auth import auth_route_class, require_session_auth
@@ -131,6 +137,20 @@ def build_skill_tree_router(service: SkillTreeService, *, auth_policy: Any, impo
         @endpoint
         async def capability_changes_seen():
             return await asyncio.to_thread(imports.mark_seen)
+
+    if mcp_tools is not None:
+        # MCP 单个工具开关 (2026-11-11): the tool list from tools/list, cached; switches on the MCP itself.
+        from fastapi import Query
+
+        @router.get("/skill-tree/mcp-tools/{skill_id}", dependencies=[auth])
+        @endpoint
+        async def mcp_tool_list(skill_id: str, refresh: bool = Query(False)):
+            return await asyncio.to_thread(mcp_tools.tools, skill_id, refresh=refresh)
+
+        @router.post("/skill-tree/mcp-tools/{skill_id}", dependencies=[auth])
+        @endpoint
+        async def mcp_tool_switches(skill_id: str, body: McpToolSwitches):
+            return await asyncio.to_thread(mcp_tools.set_disabled, skill_id, body.disabledTools)
 
     if self_check is not None:
         # Agent 自查 (2026-11-11): one read-only conversation per run, review submitted by the built-in MCP.

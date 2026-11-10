@@ -1477,8 +1477,10 @@ def open_session_runtime(
                 row["backendIds"].add(driver.backend_id)
             return agents
         self_check = SelfCheckService(repositories, session_host, capability_imports, connected_agents_by_key)
+        from app.capabilities.mcp_tools import McpTools
         router.routes.extend(build_skill_tree_router(skill_tree, auth_policy=auth_policy,
-                                                     imports=capability_imports, self_check=self_check).routes)
+                                                     imports=capability_imports, self_check=self_check,
+                                                     mcp_tools=McpTools(skill_tree)).routes)
     router.routes.extend(build_plugin_library_router(plugin_library, auth_policy=auth_policy).routes)
     router.routes.extend(build_hook_library_router(hook_library, auth_policy=auth_policy).routes)
     from native_archives import NativeArchiveStore, NativeArchiveService

@@ -421,3 +421,20 @@ def deliver_hooks(spec, metadata, hooks):
     settings["hooks"] = merge_grouped(settings.get("hooks"), grouped(hooks))
     options["settings"] = settings
     return spec, _with_options(metadata, meta, claude, options)
+
+
+# MCP 单个工具开关（2026-11-11）。Claude Code 的 MCP 工具名是 ``mcp__<server>__<tool>``
+# （code.claude.com/docs/en/mcp）；SDK ``Options.disallowedTools`` 在本次会话里移除这些工具。
+MCP_TOOL_EXCLUSION_VERIFIED = False
+
+
+def exclude_mcp_tools(spec, metadata, tools):
+    """Tools switched off in the tree are left out of this session: SDK ``disallowedTools``."""
+    meta, claude, options = _claude_code_options(metadata)
+    names = list(options.get("disallowedTools") or ())
+    for row in tools:
+        name = f"mcp__{row['server']}__{row['tool']}"
+        if name not in names:
+            names.append(name)
+    options["disallowedTools"] = names
+    return spec, _with_options(metadata, meta, claude, options), ()

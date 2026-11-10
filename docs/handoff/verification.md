@@ -3,6 +3,54 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 11 日：MCP 单个工具开关
+
+依据 `product-decisions.md`「MCP 单个工具开关」：同日修正为开关设在 MCP 本身；负责人说整体逻辑以后再完善。
+
+**行为**：
+- **适用范围**：技能树上的 MCP，即各 Agent 自带、接入时发现的 `<agent>:mcp`，包括导入后分给别的 Agent 的。Project 里手写的通用 `mcp` 行本来就不在树上，这次没有开关。
+- **入口**：暂时在技能树 MCP 行左侧的展开钮（「工具」）。展开后列出工具开关，悬停看说明，右上角「重新获取工具清单」。「MCP 管理」页（设计稿 `docs/product/mcp-management-design-20261111.md`，待负责人定）做好后搬进它的详情。
+- **工具清单**：
+  - 用 MCP 标准的 `tools/list` 取得：按来源配置现读这条 MCP 的完整定义，密文只在内存里；经官方 MCP SDK 客户端短暂启动 MCP（stdio / http / sse，20 秒超时），只取名字与说明，取完即关，不调用任何工具。
+  - 缓存在 `app_settings["skill_tree.mcp_tools.v1"]`。定义的指纹变化、用户点刷新、或缓存超过 24 小时才重取：Kaus 不常驻连接，收不到服务器「工具变了」的通知，用最长 24 小时代替。
+- **要登录或密钥的 MCP**：定义里的 `${VAR}` 在本机取不到值，或远端回 401 / 403 / OAuth，都记为 `auth_required`，提示「需要登录或密钥才能列出工具，目前只能整体开关」，不显示单个工具的开关。来源配置里已没有这条 MCP 或启动失败的，记为 `failed`。
+- **开关存在哪里**：存在 MCP 本身（`app_settings["skill_tree.mcp_disabled_tools.v1"]`，`{目录记录 id: [工具名]}`），一次设置，凡用到这个 MCP 的 Project 和 Agent 都按它执行；MCP 仍作为整体沿技能树分配。树快照里这条 MCP 带 `disabledTools`。按 Project 覆盖暂不做。
+- **开对话时**：`effective.with_mcp_tool_switches` 把关闭清单带到每条 MCP 行上，包括 Agent 自己的和共享给别的 Agent 的。送达层用该 Agent 看到的 server 名：原生的用清单里的名字，共享的用 `nativeRef.name`。
+  - Claude Code：SDK `disallowedTools` 加 `mcp__<server>__<tool>`。
+  - Codex：`CODEX_CONFIG` 会话层的 `mcp_servers.<server>.disabled_tools`，深合并，不复制定义与密文。
+  - 其余 Agent：报 `unapplied` kind `mcp`、原因 `native_unsupported`，名字是 `server/tool`。
+  - Gemini、Qwen 的按 server `excludeTools` 写在设置层的 server 定义里；按次送达要把整条定义（含密文）复制进覆盖文件，违反「不落盘密钥」，这次没做。
+
+**代码**：
+- 取清单：`kernel/drivers/mcp_tool_list.py`。
+- 缓存与开关：`kernel/app/capabilities/mcp_tools.py`。
+- 接口：`GET /api/skill-tree/mcp-tools/{skillId}[?refresh=true]`、`POST /api/skill-tree/mcp-tools/{skillId} {disabledTools}`。
+- 快照回显：`skill_tree.py`；带到每条 MCP 行：`effective.py`。
+- 送达：`launch_delivery.disabled_mcp_tools` 与 `exclude_mcp_tools` 钩子；适配器 `claude.py`、`codex.py`（`MCP_TOOL_EXCLUSION_VERIFIED = False`）。
+- 前端：`McpToolSwitches.tsx`、`ProjectSkillTree.tsx`、`skillTreeApi.ts`、中英文案。
+
+**测试**：
+- 新增 `kernel/drivers/tests/test_mcp_tools.py` 9 项：
+  - 用假的 stdio MCP 服务器经官方客户端取清单；
+  - 启动失败的报告；
+  - 缓存与定义变化后重取；
+  - 超过一天重取；
+  - 缺密钥、401、来源已删除的状态；
+  - 开关设在 MCP 上、上下级 Project 都带上、输入校验；
+  - server 名的确定；
+  - Claude / Codex 的按次关闭；
+  - 不支持的 Agent 报 `native_unsupported`。
+- 前端新增 `McpToolSwitches.test.tsx` 2 项。
+- 没有启动真实 MCP 或 Agent。
+
+**结果**：`cd kernel && ../.venv/bin/python -m pytest -q`：4,212 通过、127 跳过；`.venv/bin/python -m pytest -q tests`：366 通过；`cd web && NODE_OPTIONS=--no-experimental-webstorage npm run check`：1,078 项通过，构建成功。（第一版按 Project 存开关，三套检查已通过；随后按同日修正的决定改为存在 MCP 本身，再跑一遍，结果如上。）没有在浏览器里看。
+
+**未做 / 限制**：
+- 真机未验证：claude-agent-acp 是否把 `disallowedTools` 交给 SDK，Codex 的 `disabled_tools` 对 ACP 传入的 server 是否生效。
+- Gemini / Qwen 不支持（原因见上）。
+- 需要 OAuth 的远端 MCP 在 Kaus 一侧无法登录，只能整体开关；Kaus 统一登录另议。
+- 能力库插件里带的 MCP 没有单个工具开关。
+
 ## 11 月 11 日：钩子
 
 依据 `product-decisions.md`「钩子」，设计稿 `docs/product/hooks-design-20261111.md`（含各 Agent 事件名对照与依据）。

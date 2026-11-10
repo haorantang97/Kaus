@@ -58,6 +58,10 @@
     :func:`drivers.hooks.resolve` 的结果（``name`` / ``event`` / ``matcher`` / ``command`` /
     ``timeout`` 秒）。没有 ``deliver_hooks`` 的报 ``hooks`` / ``native_unsupported``。
 
+``exclude_mcp_tools(spec, metadata, tools) -> (spec, metadata, warnings)`` + ``MCP_TOOL_EXCLUSION_VERIFIED: bool``
+    MCP 单个工具开关（2026-11-11）：``tools`` 是 ``[{"server", "tool"}]``，本次启动不加载这些工具；
+    没有这个钩子的报 ``mcp`` / ``native_unsupported``（名字是 ``server/tool``）。
+
 ``NATIVE_HOOKS_VERIFIED: bool``
     同上，缺省 ``False`` → ``summary["hooksNative"]`` 报 ``unverified``。
 
@@ -153,6 +157,8 @@ class LaunchPlan:
     native_plugins: tuple[dict[str, Any], ...] = ()
     #: 换成该 Agent 事件名的钩子（:func:`drivers.hooks.resolve`），``apply_launch_plan`` 调 ``deliver_hooks``。
     hooks: tuple[dict[str, Any], ...] = ()
+    #: 树上关掉的 MCP 工具（``[{"server", "tool"}]``），``apply_launch_plan`` 调 ``exclude_mcp_tools``。
+    mcp_tools_excluded: tuple[dict[str, str], ...] = ()
     #: 第 1 步就能确定的「没送出去」（D-03）。
     unapplied: tuple[UnappliedCapability, ...] = ()
     warnings: tuple[str, ...] = ()
@@ -320,6 +326,16 @@ def plan_launch(
     if plan.native_mcp_mode != MCP_NONE:
         plan.summary["nativeMcp"] = [plan.native_mcp_mode]
 
+    # ---------------------------------------------------- MCP 单个工具开关
+    excluded_tools = disabled_mcp_tools(effective, native_inventory)
+    if excluded_tools:
+        names = tuple(f"{row['server']}/{row['tool']}" for row in excluded_tools)
+        if _hook(adapter, "exclude_mcp_tools") is None:
+            unapplied.append(UnappliedCapability(kind=MCP, names=names, reason=REASON_NATIVE_UNSUPPORTED))
+        else:
+            plan.mcp_tools_excluded = excluded_tools
+            plan.summary["mcpToolsDisabled"] = list(names)
+
     # ---------------------------------------------------------- 钩子
     from drivers.hooks import resolve as resolve_hooks
     hook_rows = [dict(entry.config) for entry in effective.entries
@@ -400,6 +416,12 @@ def apply_launch_plan(
         if deliver is not None:
             spec, metadata = deliver(spec, metadata, plan.native_plugins)
             metadata = dict(metadata)
+    if plan.mcp_tools_excluded:
+        exclude_tools = _hook(adapter, "exclude_mcp_tools")
+        if exclude_tools is not None:
+            spec, metadata, extra = exclude_tools(spec, metadata, plan.mcp_tools_excluded)
+            metadata = dict(metadata)
+            warnings.extend(extra or ())
     if plan.hooks:
         # 在关自带记忆之后：两者可能写同一份设置覆盖，这里在它的结果上合并。
         deliver = _hook(adapter, "deliver_hooks")
@@ -599,6 +621,23 @@ def expand_plugins(effective: EffectiveCapabilities, *, adapter: Any, can_projec
         warnings=tuple(warnings), summary=summary)
 
 
+def disabled_mcp_tools(effective: EffectiveCapabilities,
+                       native_inventory: Sequence[Mapping[str, Any]] = ()) -> tuple[dict[str, str], ...]:
+    """树上关掉的 MCP 工具：``({"server": 送给 Agent 的 server 名, "tool": 工具名}, ...)``。"""
+    names = {str(row.get("capabilityId")): str(row.get("name")) for row in native_inventory
+             if isinstance(row, Mapping) and row.get("capabilityId") and row.get("name")}
+    rows: list[dict[str, str]] = []
+    for entry in (*effective.entries, *effective.native_mcp):
+        tools = entry.config.get("disabledTools")
+        if entry.capability_type.split(":")[-1] != "mcp" or not isinstance(tools, (list, tuple)) or not tools:
+            continue
+        value = entry.config.get("value") if isinstance(entry.config.get("value"), Mapping) else {}
+        ref = value.get("nativeRef") if isinstance(value.get("nativeRef"), Mapping) else {}
+        server = names.get(entry.capability_id) or ref.get("name") or value.get("name") or entry.capability_id
+        rows.extend({"server": str(server), "tool": str(tool)} for tool in tools if isinstance(tool, str) and tool)
+    return tuple(rows)
+
+
 def project_memory_id(effective: EffectiveCapabilities) -> str | None:
     """有效能力里带着提供 Project 记忆的内置 MCP 时返回它的 id，否则 ``None``。
 
@@ -653,6 +692,7 @@ __all__ = [
     "REASON_NATIVE_NOT_ISOLATED",
     "REASON_WORKSPACE_IN_USE",
     "apply_launch_plan",
+    "disabled_mcp_tools",
     "expand_plugins",
     "home_of",
     "plugin_entries",

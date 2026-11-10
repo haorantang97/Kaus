@@ -16,6 +16,8 @@ export interface SkillTreeSkill {
   matcher?: string;
   command?: string;
   timeout?: number | null;
+  /** MCP tools switched off (2026-11-11): set on the MCP itself, for every Project and Agent. */
+  disabledTools?: string[];
   /** Library plugin id (kind "plugin"): used to remove it from the library. */
   pluginId?: string;
   name: string;
@@ -138,6 +140,12 @@ export const fetchSelfCheckOptions = (agentKey: string, signal?: AbortSignal) =>
   request<SelfCheckOptions>(`/api/skill-tree/self-check/options/${encodeURIComponent(agentKey)}`, undefined, signal);
 export const startSelfCheck = (agentKey: string, modelId?: string) => request<SelfCheckRun>("/api/skill-tree/self-check", { agentKey, ...(modelId ? { modelId } : {}) });
 export const fetchSelfCheck = (conversationId: string) => request<SelfCheckRun>(`/api/skill-tree/self-check/${encodeURIComponent(conversationId)}`);
+/* MCP 单个工具开关（2026-11-11）：工具清单来自 MCP 的 tools/list（缓存，定义变了才重取）。 */
+export interface McpToolList { skillId: string; status: "ok" | "auth_required" | "failed"; tools: { name: string; description: string }[]; error?: string; fetchedAt?: string }
+export const fetchMcpTools = (skillId: string, refresh = false, signal?: AbortSignal) =>
+  request<McpToolList>(`/api/skill-tree/mcp-tools/${encodeURIComponent(skillId)}${refresh ? "?refresh=true" : ""}`, undefined, signal);
+export const setMcpToolSwitches = (skillId: string, disabledTools: string[]) =>
+  request<SkillTreeSnapshot>(`/api/skill-tree/mcp-tools/${encodeURIComponent(skillId)}`, { disabledTools });
 export const syncCapability = (id: string) => request<{ synced: string }>("/api/skill-tree/import/sync", { id });
 export const fetchCapabilityChanges = (signal?: AbortSignal) => request<CapabilityChanges>("/api/skill-tree/changes", undefined, signal);
 export async function markCapabilityChangesSeen() {
