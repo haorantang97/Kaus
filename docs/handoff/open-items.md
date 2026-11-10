@@ -30,7 +30,7 @@
 - ~~旧运行副本清理方式~~：11-11 定为保留 7 天。
 - ~~自带记忆并入导入名单~~：11-11 定下并实现（见 verification 同日）。
 - ~~项目记忆：有效期与重复自动合并~~：11-11 定下并实现（见 verification 同日）。
-- 主 Agent 分身：11-11 定为后台事务由主 Agent 的「后台分身（低权限）」承担（见 product-decisions），待设计。
+- 主 Agent 分身：11-11 定为后台事务由主 Agent 的「后台分身（低权限）」承担（见 product-decisions）；设计稿 `docs/product/main-agent-clones-design-20261111.md` 已写，待负责人定三件事（两个分身都做吗、面板位置、主 Agent 怎么选）。
 - 11-11 复查 11 月 2 日 Hermes 清理的落实情况：新建 Project 时「可选填一句项目概述」（11-03 定）没有做，11-11 已交给新会话补做；「技能维护」（防止 `hermes update` 装回用户删掉的技能的黑名单）后来判断为不需要，未经项目负责人确认。其余均已落实或另有决定。
 - ~~Codex 远程连接~~：11-11 定为不处理，用树里的 MCP 覆盖。
 - 跨 Agent 实测环境：11-11 定为本地 Tart 虚拟机，准备中。
@@ -77,7 +77,7 @@
 | 测试隔离缺口 | 2026-11-03 已解决：树操作只写领域库，`DASH_DOMAIN_DB` 指向临时库时不写代码目录（`tests/test_project_tree_storage.py`）；`test_dashboard.py` 真机脚本仍引用已删除的 `*_FILE` 常量 | 真机脚本在下次真机验收时按库重写或删除 |
 | 组长配置文案 | `CoordinatorSettings` 大部分标签写死中文，英文界面下仍显示中文 | 改入 i18n |
 | 原生 MCP 排除未经真机验证 | 2026-11-09 起每次启动按 Agent 自己的机制排除「自带但未分配给当前 Project」的 MCP（Copilot / Qwen 参数、Codex `CODEX_CONFIG`、Gemini 白名单、OpenCode `OPENCODE_CONFIG_CONTENT`、Claude Code 严格模式内存传定义；Cursor 无机制报 `native_not_isolated`），不改用户配置文件。全部 `NATIVE_MCP_EXCLUSION_VERIFIED=False`，会话 `projection.summary.nativeMcp` 报 `unverified`，项目页应据此标「未隔离」。从未整理过（没有任何分配/屏蔽行）的 Agent 不动。Hermes、OpenClaw、Pi/omp、Goose、Kilo、Crush、Command Code、Grok、ZCode、DeepSeek、Antigravity 没有自带 MCP 清单来源，不参与；整理之后新装的自带 MCP 照常加载（`summary.nativeMcpNew`）；Claude Code 严格模式下显式带上已批准的工作区 `.mcp.json` 与插件 MCP（11 月 9 日）。Agent 自装插件（Claude Code、Codex、Gemini）同样导入为初始配置，整理后按 `exclude_native_plugins` 关掉未分配的（Codex 逐个关掉插件里的技能和 MCP）；插件在树上按整包显示，里面的技能不单列；Claude Code 标志层与 Codex 的技能 / MCP 按次关闭已在本机隔离目录里实测，经适配器开会话的一段 `NATIVE_PLUGIN_EXCLUSION_VERIFIED=False` | 隔离虚拟机里逐个实测后把对应适配器的 `NATIVE_MCP_EXCLUSION_VERIFIED` 改为 `True`；Gemini 还要确认白名单是否也过滤 ACP 传入的项目 MCP、Copilot 确认 `--acp` 模式接受全局参数 |
-| 主 Agent 分身（通用化） | 原实现：主 Agent（根 Project）的 Hermes 分身档案把 `memories/` 软链到主 Agent，共享记忆；`SOUL.md` 头部标出模式与权限档（如「配置模式·高权限」「后台模式·低权限」）。2026-11-03 随 Hermes 遗留删除了这套文件机制；领域模型里同一 Project 挂多条同 Agent Binding（AD-01 第四段 discriminator）仍在 | 2026-11-11 定：做通用版，先做「后台分身（低权限）」承担定时整理记忆、事后提炼、Agent 自查等后台事务；可选、默认关（见 product-decisions「主 Agent 分身与后台事务」）。待设计 |
+| 主 Agent 分身（通用化） | 原实现：主 Agent（根 Project）的 Hermes 分身档案把 `memories/` 软链到主 Agent，共享记忆；`SOUL.md` 头部标出模式与权限档（如「配置模式·高权限」「后台模式·低权限」）。2026-11-03 随 Hermes 遗留删除了这套文件机制；领域模型里同一 Project 挂多条同 Agent Binding（AD-01 第四段 discriminator）仍在 | 2026-11-11 定：做通用版，先做「后台分身（低权限）」承担定时整理记忆、事后提炼、Agent 自查等后台事务；可选、默认关（见 product-decisions「主 Agent 分身与后台事务」）。设计稿已写（`docs/product/main-agent-clones-design-20261111.md`），待负责人定 |
 | 项目地图（原上下文索引） | 原设计：给所有 Agent 一份「谁知道什么、什么任务找谁」的索引（INDEX.md），只在 Hermes 上部分实现，已删除。控制 MCP 的 `kaus_overview` 每次调用直接读库，Project、接入的 Agent 与模块始终最新，但没有各 Project 的职责描述 | 2026-11-03 定：职责描述不是 Project 指令（AGENTS.md 一类），不要求手工维护。取自 Project 记忆里的「项目概述」条目，由在该 Project 工作的 Agent 随记忆静默更新；新建 Project 时可选填一句；用户也可在对话里让 Agent 改。`kaus_overview` 带上它，主 Agent 按需读取。随配置通用化第二期（记忆）实现 |
 | Hermes 驱动防御的边界 | 2026-11-03 已在 `kernel/drivers/hermes/` 实现：托管运行结束或停止时把技能用量回写到来源 `skills/.usage.json`（Kaus 唯一写入用户 Hermes 目录的内容，只改已有记录的时间与计数，持 Hermes 自己的锁）；技能被 Hermes 归档时返回 409 `skill_archived_by_engine` 与恢复命令；执行目录写 `curator.enabled: false`；复制 `SOUL.md` 时剥离旧宪法块；投射遇软链接目标报 `target_linked` 不替换。边界：用户只用站外 `hermes chat` 时用量要等下一次 Kaus 运行才回写；已标 stale 的技能等 curator 下一轮自行恢复；归档识别依赖 Hermes 当前的 `.archive/` 布局；非 POSIX 平台无文件锁 | 装好 Hermes 后实测一轮托管会话的回写与归档提示 |
 | 空环境的引擎选择 | 清除默认接入 Hermes 后，一个 Agent 都没接入时，新会话页的引擎下拉是空的，没有去接入的入口 | 下拉为空时给一个「接入 Agent」项，打开设置里的接入 |
