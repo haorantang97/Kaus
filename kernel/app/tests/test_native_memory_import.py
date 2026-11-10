@@ -128,3 +128,35 @@ def test_long_entries_are_cut_to_the_project_memory_limits(tmp_path):
     adapter = SimpleNamespace(read_native_memory=lambda home=None: [{"topic": "t" * 200, "body": "b" * 5000}, {"body": " "}])
     [row] = native_memory.read(adapter)
     assert len(row["topic"]) == native_memory.MAX_TOPIC and len(row["body"]) == native_memory.MAX_BODY
+
+
+def test_marking_memory_bound_keeps_it_on_and_copies_nothing(tmp_path):
+    from app.capabilities.effective import resolve_effective_for_binding
+    from app.projects.models import AgentBinding, Backend
+    from drivers.launch_delivery import MEMORY_KEPT, plan_launch
+    uow = world(tmp_path)
+    try:
+        tree, imports, memory = service(uow, tmp_path, [{"topic": "约定", "body": "提交前跑测试"}])
+        tree.begin_onboarding("alpha", "Alpha")
+        imports.mark_bound("alpha", [memory_item_id("alpha")])
+        item = memory_item(imports, "alpha")
+        assert item["state"] == "bound" and item["boundReason"] == "user_marked"
+        imports.import_selected("alpha", [memory_item_id("alpha")])
+        assert asyncio.run(memory.visible("project:default")) == []  # bound: nothing copied
+        backend = asyncio.run(uow.repositories.backends.save(Backend.create(key="alpha", display_name="Alpha", driver_kind="acp")))
+        root = asyncio.run(uow.repositories.projects.get("project:default"))
+        binding = AgentBinding.create(project=root, backend=backend)
+        effective = asyncio.run(resolve_effective_for_binding(uow.repositories, binding))
+        assert effective.native_memory_kept is True
+        from app.projects.builtin_mcp import BUILTIN_MCP_ID
+        from app.capabilities.models import EffectiveCapability
+        with_memory = effective.model_copy(update={"entries": (*effective.entries, EffectiveCapability(
+            capability_type="mcp", capability_id=BUILTIN_MCP_ID, source_project_id=root.id, inherited=False,
+            config={"value": {}, "auxiliary": True, "memory": True}),)})
+        disabled = []
+        adapter = SimpleNamespace(disable_native_memory=lambda spec, meta: disabled.append(1) or (spec, meta))
+        plan = plan_launch(with_memory, adapter=adapter, instructions_file=None, workspace_root=str(tmp_path),
+                           project_id=root.id)
+        assert plan.native_memory_mode == MEMORY_KEPT and plan.summary["nativeMemory"] == [MEMORY_KEPT]
+    finally:
+        uow.close()

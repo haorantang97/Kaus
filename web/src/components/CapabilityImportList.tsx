@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Brain, ChevronRight, FileText, Plug, Puzzle } from "lucide-react";
+import { Brain, ChevronRight, FileText, Plug, Puzzle, ShieldCheck } from "lucide-react";
 import { useLocale } from "../i18n";
 import { fetchImportCandidates, importCapabilities, skipCapabilityImport, type ImportCandidate } from "../lib/skillTreeApi";
 import { Button, Spinner, confirmAsync, cream } from "./ui";
+import { SelfCheckDialog } from "./SelfCheckDialog";
 
 /* 导入 Agent 原有能力的勾选名单（设计稿 capability-import 第 4 节）。
    接入时出现一次；之后从技能树的「导入能力」随时找回没导入的。勾了才进技能树，不在树上的不加载。
@@ -19,6 +20,9 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
 }) {
   const { t } = useLocale();
   const [items, setItems] = useState<ImportCandidate[] | null>(null);
+  const [agentLabel, setAgentLabel] = useState(agentKey);
+  const [checking, setChecking] = useState(false);
+  const [reload, setReload] = useState(0);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -28,14 +32,16 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
     const controller = new AbortController();
     fetchImportCandidates(agentKey, controller.signal).then(result => {
       setItems(result.items);
+      setAgentLabel(result.agentLabel);
       // 接入时默认全选可导入的；之后找回时只预选已经在树上的（旧规则下安排过的），其余让用户挑。
       setChosen(new Set(result.items.filter(i => i.state === "available" && (variant === "connect" || i.assigned)).map(i => i.id)));
     }).catch(failure => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : String(failure)); });
     return () => controller.abort();
-  }, [agentKey, variant]);
+  }, [agentKey, variant, reload]);
 
   const importable = useMemo(() => (items ?? []).filter(i => i.state === "available" && i.available !== false), [items]);
   const merging = useMemo(() => (items ?? []).filter(i => i.state === "inTree"), [items]);
+  const undecided = useMemo(() => (items ?? []).some(i => (i.state === "available" || i.state === "closed") && i.available !== false), [items]);
   const allChosen = importable.length > 0 && importable.every(i => chosen.has(i.id));
   const flip = (old: Set<string>, id: string) => { const next = new Set(old); if (next.has(id)) next.delete(id); else next.add(id); return next; };
   const toggle = (id: string) => setChosen(old => flip(old, id));
@@ -80,7 +86,12 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
       </label>
       <span className="flex-1" />
       <span>{t("import.chosen", { count: chosen.size })}</span>
+      {undecided && <Button disabled={busy} title={t("selfCheck.entryTip")} onClick={() => setChecking(true)}>
+        <ShieldCheck size={14} />{t("selfCheck.title")}
+      </Button>}
     </div>
+    {checking && <SelfCheckDialog agentKey={agentKey} agentLabel={agentLabel} onClose={() => setChecking(false)}
+      onMarked={() => setReload(n => n + 1)} />}
     <ul className="max-h-[48vh] overflow-auto rounded-md" style={{ border: "1px solid var(--line, rgba(255,255,255,.08))" }}>
       {!items.length && <li className="px-3 py-6 text-center text-xs" style={{ color: cream(50) }}>{t("import.none")}</li>}
       {items.map(item => {

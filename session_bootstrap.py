@@ -1236,17 +1236,24 @@ def open_session_runtime(
     # 每条会话附上 Kaus 内置 MCP（项目记忆、占用 / 释放屏幕）和说明，见 app/projects/builtin_mcp.py。
     from app.projects.builtin_mcp import with_builtin_mcp
 
-    async def _project_capabilities(binding):
+    from app.capabilities.self_check import run_key as self_check_key
+
+    async def _project_capabilities(binding, conversation=None):
         effective = await resolve_effective_for_binding(repositories, binding)
         stored = await repositories.settings.get("ui:locale")
         locale = stored.get("value") if isinstance(stored, dict) and stored.get("value") in ("zh", "en") else "zh"
+        # 「Agent 自查」那条会话的内置 MCP 多带一个提交工具（app/capabilities/self_check.py）。
+        review = None
+        if conversation is not None and await repositories.settings.get(self_check_key(conversation.id)):
+            review = conversation.id
         try:
             return await with_builtin_mcp(
                 effective, binding, repositories, token_file=resolved_token_path, locale=locale,
-                url=os.environ.get("KAUS_LOCAL_URL", "http://127.0.0.1:8877"))
+                url=os.environ.get("KAUS_LOCAL_URL", "http://127.0.0.1:8877"), review=review)
         except Exception:  # noqa: BLE001 - 内置 MCP 出错不能挡住会话启动
             LOGGER.warning("附加 Kaus 内置 MCP 失败（本次会话不带它）", exc_info=True)
             return effective
+    _project_capabilities.wants_conversation = True
 
     session_host = SessionHost(
         registry=registry,
@@ -1436,8 +1443,21 @@ def open_session_runtime(
 
         capability_imports = CapabilityImports(skill_tree, plugin_library.root, memory=NativeMemorySources(
             lambda: native_memory_sources(registry, adapter_for), copy_native_memory))
+        from app.capabilities.self_check import SelfCheckService
+
+        def connected_agents_by_key():
+            agents = {}
+            for driver in registry.list_drivers():
+                preset = getattr(driver, "preset", None)
+                if preset is None:
+                    continue
+                key = preset.skill_scope_key or preset.id
+                row = agents.setdefault(key, {"agentLabel": getattr(preset, "label", None) or key, "backendIds": set()})
+                row["backendIds"].add(driver.backend_id)
+            return agents
+        self_check = SelfCheckService(repositories, session_host, capability_imports, connected_agents_by_key)
         router.routes.extend(build_skill_tree_router(skill_tree, auth_policy=auth_policy,
-                                                     imports=capability_imports).routes)
+                                                     imports=capability_imports, self_check=self_check).routes)
     router.routes.extend(build_plugin_library_router(plugin_library, auth_policy=auth_policy).routes)
     from native_archives import NativeArchiveStore, NativeArchiveService
     from app.api.native_archives import build_native_archive_router

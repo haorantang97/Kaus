@@ -117,6 +117,21 @@ export const fetchImportCandidates = (agentKey: string, signal?: AbortSignal) =>
 export const importCapabilities = (agentKey: string, ids: string[]) => request<SkillTreeSnapshot>("/api/skill-tree/import", { agentKey, ids });
 export const skipCapabilityImport = (agentKey: string) => request<{ skipped: true }>("/api/skill-tree/import/skip", { agentKey, ids: [] });
 export const ignoreCapabilityChanges = (agentKey: string, ids: string[]) => request<{ ignored: number }>("/api/skill-tree/import/ignore", { agentKey, ids });
+export const markCapabilitiesBound = (agentKey: string, ids: string[]) => request<SkillTreeSnapshot>("/api/skill-tree/import/bind", { agentKey, ids });
+
+/* Agent 自查（2026-11-11）：一次自查是一条只读会话，结果由内置 MCP 的 kaus_submit_review 交回。 */
+export interface SelfCheckOptions { agentKey: string; agentLabel: string; bindingId: string; backendId: string; defaultModelId: string | null; count: number }
+export interface SelfCheckSuggestion { id: string; kind: ImportCandidate["kind"]; name: string | null; verdict: "bound" | "likely"; reason: string }
+export interface SelfCheckRun {
+  conversationId: string; agentKey: string; agentLabel: string;
+  /** ``ended``: the run finished without submitting a review. */
+  status: "running" | "answered" | "ended" | "failed";
+  suggestions: SelfCheckSuggestion[]; summary: string; error?: string | null; count: number;
+}
+export const fetchSelfCheckOptions = (agentKey: string, signal?: AbortSignal) =>
+  request<SelfCheckOptions>(`/api/skill-tree/self-check/options/${encodeURIComponent(agentKey)}`, undefined, signal);
+export const startSelfCheck = (agentKey: string, modelId?: string) => request<SelfCheckRun>("/api/skill-tree/self-check", { agentKey, ...(modelId ? { modelId } : {}) });
+export const fetchSelfCheck = (conversationId: string) => request<SelfCheckRun>(`/api/skill-tree/self-check/${encodeURIComponent(conversationId)}`);
 export const syncCapability = (id: string) => request<{ synced: string }>("/api/skill-tree/import/sync", { id });
 export const fetchCapabilityChanges = (signal?: AbortSignal) => request<CapabilityChanges>("/api/skill-tree/changes", undefined, signal);
 export async function markCapabilityChangesSeen() {

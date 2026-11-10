@@ -194,3 +194,21 @@ def test_capabilities_the_native_agent_cannot_isolate_are_locked_in_the_tree(tmp
         assert failure.value.code == "capability_not_isolable"
     finally:
         uow.close()
+
+
+def test_a_skill_marked_bound_by_the_user_stays_bound_and_with_its_agent(tmp_path):
+    uow = world(tmp_path)
+    try:
+        skill(tmp_path / "alpha", "alpha-render")
+        tree, imports = service(uow, tmp_path)
+        tree.begin_onboarding("alpha", "Alpha")
+        record = ids_by_name(imports, "alpha")["alpha-render"]
+        assert record["state"] == "available"
+        imports.mark_bound("alpha", [record["id"]])
+        again = ids_by_name(imports, "alpha")["alpha-render"]  # a fresh discovery does not undo it
+        assert again["state"] == "bound" and again["boundReason"] == "user_marked"
+        assert record["id"] in {a["skillId"] for a in tree.snapshot()["assignments"]}  # kept for its Agent
+        imports.import_selected("alpha", [record["id"]])
+        assert ids_by_name(imports, "alpha")["alpha-render"]["state"] == "bound"  # never offered for sharing
+    finally:
+        uow.close()

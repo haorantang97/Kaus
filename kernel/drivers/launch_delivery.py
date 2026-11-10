@@ -110,6 +110,7 @@ MEMORY_NONE: Final[str] = "none"              # 适配器声明该 Agent 没有�
 MEMORY_DISABLED: Final[str] = "disabled"      # 本次启动关掉了，且机制在真实 Agent 上验证过
 MEMORY_UNVERIFIED: Final[str] = "unverified"  # 本次启动关掉了，但机制没验证过
 MEMORY_ACTIVE: Final[str] = "active"          # 关不掉（或不知道能不能关）：自带记忆未接管
+MEMORY_KEPT: Final[str] = "kept"              # 用户把自带记忆标为 Agent 绑定（Agent 自查，2026-11-11）：不关
 
 #: 原生 MCP 这一组的状态（``summary["nativeMcp"]`` 只有一个词）。
 MCP_NONE: Final[str] = "none"          # 该 Agent 没有自带的全局 MCP
@@ -308,7 +309,9 @@ def plan_launch(
     memory_id = project_memory_id(effective)
     # 没有适配器 = 不知道这是哪个 Agent（没有预设的裸 ACP），这一组无从判断，不报。
     if memory_id is not None and adapter is not None:
-        if _hook(adapter, "disable_native_memory") is not None:
+        if getattr(effective, "native_memory_kept", False):
+            plan.native_memory_mode = MEMORY_KEPT
+        elif _hook(adapter, "disable_native_memory") is not None:
             verified = getattr(adapter, "NATIVE_MEMORY_DISABLE_VERIFIED", False) is True
             plan.native_memory_mode = MEMORY_DISABLED if verified else MEMORY_UNVERIFIED
         elif getattr(adapter, "HAS_NATIVE_MEMORY", True) is False:

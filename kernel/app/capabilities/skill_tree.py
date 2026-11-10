@@ -41,7 +41,8 @@ ONBOARDING_KEY = "skill_tree.onboarding.v1"
 #: an Agent listed here loads only what is in the tree.
 IMPORT_KEY = "skill_tree.import_state.v1"
 #: Fields Kaus owns on a native record; a fresh discovery keeps them.
-KAUS_FIELDS = ("imported", "shared", "importedAs", "importCopy", "originFingerprint")
+#: ``userBound``: the user marked it bound to its Agent (Agent 自查, 2026-11-11); kept across refreshes.
+KAUS_FIELDS = ("imported", "shared", "importedAs", "importCopy", "originFingerprint", "userBound")
 ARRANGED_TYPES_SQL = ("capability_type = 'skills' OR capability_type LIKE '%:skills' "
                       "OR capability_type LIKE '%:mcp' OR capability_type = 'plugins' "
                       "OR capability_type LIKE '%:plugins'")
@@ -225,6 +226,8 @@ class SkillTreeService:
             for key in KAUS_FIELDS:
                 if old and key in old:
                     record[key] = old[key]
+            if record.get("userBound") and not record.get("bound"):
+                record["bound"], record["boundReason"] = True, "user_marked"
             if record.get("importCopy"):
                 # An imported Skill runs from the library copy; the Agent's file is its origin.
                 record["originPath"], record["sourcePath"] = record.get("sourcePath"), record["importCopy"]

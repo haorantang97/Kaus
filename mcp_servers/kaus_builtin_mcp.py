@@ -9,6 +9,7 @@ Kaus 内置 MCP —— Kaus 自动附到每条会话的通用工具，不进技�
   kaus_memory_write    新增 / 补充 / 使失效 / 不变；新增前先返回相似条目让 Agent 选
   kaus_screen_occupy   接管整个屏幕前占用；被占用时先来后到排队（2026-11-10）
   kaus_screen_release  接管结束后释放
+  kaus_submit_review   只在「Agent 自查」那条会话里有：提交属于 / 疑似属于 Agent 绑定的配置与理由（2026-11-11）
 
 记忆存在 Kaus 的领域库里，换 Agent 不变；上级 Project 的条目只读；只连本机 Kaus，用本机会话
 token 鉴权。组内成员会话带 ``--no-memory``：组员写的是组内资料，不进 Project 记忆，只有屏幕两项。
@@ -19,6 +20,7 @@ token 鉴权。组内成员会话带 ``--no-memory``：组员写的是组内资�
 协议：JSON-RPC 2.0 over stdio，MCP 2024-11-05。
 
 参数：--project <projectId> [--agent <backendId>] [--url <Kaus 地址>] [--token-file <路径>] [--no-memory]
+      [--review <conversationId>]
 """
 from __future__ import annotations
 
@@ -91,6 +93,18 @@ SCREEN_TOOLS = [
      "inputSchema": _schema({})},
 ]
 
+REVIEW_TOOLS = [
+    {"name": "kaus_submit_review",
+     "description": "Agent 自查读完后调用一次：提交属于（verdict=bound）或疑似属于（verdict=likely）Agent 绑定的配置，"
+                    "每条带名单里的 id 和判断理由；都不属于就提交空列表。summary 是一两句总结。",
+     "inputSchema": _schema({"items": {"type": "array", "items": {
+                                 "type": "object", "additionalProperties": False, "required": ["id", "verdict", "reason"],
+                                 "properties": {"id": {"type": "string"},
+                                                "verdict": {"type": "string", "enum": ["bound", "likely"]},
+                                                "reason": {"type": "string"}}}},
+                             "summary": {"type": "string"}}, ("items",))},
+]
+
 
 class KausError(RuntimeError):
     pass
@@ -100,13 +114,13 @@ class Client:
     """Kaus 本机接口；``memory=False`` 时不提供记忆工具（组内成员）。"""
 
     def __init__(self, url: str, token_file: Path, project: str, agent: str | None, *,
-                 memory: bool = True, screen: "Screen | None" = None) -> None:
+                 memory: bool = True, screen: "Screen | None" = None, review: str | None = None) -> None:
         self.url, self.token_file, self.project, self.agent = url.rstrip("/"), token_file, project, agent
-        self.memory, self.screen = memory, screen
+        self.memory, self.screen, self.review = memory, screen, review
 
     @property
     def tools(self) -> list[dict]:
-        return [*(MEMORY_TOOLS if self.memory else ()), *SCREEN_TOOLS]
+        return [*(MEMORY_TOOLS if self.memory else ()), *SCREEN_TOOLS, *(REVIEW_TOOLS if self.review else ())]
 
     @property
     def instructions(self) -> str:
@@ -155,6 +169,9 @@ class Client:
                 return _text(self._screen().occupy(args.get("minutes"), args.get("wait_seconds")))
             if name == "kaus_screen_release":
                 return _text(self._screen().release())
+            if name == "kaus_submit_review" and self.review:
+                path = f"/api/skill-tree/self-check/{urllib.parse.quote(self.review, safe='')}/review"
+                return _text(self.http("POST", path, {"items": args.get("items") or [], "summary": args.get("summary")}))
             return _error(f"未知工具：{name}")
         except (KausError, KeyError, ValueError, OSError) as exc:
             return _error(str(exc))
@@ -246,8 +263,10 @@ def parse_args(argv: list[str]) -> Client:
                         or os.environ.get("DASH_SESSION_API_TOKEN_FILE")
                         or str(Path(__file__).resolve().parents[1] / "state" / "session_api.token"))
     parser.add_argument("--no-memory", action="store_true")
+    parser.add_argument("--review")
     args = parser.parse_args(argv)
-    return Client(args.url, Path(args.token_file), args.project, args.agent, memory=not args.no_memory)
+    return Client(args.url, Path(args.token_file), args.project, args.agent, memory=not args.no_memory,
+                  review=args.review)
 
 
 def main(argv: list[str] | None = None) -> None:

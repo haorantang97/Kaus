@@ -153,13 +153,20 @@ async def _skill_scope(repositories: Any, backend_key: str) -> str:
     return (scopes or {}).get(backend_key, backend_key)
 
 
-async def _tree_managed(repositories: Any, binding: Any) -> bool:
-    """The Agent imports its own capabilities explicitly: only what is in the tree loads."""
+async def _import_state(repositories: Any, binding: Any) -> dict | None:
+    """This Agent's entry in ``skill_tree.import_state.v1``; ``None`` before its explicit import."""
     settings = getattr(repositories, "settings", None)
     imports = await settings.get(IMPORT_STATE_KEY) if settings else None
     if not imports:
-        return False
-    return binding.backend_key in imports or await _skill_scope(repositories, binding.backend_key) in imports
+        return None
+    if binding.backend_key in imports:
+        return imports[binding.backend_key]
+    return imports.get(await _skill_scope(repositories, binding.backend_key))
+
+
+async def _tree_managed(repositories: Any, binding: Any) -> bool:
+    """The Agent imports its own capabilities explicitly: only what is in the tree loads."""
+    return await _import_state(repositories, binding) is not None
 
 
 async def _shared_imports(repositories: Any, binding: Any, catalog: dict | None) -> tuple[EffectiveCapability, ...]:
@@ -211,8 +218,11 @@ async def resolve_effective_for_binding(
                              and str(item.get("capabilityType", "")).endswith(suffix)}))
     update = {key: value for key, value in (("native_mcp_known", known("mcp", ":mcp")),
                                             ("native_plugins_known", known("plugin", ":plugins"))) if value}
-    if await _tree_managed(repositories, binding):
+    state = await _import_state(repositories, binding)
+    if state is not None:
         update["tree_managed"] = True
+        if ((state or {}).get("memory") or {}).get("bound") is True:
+            update["native_memory_kept"] = True
     return effective.model_copy(update=update) if update else effective
 
 

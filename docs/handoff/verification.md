@@ -3,6 +3,53 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 11 日：Agent 自查
+
+依据 `product-decisions.md`「绑定能力与 Agent 自查」「Agent 自查的形式」。
+
+**界面**：
+- 导入名单（接入时与「导入能力」）在有还没定的条目时，表头右侧出现「Agent 自查」按钮，点开 `SelfCheckDialog`：
+  - 顶部一段说明 Agent 绑定能力的机制；
+  - 选择模型（该 Agent 的模型目录，缺省为默认模型），然后「开始自查」；
+  - 回答区每 2 秒刷新一次，直到出结果：先显示 Agent 的总结，再逐条列出它认为属于（「绑定」）或疑似属于（「疑似」）绑定的条目，每条下面写理由；
+  - 每条的名字是可点击的标题，点了直接标为绑定，并刷新名单；
+  - Agent 没有提交结果时提示去对话里看回复；底部「打开对话」进入这次自查的会话。
+- 文案不用口语化说法。
+
+**一次自查是什么**：
+- 根 Project（找不到时用任一 Project）里该 Agent 的一条普通会话，标题「Agent 自查 · <Agent>」，权限 `read_only`，用所选模型。Kaus 拼好首句后发出。
+- 首句列出名单里还没定的条目，包括状态为 `available` 的技能、MCP、插件，以及状态为 `available` / `closed` 的自带记忆；规则已判定的、已导入的、已在树上的不列。首句里还写了判断依据和只读要求。
+- 结构化结果经 Kaus 内置 MCP 的 `kaus_submit_review {items:[{id, verdict: bound|likely, reason}], summary}` 交回，不解析自然语言。只有这条会话的内置 MCP 带这个工具：`SessionHost` 的能力投射在可调用对象声明 `wants_conversation` 时把会话一并传入，`session_bootstrap` 据 `app_settings["self-check:<id>"]` 给内置 MCP 加 `--review <id>`。
+- 只收名单里的 id，判定只能是 bound 或 likely，而且要写理由。记录存在 `app_settings["self-check:<conversationId>"]`。会话保留在根 Project 里，由用户自行删除。
+
+**标为绑定**：
+- `POST /api/skill-tree/import/bind` → `CapabilityImports.mark_bound`：
+  - 技能、MCP、插件记 `userBound`（列入 `KAUS_FIELDS`，重新发现时不丢），按 `boundReason = user_marked` 留给所属 Agent（种进根 Project），不再进公共能力库；已导入能力库的拒绝（409）。
+  - 自带记忆：`import_state[agent].memory.bound = True`，导入名单里这一项转为「无法关闭」（`user_marked`），不复制；`EffectiveCapabilities.native_memory_kept` 使送达层报 `nativeMemory: kept`，开对话时不再关掉它。
+
+**接口**：`GET /api/skill-tree/self-check/options/{agentKey}`、`POST /api/skill-tree/self-check {agentKey, modelId?}`、`GET /api/skill-tree/self-check/{conversationId}`（`running` / `answered` / `ended` / `failed`；发出后 20 秒内的空闲仍算运行中）、`POST /api/skill-tree/self-check/{conversationId}/review`、`POST /api/skill-tree/import/bind`。
+
+**测试**：
+- 新增 `kernel/app/tests/test_self_check.py` 7 项：
+  - 只复核还没定的条目，并建只读会话、用所选模型；
+  - 提交的结果是结构化的，只收名单内的条目，判定与理由必填，重复条目只收一次；
+  - 没提交就结束，或启动失败，状态如实；
+  - 没有可复核的、或 Agent 未接入时拒绝；
+  - 只有自查会话的内置 MCP 带提交工具，并转发到 Kaus；
+  - `--review` 参数送到内置 MCP；
+  - Session Host 只把会话交给声明要它的投射。
+- 导入相关新增 2 项：用户标为绑定的技能在重新发现后仍是绑定、留给它的 Agent；自带记忆标为绑定后不复制，送达报 `kept`。
+- 前端新增 `SelfCheckDialog.test.tsx` 1 项：选模型开始、显示理由与判定、点名字标为绑定、可打开对话。
+- 全部用假 Session Host、合成 Agent 与临时库，不调用模型。
+
+**结果**：`cd kernel && ../.venv/bin/python -m pytest -q`：4,187 通过、127 跳过；`.venv/bin/python -m pytest -q tests`：366 通过；`cd web && NODE_OPTIONS=--no-experimental-webstorage npm run check`：第一轮类型检查报测试里的模型描述缺 `contextWindow` / `reasoningLevels` 两个字段，补上后 1,073 项通过，构建成功。没有在浏览器里看界面：后端在跑的是用户自己的实例，验证需要重启它，而且点「开始自查」会真实调用模型。
+
+**未做 / 限制**：
+- 没有用真实 Agent 跑过自查：Agent 是否照做、是否会调用 `kaus_submit_review`、只读权限在各 Agent 上是否真的只读，都未验证。
+- 送不到 MCP 的 Agent 交不回结构化结果，只能打开对话看回复。
+- 自查会话出现在根 Project 的会话列表里。
+- 自查不在后台定时跑；按设计稿，定时复查留给主 Agent 的后台分身。
+
 ## 11 月 11 日：项目记忆的有效期与重复合并
 
 依据 `product-decisions.md`「项目记忆：有效期与重复合并」。都按规则执行，不调用模型。

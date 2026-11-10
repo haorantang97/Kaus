@@ -97,7 +97,8 @@ class CapabilityImports:
             return None
         entries = source["read"]() if source.get("closable") and source.get("readable") else []
         copied = (state.get("memory") or {}).get("copied")
-        if not source.get("closable"):
+        kept = (state.get("memory") or {}).get("bound") is True
+        if not source.get("closable") or kept:
             status = "bound"
         elif copied is not None:
             status = "imported"
@@ -110,7 +111,7 @@ class CapabilityImports:
                 "memory": {"closable": bool(source.get("closable")), "readable": bool(source.get("readable")),
                            "count": len(entries), **({"copied": copied} if copied is not None else {})}}
         if status == "bound":
-            item["boundReason"] = "memory_not_isolable"
+            item["boundReason"] = "user_marked" if kept else "memory_not_isolable"
         return item
 
     def _copy_memory(self, agent_key: str) -> int | None:
@@ -118,6 +119,9 @@ class CapabilityImports:
         source = self._memory_source(agent_key)
         if source is None or not source.get("closable") or not source.get("readable"):
             return None
+        with self.tree.db.transaction() as conn:
+            if ((self.tree._setting(conn, IMPORT_KEY).get(agent_key) or {}).get("memory") or {}).get("bound"):
+                return None  # marked bound to the Agent: it keeps its own memory
         entries = source["read"]()
         if not entries:
             return None
@@ -305,6 +309,38 @@ class CapabilityImports:
                              or (self._memory_source(agent_key) or {}).get("agentLabel") or agent_key)
             state["confirmed"] = {**state.get("confirmed", {}),
                                   **{r["id"]: r.get("fingerprint") for r in records if r.get("available", True)}}
+            self.tree._save_setting(conn, IMPORT_KEY, imports)
+            self.tree._save_setting(conn, CATALOG_KEY, catalog)
+            return self.tree._snapshot(conn)
+
+    def mark_bound(self, agent_key: str, ids: list[str]) -> dict:
+        """The user marks items bound to their Agent (from Agent 自查): kept for it, never shared.
+
+        For the Agent's own memory this keeps it on in that Agent's conversations instead of
+        switching it off (``EffectiveCapabilities.native_memory_kept``) and nothing is copied.
+        """
+        memory_id = memory_item_id(agent_key)
+        discovered = self.tree.discover()
+        with self.tree.db.transaction() as conn:
+            catalog = self.tree._sync_catalog(conn, discovered)
+            imports = self.tree._setting(conn, IMPORT_KEY)
+            records = self._records(catalog, agent_key)
+            by_id = {r["id"]: r for r in records}
+            for record_id in ids:
+                if record_id == memory_id:
+                    if self._memory_source(agent_key) is None:
+                        raise ApiError(404, "capability_not_found", "能力不存在")
+                    state = imports.setdefault(agent_key, {"confirmed": {}})
+                    state["memory"] = {**(state.get("memory") or {}), "bound": True}
+                    continue
+                record = by_id.get(record_id)
+                if record is None:
+                    raise ApiError(404, "capability_not_found", "能力不存在")
+                if record.get("importedAs") or (record.get("imported") and record.get("shared")):
+                    raise ApiError(409, "capability_already_imported", "已导入能力库，不能再标为绑定")
+                record["userBound"] = True
+                record["bound"], record["boundReason"] = True, "user_marked"
+            self._keep_bound(conn, records)
             self.tree._save_setting(conn, IMPORT_KEY, imports)
             self.tree._save_setting(conn, CATALOG_KEY, catalog)
             return self.tree._snapshot(conn)

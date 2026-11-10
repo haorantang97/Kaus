@@ -27,6 +27,18 @@ class CapabilityImportRequest(BaseModel):
     ids: list[str] = []
 
 
+class SelfCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agentKey: str
+    modelId: str | None = None
+
+
+class SelfCheckReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[dict[str, Any]] = []
+    summary: str | None = None
+
+
 class CapabilitySyncRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str
@@ -38,7 +50,7 @@ class SkillOnboardingResult(BaseModel):
     outcome: Literal["skipped", "done"]
 
 
-def build_skill_tree_router(service: SkillTreeService, *, auth_policy: Any, imports: Any = None):
+def build_skill_tree_router(service: SkillTreeService, *, auth_policy: Any, imports: Any = None, self_check: Any = None):
     from fastapi import APIRouter, Depends
     from fastapi.responses import JSONResponse
     from app.api.session_auth import auth_route_class, require_session_auth
@@ -100,6 +112,11 @@ def build_skill_tree_router(service: SkillTreeService, *, auth_policy: Any, impo
         async def import_ignore(body: CapabilityImportRequest):
             return await asyncio.to_thread(imports.ignore, body.agentKey, body.ids)
 
+        @router.post("/skill-tree/import/bind", dependencies=[auth])
+        @endpoint
+        async def import_bind(body: CapabilityImportRequest):
+            return await asyncio.to_thread(imports.mark_bound, body.agentKey, body.ids)
+
         @router.post("/skill-tree/import/sync", dependencies=[auth])
         @endpoint
         async def import_sync(body: CapabilitySyncRequest):
@@ -114,5 +131,27 @@ def build_skill_tree_router(service: SkillTreeService, *, auth_policy: Any, impo
         @endpoint
         async def capability_changes_seen():
             return await asyncio.to_thread(imports.mark_seen)
+
+    if self_check is not None:
+        # Agent 自查 (2026-11-11): one read-only conversation per run, review submitted by the built-in MCP.
+        @router.get("/skill-tree/self-check/options/{agent_key}", dependencies=[auth])
+        @endpoint
+        async def self_check_options(agent_key: str):
+            return await self_check.options(agent_key)
+
+        @router.post("/skill-tree/self-check", dependencies=[auth])
+        @endpoint
+        async def self_check_start(body: SelfCheckRequest):
+            return await self_check.start(body.agentKey, body.modelId)
+
+        @router.get("/skill-tree/self-check/{conversation_id}", dependencies=[auth])
+        @endpoint
+        async def self_check_get(conversation_id: str):
+            return await self_check.get(conversation_id)
+
+        @router.post("/skill-tree/self-check/{conversation_id}/review", dependencies=[auth])
+        @endpoint
+        async def self_check_review(conversation_id: str, body: SelfCheckReview):
+            return await self_check.submit(conversation_id, body.items, body.summary)
 
     return router

@@ -240,6 +240,8 @@ class EffectiveCapabilities(DomainModel):
     #: 这个 Agent 已改为显式导入（2026-11-10，``skill_tree.import_state.v1``）：只加载树上的。
     #: 驱动据此把它自带、但不在树上的技能 / MCP / 插件全部挡掉，新出现的也不例外。
     tree_managed: bool = False
+    #: 2026-11-11：用户把这个 Agent 的自带记忆标为 Agent 绑定（Agent 自查）——开对话时不关掉它。
+    native_memory_kept: bool = False
 
     def get(self, capability_type: str, capability_id: str) -> EffectiveCapability | None:
         for entry in self.entries:

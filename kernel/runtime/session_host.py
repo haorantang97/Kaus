@@ -233,6 +233,9 @@ class CapabilityProjector(Protocol):
 
     **不装 = 与本批之前完全一样**：一个字都不解析、一个字都不送。测试里绝大多数
     夹具就停在这个状态。真正装上它的是 ``session_bootstrap.py``。
+
+    可调用对象带属性 ``wants_conversation = True`` 时，第二个参数是这条会话（2026-11-11：
+    「Agent 自查」那条会话的内置 MCP 要多带一个提交工具）。
     """
 
     def __call__(self, binding: AgentBinding) -> Awaitable[Any]: ...
@@ -541,6 +544,12 @@ class SessionHost:
         if self._start_locks.get(conversation_id) is lock:
             self._start_locks.pop(conversation_id, None)
 
+    async def _project_capabilities(self, binding: AgentBinding, conversation: Conversation) -> Any:
+        projector = self._capability_projector
+        if getattr(projector, "wants_conversation", False):
+            return await projector(binding, conversation)
+        return await projector(binding)
+
     async def start_runtime(self, conversation: Conversation) -> RuntimeHandle:
         """为一条 Conversation 建立 Card Runtime。
 
@@ -698,7 +707,7 @@ class SessionHost:
             root = Path(workspace)
             if not support or not support() or not hook or not root.is_absolute() or not root.is_dir():
                 raise UnsupportedCapabilityError("当前 Agent 无法在适配副本中运行。")
-            effective = (await self._capability_projector(binding) if self._capability_projector
+            effective = (await self._project_capabilities(binding, conversation) if self._capability_projector
                          else EffectiveCapabilities(project_id=binding.project_id))
             projection = await hook(conversation, effective, workspace_root=str(root.resolve()))
             if projection is None or projection.options.workspace_root != str(root.resolve()):
@@ -715,7 +724,7 @@ class SessionHost:
             return None
         effective = None
         try:
-            effective = await self._capability_projector(binding)
+            effective = await self._project_capabilities(binding, conversation)
             projection = await hook(conversation, effective)
         except WorkspaceRequiredError:
             # 2026-11-09：项目有要送达的指令却没有工作目录——这不是「算不出来」，

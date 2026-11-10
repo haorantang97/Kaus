@@ -65,7 +65,8 @@ def _section(capability_id: str, project_id: str, title: str, body: str, order: 
 
 async def with_builtin_mcp(effective: EffectiveCapabilities, binding: Any, repositories: Any, *,
                            token_file: Path, url: str, locale: str = "zh",
-                           python: str | None = None) -> EffectiveCapabilities:
+                           python: str | None = None, review: str | None = None) -> EffectiveCapabilities:
+    """``review``：「Agent 自查」那条会话的 id，内置 MCP 因此多带 ``kaus_submit_review``（2026-11-11）。"""
     project_id = binding.project_id
     memory = not binding.runtime_config.get("group_execution")
     added = []
@@ -77,7 +78,8 @@ async def with_builtin_mcp(effective: EffectiveCapabilities, binding: Any, repos
     title, guidance = _SCREEN_GUIDANCE.get(locale, _SCREEN_GUIDANCE["zh"])
     added.append(_section(SCREEN_SECTION_ID, project_id, title, guidance, SECTION_ORDER + 1))
     args = [str(SERVER_SCRIPT), "--project", project_id, "--agent", binding.backend_id,
-            "--url", url, "--token-file", str(token_file), *(() if memory else ("--no-memory",))]
+            "--url", url, "--token-file", str(token_file), *(() if memory else ("--no-memory",)),
+            *(("--review", review) if review else ())]
     added.append(EffectiveCapability(
         capability_type="mcp", capability_id=BUILTIN_MCP_ID,
         config={"value": {"command": python or sys.executable, "args": args},
