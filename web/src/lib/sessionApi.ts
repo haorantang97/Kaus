@@ -444,14 +444,17 @@ export interface MemoryWire {
   kind: "note" | "overview";
   topic: string;
   body: string;
-  status: "active" | "invalidated" | "deleted";
-  /** 写入者：Agent 的 backendId 或 `user`。 */
+  status: "active" | "invalidated" | "expired" | "deleted";
+  /** 写入者：Agent 的 backendId、`user`、`kaus`，或从 Agent 自带记忆复制来的 `import:<agentKey>`。 */
   source: string | null;
   createdAt: string;
   updatedAt: string;
+  /** 2026-11-11：`fact` 长期有效；`temporary` 到 `expiresAt` 自动收起。 */
+  type?: "fact" | "temporary";
+  expiresAt?: string | null;
 }
 
-export interface MemoryHistoryWire { id: string; memoryId: string; action: "add" | "update" | "invalidate" | "delete" | "undo"; before: MemoryWire | null; after: MemoryWire | null; actor: string | null; at: string }
+export interface MemoryHistoryWire { id: string; memoryId: string; action: "add" | "update" | "invalidate" | "delete" | "undo" | "merge" | "expire"; before: MemoryWire | null; after: MemoryWire | null; actor: string | null; at: string }
 
 const memoryPath = (projectId: string) => `/api/projects/${encodeURIComponent(projectId)}/memories`;
 

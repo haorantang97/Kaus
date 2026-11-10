@@ -3,6 +3,50 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 11 日：项目记忆的有效期与重复合并
+
+依据 `product-decisions.md`「项目记忆：有效期与重复合并」。都按规则执行，不调用模型。
+
+**种类与有效期**：
+- 两种：`fact`（项目事实、约定、偏好，长期有效，缺省）和 `temporary`（只在一段时间内成立的状态，缺省 14 天、最长 90 天）。
+- 到期的临时条目在下一次读取（列表、索引、检索）时由 Kaus 收起：状态 `expired`，历史记 `expire`、来源 `kaus`，不再进索引和检索。下级 Project 读到的上级临时条目同样到期收起。
+- 撤销「到期收起」会把条目转为长期有效，否则下一次读取又会收起。
+- 索引行给临时条目标「（临时，至 YYYY-MM-DD）」；项目页记忆卡片显示「临时 · 至 M/D」。
+
+**重复合并**：
+- 新增时与本级有效条目比正文：规范化（忽略大小写、空白与标点）后完全相同，或几乎相同（长度比 ≥ 0.8 且词集 Jaccard ≥ 0.85；中日韩按双字切片），就并进已有条目，不另起一条。
+- 合并时保留较长的正文和原主题；任一方是事实就是事实，都是临时则取较晚的到期；历史记 `merge`。
+- 上级 Project 的条目和项目概述不参与合并。
+- Agent 写入接口 `POST …/memories/write` 遇到重复时直接返回 `action: "merged"`，不再让 Agent 选择；只是相似、不算重复的，仍按原来的 `choose` 流程处理。
+- 改意思的改写（如「用户偏好中文回复」与「用户偏好用中文回复」）不算重复。
+
+**代码与接口**：
+- 领域：`kernel/app/projects/memory.py`（`EXPIRED`、`FACT` / `TEMPORARY`、`near_duplicate`、`duplicate_of`、`_expire`、`_merge`）。
+- 存储：迁移 v24 `project_memory_lifetime`（`project_memories.memory_type`、`expires_at`）；`sqlite/memories.py`。
+- 接口：`api/project_memory.py`：`POST /memories` 与 `PATCH` 接受 `type` / `expiresDays`；`/write` 接受 `type` / `expires_days`，返回 `merged`。
+- 内置 MCP：`kaus_memory_write` 的参数与说明加入 `type` / `expires_days`；「项目记忆」一节的说明同步。
+- 前端：`ProjectMemoryCard.tsx` 显示到期日，历史里显示「合并」「到期收起」，来源显示 Kaus 与「从 X 导入」。
+
+**测试**：
+- 新增 `kernel/app/tests/test_memory_lifetime.py` 8 项：
+  - 事实长期有效、临时条目到期收起进历史，撤销后转为长期有效；
+  - 下级看到的上级临时条目也会收起；
+  - 非法种类与天数被拒；
+  - 完全相同与几乎相同的条目合并，并保留较长正文；
+  - 合并时保留事实与较晚的到期；
+  - 上级条目与概述不合并；
+  - 判定规则；
+  - 写入接口返回 `merged` 并接受 `type`。
+- 前端 `ProjectMemoryCard.test.tsx` 新增 1 项。
+- 迁移版本断言（`test_group_materials.py`、`test_durable_history.py`）加上 24。
+
+**结果**：`cd kernel && ../.venv/bin/python -m pytest -q`：4,182 通过、127 跳过（这次运行时，工作区里已有下一步「Agent 自查」的部分新文件与测试）；`.venv/bin/python -m pytest -q tests`：366 通过；`cd web && NODE_OPTIONS=--no-experimental-webstorage npm run check`：1,072 项通过，构建成功。
+
+**未做 / 限制**：
+- 合并只在新增时做，库里此前已有的重复不回头扫。
+- 到期只在读取时收起，没有读取就不会改库，这不影响效果。
+- 用户在卡片里新建的条目没有种类选择，缺省为事实；需要临时条目时在对话里让 Agent 写。
+
 ## 11 月 11 日：Agent 自带记忆并入导入名单
 
 依据 `product-decisions.md`「Agent 自带记忆」「关不掉的自带记忆」。

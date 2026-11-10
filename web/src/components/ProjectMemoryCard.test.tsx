@@ -54,4 +54,24 @@ describe("项目记忆卡片", () => {
     await user.click(within(history).getByRole("button", { name: "撤销" }));
     await waitFor(() => expect(api.undoMemoryChange).toHaveBeenCalledWith("project:site", "h1"));
   });
+
+  it("临时条目标出到期日；导入、合并与到期收起写明来源", async () => {
+    const user = userEvent.setup();
+    api.fetchProjectMemories.mockResolvedValue({ overLimit: false, memories: [
+      { ...entry("m-tmp", "project:site", "本周", "迁移登录页"), type: "temporary", expiresAt: "2026-11-25T08:00:00Z" },
+      { ...entry("m-imp", "project:site", "约定", "提交前跑测试"), source: "import:codex", type: "fact", expiresAt: null },
+    ] });
+    api.fetchMemoryHistory.mockResolvedValue({ history: [
+      { id: "h2", memoryId: "m-old", action: "expire", before: null, after: entry("m-old", "project:site", "冻结", "x"), actor: "kaus", at: "2026-11-09T00:00:00Z" },
+      { id: "h1", memoryId: "m-imp", action: "merge", before: null, after: entry("m-imp", "project:site", "约定", "x"), actor: "import:codex", at: "2026-11-09T00:00:00Z" },
+    ] });
+    render(<ProjectMemoryCard projectId="project:site" projectLabel={id => id} />);
+    const rows = within(await screen.findByTestId("project-memory")).getAllByRole("listitem");
+    expect(rows.find(row => row.textContent?.includes("迁移登录页"))).toHaveTextContent(/临时 · 至 11\/2[45]/);
+    expect(rows.find(row => row.textContent?.includes("提交前跑测试"))).toHaveTextContent("从 Codex 导入");
+    await user.click(screen.getByRole("button", { name: "改动历史" }));
+    const history = await screen.findByTestId("memory-history");
+    expect(history).toHaveTextContent("到期收起 · 冻结 · Kaus");
+    expect(history).toHaveTextContent("合并 · 约定 · 从 Codex 导入");
+  });
 });

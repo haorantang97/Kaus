@@ -27,13 +27,16 @@ _GUIDANCE = {
            "这个 Project 在 Kaus 里有一份共享记忆，换 Agent 也不变。下面是索引，需要细节时用 kaus_memory_search 查。\n"
            "发现值得长期记住的内容（项目事实、约定、用户偏好、踩过的坑和解决办法、当前目标）时，直接用 kaus_memory_write 记下，"
            "不用征求用户同意。一次性的细节、密钥和密码、能从代码里直接看出来的内容不要记。"
+           "只在一段时间内成立的状态（进行中的任务、本周安排）写 type=temporary，到期自动收起；完全或几乎相同的内容 Kaus 会自动合并。"
            "用户说「整理一下项目记忆」时，用同一组工具合并重复、作废过时条目。",
            "（还没有记忆）"),
     "en": ("Project memory",
            "This Project has one shared memory in Kaus that stays the same across Agents. The index is below; use "
            "kaus_memory_search for details.\nWhen you learn something worth keeping (project facts, conventions, user "
            "preferences, pitfalls and fixes, current goals), record it with kaus_memory_write without asking. Do not store "
-           "one-off details, secrets or anything obvious from the code. When the user asks to tidy the project memory, merge "
+           "one-off details, secrets or anything obvious from the code. Write state that holds only for a while (work in "
+           "progress, this week's plan) with type=temporary; it is collapsed when it expires. Kaus merges identical or nearly "
+           "identical entries itself. When the user asks to tidy the project memory, merge "
            "duplicates and invalidate stale entries with the same tools.",
            "(no memories yet)"),
 }

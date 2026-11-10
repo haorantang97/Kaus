@@ -70,7 +70,13 @@ export function ProjectMemoryCard({ projectId, projectLabel }: {
     fetchMemoryHistory(projectId).then(result => setHistory(result.history ?? [])).catch(() => setHistory([]));
   };
 
-  const source = (value: string | null) => !value ? "" : value === "user" ? t("memory.source.user") : backendDisplay(value).displayName;
+  const source = (value: string | null) => !value ? "" : value === "user" ? t("memory.source.user")
+    : value === "kaus" ? t("memory.source.kaus")
+    : value.startsWith("import:") ? t("memory.source.imported", { name: backendDisplay(value.slice(7)).displayName })
+    : backendDisplay(value).displayName;
+  const until = (item: MemoryWire) => item.type === "temporary" && item.expiresAt
+    ? t("memory.temporaryUntil", { date: new Date(item.expiresAt).toLocaleDateString(locale, { month: "numeric", day: "numeric" }) })
+    : null;
   const overview = memories?.find(item => item.kind === "overview" && item.projectId === projectId) ?? null;
   const notes = (memories ?? []).filter(item => item !== overview);
   const historyLabel = t("memory.history");
@@ -98,6 +104,7 @@ export function ProjectMemoryCard({ projectId, projectLabel }: {
         <div className="kaus-instruction-head">
           <span className="kaus-instruction-title">{item.topic}</span>
           {!own && <Pill tone="muted">{t("instructions.state.inherited", { name: projectLabel(item.projectId) })}</Pill>}
+          {until(item) && <Pill tone="muted">{until(item)}</Pill>}
           <span className="kaus-memory-meta">{[source(item.source), relativeTime(item.updatedAt, locale)].filter(Boolean).join(" · ")}</span>
           <CardRowMenu label={t("memory.menu")} actions={own ? (["edit", "delete"] as const) : ([] as const)} busy={busy || draft !== null}
             actionLabel={action => t(`memory.action.${action}`)}

@@ -564,6 +564,11 @@ MIGRATIONS: Final[tuple[Migration, ...]] = (
         " actor TEXT, at TEXT NOT NULL)",
         "CREATE INDEX project_memory_history_by_project ON project_memory_history(project_id, at DESC)",
     )),
+    # 2026-11-11：记忆种类与有效期（``fact`` 长期有效 / ``temporary`` 到期收起）。
+    Migration(version=24, name="project_memory_lifetime", statements=(
+        "ALTER TABLE project_memories ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'fact'",
+        "ALTER TABLE project_memories ADD COLUMN expires_at TEXT",
+    )),
 )
 """按版本升序排列的全部迁移。新的往后追加，旧的一律不动。"""
 

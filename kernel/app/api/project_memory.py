@@ -5,7 +5,9 @@
 
 ``POST /projects/{id}/memories/write`` 是给 Agent 的一步式写入：``action=add`` 时先查相似
 条目，有相似且没带 ``confirm`` 就只返回它们，由 Agent 再选新增 / 补充 / 使失效 / 不变；
-每次都返回索引长度与上限，超出时要求顺带合并或作废旧条目。
+每次都返回索引长度与上限，超出时要求顺带合并或作废旧条目。与已有条目完全或几乎相同的新增
+由 Kaus 直接并进那一条（``action=merged``），不再让 Agent 选。``type=temporary``（可带
+``expires_days``）写临时状态，到期自动收起（2026-11-11）。
 """
 
 from __future__ import annotations
@@ -24,6 +26,16 @@ _STATUS = {"project_not_found": 404, "memory_not_found": 404, "history_not_found
 def _text(body: Mapping[str, Any], key: str) -> str | None:
     value = body.get(key)
     return value if isinstance(value, str) else None
+
+
+def _lifetime(body: Mapping[str, Any], *, days_key: str) -> dict:
+    """``memory_type`` / ``expires_days`` 参数；没给就不传（新增时缺省为事实）。"""
+    result = {}
+    if body.get("type") is not None:
+        result["memory_type"] = body.get("type")
+    if body.get(days_key) is not None:
+        result["expires_days"] = body.get(days_key)
+    return result
 
 
 def build_project_memory_router(repositories: Any, *, auth_policy: Any, prefix: str = "/api") -> Any:
@@ -66,12 +78,14 @@ def build_project_memory_router(repositories: Any, *, auth_policy: Any, prefix: 
     async def create(project_id: str, body: dict[str, Any] = Body(...)) -> Any:
         kind = OVERVIEW if body.get("kind") == OVERVIEW else "note"
         return await _guard(memory.add(project_id, _text(body, "topic") or "", _text(body, "body") or "",
-                                       kind=kind, actor=_text(body, "actor") or "user"))
+                                       kind=kind, actor=_text(body, "actor") or "user",
+                                       **_lifetime(body, days_key="expiresDays")))
 
     @_endpoint
     async def patch(project_id: str, memory_id: str, body: dict[str, Any] = Body(...)) -> Any:
         return await _guard(memory.update(project_id, memory_id, topic=_text(body, "topic"), body=_text(body, "body"),
-                                          actor=_text(body, "actor") or "user"))
+                                          actor=_text(body, "actor") or "user",
+                                          **_lifetime(body, days_key="expiresDays")))
 
     @_endpoint
     async def remove(project_id: str, memory_id: str) -> Any:
@@ -91,16 +105,21 @@ def build_project_memory_router(repositories: Any, *, auth_policy: Any, prefix: 
         if action == "add":
             topic, text = _text(body, "topic") or "", _text(body, "body") or ""
             kind = OVERVIEW if body.get("kind") == OVERVIEW else "note"
-            if kind != OVERVIEW and not body.get("confirm"):
+            duplicate = await _guard(memory.duplicate_of(project_id, text)) if kind != OVERVIEW else None
+            if duplicate is None and kind != OVERVIEW and not body.get("confirm"):
                 similar = rank(await _guard(memory.visible(project_id)), f"{topic} {text}", 5)
                 if similar:
                     return {"action": "choose", "similar": similar, **await _index_state(project_id),
                             "next": "有相似条目：补充已有条目用 action=update（带 memory_id），旧内容过时用 action=invalidate，"
                                     "确实是新内容就带 confirm=true 再写一次，没有新东西用 action=keep。"}
-            saved = await _guard(memory.add(project_id, topic, text, kind=kind, actor=actor))
+            saved = await _guard(memory.add(project_id, topic, text, kind=kind, actor=actor,
+                                            **_lifetime(body, days_key="expires_days")))
+            if duplicate is not None:
+                action = "merged"
         elif action == "update":
             saved = await _guard(memory.update(project_id, _text(body, "memory_id") or "", topic=_text(body, "topic"),
-                                               body=_text(body, "body"), actor=actor))
+                                               body=_text(body, "body"), actor=actor,
+                                               **_lifetime(body, days_key="expires_days")))
         elif action == "invalidate":
             saved = await _guard(memory.invalidate(project_id, _text(body, "memory_id") or "",
                                                    replaced_by=_text(body, "replaced_by"), actor=actor))

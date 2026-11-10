@@ -39,6 +39,8 @@ MEMORY_INSTRUCTIONS = (
     "这是所在 Project 在 Kaus 里的共享记忆，换 Agent 也不变。需要项目背景时先用 kaus_memory_search 查。"
     "发现值得长期记住的内容（项目事实、约定、用户偏好、踩过的坑和解决办法、当前目标）时直接用 kaus_memory_write 记下，"
     "不用征求用户同意；一次性的细节、密钥和密码、能从代码里直接看出来的内容不要记。"
+    "只在一段时间内成立的状态（进行中的任务、本周安排）写 type=temporary，到期自动收起；"
+    "与已有条目相同或几乎相同的内容 Kaus 会自动合并。"
 )
 SCREEN_INSTRUCTIONS = (
     "接管整个屏幕（移动真实鼠标、往前台窗口打字、抢窗口焦点）之前先调用 kaus_screen_occupy，结束后立刻调用 "
@@ -66,11 +68,15 @@ MEMORY_TOOLS = [
      "description": "写项目记忆。action=add 新增（有相似条目时先返回它们，确认是新内容再带 confirm=true）；"
                     "action=update 补充或改写已有条目（memory_id）；action=invalidate 让过时条目失效（可带 replaced_by）；"
                     "action=keep 表示没有要改的。kind=overview 写项目概述（这个 Project 做什么、当前目标，只有一条）。"
+                    "type=fact（缺省）长期有效；type=temporary 是临时状态，expires_days 天后（缺省 14，最长 90）自动收起。"
+                    "与已有条目相同或几乎相同的新增会直接并进那一条（action=merged）。"
                     "返回索引长度；超出上限时请在同一次整理里合并或作废旧条目。上级 Project 的条目只读。",
      "inputSchema": _schema({"action": {"type": "string", "enum": ["add", "update", "invalidate", "keep"]},
                              "topic": {"type": "string"}, "body": {"type": "string"},
                              "memory_id": {"type": "string"}, "replaced_by": {"type": "string"},
                              "kind": {"type": "string", "enum": ["note", "overview"]},
+                             "type": {"type": "string", "enum": ["fact", "temporary"]},
+                             "expires_days": {"type": "integer", "minimum": 1, "maximum": 90},
                              "confirm": {"type": "boolean"}}, ("action",))},
 ]
 SCREEN_TOOLS = [
@@ -140,8 +146,8 @@ class Client:
                 query = urllib.parse.urlencode({"q": args["query"], "limit": int(args.get("limit") or 8)})
                 return _text(self.http("GET", f"{self.base()}/search?{query}"))
             if name == "kaus_memory_write" and self.memory:
-                body = {key: args[key] for key in ("action", "topic", "body", "memory_id", "replaced_by", "kind", "confirm")
-                        if key in args}
+                body = {key: args[key] for key in ("action", "topic", "body", "memory_id", "replaced_by", "kind", "type",
+                                                   "expires_days", "confirm") if key in args}
                 if self.agent:
                     body["actor"] = self.agent
                 return _text(self.http("POST", f"{self.base()}/write", body))

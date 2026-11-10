@@ -9,13 +9,18 @@ from app.persistence.sqlite.database import SqliteDatabase
 from app.projects.memory import ACTIVE
 
 _COLUMNS = ("id", "project_id", "kind", "topic", "body", "status", "source", "created_at", "updated_at",
-            "invalidated_at", "replaced_by")
+            "invalidated_at", "replaced_by", "memory_type", "expires_at")
 _KEYS = ("id", "projectId", "kind", "topic", "body", "status", "source", "createdAt", "updatedAt",
-         "invalidatedAt", "replacedBy")
+         "invalidatedAt", "replacedBy", "type", "expiresAt")
 
 
 def _entry(row) -> dict:
     return {key: row[column] for key, column in zip(_KEYS, _COLUMNS)}
+
+
+def _values(entry: dict) -> tuple:
+    # Entries saved before 2026-11-11 (history snapshots, undo) carry no type: they are facts.
+    return tuple((entry.get(key) or "fact") if key == "type" else entry.get(key) for key in _KEYS)
 
 
 class SqliteMemoryRepository:
@@ -37,7 +42,7 @@ class SqliteMemoryRepository:
         return _entry(row) if row is not None else None
 
     async def save(self, entry: dict) -> dict:
-        values = tuple(entry.get(key) for key in _KEYS)
+        values = _values(entry)
         updates = ", ".join(f"{column} = excluded.{column}" for column in _COLUMNS[1:])
         self._db.run(
             f"INSERT INTO project_memories ({', '.join(_COLUMNS)}) VALUES ({', '.join('?' for _ in _COLUMNS)})"

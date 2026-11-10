@@ -206,7 +206,7 @@ def test_v16_skips_malformed_legacy_envelopes_without_blocking_upgrade(tmp_path)
             "VALUES (?, ?, ?, ?, ?, ?)",
             ("malformed", CONVERSATION, 0, "{invalid", NOW.isoformat(), NOW.isoformat()),
         )
-        assert migrate(database) == (16, 17, 18, 19, 20, 21, 22, 23)
+        assert migrate(database) == (16, 17, 18, 19, 20, 21, 22, 23, 24)
         row = database.query_one("SELECT envelope_json, expires_at FROM event_store WHERE event_id = 'malformed'")
         assert row["envelope_json"] == "{invalid"
         assert row["expires_at"] == NOW.isoformat()
@@ -233,7 +233,7 @@ async def test_terminal_history_and_pending_cursor_survive_upgrade_purge_and_reo
         await repository.append_many(tuple(StoredEvent.from_envelope(event, now=NOW,
             expires_at=NOW + timedelta(days=1)) for event in (*terminal, *transient)))
         before = {row["event_id"]: row["envelope_json"] for row in database.query_all("SELECT * FROM event_store")}
-        assert migrate(database) == (17, 18, 19, 20, 21, 22, 23)
+        assert migrate(database) == (17, 18, 19, 20, 21, 22, 23, 24)
         assert before == {row["event_id"]: row["envelope_json"] for row in database.query_all("SELECT * FROM event_store")}
         assert migrate(database) == ()
 
