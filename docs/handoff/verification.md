@@ -3,6 +3,20 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 11 日：新建 Project 时选填项目概述
+
+依据 `open-items.md`「项目地图」一行（11-03 定：职责描述取自 Project 记忆里的「项目概述」，三种来源之一是新建时选填一句）；项目负责人 11-11 同意补上。
+
+**行为**：新建项目窗口原有的选填「描述」改为「项目概述」（占位「这个项目做什么、当前目标（选填）」）。填了的，创建（以及移到所选上级）之后写成该 Project 记忆的概述条目（`POST /api/projects/project:<slug>/memories`，`kind: overview`，来源 `user`）。这和记忆卡片、Agent 在对话里更新的是同一条。不填就不写记忆。写入失败不影响创建，只提示「项目已创建，项目概述未写入记忆」。`create-empty` 仍把这句存进 Project 元数据的 `description`：概述条目还不存在时，记忆索引用它兜底。
+
+**代码**：`web/src/components/NewAgentModal.tsx`、中英文案；后端不变。
+
+**测试**：
+- 前端新增 `NewAgentModal.test.tsx` 2 项：填了写成概述条目；不填不碰记忆，写入失败也照常创建。
+- 内核 `test_project_memory.py` 新增 1 项：刚建的草稿 Project 能写概述，之后的写入更新同一条，索引不再用兜底描述。
+
+**结果**：`cd kernel && ../.venv/bin/python -m pytest -q`：4,188 通过、127 跳过；`.venv/bin/python -m pytest -q tests`：366 通过；`cd web && NODE_OPTIONS=--no-experimental-webstorage npm run check`：1,075 项通过，构建成功。没有在浏览器里实际点过。
+
 ## 11 月 11 日：Agent 自查
 
 依据 `product-decisions.md`「绑定能力与 Agent 自查」「Agent 自查的形式」。

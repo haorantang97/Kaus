@@ -1,7 +1,7 @@
 import { ErrorNotice } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import { apiPost } from "../lib/api";
-import { fetchProjects } from "../lib/sessionApi";
+import { createProjectMemory, fetchProjects } from "../lib/sessionApi";
 import { useLocale } from "../i18n";
 import { Button, cream, dname, inputStyle, Modal, ModalTitle, toast } from "./ui";
 
@@ -47,6 +47,12 @@ export function NewAgentModal({ onClose, onCreated, initialParent = null, initia
     try {
       await apiPost("/api/agent/create-empty", { name, description: desc.trim(), display: display.trim() || null });
       if (parent) await apiPost("/api/move", { node: name, new_parent: parent });
+      // 选填的一句项目概述写成该 Project 记忆的概述条目（与记忆卡片、Agent 更新的是同一条）；失败不影响创建。
+      const overview = desc.trim();
+      if (overview) {
+        await createProjectMemory(`project:${name}`, { kind: "overview", topic: t("memory.overview"), body: overview })
+          .catch(() => toast(t("newAgent.overviewFailed"), "bad"));
+      }
       const parentLabel = parents.find((p) => p.name === parent)?.label || parent;
       toast(parent
         ? t("newAgent.created", { name: display || name, parent: parentLabel })

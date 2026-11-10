@@ -230,3 +230,19 @@ def test_auxiliary_memory_capabilities_are_never_reported_as_unapplied(world):
     effective = asyncio.run(scenario())
     assert unapplied_kinds(effective) == ()
     assert without_auxiliary(effective).entries == ()
+
+
+def test_new_project_overview_is_the_memory_overview_entry(tmp_path):
+    # 新建项目窗口选填的一句概述（2026-11-11）：草稿 Project 刚建好就能写，写的是唯一那条概述。
+    from app.projects.tree_store import ProjectTreeStore
+    unit = SqliteUnitOfWork(tmp_path / "draft.sqlite3")
+    try:
+        ProjectTreeStore(unit.database).create("site", display_name="官网", description="公司官网改版", draft=True)
+        memory = ProjectMemory(unit.repositories)
+        first = asyncio.run(memory.add("project:site", "项目概述", "公司官网改版", kind="overview", actor="user"))
+        again = asyncio.run(memory.add("project:site", "项目概述", "官网改版，先做首页", kind="overview", actor="backend:codex"))
+        assert again["id"] == first["id"] and again["body"] == "官网改版，先做首页"
+        lines, overview = asyncio.run(memory.index("project:site"))
+        assert overview["id"] == first["id"] and "新建时的描述" not in "\n".join(lines)
+    finally:
+        unit.close()
