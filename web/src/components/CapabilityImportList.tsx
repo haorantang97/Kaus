@@ -80,13 +80,13 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
   return <div data-testid="capability-import-list">
     <div className="mb-2 flex items-center gap-2 text-xs" style={{ color: cream(62) }}>
       <label className="inline-flex items-center gap-1.5">
-        <input type="checkbox" checked={allChosen} disabled={!importable.length || busy}
+        <input type="checkbox" aria-label={t("import.selectAll")} checked={allChosen} disabled={!importable.length || busy}
           onChange={() => setChosen(allChosen ? new Set() : new Set(importable.map(i => i.id)))} />
         {t("import.selectAll")}
       </label>
       <span className="flex-1" />
       <span>{t("import.chosen", { count: chosen.size })}</span>
-      {undecided && <Button disabled={busy} title={t("selfCheck.entryTip")} onClick={() => setChecking(true)}>
+      {undecided && <Button disabled={busy} aria-label={t("selfCheck.title")} title={t("selfCheck.entryTip")} onClick={() => setChecking(true)}>
         <ShieldCheck size={14} />{t("selfCheck.title")}
       </Button>}
     </div>

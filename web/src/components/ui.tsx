@@ -83,6 +83,7 @@ export function Button({
   title,
   className = "",
   "aria-pressed": ariaPressed,
+  "aria-label": ariaLabel,
 }: {
   variant?: BtnVariant;
   children: ReactNode;
@@ -91,6 +92,8 @@ export function Button({
   title?: string;
   className?: string;
   "aria-pressed"?: boolean;
+  /** The button's name when its title is a longer hint (icon + accessible name + tooltip). */
+  "aria-label"?: string;
 }) {
   return (
     <button
@@ -99,6 +102,7 @@ export function Button({
       disabled={disabled}
       title={title}
       aria-pressed={ariaPressed}
+      aria-label={ariaLabel}
       className={`kaus-button kaus-button--${variant} ${className}`}
     >
       {children}

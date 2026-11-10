@@ -67,6 +67,9 @@ describe("capability import and change report", () => {
     await user.click(await screen.findByRole("button", { name: /Codex/ }));
     const pdf = await screen.findByRole("checkbox", { name: "pdf" });
     expect(pdf).not.toBeChecked();  // later: nothing preselected
+    expect(screen.getByRole("checkbox", { name: "全选" })).not.toBeChecked();
+    const check = screen.getByRole("button", { name: "Agent 自查" });
+    expect(check).toHaveAttribute("title", "由该 Agent 只读复核名单里还没定的配置");
     expect(screen.getByRole("checkbox", { name: "notes" })).toBeDisabled();
     await user.click(pdf);
     await user.click(screen.getByRole("button", { name: "导入 2 项" }));

@@ -3,6 +3,16 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 11 日：导入名单的可访问名称
+
+隔离实例界面复查（原会话）发现两处，均已修好：
+- 「Agent 自查」按钮的可访问名称读成了整句提示。现在 `aria-label` 是「Agent 自查」，那句说明放在 `title`。
+- 「全选」复选框的名称读成「on」。现在 `aria-label` 是「全选」。
+
+为此通用 `Button`（`web/src/components/ui.tsx`）开始真正传出 `aria-label`。此前它不接收这个属性，另有 8 处调用传了也被丢掉，按钮名称回落到 `title`；现在一并生效。`AgentConnections.test.tsx` 里一处按标签找输入框的查询因此同时匹配到按钮，已收窄到 `input`。`CapabilityImport.test.tsx` 补了这两个名称的断言。
+
+**结果**：kernel 4,212 通过、127 跳过；`tests` 366 通过；前端 1,078 项通过，构建成功。
+
 ## 11 月 11 日：MCP 单个工具开关
 
 依据 `product-decisions.md`「MCP 单个工具开关」：同日修正为开关设在 MCP 本身；负责人说整体逻辑以后再完善。

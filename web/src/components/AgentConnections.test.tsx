@@ -45,7 +45,7 @@ it("能填 API key 的引擎有钥匙按钮；保存后显示「API key」标记
   render(<AgentConnections />);
   await user.click(await screen.findByRole("button", { name: "API key" }));
   expect(screen.getByText(/OPENAI_API_KEY/)).toBeInTheDocument();
-  await user.type(screen.getByLabelText("API key"), "sk-test-fake");
+  await user.type(screen.getByLabelText("API key", { selector: "input" }), "sk-test-fake");
   vi.mocked(fetchAgentCredentials).mockResolvedValue({ configured: [keyed.id] });
   await user.click(screen.getByRole("button", { name: "保存" }));
   expect(saveAgentApiKey).toHaveBeenCalledWith(keyed.id, "sk-test-fake");
