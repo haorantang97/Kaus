@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, FileText, Plug, Puzzle } from "lucide-react";
+import { Brain, ChevronRight, FileText, Plug, Puzzle } from "lucide-react";
 import { useLocale } from "../i18n";
 import { fetchImportCandidates, importCapabilities, skipCapabilityImport, type ImportCandidate } from "../lib/skillTreeApi";
 import { Button, Spinner, confirmAsync, cream } from "./ui";
 
 /* 导入 Agent 原有能力的勾选名单（设计稿 capability-import 第 4 节）。
    接入时出现一次；之后从技能树的「导入能力」随时找回没导入的。勾了才进技能树，不在树上的不加载。
-   Agent 绑定能力置灰、固定给它自己用；别的 Agent 已导入的同一项显示「已在技能树中」，导入时合并。 */
+   Agent 绑定能力置灰、固定给它自己用；别的 Agent 已导入的同一项显示「已在技能树中」，导入时合并。
+   「Agent 自带记忆」（2026-11-11）：勾选 = 已有记忆复制进项目记忆；勾不勾开对话时都关掉它自带的那份；
+   关不掉的置灰并附说明。 */
 export function CapabilityImportList({ agentKey, variant, onImported, onSkipped, onCancel, footerStart }: {
   agentKey: string;
   variant: "connect" | "later";
@@ -55,9 +57,16 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
     finally { setBusy(false); }
   };
 
-  const icon = (kind: ImportCandidate["kind"]) => kind === "mcp" ? <Plug size={15} /> : kind === "plugin" ? <Puzzle size={15} /> : <FileText size={15} />;
-  const label = (item: ImportCandidate) => item.state === "bound" ? t("import.bound") : item.state === "inTree" ? t("import.inTree")
+  const icon = (kind: ImportCandidate["kind"]) => kind === "mcp" ? <Plug size={15} /> : kind === "plugin" ? <Puzzle size={15} />
+    : kind === "memory" ? <Brain size={15} /> : <FileText size={15} />;
+  const memoryLabel = (item: ImportCandidate) => item.state === "bound" ? t("import.memoryLocked")
+    : item.state === "imported" ? t("import.memoryCopied", { count: item.memory?.copied ?? 0 })
+    : item.state === "closed" ? (item.memory?.readable ? t("import.memoryEmpty") : t("import.memoryUnreadable"))
+    : t("import.memoryCount", { count: item.memory?.count ?? 0 });
+  const label = (item: ImportCandidate) => item.kind === "memory" ? memoryLabel(item)
+    : item.state === "bound" ? t("import.bound") : item.state === "inTree" ? t("import.inTree")
     : item.state === "imported" ? t("import.imported") : item.available === false ? t("skillTree.sourceUnavailable") : "";
+  const name = (item: ImportCandidate) => item.kind === "memory" ? t("import.nativeMemory") : item.name;
 
   if (!items) return <p role="status" className="flex min-h-40 items-center justify-center gap-2 text-xs" style={{ color: cream(50) }}>
     {error ?? <><Spinner />{t("ui.loading")}</>}</p>;
@@ -76,19 +85,21 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
       {!items.length && <li className="px-3 py-6 text-center text-xs" style={{ color: cream(50) }}>{t("import.none")}</li>}
       {items.map(item => {
         const fixed = item.state !== "available" || item.available === false;
-        const checked = item.state === "bound" || item.state === "inTree" || item.state === "imported" || chosen.has(item.id);
+        const checked = item.kind === "memory" ? item.state === "imported" || chosen.has(item.id)
+          : item.state === "bound" || item.state === "inTree" || item.state === "imported" || chosen.has(item.id);
         const expanded = open.has(item.id);
         return <li key={item.id} className="px-3 py-1.5 text-sm" style={{ borderTop: "1px solid var(--line, rgba(255,255,255,.06))", opacity: fixed && item.state !== "inTree" ? 0.62 : 1 }}>
           <div className="flex items-center gap-2">
-            <input type="checkbox" aria-label={item.name} checked={checked} disabled={fixed || busy} onChange={() => toggle(item.id)} />
+            <input type="checkbox" aria-label={name(item)} checked={checked} disabled={fixed || busy} onChange={() => toggle(item.id)} />
             <span style={{ color: cream(58) }}>{icon(item.kind)}</span>
-            <span className="min-w-0 flex-1 truncate">{item.name}</span>
+            <span className="min-w-0 flex-1 truncate">{name(item)}</span>
             {label(item) && <span className="shrink-0 text-xs" style={{ color: cream(50) }}>{label(item)}</span>}
-            <button type="button" className="skill-tree-icon" aria-expanded={expanded} title={t("import.details")} aria-label={t("import.detailsOf", { name: item.name })}
+            <button type="button" className="skill-tree-icon" aria-expanded={expanded} title={t("import.details")} aria-label={t("import.detailsOf", { name: name(item) })}
               onClick={() => toggleOpen(item.id)}><ChevronRight size={14} className={expanded ? "is-open" : ""} style={{ transform: expanded ? "rotate(90deg)" : undefined }} /></button>
           </div>
+          {item.kind === "memory" && item.state === "bound" && <p className="mt-0.5 pl-7 text-xs" style={{ color: cream(50) }}>{t("import.memoryLockedNote")}</p>}
           {expanded && <div className="mt-1 pl-7 text-xs" style={{ color: cream(58) }}>
-            <p>{item.description || t("import.noDescription")}</p>
+            <p>{item.kind === "memory" ? t("import.memoryDescription") : item.description || t("import.noDescription")}</p>
             {item.sourcePath && <p className="mt-0.5 break-all" style={{ color: cream(42) }}>{t("import.source")} · {item.sourcePath}</p>}
           </div>}
         </li>;

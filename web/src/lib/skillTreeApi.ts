@@ -76,13 +76,16 @@ export const applySkillTreeAction = (action: SkillTreeAction) => call(action);
 
 // ---- Explicit import of an Agent's own capabilities (docs/product/capability-import-20261110.md)
 
-export type ImportState = "available" | "inTree" | "imported" | "bound";
+/** ``closed``: the Agent's own memory, switched off when a conversation starts, with nothing to copy. */
+export type ImportState = "available" | "inTree" | "imported" | "bound" | "closed";
 export interface ImportCandidate {
   id: string;
-  kind: "skill" | "mcp" | "plugin";
+  kind: "skill" | "mcp" | "plugin" | "memory";
   name: string;
   description: string;
   sourcePath?: string;
+  /** The Agent's own memory (``kind: "memory"``): can it be switched off per launch, read, how many entries. */
+  memory?: { closable: boolean; readable: boolean; count: number; copied?: number };
   available?: boolean;
   state: ImportState;
   boundReason?: string;

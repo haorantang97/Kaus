@@ -1421,8 +1421,21 @@ def open_session_runtime(
             return [*annotate_capabilities(native, supported=isolation_support()), *plugin_library.discover()]
         skill_tree.discover = discover_capabilities
         plugin_library.skill_tree = skill_tree
-        from app.capabilities.capability_import import CapabilityImports
-        capability_imports = CapabilityImports(skill_tree, plugin_library.root)
+        from app.capabilities.capability_import import CapabilityImports, NativeMemorySources
+        from app.projects.memory import ProjectMemory
+        from drivers.native_memory import connected_sources as native_memory_sources
+
+        def copy_native_memory(project_id, entries, actor):
+            # Runs in the import worker thread, outside any tree transaction.
+            async def run():
+                memory = ProjectMemory(repositories)
+                for entry in entries:
+                    await memory.add(project_id, entry["topic"], entry["body"], actor=actor)
+                return len(entries)
+            return asyncio.run(run())
+
+        capability_imports = CapabilityImports(skill_tree, plugin_library.root, memory=NativeMemorySources(
+            lambda: native_memory_sources(registry, adapter_for), copy_native_memory))
         router.routes.extend(build_skill_tree_router(skill_tree, auth_policy=auth_policy,
                                                      imports=capability_imports).routes)
     router.routes.extend(build_plugin_library_router(plugin_library, auth_policy=auth_policy).routes)

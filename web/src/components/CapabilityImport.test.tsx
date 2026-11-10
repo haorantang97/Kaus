@@ -73,4 +73,31 @@ describe("capability import and change report", () => {
     expect(importCapabilities).toHaveBeenCalledWith("codex", ["a", "b"]);
     expect(screen.queryByTestId("capability-changes-dot")).toBeNull();
   });
+
+  it("offers the Agent's own memory as one item and locks it with a note when it cannot be turned off", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchCapabilityChanges).mockResolvedValue({ agents: [], unseen: false });
+    vi.mocked(fetchImportCandidates).mockResolvedValueOnce({ agentKey: "codex", agentLabel: "Codex", status: null, items: [
+      { id: "codex:memory", kind: "memory", name: "Agent 自带记忆", description: "", state: "available",
+        memory: { closable: true, readable: true, count: 3 } }] });
+    const view = render(<ProjectSkillTree focusProject="root" />);
+    await user.click(await screen.findByRole("button", { name: "导入能力" }));
+    await user.click(await screen.findByRole("button", { name: /Codex/ }));
+    const memory = await screen.findByRole("checkbox", { name: "Agent 自带记忆" });
+    expect(screen.getByText("3 条")).toBeVisible();
+    await user.click(memory);
+    await user.click(screen.getByRole("button", { name: "导入 1 项" }));
+    expect(importCapabilities).toHaveBeenCalledWith("codex", ["codex:memory"]);
+    view.unmount();
+
+    vi.mocked(fetchImportCandidates).mockResolvedValueOnce({ agentKey: "codex", agentLabel: "Codex", status: null, items: [
+      { id: "codex:memory", kind: "memory", name: "Agent 自带记忆", description: "", state: "bound", boundReason: "memory_not_isolable",
+        memory: { closable: false, readable: false, count: 0 } }] });
+    render(<ProjectSkillTree focusProject="root" />);
+    await user.click(await screen.findByRole("button", { name: "导入能力" }));
+    await user.click(await screen.findByRole("button", { name: /Codex/ }));
+    expect(await screen.findByRole("checkbox", { name: "Agent 自带记忆" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Agent 自带记忆" })).not.toBeChecked();
+    expect(screen.getByText("无法按项目关闭，如需清空请在该 Agent 内操作")).toBeVisible();
+  });
 });

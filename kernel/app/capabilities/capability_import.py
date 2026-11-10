@@ -14,6 +14,12 @@ enter the tree only through :meth:`CapabilityImports.import_selected`:
   are always kept; they are never offered for the shared library;
 - a record whose Skill folder another Agent already imported is merged (``importedAs``).
 
+The Agent's own memory is one more item (2026-11-11, product-decisions「Agent 自带记忆」):
+checked copies its existing memories into the root Project's memory; either way the Agent's
+own memory is switched off when a conversation starts (``launch_delivery``). An Agent that
+cannot switch it off per launch shows the item locked; one whose memory cannot be read only
+switches it off. Discovery and reading belong to the drivers (``drivers.native_memory``).
+
 Changes on the Agent's side (added, removed, updated) are reported per Agent against the
 fingerprints confirmed at import time; opening the report clears its marker.
 """
@@ -22,8 +28,9 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from app.api.api_errors import ApiError
 from app.capabilities.skill_tree import CATALOG_KEY, IMPORT_KEY, SkillTreeService
@@ -49,10 +56,76 @@ def _folder(path: str | None) -> Path | None:
     return (value.parent if value.name == "SKILL.md" else value).resolve()
 
 
+MEMORY_SUFFIX = ":memory"
+
+
+def memory_item_id(agent_key: str) -> str:
+    return agent_key + MEMORY_SUFFIX
+
+
+class NativeMemorySources:
+    """Connected Agents with memory of their own and where copied memories go.
+
+    ``sources()`` -> ``{agentKey: {"agentLabel", "closable", "readable", "read"}}`` where
+    ``read()`` returns ``[{"topic", "body", "source"}]``; ``copy(project_id, entries, actor)``
+    writes them into a Project's memory and returns how many were written.
+    """
+
+    def __init__(self, sources: Callable[[], dict], copy: Callable[[str, list[dict], str], int]):
+        self.sources, self.copy = sources, copy
+
+
 class CapabilityImports:
-    def __init__(self, tree: SkillTreeService, library_root: Path):
+    def __init__(self, tree: SkillTreeService, library_root: Path, *, memory: NativeMemorySources | None = None):
         self.tree = tree
         self.skills_root = Path(library_root) / "skills"
+        self.memory = memory
+
+    # ------------------------------------------------------------------ own memory
+
+    def _memory_source(self, agent_key: str) -> dict | None:
+        if self.memory is None:
+            return None
+        try:
+            return self.memory.sources().get(agent_key)
+        except Exception:  # noqa: BLE001 - an Agent whose adapter fails to load offers no memory item
+            return None
+
+    def _memory_item(self, agent_key: str, state: dict) -> dict | None:
+        source = self._memory_source(agent_key)
+        if source is None:
+            return None
+        entries = source["read"]() if source.get("closable") and source.get("readable") else []
+        copied = (state.get("memory") or {}).get("copied")
+        if not source.get("closable"):
+            status = "bound"
+        elif copied is not None:
+            status = "imported"
+        elif entries:
+            status = "available"
+        else:
+            status = "closed"  # switched off when a conversation starts; nothing to copy
+        item = {"id": memory_item_id(agent_key), "kind": "memory", "name": "Agent 自带记忆", "description": "",
+                "available": True, "state": status,
+                "memory": {"closable": bool(source.get("closable")), "readable": bool(source.get("readable")),
+                           "count": len(entries), **({"copied": copied} if copied is not None else {})}}
+        if status == "bound":
+            item["boundReason"] = "memory_not_isolable"
+        return item
+
+    def _copy_memory(self, agent_key: str) -> int | None:
+        """Copy the Agent's existing memories into the root Project; ``None`` when there is nothing to copy."""
+        source = self._memory_source(agent_key)
+        if source is None or not source.get("closable") or not source.get("readable"):
+            return None
+        entries = source["read"]()
+        if not entries:
+            return None
+        with self.tree.db.transaction() as conn:
+            root = self.tree._root_project(conn)
+        if root is None:
+            raise ApiError(409, "project_not_found", "没有根 Project")
+        return self.memory.copy(root[0], entries, "import:" + agent_key)
 
     # ------------------------------------------------------------------ reading
 
@@ -99,6 +172,18 @@ class CapabilityImports:
                                                              "available": 0})
                 if self._state_of(catalog, record) == "available" and record.get("available", True):
                     row["available"] += 1
+            sources = {}
+            if self.memory is not None:
+                try:
+                    sources = self.memory.sources()
+                except Exception:  # noqa: BLE001
+                    sources = {}
+            for key, source in sources.items():
+                row = agents.setdefault(key, {"agentKey": key, "agentLabel": source.get("agentLabel") or key,
+                                              "available": 0})
+                item = self._memory_item(key, imports.get(key) or {})
+                if item is not None and item["state"] == "available":
+                    row["available"] += 1
             for key, row in agents.items():
                 row["status"] = (imports.get(key) or {}).get("status")
             return {"agents": sorted(agents.values(), key=lambda r: r["agentLabel"].casefold())}
@@ -122,7 +207,11 @@ class CapabilityImports:
             items.sort(key=lambda item: ({"available": 0, "inTree": 1, "imported": 2, "bound": 3}[item["state"]],
                                          item["kind"], item["name"].casefold()))
             state = imports.get(agent_key) or {}
-            label = state.get("agentLabel") or next((r.get("agentLabel") for r in records if r.get("agentLabel")), agent_key)
+            memory = self._memory_item(agent_key, state)
+            if memory is not None:
+                items.insert(0, memory)
+            label = state.get("agentLabel") or next((r.get("agentLabel") for r in records if r.get("agentLabel")), None) \
+                or (self._memory_source(agent_key) or {}).get("agentLabel") or agent_key
             return {"agentKey": agent_key, "agentLabel": label, "status": state.get("status"), "items": items}
 
     # ------------------------------------------------------------------ writing
@@ -165,6 +254,14 @@ class CapabilityImports:
                 self._seed_root(conn, record)
 
     def import_selected(self, agent_key: str, ids: list[str]) -> dict:
+        wants_memory = memory_item_id(agent_key) in ids
+        ids = [i for i in ids if i != memory_item_id(agent_key)]
+        copied = None
+        if wants_memory:
+            with self.tree.db.transaction() as conn:
+                already = ((self.tree._setting(conn, IMPORT_KEY).get(agent_key) or {}).get("memory") or {}).get("copied")
+            # Copied before the tree transaction: memory rows live in the same database.
+            copied = None if already is not None else self._copy_memory(agent_key)
         discovered = self.tree.discover()
         with self.tree.db.transaction() as conn:
             catalog = self.tree._sync_catalog(conn, discovered)
@@ -202,7 +299,10 @@ class CapabilityImports:
             self._keep_bound(conn, records)
             state = imports.setdefault(agent_key, {"confirmed": {}})
             state["status"] = "done"
-            state.setdefault("agentLabel", next((r.get("agentLabel") for r in records if r.get("agentLabel")), agent_key))
+            if copied is not None:
+                state["memory"] = {"copied": copied, "at": datetime.now(timezone.utc).isoformat()}
+            state.setdefault("agentLabel", next((r.get("agentLabel") for r in records if r.get("agentLabel")), None)
+                             or (self._memory_source(agent_key) or {}).get("agentLabel") or agent_key)
             state["confirmed"] = {**state.get("confirmed", {}),
                                   **{r["id"]: r.get("fingerprint") for r in records if r.get("available", True)}}
             self.tree._save_setting(conn, IMPORT_KEY, imports)
@@ -331,4 +431,4 @@ class CapabilityImports:
             return {"synced": record_id}
 
 
-__all__ = ["CapabilityImports"]
+__all__ = ["CapabilityImports", "NativeMemorySources", "memory_item_id"]

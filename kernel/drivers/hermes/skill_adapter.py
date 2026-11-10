@@ -8,6 +8,10 @@ from drivers.hermes.skill_launch import command_for
 from drivers.hermes.skill_snapshots import pin_session, session_mode
 from drivers.skill_execution.common import SkillPlan, unsupported
 
+#: Hermes 自带记忆（主目录 ``memories/`` 的 ``MEMORY.md`` / ``USER.md``）只能在它自己的配置里关，
+#: 没有按次关闭的办法；Kaus 不改它的主目录，所以导入名单里这一项置灰（2026-11-11）。
+HAS_NATIVE_MEMORY = True
+
 
 async def project(spec, binding, effective, workspace_root, *, dry_run=False, runtime_info=None):
     native_env = spec.build_env()

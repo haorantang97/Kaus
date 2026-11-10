@@ -12,6 +12,9 @@ from .managed_builds import resolve_managed_binary
 
 SOURCE_VERSION = '1.52.0'
 PATCH_VERSION = 'kaus-skills-1'
+#: 内置 ``memory`` 扩展按 Goose 自己的配置启用，ACP 沿用同一组扩展，没有按次关闭的办法；
+#: 导入名单里「Agent 自带记忆」置灰（2026-11-11）。
+HAS_NATIVE_MEMORY = True
 BUILD_SOURCE = json.loads((Path(__file__).parents[1]/'goose/skill-scope-source.json').read_text())
 
 

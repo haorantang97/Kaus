@@ -232,3 +232,28 @@ def disable_native_memory(spec, metadata):
     settings["tools"], settings["experimental"] = tools, experimental
     path = write_overlay(spec, "gemini", json.dumps(settings, sort_keys=True, ensure_ascii=False))
     return spec.with_env(GEMINI_CLI_SYSTEM_SETTINGS_PATH=str(path)), metadata
+
+
+#: ``save_memory`` 追加的段落（``packages/core/src/tools/memoryTool.ts`` ``MEMORY_SECTION_HEADER``）。
+MEMORY_SECTION_HEADER = "## Gemini Added Memories"
+
+
+def read_native_memory(*, home=None):
+    """``~/.gemini/GEMINI.md`` 里 ``save_memory`` 记下的条目（每行一条），只读。
+
+    Auto Memory（``experimental.autoMemory``）的产物是待用户批准的补丁，批准后同样写进记忆
+    文件，文档没有给出单独的存放位置，这里不读。注意：关闭自带记忆挡不住 Gemini 加载
+    ``GEMINI.md`` 本身（见 :func:`disable_native_memory`）。
+    """
+    root = Path(home) if home is not None else Path.home() / ".gemini"
+    path = root / "GEMINI.md"
+    if not path.is_file() or path.is_symlink():
+        return []
+    rows, inside = [], False
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if line.startswith("## "):
+            inside = line.strip() == MEMORY_SECTION_HEADER
+            continue
+        if inside and line.lstrip().startswith("- ") and line.strip()[2:].strip():
+            rows.append({"body": line.strip()[2:].strip(), "source": str(path)})
+    return rows

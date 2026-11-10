@@ -31,6 +31,11 @@
 ``HAS_NATIVE_MEMORY: bool``
     适配器声明「这个 Agent 根本没有自带记忆」（``False``）时报 ``none``；没有钩子也没有
     这条声明的，一律按「自带记忆未接管」报（``active`` + ``native_memory_active``）。
+    ``True`` 只用于导入名单：确有自带记忆、又关不掉，那一项置灰（``drivers.native_memory``）。
+
+``read_native_memory(*, home=None) -> list[dict]``
+    导入名单「Agent 自带记忆」勾选时只读地取出已有记忆，复制进根 Project 的项目记忆
+    （``drivers.native_memory``，2026-11-11）。开对话时不调用。
 
 ``NATIVE_PLUGIN_FORMATS: tuple[str, ...]`` + ``deliver_plugins(spec, metadata, plugins) -> (spec, metadata)``
     该 Agent 原生能加载哪些插件格式（``claude`` / ``codex`` / ``gemini``，见
@@ -311,7 +316,7 @@ def plan_launch(
         else:
             plan.native_memory_mode = MEMORY_ACTIVE
         # 只记在送达摘要里，不进会话里的「未生效」提示：关不掉自带记忆的 Agent 很常见，
-        # 每条会话都提醒一遍太吵；设计稿要的是项目页上标「未接管」。
+        # 每条会话都提醒一遍太吵；导入名单里那一项置灰并附说明（2026-11-11）。
         plan.summary["nativeMemory"] = [plan.native_memory_mode]
     plan.unapplied = tuple(unapplied)
     plan.warnings = tuple(warnings)

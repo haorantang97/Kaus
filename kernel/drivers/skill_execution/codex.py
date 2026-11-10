@@ -390,6 +390,24 @@ def disable_native_memory(spec, metadata):
     return spec.with_env(CODEX_CONFIG=json.dumps(config)), metadata
 
 
+def read_native_memory(*, home=None):
+    """Codex memories, read only: ``$CODEX_HOME/memories/MEMORY.md`` split by headings.
+
+    Not checked against a real Codex memory folder: the memories feature is off by
+    default and none exists on the development machine. The path comes from
+    secondhand write-ups (developers.openai.com/codex/memories and third-party
+    descriptions of ``memories/MEMORY.md`` / ``memory_summary.md``); a missing file
+    reads as no memory.
+    """
+    from drivers.native_memory import markdown_sections
+    root = Path(home) if home is not None else Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    path = root / "memories" / "MEMORY.md"
+    if not path.is_file() or path.is_symlink():
+        return []
+    return [{"topic": title, "body": body, "source": str(path)}
+            for title, body in markdown_sections(path.read_text(encoding="utf-8", errors="ignore"))]
+
+
 # --------------------------------------------------------------------------- #
 # 插件（2026-11-10 在本机 Codex 0.166.0-alpha.6 上实测，隔离的 CODEX_HOME、未调用模型）
 # --------------------------------------------------------------------------- #

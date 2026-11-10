@@ -423,8 +423,8 @@ def test_every_memory_hook_is_marked_unverified_and_memoryless_adapters_say_so()
         assert callable(module.disable_native_memory) and module.NATIVE_MEMORY_DISABLE_VERIFIED is False
     for module in (opencode, crush, pi, grok, cursor, dsh, deepseek):
         assert module.HAS_NATIVE_MEMORY is False and not hasattr(module, "disable_native_memory")
-    # 有自带记忆却没有按次关闭开关的，既不声明钩子也不声明「没有」。
-    assert not hasattr(copilot, "disable_native_memory") and not hasattr(copilot, "HAS_NATIVE_MEMORY")
+    # 有自带记忆却没有按次关闭开关的：不声明钩子，声明「确有」（导入名单里那一项置灰，2026-11-11）。
+    assert not hasattr(copilot, "disable_native_memory") and copilot.HAS_NATIVE_MEMORY is True
 
 
 def test_without_an_adapter_native_memory_is_not_judged(tmp_path: Path) -> None:

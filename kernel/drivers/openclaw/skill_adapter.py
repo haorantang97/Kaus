@@ -21,6 +21,9 @@ from drivers.session_mcp import projection as session_mcp
 from .driver import OpenClawGateway
 from .tool_policy import inherited_agent_policy
 
+#: OpenClaw 自带记忆（工作区的 ``MEMORY.md`` 与 ``memory/``）没有按次关闭的办法；导入名单里置灰（2026-11-11）。
+HAS_NATIVE_MEMORY = True
+
 
 _runtime_contexts = {}
 

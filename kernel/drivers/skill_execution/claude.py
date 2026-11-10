@@ -269,6 +269,31 @@ def disable_native_memory(spec, metadata):
     return spec.with_env(**{AUTO_MEMORY_ENV: "1"}), _with_options(metadata, meta, claude, options)
 
 
+def read_native_memory(*, home=None):
+    """Claude Code auto memory, read only: ``~/.claude/projects/<project>/memory/``.
+
+    ``MEMORY.md`` is the index and the other ``*.md`` are topic files with a ``name`` /
+    ``description`` frontmatter (code.claude.com/docs/en/memory, "Auto memory"; checked
+    against local files 2026-11-11). ``CLAUDE_CONFIG_DIR`` moves ``~/.claude``. A folder
+    that has only ``MEMORY.md`` is read by its headings.
+    """
+    import os
+    from drivers.native_memory import markdown_sections, split_frontmatter
+    root = Path(home) if home is not None else Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    rows = []
+    for folder in sorted((root / "projects").glob("*/memory")):
+        files = sorted(p for p in folder.glob("*.md") if p.is_file() and not p.is_symlink())
+        topics = [p for p in files if p.name != "MEMORY.md"]
+        for file in topics:
+            meta, body = split_frontmatter(file.read_text(encoding="utf-8", errors="ignore"))
+            rows.append({"topic": meta.get("name") or file.stem, "body": body, "source": str(file)})
+        index = folder / "MEMORY.md"
+        if not topics and index in files:
+            for title, body in markdown_sections(index.read_text(encoding="utf-8", errors="ignore")):
+                rows.append({"topic": title, "body": body, "source": str(index)})
+    return rows
+
+
 # --------------------------------------------------------------------------- #
 # 能力库插件原样送达（2026-11-09，设计稿第 6 节）
 # --------------------------------------------------------------------------- #

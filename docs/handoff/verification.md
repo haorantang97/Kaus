@@ -3,6 +3,36 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 11 日：Agent 自带记忆并入导入名单
+
+依据 `product-decisions.md`「Agent 自带记忆」「关不掉的自带记忆」。
+
+**行为**：导入名单（接入时与「导入能力」）多一项「Agent 自带记忆」，排在最前。
+- 勾选 = 把已有记忆复制进根 Project 的项目记忆（每条一个条目，来源记为 `import:<agentKey>`，主题和正文按项目记忆上限截断，最多 500 条）；复制过的显示「已复制 N 条」，再次打开名单不会重复复制。
+- 不勾或跳过 = 不复制；以后可从「导入能力」再复制。
+- 两种都在开对话时关掉自带的那份：沿用 11-09 的 `disable_native_memory`（Project 记忆在场的会话都会调用），不随勾选变化。
+- 状态：能关能读且有记忆 → 可勾选（显示条数）；能关但读不到或没有 → 置灰，标「无法读取」/「暂无记忆」；关不掉 → 置灰，标「无法关闭」，下面一行说明「无法按项目关闭，如需清空请在该 Agent 内操作」；声明没有自带记忆、或没有声明也没有关闭钩子的 Agent 不列这一项。
+
+**代码**：通用层 `kernel/drivers/native_memory.py`（`describe` / `read` / `connected_sources`，只看适配器声明，不认识引擎名）；适配器新增可选钩子 `read_native_memory(*, home=None)`；`HAS_NATIVE_MEMORY = True` 新用于「确有、但关不掉」。`app/capabilities/capability_import.py` 的 `CapabilityImports(memory=NativeMemorySources(...))` 出这一项（id `<agentKey>:memory`、`kind: "memory"`、状态多一个 `closed`），勾选时在树事务之前复制（记忆表在同一个库里），并把 `{copied, at}` 记进 `skill_tree.import_state.v1`；`session_bootstrap.py` 接线。前端 `CapabilityImportList.tsx`、`skillTreeApi.ts`、中英文案。
+
+**各 Agent 的读取位置**（只读，Kaus 不改这些文件）：
+
+| Agent | 关闭 | 读取 | 核实情况 |
+| --- | --- | --- | --- |
+| Claude Code | 能 | `~/.claude/projects/*/memory/` 下除 `MEMORY.md` 外的主题文件（frontmatter `name` 作主题）；只有 `MEMORY.md` 的目录按标题切分；`CLAUDE_CONFIG_DIR` 优先 | 官方文档 + 本机目录核对。注意它按工作目录分开存，复制时全部进根 Project，包括不相干目录的记忆 |
+| Codex | 能 | `$CODEX_HOME/memories/MEMORY.md` 按标题切分 | 只有二手资料（官方 Memories 页与第三方说明），本机没有记忆目录，未在真机核对；文件不存在时按没有记忆 |
+| Gemini CLI | 能 | `~/.gemini/GEMINI.md` 的「## Gemini Added Memories」段，每行一条 | `save_memory` 的写法；Auto Memory 的产物位置文档没给，不读。关闭挡不住 Gemini 继续加载 `GEMINI.md` 本身 |
+| Qwen Code | 能 | 不读 | 存放位置 `~/.qwen/projects/<p>/memory/` 有文档，但文件格式未核实，只关闭、不复制 |
+| Copilot、Goose、Hermes、OpenClaw | 不能 | 不读 | 置灰（Copilot 是服务端记忆；Goose 内置 memory 扩展；Hermes `memories/`；OpenClaw 工作区 `MEMORY.md`） |
+| OpenCode、Crush、Pi、Grok、Cursor、DSH、DeepSeek | — | — | 声明没有自带记忆，不列 |
+| Kilo、Antigravity、Command Code、omp、ZCode 等 | — | — | 没有声明，不知道有没有，不列 |
+
+**测试**：新增 `kernel/app/tests/test_native_memory_import.py` 6 项（只有确有自带记忆的 Agent 出这一项、五种适配器声明对应的状态；勾选只复制一次进根 Project；跳过不复制、之后可再复制；Claude 读主题文件与只有索引的目录；Codex、Gemini 读法与文件缺失；超长截断），前端 `CapabilityImport.test.tsx` 新增 1 项（勾选提交 `<agentKey>:memory`；关不掉时置灰且显示说明）。全部用合成适配器与临时目录，未读真实 Agent 主目录。
+
+**结果**：`cd kernel && ../.venv/bin/python -m pytest -q`：第一轮（`-x`）在 `test_launch_delivery.py` 停下——它原先断言 Copilot 不声明 `HAS_NATIVE_MEMORY`，与本节「确有、但关不掉」的新含义冲突，改为断言 `True`；复跑全量 4,169 通过、127 跳过（复跑时工作区里已有下一节记忆有效期的部分代码，未影响结果）；`.venv/bin/python -m pytest -q tests`：366 通过；`cd web && NODE_OPTIONS=--no-experimental-webstorage npm run check`：1,071 项通过，构建成功。
+
+**未做 / 限制**：没有在真实 Agent 上核对复制结果；Codex 读取位置未核实；复制不按工作目录对应到子 Project；Qwen 不复制。
+
 ## 11 月 10 日：电脑操作精简（谁进门谁挂牌）
 
 依据 `product-decisions.md`「电脑操作」11 月 10 日最终决定与问题 4–6 的答复；删除范围见 `docs/product/computer-use-trim-scope-20261110.md`。

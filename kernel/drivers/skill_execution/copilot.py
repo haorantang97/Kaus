@@ -446,3 +446,4 @@ def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
 # copilot-memory）。交互式 ``/memory off`` 会保存到以后的会话（持久），程序化运行默认关、按次
 # ``--enable-memory`` 开；``--acp`` 模式的默认值与按次关闭开关都没找到，所以不声明
 # ``disable_native_memory``，Project 记忆在场时按「自带记忆未接管」报告。
+HAS_NATIVE_MEMORY = True
