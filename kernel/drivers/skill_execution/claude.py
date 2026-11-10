@@ -387,3 +387,37 @@ def exclude_native_plugins(spec, metadata, *, excluded, kept):
                 servers.setdefault(f"{row['name']}-{name}", dict(definition))
         options["mcpServers"] = servers
     return spec, _with_options(metadata, meta, claude, options), ()
+
+
+# --------------------------------------------------------------------------- #
+# 钩子（2026-11-11，docs/product/hooks-design-20261111.md）
+# --------------------------------------------------------------------------- #
+
+HOOK_AGENT = "claude-code"
+#: code.claude.com/docs/en/hooks。改完文件 = PostToolUse 匹配编辑类工具。
+HOOK_EVENTS = {
+    "session_start": ("SessionStart", None), "prompt_submit": ("UserPromptSubmit", None),
+    "before_tool": ("PreToolUse", None), "after_tool": ("PostToolUse", None),
+    "after_file_edit": ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit"),
+    "turn_end": ("Stop", None), "session_end": ("SessionEnd", None),
+}
+#: 经 claude-agent-acp → SDK ``settings`` 送钩子这一段没在真机上跑过。
+NATIVE_HOOKS_VERIFIED = False
+
+
+def deliver_hooks(spec, metadata, hooks):
+    """Hooks for this session only: Agent SDK ``Options.settings`` (the flag settings layer).
+
+    Hooks from every settings layer run together (code.claude.com/docs/en/hooks), so the
+    user's own hooks keep running. Merged into the same inline ``settings`` object that
+    ``exclude_native_plugins`` writes; ``~/.claude/settings.json`` is not modified.
+    """
+    from drivers.hooks import grouped, merge_grouped
+    meta, claude, options = _claude_code_options(metadata)
+    settings = options.get("settings")
+    if isinstance(settings, str):
+        return spec, metadata  # a settings file path was given: leave it untouched
+    settings = dict(settings or {})
+    settings["hooks"] = merge_grouped(settings.get("hooks"), grouped(hooks))
+    options["settings"] = settings
+    return spec, _with_options(metadata, meta, claude, options)

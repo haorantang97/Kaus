@@ -8,8 +8,14 @@ export interface SkillTreeProject {
 }
 export interface SkillTreeSkill {
   id: string;
-  /** Absent for Skills; "mcp" for an Agent's discovered native MCP server; "plugin" for a library plugin. */
-  kind?: "mcp" | "plugin";
+  /** Absent for Skills; "mcp" for an Agent's discovered native MCP server; "plugin" for a library plugin; "hook" for a hook. */
+  kind?: "mcp" | "plugin" | "hook";
+  /** Hooks (2026-11-11): a generic moment (``turn_end`` …) or an Agent's own event name, the command and its timeout in seconds. */
+  event?: string;
+  agent?: string;
+  matcher?: string;
+  command?: string;
+  timeout?: number | null;
   /** Library plugin id (kind "plugin"): used to remove it from the library. */
   pluginId?: string;
   name: string;
@@ -80,7 +86,7 @@ export const applySkillTreeAction = (action: SkillTreeAction) => call(action);
 export type ImportState = "available" | "inTree" | "imported" | "bound" | "closed";
 export interface ImportCandidate {
   id: string;
-  kind: "skill" | "mcp" | "plugin" | "memory";
+  kind: "skill" | "mcp" | "plugin" | "memory" | "hook";
   name: string;
   description: string;
   sourcePath?: string;
@@ -94,7 +100,7 @@ export interface ImportCandidate {
 }
 export interface ImportCandidates { agentKey: string; agentLabel: string; status: string | null; items: ImportCandidate[] }
 export interface ImportAgent { agentKey: string; agentLabel: string; status: string | null; available: number }
-export interface ChangeItem { id: string; kind: "skill" | "mcp" | "plugin"; name: string; description: string }
+export interface ChangeItem { id: string; kind: "skill" | "mcp" | "plugin" | "hook"; name: string; description: string }
 export interface AgentChanges { agentKey: string; agentLabel: string; added: ChangeItem[]; removed: ChangeItem[]; updated: ChangeItem[]; unseen?: boolean }
 export interface CapabilityChanges { agents: AgentChanges[]; unseen: boolean }
 

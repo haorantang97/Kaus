@@ -35,7 +35,7 @@ from typing import Any, Callable
 from app.api.api_errors import ApiError
 from app.capabilities.skill_tree import CATALOG_KEY, IMPORT_KEY, SkillTreeService
 
-NATIVE_KINDS = ("skill", "mcp", "plugin")
+NATIVE_KINDS = ("skill", "mcp", "plugin", "hook")
 MAX_SKILL_FILES = 2000
 MAX_SKILL_BYTES = 50 * 1024 * 1024
 

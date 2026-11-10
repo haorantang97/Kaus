@@ -74,6 +74,19 @@ describe("capability import and change report", () => {
     expect(screen.queryByTestId("capability-changes-dot")).toBeNull();
   });
 
+  it("shows a hook in the tree with its moment, and command and timeout as details", async () => {
+    vi.mocked(fetchCapabilityChanges).mockResolvedValue({ agents: [], unseen: false });
+    vi.mocked(fetchSkillTree).mockResolvedValue({ ...tree,
+      skills: [{ id: "hook-aaaaaaaaaaaa", kind: "hook", name: "完成提醒", agentKey: null, agentLabel: "", description: "",
+        event: "turn_end", command: "say done", timeout: 5 }],
+      entries: [{ projectId: "root", sourceProjectId: "root", skillId: "hook-aaaaaaaaaaaa", inherited: false, blocked: false, order: 0 }] });
+    render(<ProjectSkillTree focusProject="root" />);
+    expect(await screen.findByText("完成提醒")).toBeVisible();
+    expect(screen.getByRole("img", { name: "钩子" })).toBeVisible();
+    const moment = screen.getByText("回合结束");
+    expect(moment).toHaveAttribute("title", "时点：回合结束\n命令：say done\n超时：5 秒");
+  });
+
   it("offers the Agent's own memory as one item and locks it with a note when it cannot be turned off", async () => {
     const user = userEvent.setup();
     vi.mocked(fetchCapabilityChanges).mockResolvedValue({ agents: [], unseen: false });

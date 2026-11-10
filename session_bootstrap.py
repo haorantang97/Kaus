@@ -1376,6 +1376,9 @@ def open_session_runtime(
     skill_tree = None
     # 能力库（设计稿第 7 节）：插件装在 state/ 旁的 capability-library/，目录项进技能树。
     plugin_library = PluginLibrary(resolved_token_path.parent / "capability-library")
+    # 钩子（2026-11-11）：同一个能力库目录下的 hooks/。
+    from app.capabilities.hook_library import HookLibrary, build_hook_library_router
+    hook_library = HookLibrary(plugin_library.root)
     if skill_database is not None:
         def skill_inventory_ready(agent_key):
             for driver in registry.list_drivers():
@@ -1415,6 +1418,21 @@ def open_session_runtime(
                 support[key] = tuple(sorted({*support.get(key, ()), *supported_kinds(adapter)}))
             return support
 
+        from drivers.hooks import discover_native_hooks
+
+        def hook_agents():
+            # Connected Agents as (agent key, label) for their own hooks (2026-11-11).
+            seen = {}
+            for driver in registry.list_drivers():
+                preset = getattr(driver, "preset", None)
+                if preset is not None:
+                    seen.setdefault(preset.skill_scope_key or preset.id, getattr(preset, "label", None) or preset.id)
+            return list(seen.items())
+
+        def root_project_id(projects):
+            root = next((p.id for p in projects if p.slug == "default"), None)
+            return root or next((p.id for p in projects if not p.parent_project_id), None)
+
         def discover_capabilities():
             context = skill_tree.inventory_context()
             # Native MCP definitions are catalogue records only (`<agent>:mcp`);
@@ -1424,10 +1442,13 @@ def open_session_runtime(
             # way as its native MCP: catalogue records, default-assigned where they apply.
             native = [*discover_skills(configured_roots(registry, *context)),
                       *discover_mcp(configured_mcp_sources(registry, *context)),
-                      *discover_native_plugins(context[0], agents=connected_agents(registry), bindings=context[1])]
-            return [*annotate_capabilities(native, supported=isolation_support()), *plugin_library.discover()]
+                      *discover_native_plugins(context[0], agents=connected_agents(registry), bindings=context[1]),
+                      *discover_native_hooks(hook_agents(), root_project_id(context[0]))]
+            return [*annotate_capabilities(native, supported=isolation_support()), *plugin_library.discover(),
+                    *hook_library.discover()]
         skill_tree.discover = discover_capabilities
         plugin_library.skill_tree = skill_tree
+        hook_library.skill_tree = skill_tree
         from app.capabilities.capability_import import CapabilityImports, NativeMemorySources
         from app.projects.memory import ProjectMemory
         from drivers.native_memory import connected_sources as native_memory_sources
@@ -1459,6 +1480,7 @@ def open_session_runtime(
         router.routes.extend(build_skill_tree_router(skill_tree, auth_policy=auth_policy,
                                                      imports=capability_imports, self_check=self_check).routes)
     router.routes.extend(build_plugin_library_router(plugin_library, auth_policy=auth_policy).routes)
+    router.routes.extend(build_hook_library_router(hook_library, auth_policy=auth_policy).routes)
     from native_archives import NativeArchiveStore, NativeArchiveService
     from app.api.native_archives import build_native_archive_router
     native_archives = NativeArchiveService(NativeArchiveStore(resolved_token_path.parent / 'native-archives'), repositories)

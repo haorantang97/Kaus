@@ -3,6 +3,60 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 11 日：钩子
+
+依据 `product-decisions.md`「钩子」，设计稿 `docs/product/hooks-design-20261111.md`（含各 Agent 事件名对照与依据）。
+
+**行为**：
+- **钩子是技能树的第四类配置**（图标：锚），按 Project 分配。分配钩子不会把该 Agent 的技能加载改成托管范围。
+- **字段**：时点（7 个通用时点，或某个 Agent 的专有事件名）、命令、超时（秒）。专有时点可以带匹配条件。
+- **树上的显示**：名称旁显示时点；悬停显示「时点 / 命令 / 超时」三行。
+- **开对话时的送达**：通用时点换成该 Agent 的事件名，只在这一次启动里加上，不改用户的配置文件。
+  - Claude Code：经 Agent SDK `settings` 标志层，与 `exclude_native_plugins` 写的同一个内联对象合并。
+  - Codex：经 `CODEX_CONFIG` 会话层（Codex 没有「改完文件」对应的事件）。
+  - Gemini / Qwen：在当前系统设置覆盖文件上合并 `hooks`，包括关自带记忆已经写好的那份；Gemini 的超时换成毫秒。
+  - Cursor、Copilot 及其余 Agent，以及没有对应时点的钩子：报 `unapplied` kind `hooks`、原因 `native_unsupported`。
+  - 别的 Agent 的专有时点既不送，也不报。
+- **能力库插件里的钩子**：插件拆解送达时读 `hooks/hooks.json`（Claude 插件格式）。没有匹配条件、能对上通用时点的事件按通用时点送达，其余作为 Claude 专有时点。只有读不出钩子或者带命令、子 Agent 时，才报 `plugin_parts_unsupported`。原样交给 Claude 的插件，钩子随包走。
+- **Agent 自装的钩子**：只读发现 Claude `~/.claude/settings.json`、Codex `~/.codex/hooks.json`、Gemini 和 Qwen 的 `settings.json`、Cursor `~/.cursor/hooks.json`，每个处理器一条 `<agent>:hooks` 记录。这几家按次只能加钩子、不能单独去掉，所以全部是 Agent 绑定（`not_isolable`），导入名单和树上都锁住。它们仍由 Agent 自己加载，Kaus 不重复送达（`without_native_hooks`）。
+- **新建钩子**：能力库接口 `GET/POST /api/capability-library/hooks`、`DELETE /api/capability-library/hooks/{id}`，不做专门表单。
+
+**代码**：
+- 通用层：`kernel/drivers/hooks.py`（校验、换算、Claude 一族的设置形状、插件钩子、自装钩子来源表）。
+- 能力库：`kernel/app/capabilities/hook_library.py`（`capability-library/hooks/<id>.json`）。
+- 有效能力：`app/capabilities/effective.py` 的 `with_hook_definitions` / `without_native_hooks`。
+- 树与目录：`skill_tree.py`（`ARRANGED_TYPES_SQL`、快照字段、不切换托管范围）。
+- 绑定判定：`capability_binding.py`（`hook` 类、指纹、`exclude_native_hooks` 才算可隔离）。
+- 送达：`launch_delivery.py`（`plan.hooks`、`deliver_hooks`、插件拆解）；适配器 `claude.py`、`codex.py`、`gemini.py`、`qwen.py`。
+- 接线：`session_bootstrap.py`。
+- 前端：`ProjectSkillTree.tsx`、`CapabilityImportList.tsx`、`CapabilityChangesPanel.tsx`、`skillTreeApi.ts`、中英文案。
+
+**测试**：
+- 新增 `kernel/drivers/tests/test_hooks.py` 13 项：
+  - 定义校验；
+  - 各 Agent 的时点换算与「不支持」；
+  - 计划里报 `native_unsupported`；
+  - Claude 与已排除的插件设置合并，并保留已有钩子；
+  - Codex 会话层；
+  - Gemini / Qwen 在覆盖文件上合并，源文件不动、超时单位正确；
+  - 插件钩子按通用时点送达，不再一律报未生效；
+  - 自装钩子只读发现且是绑定；
+  - 自装记录不进送达，能力库记录带上定义；
+  - 能力库增删；
+  - 树上分配钩子不切换技能托管；
+  - 适配器声明。
+- 前端 `CapabilityImport.test.tsx` 新增 1 项（树上的图标、时点与详情）。
+- 全部是合成数据，未启动任何 Agent。
+
+**结果**：`cd kernel && ../.venv/bin/python -m pytest -q`：4,202 通过、127 跳过；`.venv/bin/python -m pytest -q tests`：366 通过；`cd web && NODE_OPTIONS=--no-experimental-webstorage npm run check`：1,076 项通过，构建成功（之后补了对话里「钩子未生效 · 原生 Agent 不支持」的文案，前端检查复跑通过）。没有在浏览器里看。
+
+**未做 / 限制**：
+- 各 Agent 的按次送达都没有在真机上验证（`NATIVE_HOOKS_VERIFIED = False`，只记在送达摘要里）。
+- Qwen 的超时单位未核实。
+- Kaus 不翻译钩子的 stdin / stdout，通用时点只适合不读输入的命令。
+- 控制 MCP 的「新建钩子」工具待定。
+- 只读 Agent 用户级的钩子文件，项目级 `.claude/settings.json` 等不导入（它们随工作目录由 Agent 自己加载）。
+
 ## 11 月 11 日：新建 Project 时选填项目概述
 
 依据 `open-items.md`「项目地图」一行（11-03 定：职责描述取自 Project 记忆里的「项目概述」，三种来源之一是新建时选填一句）；项目负责人 11-11 同意补上。

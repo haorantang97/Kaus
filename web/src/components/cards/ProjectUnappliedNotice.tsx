@@ -19,6 +19,7 @@ const KIND_KEYS: Record<string, DictKey> = {
   mcp: "timeline.projectUnapplied.mcp",
   skills: "timeline.projectUnapplied.skills",
   project: "timeline.projectUnapplied.project",
+  hooks: "timeline.projectUnapplied.hooks",
 };
 
 /* Known reason codes; an unknown code is kept verbatim as the diagnostic. */
@@ -38,6 +39,7 @@ const REASON_KEYS: Record<string, DictKey> = {
   target_linked: "materialize.reason.target_linked",
   workspace_in_use: "timeline.projectUnapplied.reason.workspace_in_use",
   native_not_isolated: "timeline.projectUnapplied.reason.native_not_isolated",
+  native_unsupported: "timeline.projectUnapplied.reason.native_unsupported",
 };
 
 export function projectUnappliedItems(data: unknown): UnappliedItem[] {

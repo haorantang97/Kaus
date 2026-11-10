@@ -21,6 +21,7 @@ INSTRUCTIONS = "instructions"
 MCP = "mcp"
 SKILLS = "skills"
 PLUGINS = "plugins"
+HOOKS = "hooks"
 PROJECT = "project"
 
 NOT_MATERIALIZED = "not_materialized"

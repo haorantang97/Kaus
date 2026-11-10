@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowRight, ArrowUp, Ban, Bell, Check, ChevronRight, Copy, CornerDownLeft, CornerUpLeft, Download, FileText, Folder, GripVertical, Lock, MoreHorizontal, MoveRight, Plug, Plus, Puzzle, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
+import { Anchor, ArrowDown, ArrowRight, ArrowUp, Ban, Bell, Check, ChevronRight, Copy, CornerDownLeft, CornerUpLeft, Download, FileText, Folder, GripVertical, Lock, MoreHorizontal, MoveRight, Plug, Plus, Puzzle, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { useLocale } from "../i18n";
 import { affectedProjects, matchesSkill, orderedEntries, projectAncestors } from "../lib/skillTree";
 import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
@@ -25,6 +25,7 @@ interface Props {
   onReparentProject?: (slug: string, parent: string) => void;
 }
 type Item = { skill: SkillTreeSkill; entry: SkillTreeEntry };
+type HookEvent = "session_start" | "prompt_submit" | "before_tool" | "after_tool" | "after_file_edit" | "turn_end" | "session_end";
 type Drop = { projectId: string; agentKey?: string | null; beforeSkillId?: string | null; row?: string };
 type Drag = Item & { pointerId: number; x: number; y: number; active: boolean };
 type Menu = Item & { x: number; y: number };
@@ -240,6 +241,9 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     return hits;
   }, [data, q, skillMap, pendingEntries]);
 
+  // 钩子（2026-11-11）：通用时点用中文名，Agent 专有时点原样显示；详情是时点、命令、超时三项。
+  const hookEvent = (skill: SkillTreeSkill) => skill.agent ? `${skill.event}${skill.matcher ? ` · ${skill.matcher}` : ""}` : t(`hook.event.${skill.event as HookEvent}`);
+  const hookDetail = (skill: SkillTreeSkill) => t("hook.detail", { event: hookEvent(skill), command: skill.command ?? "", timeout: skill.timeout ?? 60 });
   const renderSkill = (entry: SkillTreeEntry, depth: number) => {
     const skill = skillMap.get(entry.skillId);
     if (!skill) return null;
@@ -253,8 +257,10 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
         disabled={entry.blocked || busy || locked} onPointerDown={e => beginDrag(e, item)}><GripVertical size={15} /></button>
       {skill.kind === "mcp" ? <Plug size={15} className="skill-tree-type" role="img" aria-label="MCP" />
         : skill.kind === "plugin" ? <Puzzle size={15} className="skill-tree-type" role="img" aria-label={t("library.plugin")} />
+        : skill.kind === "hook" ? <Anchor size={15} className="skill-tree-type" role="img" aria-label={t("hook.kind")} />
         : <FileText size={15} className="skill-tree-type" aria-hidden="true" />}
-      <span className="skill-tree-name" title={skill.description || skill.name}>{skill.name}</span>
+      <span className="skill-tree-name" title={skill.kind === "hook" ? hookDetail(skill) : skill.description || skill.name}>{skill.name}</span>
+      {skill.kind === "hook" && skill.event && <span className="skill-tree-source" title={hookDetail(skill)}>{hookEvent(skill)}</span>}
       {skill.bound && <span className="skill-tree-type" role="img" aria-label={locked ? t("skillTree.notIsolable") : t("skillTree.bound")} title={locked ? t("skillTree.notIsolable") : t("skillTree.bound")}><Lock size={12} aria-hidden="true" /></span>}
       {skill.pendingAssignment && <span className="skill-tree-pending">{t("skillTree.pendingAssignment")}</span>}
       {entry.inherited && <span className="skill-tree-source" title={t("skillTree.inherited", { name: projectName(entry.sourceProjectId) })}><CornerUpLeft size={12} /><span>{projectName(entry.sourceProjectId)}</span></span>}

@@ -90,6 +90,44 @@ def without_native_plugins(effective: EffectiveCapabilities) -> EffectiveCapabil
                                    *(e for e in effective.blocked if is_native_plugin_record(e)))})
 
 
+def is_native_hook_record(entry: Any) -> bool:
+    """A backend-scoped ``<agent>:hooks`` row records a hook the Agent configured itself."""
+    ref = parse_capability_type(entry.capability_type)
+    return ref.is_backend_scoped and ref.name == "hooks"
+
+
+def without_native_hooks(effective: EffectiveCapabilities) -> EffectiveCapabilities:
+    """An Agent's own hooks are loaded by the Agent itself (they are Agent-bound, 2026-11-11);
+    Kaus never delivers them a second time."""
+    if not any(is_native_hook_record(e) for e in (*effective.entries, *effective.blocked)):
+        return effective
+    return effective.model_copy(update={
+        "entries": tuple(e for e in effective.entries if not is_native_hook_record(e)),
+        "blocked": tuple(e for e in effective.blocked if not is_native_hook_record(e))})
+
+
+#: Library hooks (2026-11-11): generic rows whose config is empty; the catalogue holds the definition.
+HOOK_CAPABILITY_TYPE = "hooks"
+HOOK_FIELDS = ("name", "event", "agent", "matcher", "command", "timeout")
+
+
+def with_hook_definitions(effective: EffectiveCapabilities, catalog: Any) -> EffectiveCapabilities:
+    """Hydrate ``hooks`` rows with their definition from the catalogue (``kind: "hook"``)."""
+    if not any(e.capability_type == HOOK_CAPABILITY_TYPE for e in effective.entries):
+        return effective
+    by_key = {(item.get("capabilityType"), item.get("capabilityId")): item
+              for item in (catalog or {}).values() if isinstance(item, dict)}
+    entries = []
+    for entry in effective.entries:
+        item = by_key.get((entry.capability_type, entry.capability_id)) \
+            if entry.capability_type == HOOK_CAPABILITY_TYPE else None
+        if item and item.get("command"):
+            entry = entry.model_copy(update={"config": {**entry.config,
+                                                        **{k: item[k] for k in HOOK_FIELDS if item.get(k) is not None}}})
+        entries.append(entry)
+    return effective.model_copy(update={"entries": tuple(entries)})
+
+
 def without_native_mcp(effective: EffectiveCapabilities) -> EffectiveCapabilities:
     """Native MCP records never reach an adapter as project MCP.
 
@@ -239,7 +277,7 @@ async def _resolve_effective_for_binding(
     # paths never become persistent capability config or general instructions.
     settings = getattr(repositories, "settings", None)
     catalog = await settings.get("skill_tree.catalog.v1") if settings else None
-    effective = with_plugin_locations(effective, catalog)
+    effective = with_hook_definitions(without_native_hooks(with_plugin_locations(effective, catalog)), catalog)
     shared = await _shared_imports(repositories, binding, catalog)
     if shared:
         effective = effective.model_copy(update={"entries": (*effective.entries, *shared)})

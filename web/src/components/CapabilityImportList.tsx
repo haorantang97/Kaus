@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Brain, ChevronRight, FileText, Plug, Puzzle, ShieldCheck } from "lucide-react";
+import { Anchor, Brain, ChevronRight, FileText, Plug, Puzzle, ShieldCheck } from "lucide-react";
 import { useLocale } from "../i18n";
 import { fetchImportCandidates, importCapabilities, skipCapabilityImport, type ImportCandidate } from "../lib/skillTreeApi";
 import { Button, Spinner, confirmAsync, cream } from "./ui";
@@ -64,7 +64,7 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
   };
 
   const icon = (kind: ImportCandidate["kind"]) => kind === "mcp" ? <Plug size={15} /> : kind === "plugin" ? <Puzzle size={15} />
-    : kind === "memory" ? <Brain size={15} /> : <FileText size={15} />;
+    : kind === "memory" ? <Brain size={15} /> : kind === "hook" ? <Anchor size={15} /> : <FileText size={15} />;
   const memoryLabel = (item: ImportCandidate) => item.state === "bound" ? t("import.memoryLocked")
     : item.state === "imported" ? t("import.memoryCopied", { count: item.memory?.copied ?? 0 })
     : item.state === "closed" ? (item.memory?.readable ? t("import.memoryEmpty") : t("import.memoryUnreadable"))

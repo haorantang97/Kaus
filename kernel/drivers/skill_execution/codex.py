@@ -408,6 +408,25 @@ def read_native_memory(*, home=None):
             for title, body in markdown_sections(path.read_text(encoding="utf-8", errors="ignore"))]
 
 
+# 钩子（2026-11-11，docs/product/hooks-design-20261111.md）。developers.openai.com/codex/hooks：
+# hooks.json 或 config 里的 ``[hooks]``，高优先级层不替换低层的钩子；PreToolUse / PostToolUse
+# 目前只匹配 Bash，所以「改完文件」没有对应。
+HOOK_AGENT = "codex"
+HOOK_EVENTS = {
+    "session_start": ("SessionStart", None), "prompt_submit": ("UserPromptSubmit", None),
+    "before_tool": ("PreToolUse", None), "after_tool": ("PostToolUse", None), "turn_end": ("Stop", None),
+}
+NATIVE_HOOKS_VERIFIED = False
+
+
+def deliver_hooks(spec, metadata, hooks):
+    """Hooks for this process: the ``CODEX_CONFIG`` session layer gains ``hooks``; nothing under ``~/.codex``."""
+    from drivers.hooks import grouped, merge_grouped
+    config = _codex_config(spec)
+    config["hooks"] = merge_grouped(config.get("hooks"), grouped(hooks))
+    return spec.with_env(CODEX_CONFIG=json.dumps(config)), metadata
+
+
 # --------------------------------------------------------------------------- #
 # 插件（2026-11-10 在本机 Codex 0.166.0-alpha.6 上实测，隔离的 CODEX_HOME、未调用模型）
 # --------------------------------------------------------------------------- #

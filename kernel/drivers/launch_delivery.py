@@ -52,6 +52,15 @@
     Agent 自己装的插件（``drivers.native_plugins``）：本次不加载 ``excluded``，``kept`` 照常
     （只加载传入 MCP 的模式下要显式带上它们的 MCP）。用户没整理过就不调用。
 
+``HOOK_EVENTS: dict[str, tuple[str, str | None]]`` + ``HOOK_AGENT: str`` + ``deliver_hooks(spec, metadata, hooks) -> (spec, metadata)``
+    钩子（2026-11-11，``docs/product/hooks-design-20261111.md``）：通用时点换成该 Agent 的
+    ``(事件名, 匹配)``；``HOOK_AGENT`` 是它认的专有时点归属。``hooks`` 是
+    :func:`drivers.hooks.resolve` 的结果（``name`` / ``event`` / ``matcher`` / ``command`` /
+    ``timeout`` 秒）。没有 ``deliver_hooks`` 的报 ``hooks`` / ``native_unsupported``。
+
+``NATIVE_HOOKS_VERIFIED: bool``
+    同上，缺省 ``False`` → ``summary["hooksNative"]`` 报 ``unverified``。
+
 两个阶段
 --------
 1. :func:`plan_launch`——在 ``session_options_for`` 里算：拼正文、选通道、必要时
@@ -78,7 +87,7 @@ from drivers.instructions_projection import (
     invalid_instruction_entries,
     is_auxiliary,
 )
-from drivers.projection_gaps import INSTRUCTIONS, INVALID_CONFIG, MCP, PLUGINS, UNSUPPORTED
+from drivers.projection_gaps import HOOKS, INSTRUCTIONS, INVALID_CONFIG, MCP, PLUGINS, UNSUPPORTED
 from drivers.workspace_projection import REASON_NO_WORKSPACE, materialize_block, resolve_directory
 
 #: 送达通道。
@@ -97,6 +106,10 @@ REASON_NATIVE_MEMORY_ACTIVE: Final[str] = "native_memory_active"
 REASON_PLUGIN_PARTS_UNSUPPORTED: Final[str] = "plugin_parts_unsupported"
 #: 插件在能力库里的包已不在（被手动删了、目录不可读），这次什么也送不出去。
 REASON_PLUGIN_UNAVAILABLE: Final[str] = "plugin_unavailable"
+
+#: 钩子：这个 Agent 没有按次送达钩子的入口，或没有对应的时点（「原生 Agent 不支持」）。
+REASON_NATIVE_UNSUPPORTED: Final[str] = "native_unsupported"
+HOOK_CAPABILITY_TYPE: Final[str] = "hooks"
 
 #: ``unapplied`` 里记忆这一组的 ``kind``。
 MEMORY_KIND: Final[str] = "memory"
@@ -138,6 +151,8 @@ class LaunchPlan:
     native_memory_mode: str | None = None
     #: 原样交给 Agent 的插件（:func:`expand_plugins` 的记录），``apply_launch_plan`` 调钩子送出。
     native_plugins: tuple[dict[str, Any], ...] = ()
+    #: 换成该 Agent 事件名的钩子（:func:`drivers.hooks.resolve`），``apply_launch_plan`` 调 ``deliver_hooks``。
+    hooks: tuple[dict[str, Any], ...] = ()
     #: 第 1 步就能确定的「没送出去」（D-03）。
     unapplied: tuple[UnappliedCapability, ...] = ()
     warnings: tuple[str, ...] = ()
@@ -305,6 +320,21 @@ def plan_launch(
     if plan.native_mcp_mode != MCP_NONE:
         plan.summary["nativeMcp"] = [plan.native_mcp_mode]
 
+    # ---------------------------------------------------------- 钩子
+    from drivers.hooks import resolve as resolve_hooks
+    hook_rows = [dict(entry.config) for entry in effective.entries
+                 if entry.capability_type == HOOK_CAPABILITY_TYPE and entry.config.get("command")]
+    if hook_rows:
+        delivered, unsupported = resolve_hooks(hook_rows, adapter)
+        plan.hooks = tuple(delivered)
+        if delivered:
+            plan.summary["hooks"] = [row["name"] for row in delivered]
+            verified = getattr(adapter, "NATIVE_HOOKS_VERIFIED", False) is True
+            plan.summary["hooksNative"] = ["delivered" if verified else "unverified"]
+        if unsupported:
+            unapplied.append(UnappliedCapability(kind=HOOKS, names=tuple(dict.fromkeys(unsupported)),
+                                                 reason=REASON_NATIVE_UNSUPPORTED))
+
     # ---------------------------------------------------------- 原生记忆
     memory_id = project_memory_id(effective)
     # 没有适配器 = 不知道这是哪个 Agent（没有预设的裸 ACP），这一组无从判断，不报。
@@ -369,6 +399,12 @@ def apply_launch_plan(
         deliver = _hook(adapter, "deliver_plugins")
         if deliver is not None:
             spec, metadata = deliver(spec, metadata, plan.native_plugins)
+            metadata = dict(metadata)
+    if plan.hooks:
+        # 在关自带记忆之后：两者可能写同一份设置覆盖，这里在它的结果上合并。
+        deliver = _hook(adapter, "deliver_hooks")
+        if deliver is not None:
+            spec, metadata = deliver(spec, metadata, plan.hooks)
             metadata = dict(metadata)
     return spec, metadata, tuple(warnings)
 
@@ -445,8 +481,9 @@ def expand_plugins(effective: EffectiveCapabilities, *, adapter: Any, can_projec
     - 适配器 ``NATIVE_PLUGIN_FORMATS`` 含该格式且有 ``deliver_plugins`` → 原样交给它
       （记录进 ``native``，启动时由 :func:`apply_launch_plan` 调钩子）；
     - 否则拆解：包里的技能目录追加进托管技能选择（``skill-selection`` 的 ``assets``，
-      没有就新建一条 ``mode: managed``），MCP 定义追加为 ``mcp`` 行；包里还有 hooks /
-      命令 / 子 agent 的，这一部分报 ``plugin_parts_unsupported``；
+      没有就新建一条 ``mode: managed``），MCP 定义追加为 ``mcp`` 行，钩子（``hooks/hooks.json``）
+      追加为 ``hooks`` 行、由 :func:`plan_launch` 按这个 Agent 的支持情况送达（2026-11-11）；包里还有
+      命令 / 子 agent，或钩子读不出来的，这一部分报 ``plugin_parts_unsupported``；
     - 包不在了（``available: false`` 或目录缺失）→ 整个插件报 ``plugin_unavailable``。
 
     ``can_project_skills`` 为假（这个 Agent 没有托管技能投射适配器）时，拆解出的技能目录
@@ -510,7 +547,13 @@ def expand_plugins(effective: EffectiveCapabilities, *, adapter: Any, can_projec
             mcp_entries.append(entry.model_copy(update={
                 "capability_type": "mcp", "capability_id": final,
                 "config": {"value": {**dict(definition), "name": final}, "pluginId": entry.capability_id}}))
-        if package.hooks or package.commands or package.agents:
+        from drivers.hooks import plugin_hooks
+        hooks = plugin_hooks(package.path, package.format, package.name) if package.hooks else []
+        for index, hook in enumerate(hooks):
+            mcp_entries.append(entry.model_copy(update={
+                "capability_type": HOOK_CAPABILITY_TYPE, "capability_id": f"{entry.capability_id}:hook-{index}",
+                "config": {**hook, "pluginId": entry.capability_id}}))
+        if (package.hooks and not hooks) or package.commands or package.agents:
             partial.append(entry.capability_id)
     entries = list(effective.entries)
     if skill_assets:

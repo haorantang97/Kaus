@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { FileText, Plug, Puzzle, RotateCcw } from "lucide-react";
+import { Anchor, FileText, Plug, Puzzle, RotateCcw } from "lucide-react";
 import { useLocale } from "../i18n";
 import { fetchCapabilityChanges, ignoreCapabilityChanges, importCapabilities, markCapabilityChangesSeen, syncCapability,
   type AgentChanges, type ChangeItem } from "../lib/skillTreeApi";
@@ -27,7 +27,8 @@ export function CapabilityChangesPanel({ onClose, onChanged }: { onClose: () => 
     catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
     finally { setBusy(false); }
   };
-  const icon = (kind: ChangeItem["kind"]) => kind === "mcp" ? <Plug size={14} /> : kind === "plugin" ? <Puzzle size={14} /> : <FileText size={14} />;
+  const icon = (kind: ChangeItem["kind"]) => kind === "mcp" ? <Plug size={14} /> : kind === "plugin" ? <Puzzle size={14} />
+    : kind === "hook" ? <Anchor size={14} /> : <FileText size={14} />;
   const row = (agent: AgentChanges, item: ChangeItem, kind: "added" | "removed" | "updated") =>
     <li key={kind + item.id} className="flex items-center gap-2 py-1 text-sm">
       <span style={{ color: cream(55) }}>{icon(item.kind)}</span>

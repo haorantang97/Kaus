@@ -257,3 +257,26 @@ def read_native_memory(*, home=None):
         if inside and line.lstrip().startswith("- ") and line.strip()[2:].strip():
             rows.append({"body": line.strip()[2:].strip(), "source": str(path)})
     return rows
+
+
+# 钩子（2026-11-11，docs/product/hooks-design-20261111.md）。geminicli.com/docs/hooks：settings 的
+# ``hooks``，``{事件: [{matcher, hooks: [{name, type: command, command, timeout(毫秒)}]}]}``，v0.26 起。
+HOOK_AGENT = "gemini"
+HOOK_EVENTS = {
+    "session_start": ("SessionStart", None), "prompt_submit": ("BeforeAgent", None),
+    "before_tool": ("BeforeTool", None), "after_tool": ("AfterTool", None),
+    "after_file_edit": ("AfterTool", "write_file|replace"), "turn_end": ("AfterAgent", None),
+    "session_end": ("SessionEnd", None),
+}
+NATIVE_HOOKS_VERIFIED = False
+
+
+def deliver_hooks(spec, metadata, hooks):
+    """One-launch system-settings overlay gains ``hooks`` (merged onto whatever overlay is already in place)."""
+    from .copilot import read_jsonc
+    from .settings_overlay import write_overlay
+    from drivers.hooks import grouped, merge_grouped
+    settings = read_jsonc(system_settings_path(spec))
+    settings["hooks"] = merge_grouped(settings.get("hooks"), grouped(hooks, timeout_scale=1000, named=True))
+    path = write_overlay(spec, "gemini", json.dumps(settings, sort_keys=True, ensure_ascii=False))
+    return spec.with_env(GEMINI_CLI_SYSTEM_SETTINGS_PATH=str(path)), metadata

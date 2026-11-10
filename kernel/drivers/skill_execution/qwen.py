@@ -338,3 +338,26 @@ def disable_native_memory(spec, metadata):
     settings["memory"], settings["tools"] = memory, tools
     path = write_overlay(spec, "qwen", json.dumps(settings, sort_keys=True, ensure_ascii=False))
     return spec.with_env(QWEN_CODE_SYSTEM_SETTINGS_PATH=str(path)), metadata
+
+
+# 钩子（2026-11-11，docs/product/hooks-design-20261111.md）。qwenlm.github.io/qwen-code-docs …/features/hooks：
+# settings 的 ``hooks``，格式与 Claude Code 相同（事件 → matcher + command 处理器）；超时单位未核实，按秒送。
+HOOK_AGENT = "qwen"
+HOOK_EVENTS = {
+    "session_start": ("SessionStart", None), "prompt_submit": ("UserPromptSubmit", None),
+    "before_tool": ("PreToolUse", None), "after_tool": ("PostToolUse", None),
+    "after_file_edit": ("PostToolUse", "write_file|edit"), "turn_end": ("Stop", None),
+    "session_end": ("SessionEnd", None),
+}
+NATIVE_HOOKS_VERIFIED = False
+
+
+def deliver_hooks(spec, metadata, hooks):
+    """One-launch system-settings overlay gains ``hooks`` (merged onto whatever overlay is already in place)."""
+    from .copilot import read_jsonc
+    from .settings_overlay import write_overlay
+    from drivers.hooks import grouped, merge_grouped
+    settings = read_jsonc(system_settings_path(spec))
+    settings["hooks"] = merge_grouped(settings.get("hooks"), grouped(hooks))
+    path = write_overlay(spec, "qwen", json.dumps(settings, sort_keys=True, ensure_ascii=False))
+    return spec.with_env(QWEN_CODE_SYSTEM_SETTINGS_PATH=str(path)), metadata

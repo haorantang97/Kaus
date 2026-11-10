@@ -45,7 +45,8 @@ IMPORT_KEY = "skill_tree.import_state.v1"
 KAUS_FIELDS = ("imported", "shared", "importedAs", "importCopy", "originFingerprint", "userBound")
 ARRANGED_TYPES_SQL = ("capability_type = 'skills' OR capability_type LIKE '%:skills' "
                       "OR capability_type LIKE '%:mcp' OR capability_type = 'plugins' "
-                      "OR capability_type LIKE '%:plugins'")
+                      "OR capability_type LIKE '%:plugins' OR capability_type = 'hooks' "
+                      "OR capability_type LIKE '%:hooks'")
 
 
 def _dump(value) -> str:
@@ -283,7 +284,8 @@ class SkillTreeService:
                 "description": str(config.get("description") or ""), "agentKey": agent,
                 "agentLabel": agent or "", "available": True,
                 "capabilityType": row["capability_type"], "capabilityId": row["capability_id"],
-                **({"kind": "mcp"} if parsed.name == "mcp" else {"kind": "plugin"} if parsed.name == "plugins" else {}),
+                **({"kind": "mcp"} if parsed.name == "mcp" else {"kind": "plugin"} if parsed.name == "plugins"
+                   else {"kind": "hook"} if parsed.name == "hooks" else {}),
             }
         self._save_setting(conn, CATALOG_KEY, catalog)
         self._save_setting(conn, BLOCKED_LOCAL_KEY, blocked_local)
@@ -365,7 +367,7 @@ class SkillTreeService:
                 e["order"], catalog[e["skillId"]]["name"].casefold(), e["skillId"]
             ))):
                 entry["order"] = index
-        skills = [{k: r[k] for k in ("id", "kind", "name", "description", "agentKey", "agentLabel", "sourcePath", "available", "generated", "originProjectId", "sourceConversationId", "replacesId", "format", "version", "pluginId", "bound", "boundReason", "imported", "shared") if k in r}
+        skills = [{k: r[k] for k in ("id", "kind", "name", "description", "agentKey", "agentLabel", "sourcePath", "available", "generated", "originProjectId", "sourceConversationId", "replacesId", "format", "version", "pluginId", "bound", "boundReason", "imported", "shared", "event", "agent", "matcher", "command", "timeout") if k in r}
                   for r in catalog.values() if not r.get("importedAs")]
         # 插件里的技能随插件整包走（2026-11-10）：不单列，旧的单独分配行也不显示。
         members = {r["id"] for r in catalog.values() if r.get("nativePluginId") or r.get("importedAs")}
@@ -525,7 +527,7 @@ class SkillTreeService:
                     native_blocks.pop(_dump([project, skill_id]), None)
                     # Arranging a native MCP record or a library plugin must not
                     # switch the Agent's Skill loading to a managed selection.
-                    if record.get("kind") not in ("mcp", "plugin"):
+                    if record.get("kind") not in ("mcp", "plugin", "hook"):
                         managed[project] = sorted(set(managed.get(project, ())) | {record.get("agentKey") or "*"})
                 self._save_setting(conn, MANAGED_PROJECTS_KEY, managed)
                 self._save_setting(conn, NATIVE_BLOCKS_KEY, native_blocks)

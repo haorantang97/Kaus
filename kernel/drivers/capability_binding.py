@@ -25,7 +25,7 @@ TRAITS: dict[str, dict] = {key: value for key, value in json.loads(
 #: 调度别的 Agent 的 4 个（43、24、15、11 次），其余 ≤8 次。
 TOOL_CALL_THRESHOLD = 10
 MAX_SKILL_BYTES = 512 * 1024
-NATIVE_KINDS = ("skill", "mcp", "plugin")
+NATIVE_KINDS = ("skill", "mcp", "plugin", "hook")
 
 
 def kind_of(record: Mapping[str, Any]) -> str:
@@ -72,6 +72,8 @@ def bound_reason(record: Mapping[str, Any], *, supported_kinds: Iterable[str] | 
         if command and any(marker in command for marker in markers):
             return "agent_owned"
         return None
+    if kind == "hook":
+        return None  # an Agent that can leave out its own hooks per launch has ``exclude_native_hooks``
     if kind == "plugin":
         market = str(record.get("pluginRef") or "").rpartition("@")[2]
         if market and market in traits.get("ownedMarkets", ()):
@@ -93,6 +95,8 @@ def fingerprint(record: Mapping[str, Any]) -> str:
     digest = hashlib.sha256(kind.encode())
     if kind == "mcp":
         digest.update(json.dumps(record.get("server") or {}, sort_keys=True).encode())
+    elif kind == "hook":
+        digest.update(json.dumps([record.get(k) for k in ("event", "matcher", "command", "timeout")]).encode())
     elif kind == "plugin":
         digest.update(json.dumps([record.get("version"), record.get("pluginRef"), record.get("sourcePath")]).encode())
     else:
@@ -133,6 +137,8 @@ def supported_kinds(adapter: Any) -> tuple[str, ...]:
         kinds.append("mcp")
     if adapter is not None and callable(getattr(adapter, "exclude_native_plugins", None)):
         kinds.append("plugin")
+    if adapter is not None and callable(getattr(adapter, "exclude_native_hooks", None)):
+        kinds.append("hook")
     return tuple(kinds)
 
 
