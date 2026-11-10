@@ -11,7 +11,8 @@ Agent、读结果、看外部终端里的会话、运行模块工作流与模块
     且只应在用户明确同意后调用。请求带 proxy="main_agent"：内核只接受卡片上给出的选项，
     并在那条会话的时间线上留一条"主 Agent 已……"记录。Kaus 无法核实用户是否真的同意。
   - 权限可以改到完全访问；引擎不支持的设置返回错误，不换引擎。
-  - 不提供删除（会话、Project、组、资料）或修改 Project 配置、模型密钥、Kaus 设置的工具。
+  - 不提供删除（会话、Project、组、资料）或修改 Project 配置、模型密钥、Kaus 设置的工具；唯一的例外是能力库插件
+    （kaus_library / kaus_install_plugin / kaus_enable_plugin），安装与启用都要 user_confirmed=true，没有卸载。
   - 切回对话会结束外部终端里的 Agent，必须带 user_confirmed=true，且只应在用户明确
     回复确认后调用。
   - 只连本机 Kaus（默认 http://127.0.0.1:8877），用本机会话 token 鉴权。
@@ -108,6 +109,25 @@ TOOLS = [
     {"name": "kaus_job",
      "description": "查看模块任务或工作流的状态、各步骤输出。",
      "inputSchema": _schema({"module_id": {"type": "string"}, "job_id": {"type": "string"}}, ("module_id", "job_id"))},
+    {"name": "kaus_library",
+     "description": "列出能力库：已安装的插件（id、名称、格式、来源、内容摘要、已启用到哪些 Project），以及技能树里的技能和"
+                    "各 Agent 自带的 MCP（名称、所属 Agent、已分配到哪些 Project）。只读。",
+     "inputSchema": _schema({})},
+    {"name": "kaus_install_plugin",
+     "description": "把一个插件装进能力库。source 是本地目录的绝对路径，或 Claude Code / Codex 插件、Gemini 扩展的"
+                    "Git 地址（https 或 ssh）。来源是插件市场（带 marketplace.json 的仓库）时，先不带 plugin 调用一次会"
+                    "返回它的插件列表，再用 plugin 指定名字安装。安装只复制文件，不运行包里的任何东西；装好后还要用 "
+                    "kaus_enable_plugin 启用到某个 Project 才会生效。必须先把来源和要装的插件告诉用户，用户明确同意后才调用，"
+                    "并传 user_confirmed=true。",
+     "inputSchema": _schema({"source": {"type": "string"}, "plugin": {"type": "string"},
+                             "user_confirmed": {"type": "boolean"}}, ("source", "user_confirmed"))},
+    {"name": "kaus_enable_plugin",
+     "description": "把能力库里的插件启用到一个 Project（沿项目树继承给下级）。plugin_id 来自 kaus_library / "
+                    "kaus_install_plugin，project_id 来自 kaus_overview。之后该 Project 新开的对话按各 Agent 的方式送达："
+                    "原生支持该格式的 Agent 原样加载，其他 Agent 只拿到包里的技能和 MCP。必须先说明启用到哪个 Project、"
+                    "用户明确同意后才调用，并传 user_confirmed=true。",
+     "inputSchema": _schema({"project_id": {"type": "string"}, "plugin_id": {"type": "string"},
+                             "user_confirmed": {"type": "boolean"}}, ("project_id", "plugin_id", "user_confirmed"))},
     {"name": "kaus_module_request",
      "description": "调用模块自己的本地后端接口（method、path、body 由模块文档定义），例如 CRM 的查询与录入。模块需已启用本地后端。",
      "inputSchema": _schema({"module_id": {"type": "string"},
@@ -248,6 +268,32 @@ def _settings(conversation_id: str) -> dict:
                               if (choices.get(mode) or {}).get("description") else {})}
                           for mode in controls.get("approvalModes") or []],
     }
+
+
+def _library() -> dict:
+    """Installed plugins plus the skill-tree catalogue, each with the Projects it is assigned to."""
+    plugins = _http("GET", "/api/library/plugins").get("plugins", [])
+    try:
+        tree = _http("GET", "/api/skill-tree")
+    except KausError:
+        tree = {}
+    projects = {p.get("id"): p.get("displayName") or p.get("slug") for p in tree.get("projects", [])}
+    assigned: dict[str, list[str]] = {}
+    for row in tree.get("assignments", []):
+        if row.get("mode") == "local":
+            assigned.setdefault(row.get("skillId"), []).append(projects.get(row.get("projectId"), row.get("projectId")))
+    skills, mcp = [], []
+    for item in tree.get("skills", []):
+        kind = item.get("kind", "skill")
+        if kind == "plugin":
+            continue
+        entry = {"id": item.get("id"), "name": item.get("name"), "description": item.get("description"),
+                 "agent": item.get("agentLabel") or item.get("agentKey"), "available": item.get("available", True),
+                 "projects": assigned.get(item.get("id"), [])}
+        (mcp if kind == "mcp" else skills).append(entry)
+    return {"plugins": [{**{k: p.get(k) for k in ("id", "name", "version", "description", "format", "source", "contents")},
+                         "projects": assigned.get(p.get("id"), [])} for p in plugins],
+            "skills": skills, "mcp": mcp}
 
 
 def call_tool(name: str, args: dict) -> dict:
@@ -401,6 +447,36 @@ def call_tool(name: str, args: dict) -> dict:
             return _text(job)
         if name == "kaus_job":
             return _text(_http("GET", f"/api/workbench/modules/{_quote(args['module_id'])}/jobs/{_quote(args['job_id'])}"))
+        if name == "kaus_library":
+            return _text(_library())
+        if name == "kaus_install_plugin":
+            if args.get("user_confirmed") is not True:
+                return _error(CONSENT_REQUIRED)
+            source = str(args.get("source") or "").strip()
+            if not source:
+                return _error("请给出插件来源：本地目录的绝对路径，或 Git 地址。")
+            if not args.get("plugin"):
+                inspected = _http("POST", "/api/library/plugins/inspect", {"source": source})
+                if inspected.get("kind") == "marketplace":
+                    return _text({"installed": False, "kind": "marketplace", "name": inspected.get("name"),
+                                  "plugins": inspected.get("plugins", []),
+                                  "next": "这是一个插件市场：请让用户选一个，再带 plugin=<名字> 调用一次。"})
+            body = {"source": source, **({"plugin": args["plugin"]} if args.get("plugin") else {})}
+            record = _http("POST", "/api/library/plugins", body)
+            return _text({"installed": True, "plugin": record,
+                          "next": "插件已在能力库里；用 kaus_enable_plugin 启用到某个 Project 后才会生效。"})
+        if name == "kaus_enable_plugin":
+            if args.get("user_confirmed") is not True:
+                return _error(CONSENT_REQUIRED)
+            plugin_id, project_id = args["plugin_id"], args["project_id"]
+            plugins = {p.get("id"): p for p in _http("GET", "/api/library/plugins").get("plugins", [])}
+            plugin = plugins.get(plugin_id)
+            if plugin is None:
+                return _error("能力库里没有这个插件；用 kaus_library 查看已安装的插件。")
+            result = _http("PUT", f"/api/projects/{_quote(project_id)}/capabilities/"
+                                  f"{_quote(plugin['capabilityType'])}/{_quote(plugin['capabilityId'])}", {"value": {}})
+            return _text({"projectId": project_id, "pluginId": plugin_id, "name": plugin.get("name"),
+                          "enabled": True, "effective": result.get("effective") or result})
         if name == "kaus_module_request":
             body = {"method": args["method"], "path": args["path"]}
             if "body" in args:
@@ -426,8 +502,9 @@ INSTRUCTIONS = (
     "并说明切回会结束终端里的 Agent、中断正在运行的一轮；只有用户明确同意后，"
     "才调用 kaus_return_to_conversation 并传 user_confirmed=true。\n"
     "5. 不删除 Kaus 的对象（会话、Project、组、资料），不修改 Project 配置（工作目录、指令、MCP、技能、接入的 Agent）、"
-    "模型密钥或 Kaus 设置；用户要做这些时，告诉用户在 Kaus 的哪里做。模块里的数据（例如 CRM 条目）可以用 "
-    "kaus_module_request 按模块接口增删改，删除前同样按第 1 条先得到用户同意。\n"
+    "模型密钥或 Kaus 设置；用户要做这些时，告诉用户在 Kaus 的哪里做。例外是能力库里的插件：用 kaus_library 查看，"
+    "用户同意后可以用 kaus_install_plugin 安装、用 kaus_enable_plugin 启用到某个 Project；不提供卸载或停用。"
+    "模块里的数据（例如 CRM 条目）可以用 kaus_module_request 按模块接口增删改，删除前同样按第 1 条先得到用户同意。\n"
     "6. 你代做的每次审批和设置修改都会记录在那条会话的时间线上。报告结果时写明会话标题、所在 Project 和 Agent，"
     "引用原文不要改写成你自己的结论。"
 )

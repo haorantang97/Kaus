@@ -112,6 +112,10 @@ def test_connect_returns_capability_step_once_with_native_mcp(tmp_path, monkeypa
     config.write_text('[mcp_servers.fs]\ncommand = "uvx"\nenv = { TOKEN = "sk-live-0123456789abcdefABCDEF" }\n')
     original = config.read_bytes()
     monkeypatch.setattr("drivers.skill_inventory.configured_roots", lambda *_: [])
+    from drivers import native_plugins
+    real_plugins = native_plugins.discover_native_plugins
+    monkeypatch.setattr("drivers.native_plugins.discover_native_plugins",
+                        lambda projects, **kw: real_plugins(projects, home=home, env={}, agents=kw.get("agents")))
     monkeypatch.setattr("drivers.mcp_inventory.configured_mcp_sources", lambda registry, *_a, **_k: [
         source for driver in registry.list_drivers() if getattr(driver, "preset", None)
         for source in preset_sources(driver.preset.id, agent_key=driver.preset.id, agent_label=driver.preset.label,
@@ -518,3 +522,56 @@ def test_selected_path_preserves_symlink_and_shell_characters_as_literal(tmp_pat
     binary = Path(binary); binary.chmod(0o600)
     with pytest.raises(ValueError):
         validated_cli_path(str(link))
+
+
+def test_transport_switch_persists_rebuilds_driver_and_reverts(tmp_path, monkeypatch):
+    """Codex opt-in app-server transport: stored next to the connection, applied when idle, default stays ACP."""
+    from engine_connections import read_connection_transports
+    from drivers.codex_app_server.driver import CodexAppServerDriver
+    client, runtime, auth = application(tmp_path)
+    try:
+        assert client.post('/api/engine-connections', headers=auth, json={'presetId': 'codex'}).status_code == 200
+        rows = {row['id']: row for row in client.get('/api/engine-catalog', headers=auth).json()['engines']}
+        assert rows['codex']['activeTransport'] == 'acp' and rows['codex']['transports'] == ['acp', 'app-server']
+        assert 'activeTransport' not in rows['openclaw']
+        assert runtime.registry.get('codex').driver_kind == 'acp'
+        bad = client.put('/api/engine-connections/backend:codex/transport', headers=auth, json={'transport': 'carrier-pigeon'})
+        assert bad.status_code == 400
+        assert client.put('/api/engine-connections/backend:openclaw/transport', headers=auth, json={'transport': 'app-server'}).status_code == 404
+        response = client.put('/api/engine-connections/backend:codex/transport', headers=auth, json={'transport': 'app-server'})
+        assert response.status_code == 200, response.text
+        assert response.json()['transport'] == 'app-server'
+        assert read_connection_transports(tmp_path / 'engine-connections.json') == {'codex': 'app-server'}
+        driver = runtime.registry.get('codex')
+        assert isinstance(driver, CodexAppServerDriver) and driver.driver_kind == 'native'
+        assert driver.agent_spec.command[1:] == ('app-server',) and driver.preset.id == 'codex'
+        assert driver.runtime_identity['transport'] == 'app-server'
+        listed = {row['id']: row for row in client.get('/api/engine-connections', headers=auth).json()['backends']}
+        assert listed['backend:codex']['activeTransport'] == 'app-server'
+        merged = merge_connections(None, tmp_path / 'engine-connections.json')
+        assert merged['backends'][0]['transport'] == 'app-server'
+        back = client.put('/api/engine-connections/backend:codex/transport', headers=auth, json={'transport': 'acp'})
+        assert back.status_code == 200
+        assert read_connection_transports(tmp_path / 'engine-connections.json') == {}
+        assert runtime.registry.get('codex').driver_kind == 'acp'
+        assert 'transport' not in merge_connections(None, tmp_path / 'engine-connections.json')['backends'][0]
+    finally:
+        asyncio.run(runtime.aclose())
+    # Persisted choice survives a restart; an unknown stored transport falls back to the default.
+    path = tmp_path / 'engine-connections.json'
+    data = json.loads(path.read_text())
+    data['transports'] = {'codex': 'app-server'}
+    path.write_text(json.dumps(data))
+    client, runtime, _ = application(tmp_path)
+    try:
+        assert isinstance(runtime.registry.get('codex'), CodexAppServerDriver)
+    finally:
+        asyncio.run(runtime.aclose())
+    data['transports'] = {'codex': 'gone'}
+    path.write_text(json.dumps(data))
+    assert read_connection_transports(path) == {}
+    client, runtime, _ = application(tmp_path)
+    try:
+        assert runtime.registry.get('codex').driver_kind == 'acp'
+    finally:
+        asyncio.run(runtime.aclose())

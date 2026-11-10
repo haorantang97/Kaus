@@ -229,6 +229,17 @@ class EffectiveCapabilities(DomainModel):
     #: 排除（设计稿第 3a 节）。两者都空 = 这个 Agent 的自带 MCP 还没整理过。
     native_mcp: tuple[EffectiveCapability, ...] = ()
     native_mcp_blocked: tuple[BlockedCapability, ...] = ()
+    #: 配置库（技能树目录）里已经有的自带 MCP 的 ``capabilityId``。不在这里的是 Kaus 还没
+    #: 见过的新 MCP（例如导入后才加的）：用户还没机会安排，驱动照常加载，不排除。
+    native_mcp_known: tuple[str, ...] = ()
+    #: 该 Agent 自己装的插件（``<agent>:plugins``），与自带 MCP 同一套：分到这个 Project 的、
+    #: 被屏蔽的、配置库里已知的。驱动据此在本次启动中不加载没分到这里的插件。
+    native_plugins: tuple[EffectiveCapability, ...] = ()
+    native_plugins_blocked: tuple[BlockedCapability, ...] = ()
+    native_plugins_known: tuple[str, ...] = ()
+    #: 这个 Agent 已改为显式导入（2026-11-10，``skill_tree.import_state.v1``）：只加载树上的。
+    #: 驱动据此把它自带、但不在树上的技能 / MCP / 插件全部挡掉，新出现的也不例外。
+    tree_managed: bool = False
 
     def get(self, capability_type: str, capability_id: str) -> EffectiveCapability | None:
         for entry in self.entries:

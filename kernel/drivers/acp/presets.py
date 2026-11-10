@@ -354,6 +354,11 @@ class AcpPreset:
     #: 「先在终端运行这一句」。``None`` = 不确定这家 CLI 怎么登录（AD-157）。
     login_command: str | None = None
     login_uses_native: bool = False
+    #: 这一行除 ACP 适配器之外还能走的传输：``传输 id -> 构造模块``（模块要有
+    #: ``build_driver(spec, *, preset, process_env, native_cli_path, managed_root)``）。
+    #: 连接设置 ``transport`` 选中其中一个时，装配层改用那个模块建 Driver；缺省
+    #: 空 = 只有 ACP 这一条路。这里只放模块路径，不放命令。
+    transports: Mapping[str, str] = field(default_factory=dict)
     quirks: AgentQuirks = field(default_factory=AgentQuirks)
     #: 它在**工作目录**里读哪些文件（批次四十四）。缺省全是 ``None`` = 不知道。
     workspace: WorkspaceConventions = field(default_factory=WorkspaceConventions)
@@ -435,6 +440,8 @@ class AcpPreset:
             payload["authMethodIds"] = list(self.auth_method_ids)
         if self.login_command:
             payload["loginCommand"] = self.login_command
+        if self.transports:
+            payload["transports"] = ["acp", *self.transports]
         if self.install_command:
             payload["installCommand"] = self.install_command
         if self.adapter_install_command:
@@ -554,6 +561,9 @@ PRESETS: Mapping[str, AcpPreset] = dict(
                 login_command="codex login",
                 env_keys_hint=("OPENAI_API_KEY", "CODEX_API_KEY"),
                 auth_method_ids=("chatgpt", "codex-api-key", "openai-api-key"),
+                # 2026-11-09：可选改走官方 `codex app-server`（JSON-RPC/stdio），连接设置
+                # `transport = "app-server"` 开启；缺省仍是 codex-acp，等跨 Agent 实测后再定。
+                transports={"app-server": "drivers.codex_app_server.driver"},
                 workspace=WorkspaceConventions(instructions_file="AGENTS.md"),
                 quirks=AgentQuirks(
                     supports_session_resume=True,

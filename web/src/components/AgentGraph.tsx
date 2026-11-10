@@ -6,6 +6,8 @@ import { useLocale } from "../i18n";
 import { Button, cream, dname, Overlay } from "./ui";
 import { ReparentModal } from "./ReparentModal";
 import { ProjectSkillTree } from "./ProjectSkillTree";
+import { CAPABILITY_CHANGES_EVENT, fetchCapabilityChanges } from "../lib/skillTreeApi";
+import "./project-skill-tree.css";
 import { wheelAnchor, wheelFling, wheelNodeTransform, wheelSnapDuration, wheelSnapEase, wheelTransformCss } from "../lib/wheelGeometry";
 import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
 
@@ -61,6 +63,16 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
      再点一次已选中的节点、点画布空白、Esc、面板上的关闭钮都收起。面板留在 DOM 里
      只做 transform 滑动，收起时 inert，焦点回到选中的节点。 */
   const [panelOpen, setPanelOpen] = useState(true);
+  // 「治理」入口上的黄点：Agent 那边的能力有没看过的变化（打开变化面板即消失）。
+  const [unseenChanges, setUnseenChanges] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    const check = () => { fetchCapabilityChanges(controller.signal).then(r => setUnseenChanges(r.unseen)).catch(() => {}); };
+    check();
+    window.addEventListener("focus", check);
+    window.addEventListener(CAPABILITY_CHANGES_EVENT, check);
+    return () => { controller.abort(); window.removeEventListener("focus", check); window.removeEventListener(CAPABILITY_CHANGES_EVENT, check); };
+  }, [net]);
   const panelOpenRef = useRef(panelOpen);
   const panelRef = useRef<HTMLElement>(null);
   const pathRef = useRef<string[]>(path);
@@ -880,7 +892,10 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
           <div>{canGovern ? t("graph.head.governance") : t("graph.head.browse")} · <b>{lineage(sel).map(displayName).join(" / ")}</b></div>
           <div className="agent-browser-modes" role="tablist" aria-label={t("graph.mode.aria")}>
             <button type="button" className={mode === "chat" ? "is-active" : ""} onClick={() => onModeChange?.("chat")}>{t("graph.mode.chat")}</button>
-            <button type="button" className={mode === "governance" ? "is-active" : ""} onClick={() => onModeChange?.("governance")}>{t("graph.mode.governance")}</button>
+            <button type="button" className={`${mode === "governance" ? "is-active" : ""} agent-browser-mode-governance`} onClick={() => onModeChange?.("governance")}
+              aria-label={unseenChanges ? `${t("graph.mode.governance")} · ${t("changes.unseen")}` : undefined}>
+              {t("graph.mode.governance")}{unseenChanges && <span className="skill-tree-dot" data-testid="governance-changes-dot" />}
+            </button>
           </div>
           {/* 第 6 件：虚节点保留，但它跟着轮盘滚、离屏时找不着。这里再放一个固定入口，
               父级 = 当前选中的节点，与虚节点同一语义。样式用现有 <Button>。 */}

@@ -5,7 +5,8 @@ import appSource from "../App.tsx?raw";
 import { ConnectEngineModal } from "./ConnectEngineModal";
 import { connectEngine, fetchEngineCatalog, refreshEngineConnections, chooseNativeExecutable, type EnginePreset } from "../lib/enginePresets";
 import { fetchCapabilityOnboarding, finishSkillOnboarding, type CapabilityOnboardingStatus } from "../lib/skillOnboarding";
-import { fetchSkillTree } from "../lib/skillTreeApi";
+import { fetchCapabilityChanges, fetchImportCandidates, fetchSkillTree, importCapabilities, skipCapabilityImport } from "../lib/skillTreeApi";
+import { ConfirmHost } from "./ui";
 
 vi.mock("../lib/enginePresets", async original => ({
   ...await original<typeof import("../lib/enginePresets")>(),
@@ -16,6 +17,7 @@ vi.mock("../lib/skillOnboarding", async original => ({
 }));
 vi.mock("../lib/skillTreeApi", async original => ({
   ...await original<typeof import("../lib/skillTreeApi")>(), fetchSkillTree: vi.fn(),
+  fetchImportCandidates: vi.fn(), importCapabilities: vi.fn(), skipCapabilityImport: vi.fn(), fetchCapabilityChanges: vi.fn(),
 }));
 
 const preset: EnginePreset = { id: "codex", label: "Codex", backendId: "backend:codex", registered: false,
@@ -31,6 +33,13 @@ beforeEach(() => {
   vi.mocked(chooseNativeExecutable).mockResolvedValue(undefined);
   vi.mocked(fetchCapabilityOnboarding).mockReset().mockResolvedValue(ready);
   vi.mocked(finishSkillOnboarding).mockReset().mockResolvedValue({ completed: true });
+  vi.mocked(fetchCapabilityChanges).mockResolvedValue({ agents: [], unseen: false });
+  vi.mocked(fetchImportCandidates).mockReset().mockResolvedValue({ agentKey: "codex", agentLabel: "Codex", status: "pending", items: [
+    { id: "review", kind: "skill", name: "Review", description: "Reviews diffs", sourcePath: "/x/review/SKILL.md", state: "available" },
+    { id: "fs", kind: "mcp", name: "fs", description: "stdio · uvx", state: "available" },
+    { id: "node_repl", kind: "mcp", name: "node_repl", description: "", state: "bound", boundReason: "agent_owned" }] });
+  vi.mocked(importCapabilities).mockReset().mockResolvedValue({ revision: "r1", projects: [], skills: [], assignments: [], entries: [] });
+  vi.mocked(skipCapabilityImport).mockReset().mockResolvedValue({ skipped: true });
   vi.mocked(fetchSkillTree).mockReset().mockResolvedValue({ revision: "r1", assignments: [],
     projects: [{ id: "root", slug: "root", displayName: "X", parentProjectId: null },
       { id: "child", slug: "child", displayName: "Design", parentProjectId: "root" }],
@@ -44,18 +53,26 @@ beforeEach(() => {
 async function connect() {
   const user = userEvent.setup();
   const onClose = vi.fn();
-  render(<ConnectEngineModal onClose={onClose} />);
+  render(<><ConnectEngineModal onClose={onClose} /><ConfirmHost /></>);
   await user.click(await screen.findByRole("button", { name: "接入" }));
   return { user, onClose };
 }
 
 describe("connect-flow capability step", () => {
-  it("follows a first connection with the existing tree and completes once", async () => {
+  it("imports the chosen capabilities, then arranges them in the tree and completes once", async () => {
     const { user, onClose } = await connect();
     const step = await screen.findByRole("group", { name: "Codex · 能力分配" });
     expect(step).toHaveTextContent("2 项技能 · 1 个 MCP");
+    const bound = await screen.findByRole("checkbox", { name: "node_repl" });
+    expect(bound).toBeDisabled();
+    expect(step).toHaveTextContent("Agent 绑定能力");
+    await user.click(screen.getByRole("button", { name: "Review 的简介" }));
+    expect(step).toHaveTextContent("Reviews diffs");
+    await user.click(screen.getByRole("checkbox", { name: "fs" }));
+    await user.click(screen.getByRole("button", { name: "导入 1 项" }));
+    expect(importCapabilities).toHaveBeenCalledWith("codex", ["review"]);
     expect(await screen.findByRole("img", { name: "MCP" })).toBeVisible();
-    expect(screen.getByRole("button", { name: /Codex 专属能力\s*2/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /Codex\s*2/ })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "打开登录终端" })).toBeVisible();
     expect(onClose).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "完成" }));
@@ -63,10 +80,14 @@ describe("connect-flow capability step", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   });
 
-  it("skip keeps root defaults and leaves the flow", async () => {
+  it("skip asks to confirm a blank start and leaves the flow", async () => {
     const { user, onClose } = await connect();
     await screen.findByRole("group", { name: "Codex · 能力分配" });
-    await user.click(await screen.findByRole("button", { name: "跳过" }));
+    await screen.findByRole("checkbox", { name: "fs" });
+    await user.click(screen.getByRole("button", { name: "跳过" }));
+    expect(await screen.findByText(/以空白状态接入/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "确定跳过" }));
+    await waitFor(() => expect(skipCapabilityImport).toHaveBeenCalledWith("codex"));
     expect(finishSkillOnboarding).toHaveBeenCalledWith("invite", "skipped");
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   });
@@ -97,6 +118,7 @@ describe("connect-flow capability step", () => {
 
   it("Escape closes a tree menu first, then the step is skipped", async () => {
     const { user, onClose } = await connect();
+    await user.click(await screen.findByRole("button", { name: "导入 2 项" }));
     const trigger = await screen.findByRole("button", { name: "Review 的操作" });
     await user.click(trigger);
     expect(screen.getByRole("menu")).toBeVisible();

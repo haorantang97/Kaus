@@ -85,6 +85,43 @@ def _rewrite_name(path: Path, name: str, description: str):
     path.write_text("---\n" + yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False) + "---\n" + body)
 
 
+#: Execution copies older than this, other than the one just made, are removed (2026-11-10).
+STALE_SELECTION_SECONDS = 7 * 24 * 3600
+
+
+def _link_or_copy(source, destination):
+    """Hard-link supporting files to the Kaus library copy; every SKILL.md is a real copy.
+
+    ``_rewrite_name`` rewrites the copied SKILL.md in place, so it must never share an
+    inode with the source. Other files are linked when the volume allows it, so a Skill
+    used by many Projects is stored once (design capability-import §6).
+    """
+    if Path(destination).name == "SKILL.md":
+        return shutil.copy2(source, destination)
+    try:
+        os.link(source, destination)
+        return destination
+    except OSError:
+        return shutil.copy2(source, destination)
+
+
+def _prune_selections(owner: Path, keep: Path) -> None:
+    import time
+    cutoff = time.time() - STALE_SELECTION_SECONDS
+    try:
+        siblings = [p for p in owner.iterdir() if p.is_dir() and not p.is_symlink() and p != keep]
+    except OSError:
+        return
+    for path in siblings:
+        try:
+            if path.name.startswith(".stage-") or not (path / ".kaus-skill-selection.json").is_file():
+                continue
+            if path.stat().st_mtime < cutoff:
+                shutil.rmtree(path)
+        except OSError:
+            continue
+
+
 def materialize(spec, binding, effective, *, layout: str, dry_run: bool) -> SkillPlan:
     selection = selection_of(effective)
     if selection is None:
@@ -92,7 +129,8 @@ def materialize(spec, binding, effective, *, layout: str, dry_run: bool) -> Skil
     candidates, rejected = [], []
     for item in selection.config.get("assets", []):
         try:
-            if item.get("capabilityType") not in {"skills", binding.backend_key + ":skills",
+            # ``shared``: another Agent's imported Skill, run from its Kaus library copy.
+            if not item.get("shared") and item.get("capabilityType") not in {"skills", binding.backend_key + ":skills",
                                                        str(selection.config.get("scopeKey") or binding.backend_key) + ":skills"}:
                 raise ValueError("技能不适用于此引擎")
             source = Path(item.get("sourcePath") or "").expanduser()
@@ -137,7 +175,9 @@ def materialize(spec, binding, effective, *, layout: str, dry_run: bool) -> Skil
             try:
                 for item, source, _, name in candidates:
                     target = stage / relative / name
-                    shutil.copytree(source.parent, target, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+                    # Only the Kaus library's own copy is linked; an Agent's folder is never shared.
+                    shutil.copytree(source.parent, target, ignore=shutil.ignore_patterns(".git", "__pycache__"),
+                                    copy_function=_link_or_copy if item.get("stored") else shutil.copy2)
                     _rewrite_name(target / "SKILL.md", name, item.get("description", ""))
                 if layout == "plugin":
                     (stage / ".claude-plugin").mkdir()
@@ -151,6 +191,7 @@ def materialize(spec, binding, effective, *, layout: str, dry_run: bool) -> Skil
             finally:
                 if stage.exists():
                     shutil.rmtree(stage)
+            _prune_selections(root.parent, root)
     applied = tuple(ProjectionEntry(capability_type=item["capabilityType"], capability_id=item["capabilityId"],
                     level=SupportLevel.NATIVE, target_ref=str(path), action="set")
                     for (item, _, _, _), path in zip(candidates, paths))

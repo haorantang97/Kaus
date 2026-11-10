@@ -390,3 +390,72 @@ def disable_native_memory(spec, metadata):
     config["memories"] = {**memories, "generate_memories": False, "use_memories": False}
     config["features"] = {**features, "memories": False}
     return spec.with_env(CODEX_CONFIG=json.dumps(config)), metadata
+
+
+# --------------------------------------------------------------------------- #
+# 插件（2026-11-10 在本机 Codex 0.166.0-alpha.6 上实测，隔离的 CODEX_HOME、未调用模型）
+# --------------------------------------------------------------------------- #
+#
+# 用 ``codex plugin marketplace add`` / ``plugin add`` 装一个带技能和 MCP 的合成插件后，经
+# app-server ``skills/list`` / ``plugin/installed`` / ``mcpServerStatus/list`` 看到：
+#
+# - 按次覆盖 ``plugins."<插件>@<市场>".enabled = false``（``-c``）不起作用，插件照样加载；
+# - 按次覆盖 ``skills.config = [{path = <插件里的 SKILL.md>, enabled = false}]`` 让该技能变为未启用；
+# - 按次覆盖 ``mcp_servers.<插件 MCP 名>.enabled = false`` 让插件带的 MCP 不再启动（和写在
+#   ``config.toml`` 里效果一样）；
+# - 只靠按次覆盖 ``marketplaces.*`` + ``plugins.*.enabled = true``、不先安装进
+#   ``<CODEX_HOME>/plugins/cache``，插件不加载。
+#
+# 所以能力库里的 Codex 格式插件不原样交给 Codex（不声明 ``NATIVE_PLUGIN_FORMATS``），由送达层
+# 拆成技能与 MCP；Agent 自装的插件不加载 = 把它的技能和 MCP 逐个关掉。插件里的远程连接
+# （``.app.json``）关不掉，这类插件本来就不导入（见 ``drivers.native_plugins``）。
+
+#: 上面三条用 ``-c`` 实测过；经 ``CODEX_CONFIG``（``thread/start.config``）这条路没跑过。
+NATIVE_PLUGIN_EXCLUSION_VERIFIED = False
+
+
+def _plugin_skill_files(package):
+    """插件包里各技能的 ``SKILL.md``（解析后的绝对路径），按清单 ``skills`` 声明的目录找。"""
+    from .inventory import _plugin_skill_roots, _read
+    package = Path(package)
+    manifest = _read(package / ".codex-plugin/plugin.json")
+    files = []
+    for root in _plugin_skill_roots(package.resolve(), manifest, agent="codex", label="Codex", project="", name=""):
+        try:
+            files.extend(str(path.resolve()) for path in sorted(root.path.rglob("SKILL.md"))[:500])
+        except OSError:
+            continue
+    return files
+
+
+def exclude_native_plugins(spec, metadata, *, excluded, kept):
+    """Turn each excluded plugin's skills and MCP servers off through ``CODEX_CONFIG``.
+
+    ``skills.config`` entries ``{path, enabled = false}`` for the plugin's ``SKILL.md`` files
+    and ``mcp_servers.<name>.enabled = false`` for its servers, merged onto what is already
+    there: an entry the managed skill range set (``enabled = true``) is never flipped. The
+    request config is deep-merged as the override layer (see ``exclude_native_mcp``), so
+    nothing is written to ``~/.codex``.
+    """
+    if not excluded:
+        return spec, metadata, ()
+    config = _codex_config(spec)
+    skills = dict(config.get("skills") or {})
+    entries = [dict(item) for item in skills.get("config") or () if isinstance(item, dict)]
+    listed = {item.get("path") for item in entries}
+    servers = dict(config.get("mcp_servers") or {})
+    for row in excluded:
+        if row.get("sourcePath"):
+            for path in _plugin_skill_files(row["sourcePath"]):
+                if path not in listed:
+                    entries.append({"path": path, "enabled": False})
+                    listed.add(path)
+        for name in row.get("mcpServers") or {}:
+            current = servers.get(name)
+            servers[name] = {**(current if isinstance(current, dict) else {}), "enabled": False}
+    if entries:
+        skills["config"] = entries
+        config["skills"] = skills
+    if servers:
+        config["mcp_servers"] = servers
+    return spec.with_env(CODEX_CONFIG=json.dumps(config)), metadata, ()

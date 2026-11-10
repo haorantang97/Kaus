@@ -20,6 +20,7 @@ from drivers.instructions_projection import (
 INSTRUCTIONS = "instructions"
 MCP = "mcp"
 SKILLS = "skills"
+PLUGINS = "plugins"
 PROJECT = "project"
 
 NOT_MATERIALIZED = "not_materialized"
@@ -35,6 +36,8 @@ def _kind_of(entry: EffectiveCapability) -> str | None:
         return INSTRUCTIONS
     if entry.capability_type == MCP:
         return MCP
+    if entry.capability_type == PLUGINS:
+        return PLUGINS
     try:
         if is_skill_entry(entry):
             return SKILLS
@@ -121,6 +124,7 @@ __all__ = [
     "INSTRUCTIONS",
     "MCP",
     "NOT_MATERIALIZED",
+    "PLUGINS",
     "PROJECT",
     "PROJECTION_FAILED",
     "SKILLS",

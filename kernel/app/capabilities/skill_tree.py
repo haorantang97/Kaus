@@ -9,6 +9,12 @@ The tree also arranges an Agent's discovered native MCP servers
 (``<agent>:mcp``, catalogue ``kind: "mcp"``). Those records are organisation
 only: the source Agent keeps loading them natively and binding resolution
 removes them before projection, so they are never injected twice.
+
+Installed library plugins are a third kind (``plugins`` / ``kind: "plugin"``,
+2026-11-09): generic rows assigned and inherited like skills, delivered per
+launch by the drivers (``drivers.launch_delivery.expand_plugins``). Arranging one
+does not switch an Agent to the managed skill selection: a plugin has its own
+channel.
 """
 from __future__ import annotations
 
@@ -30,8 +36,15 @@ BLOCKED_LOCAL_KEY = "skill_tree.blocked_local.v1"
 NATIVE_BLOCKS_KEY = "skill_tree.native_blocks.v1"
 MANAGED_PROJECTS_KEY = "skill_tree.managed_projects.v1"
 ONBOARDING_KEY = "skill_tree.onboarding.v1"
+#: Agents whose own capabilities enter the tree only by an explicit import (2026-11-10,
+#: docs/product/capability-import-20261110.md). ``{agentKey: {status, confirmed, seen}}``;
+#: an Agent listed here loads only what is in the tree.
+IMPORT_KEY = "skill_tree.import_state.v1"
+#: Fields Kaus owns on a native record; a fresh discovery keeps them.
+KAUS_FIELDS = ("imported", "shared", "importedAs", "importCopy", "originFingerprint")
 ARRANGED_TYPES_SQL = ("capability_type = 'skills' OR capability_type LIKE '%:skills' "
-                      "OR capability_type LIKE '%:mcp'")
+                      "OR capability_type LIKE '%:mcp' OR capability_type = 'plugins' "
+                      "OR capability_type LIKE '%:plugins'")
 
 
 def _dump(value) -> str:
@@ -61,6 +74,11 @@ class SkillTreeService:
                 states[agent_key] = {"id": str(uuid.uuid4()), "agentKey": agent_key,
                                      "agentLabel": agent_label, "status": "pending"}
                 self._save_setting(conn, ONBOARDING_KEY, states)
+                # A first connection from now on imports explicitly; earlier Agents keep
+                # their arrangement until the user opens「导入能力」for them.
+                imports = self._setting(conn, IMPORT_KEY)
+                imports.setdefault(agent_key, {"status": "pending", "confirmed": {}, "agentLabel": agent_label})
+                self._save_setting(conn, IMPORT_KEY, imports)
             state = states[agent_key]
             if state.get("status") != "pending":
                 return None
@@ -68,15 +86,18 @@ class SkillTreeService:
 
     @staticmethod
     def _counts(catalog, agent_key):
-        skills = mcp = 0
+        skills = mcp = plugins = 0
         for item in catalog.values():
-            if item.get("agentKey") != agent_key or not item.get("available", True) or item.get("generated"):
+            if item.get("agentKey") != agent_key or not item.get("available", True) or item.get("generated") \
+                    or item.get("nativePluginId"):
                 continue
             if item.get("kind") == "mcp":
                 mcp += 1
+            elif item.get("kind") == "plugin":
+                plugins += 1
             else:
                 skills += 1
-        return skills, mcp
+        return skills, mcp, plugins
 
     @staticmethod
     def _root_project(conn):
@@ -95,14 +116,14 @@ class SkillTreeService:
                   "status": state.get("status", "pending")}
         if result["status"] != "pending" or not self.onboarding_enabled(state["agentKey"]):
             return {**result, "status": result["status"] if result["status"] != "pending" else "skipped",
-                    "ready": True, "skillCount": 0, "mcpCount": 0}
+                    "ready": True, "skillCount": 0, "mcpCount": 0, "pluginCount": 0}
         ready = self.inventory_ready(state["agentKey"])
         discovered = self.discover()
         with self.db.transaction() as conn:
             catalog = self._sync_catalog(conn, discovered)
             root = self._root_project(conn)
-        skills, mcp = self._counts(catalog, state["agentKey"]) if root else (0, 0)
-        result.update({"ready": ready, "skillCount": skills, "mcpCount": mcp})
+        skills, mcp, plugins = self._counts(catalog, state["agentKey"]) if root else (0, 0, 0)
+        result.update({"ready": ready, "skillCount": skills, "mcpCount": mcp, "pluginCount": plugins})
         if root:
             result.update({"rootProjectId": root[0], "rootProjectName": root[2] or root[1]})
         return result
@@ -129,11 +150,12 @@ class SkillTreeService:
                 if not self.inventory_ready(state["agentKey"]):
                     waiting = True
                     continue
-                skills, mcp = self._counts(catalog, state["agentKey"])
-                if (skills or mcp) and projects:
+                skills, mcp, plugins = self._counts(catalog, state["agentKey"])
+                if (skills or mcp or plugins) and projects:
                     root = projects[0]
                     items.append({"id": state["id"], "agentKey": state["agentKey"],
                                   "agentLabel": state["agentLabel"], "skillCount": skills, "mcpCount": mcp,
+                                  "pluginCount": plugins,
                                   "rootProjectId": root[0], "rootProjectName": root[2] or root[1]})
                 else:
                     # An adapter may finish its read-only inventory after registration.
@@ -188,7 +210,10 @@ class SkillTreeService:
         projects = {r[0]: r[1] for r in conn.execute("SELECT id,parent_project_id FROM projects WHERE status = 'active'")}
         for record in catalog.values():
             if record.get("sourcePath"):
-                record["available"] = False
+                # A library copy stays available when the Agent removes its original.
+                from pathlib import Path
+                record["available"] = bool(record.get("importCopy")) and Path(record["importCopy"]).is_file()
+        imports = self._setting(conn, IMPORT_KEY)
         for incoming in discovered:
             record = dict(incoming)
             skill_id = record["id"]
@@ -197,9 +222,17 @@ class SkillTreeService:
                 record["agentKey"], record["capabilityType"], record["capabilityId"]
             ):
                 raise ValueError("Skill inventory changed immutable ownership")
+            for key in KAUS_FIELDS:
+                if old and key in old:
+                    record[key] = old[key]
+            if record.get("importCopy"):
+                # An imported Skill runs from the library copy; the Agent's file is its origin.
+                record["originPath"], record["sourcePath"] = record.get("sourcePath"), record["importCopy"]
             catalog[skill_id] = record
             # Discovery seeds once. Subsequent moves/removals must survive refresh.
-            if not old and not record.get("generated"):
+            # An Agent that imports explicitly gets nothing seeded except what is bound to it.
+            explicit = record.get("agentKey") in imports and ":" in str(record.get("capabilityType"))
+            if not old and not record.get("generated") and (not explicit or record.get("bound")):
                 candidates = set(record.get("defaultProjectIds") or [record.get("defaultProjectId")]) & projects.keys()
                 for project in sorted(candidates):
                     ancestor = projects[project]
@@ -247,7 +280,7 @@ class SkillTreeService:
                 "description": str(config.get("description") or ""), "agentKey": agent,
                 "agentLabel": agent or "", "available": True,
                 "capabilityType": row["capability_type"], "capabilityId": row["capability_id"],
-                **({"kind": "mcp"} if parsed.name == "mcp" else {}),
+                **({"kind": "mcp"} if parsed.name == "mcp" else {"kind": "plugin"} if parsed.name == "plugins" else {}),
             }
         self._save_setting(conn, CATALOG_KEY, catalog)
         self._save_setting(conn, BLOCKED_LOCAL_KEY, blocked_local)
@@ -265,6 +298,12 @@ class SkillTreeService:
             "version=excluded.version,updated_at=excluded.updated_at",
             ("capability:" + str(uuid.uuid4()), project, record["capabilityType"], record["capabilityId"],
              mode, _dump(config), version, now, now))
+
+    @staticmethod
+    def _delete_all(conn, record):
+        """Every row of one catalogue item (it leaves the tree)."""
+        conn.execute("DELETE FROM project_capabilities WHERE capability_type=? AND capability_id=?",
+                     (record["capabilityType"], record["capabilityId"]))
 
     @staticmethod
     def _delete(conn, project, record):
@@ -323,14 +362,43 @@ class SkillTreeService:
                 e["order"], catalog[e["skillId"]]["name"].casefold(), e["skillId"]
             ))):
                 entry["order"] = index
-        skills = [{k: r[k] for k in ("id", "kind", "name", "description", "agentKey", "agentLabel", "sourcePath", "available", "generated", "originProjectId", "sourceConversationId", "replacesId") if k in r}
-                  for r in catalog.values()]
+        skills = [{k: r[k] for k in ("id", "kind", "name", "description", "agentKey", "agentLabel", "sourcePath", "available", "generated", "originProjectId", "sourceConversationId", "replacesId", "format", "version", "pluginId", "bound", "boundReason", "imported", "shared") if k in r}
+                  for r in catalog.values() if not r.get("importedAs")]
+        # 插件里的技能随插件整包走（2026-11-10）：不单列，旧的单独分配行也不显示。
+        members = {r["id"] for r in catalog.values() if r.get("nativePluginId") or r.get("importedAs")}
+        if members:
+            skills = [s for s in skills if s["id"] not in members]
+            assignments = [a for a in assignments if a["skillId"] not in members]
+            entries = [e for e in entries if e["skillId"] not in members]
         allocated = {row["skillId"] for row in assignments if row["mode"] == "local"}
         for skill in skills:
-            if skill.get("generated"):
+            # 新生成的技能与刚装进能力库的插件：还没分配到任何 Project 时挂在根下待分配。
+            if skill.get("generated") or skill.get("kind") == "plugin":
                 skill["pendingAssignment"] = skill["id"] not in allocated
         return {"revision": revision, "projects": projects, "skills": skills,
                 "assignments": assignments, "entries": entries}
+
+    def forget(self, capability_type: str, capability_id: str) -> None:
+        """Drop one catalogue item with every row and ordering that mentions it (plugin uninstall)."""
+        with self.db.transaction() as conn:
+            catalog = self._setting(conn, CATALOG_KEY)
+            ids = [key for key, item in catalog.items()
+                   if (item.get("capabilityType"), item.get("capabilityId")) == (capability_type, capability_id)]
+            for key in ids:
+                catalog.pop(key, None)
+            conn.execute("DELETE FROM project_capabilities WHERE capability_type=? AND capability_id=?",
+                         (capability_type, capability_id))
+            order = self._setting(conn, ORDER_KEY)
+            for project, listed in list(order.items()):
+                order[project] = [s for s in listed if s not in ids]
+            for key in (BLOCKED_LOCAL_KEY, NATIVE_BLOCKS_KEY):
+                table = self._setting(conn, key)
+                for entry in [k for k in table if any(json.loads(k)[1] == skill_id for skill_id in ids)]:
+                    table.pop(entry, None)
+                self._save_setting(conn, key, table)
+            self._save_setting(conn, CATALOG_KEY, catalog)
+            self._save_setting(conn, ORDER_KEY, order)
+            self._save_setting(conn, UNDO_KEY, {})
 
     def snapshot(self):
         discovered = self.discover()
@@ -449,9 +517,9 @@ class SkillTreeService:
                 affected = {target, source} if action == "move" else {target}
                 for project in affected - {None}:
                     native_blocks.pop(_dump([project, skill_id]), None)
-                    # Arranging a native MCP record must not switch the Agent's
-                    # Skill loading to a managed selection.
-                    if record.get("kind") != "mcp":
+                    # Arranging a native MCP record or a library plugin must not
+                    # switch the Agent's Skill loading to a managed selection.
+                    if record.get("kind") not in ("mcp", "plugin"):
                         managed[project] = sorted(set(managed.get(project, ())) | {record.get("agentKey") or "*"})
                 self._save_setting(conn, MANAGED_PROJECTS_KEY, managed)
                 self._save_setting(conn, NATIVE_BLOCKS_KEY, native_blocks)

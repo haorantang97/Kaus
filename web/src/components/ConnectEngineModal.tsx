@@ -7,7 +7,7 @@ import { Check, Copy, ExternalLink, FolderOpen, LoaderCircle, RefreshCw, Search,
 import { useLocale, type DictKey } from "../i18n";
 import { Button, ErrorNotice, Modal, ModalTitle, cream, inputStyle, toast } from "./ui";
 import type { AttachableBackend } from "./EnginePanel";
-import { chooseNativeExecutable, connectEngine, fetchEngineCatalog, groupEnginePresets, openEngineLogin, refreshEngineConnections, type EnginePreset } from "../lib/enginePresets";
+import { chooseNativeExecutable, connectEngine, fetchEngineCatalog, groupEnginePresets, openEngineLogin, refreshEngineConnections, setEngineTransport, type EnginePreset } from "../lib/enginePresets";
 import { describeFailure } from "../lib/sessionApi";
 import { finishSkillOnboarding, type CapabilityInvitation } from "../lib/skillOnboarding";
 import { CapabilityOnboardingStep } from "./CapabilityOnboardingStep";
@@ -120,7 +120,19 @@ export function ConnectEngineModal({
   const attached = !!onAttach && !!preset?.registered && !attachable.some((row) => row.id === preset.backendId);
   const path = preset ? paths[preset.id] ?? preset.nativePath ?? "" : "";
   const pathChanged = !!preset?.canSelectExecutable && !!path.trim() && path.trim() !== preset.nativePath;
-  const showDetails = !!(preset?.nativePath || preset?.version || preset?.runtimeIdentity?.engineVersion || preset?.runtimeIdentity?.adapterVersion || preset?.runtimeIdentity?.protocolVersion != null);
+  const transports = preset?.registered && (preset.transports?.length ?? 0) > 1 ? preset.transports ?? [] : [];
+  const showDetails = !!(preset?.nativePath || preset?.version || preset?.runtimeIdentity?.engineVersion || preset?.runtimeIdentity?.adapterVersion || preset?.runtimeIdentity?.protocolVersion != null || transports.length);
+  const transportLabel = (id: string) => id === "acp" ? t("engines.connect.transportMode.acp") : id === "app-server" ? t("engines.connect.transportMode.app-server") : id;
+  const changeTransport = async (transport: string) => {
+    if (!preset || busy) return;
+    setBusy(true); setError(null);
+    try {
+      const result = await setEngineTransport(preset.backendId, transport);
+      setCatalog((rows) => rows.map((row) => row.id === preset.id ? { ...row, activeTransport: transport } : row));
+      toast(t(result.updateState === "pending_idle" ? "engines.connect.transportPending" : "engines.connect.transportSaved"), "ok");
+    } catch (failure) { setError(describeFailure(failure)); }
+    finally { setBusy(false); }
+  };
   const refresh = async () => {
     if (busy) return;
     setBusy(true); setError(null);
@@ -290,6 +302,10 @@ export function ConnectEngineModal({
                     {preset.runtimeIdentity?.engineVersion && <><dt>{t("engines.connect.engineVersion")}</dt><dd>{preset.runtimeIdentity.engineVersion}</dd></>}
                     {(preset.runtimeIdentity?.adapterVersion || preset.version) && <><dt>{t("engines.connect.adapterVersion")}</dt><dd>{preset.runtimeIdentity?.adapterVersion || preset.version}</dd></>}
                     {preset.runtimeIdentity?.protocolVersion != null && <><dt>{t("engines.connect.protocolVersion")}</dt><dd>{preset.runtimeIdentity.protocolVersion}</dd></>}
+                    {transports.length > 0 && <><dt>{t("engines.connect.transportMode")}</dt><dd>
+                      <select aria-label={t("engines.connect.transportMode")} value={preset.activeTransport ?? "acp"} disabled={busy} onChange={(event) => void changeTransport(event.target.value)} style={inputStyle()}>
+                        {transports.map((id) => <option key={id} value={id}>{transportLabel(id)}</option>)}
+                      </select></dd></>}
                   </dl>}
                   {preset.adapterInstallCommand && <><RuntimeVersions key={preset.id} presetId={preset.id} /><CommandRow label={t("engines.connect.adapterSetup")} command={preset.adapterInstallCommand} /></>}
                 </details>}

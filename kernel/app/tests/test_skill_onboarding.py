@@ -54,7 +54,9 @@ def test_retired_scope_keeps_invitation_and_skills_without_reopening_guide(tmp_p
         uow.close()
 
 
-def test_first_connection_waits_for_inventory_and_seeds_root_only_once(tmp_path):
+def test_first_connection_waits_for_inventory_and_imports_only_what_is_selected(tmp_path):
+    # 2026-11-10: a first connection imports explicitly; nothing is seeded before the choice.
+    from app.capabilities.capability_import import CapabilityImports
     uow, root = setup_tree(tmp_path)
     try:
         svc = SkillTreeService(uow.database, discover=lambda: discover_skills([root]))
@@ -67,7 +69,14 @@ def test_first_connection_waits_for_inventory_and_seeds_root_only_once(tmp_path)
         assert invitation["skillCount"] == 1
         snapshot = svc.snapshot()
         skill_id = snapshot["skills"][0]["id"]
+        assert snapshot["assignments"] == []
+        imports = CapabilityImports(svc, tmp_path / "library")
+        assert [(i["id"], i["state"]) for i in imports.candidates("alpha")["items"]] == [(skill_id, "available")]
+        snapshot = imports.import_selected("alpha", [skill_id])
         assert snapshot["assignments"] == [{"projectId": "project:default", "skillId": skill_id, "mode": "local", "order": 100000}]
+        copy = tmp_path / "library" / "skills" / skill_id / "SKILL.md"
+        assert copy.read_bytes() == path.read_bytes()  # one copy in the library; runs from there
+        assert next(s for s in snapshot["skills"] if s["id"] == skill_id)["sourcePath"] == str(copy)
         svc.act({"revision": snapshot["revision"], "action": "move", "skillId": skill_id,
                  "sourceProjectId": "project:default", "targetProjectId": "project:work"})
         svc.begin_onboarding("alpha", "Alpha")
@@ -90,7 +99,7 @@ def test_skip_survives_restart_inventory_changes_and_reconnection(tmp_path):
         restarted = SkillTreeService(uow.database, discover=lambda: discover_skills([root]))
         restarted.begin_onboarding("alpha", "Renamed Alpha")
         assert restarted.pending_onboarding() == {"items": [], "waiting": False}
-        assert restarted.snapshot()["assignments"][0]["projectId"] == "project:default"
+        assert restarted.snapshot()["assignments"] == []  # explicit import: nothing until chosen
         restarted.begin_onboarding("beta", "Beta")
         assert restarted.pending_onboarding()["waiting"] is True
     finally:
@@ -206,15 +215,17 @@ def test_connect_step_status_waits_counts_and_finishes_once(tmp_path):
         uow.close()
 
 
-def test_skipped_connect_step_keeps_root_defaults(tmp_path):
+def test_skipped_connect_step_starts_blank(tmp_path):
+    from app.capabilities.capability_import import CapabilityImports
     uow, _ = setup_tree(tmp_path)
     try:
         write_codex_mcp(tmp_path)
         svc = SkillTreeService(uow.database, discover=lambda: discover_mcp(mcp_sources(tmp_path)))
         invitation = svc.begin_onboarding("codex", "Codex")
+        CapabilityImports(svc, tmp_path / "library").skip("codex")
         svc.finish_onboarding(invitation["id"], "skipped")
         assert svc.onboarding_status(invitation["id"])["status"] == "skipped"
-        assert [a["projectId"] for a in svc.snapshot()["assignments"]] == ["project:default"]
+        assert svc.snapshot()["assignments"] == []
         retired = SkillTreeService(uow.database, onboarding_enabled=lambda _: False)
         assert retired.begin_onboarding("gamma", "Gamma") is None
     finally:

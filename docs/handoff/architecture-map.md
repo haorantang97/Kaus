@@ -11,6 +11,7 @@
 | 领域 | 先读的路径 | 容易破坏的约束 |
 | --- | --- | --- |
 | 引擎目录/连接 | `engine_connections.py`、`kernel/drivers/acp/presets.py`、`web/src/lib/engineSelection.ts` | 产品身份不等于 profile/传输；旧连接兼容与新增目录分开 |
+| Codex app-server 传输 | `kernel/drivers/codex_app_server/`（`protocol.py` 词表与映射、`translator.py`、`driver.py`、`testing/fake_app_server.py`）、`AcpPreset.transports`、`engine_connections.py` 的 `transports` / `PUT …/transport` | 默认仍 codex-acp；送达钩子与 ACP 路径共用 `drivers/skill_execution/codex.py`，只改 `CODEX_CONFIG` 再拆成 `developerInstructions` + `config`；`thread.id` 即会话 id，不另起账本 |
 | 原生版本/启动 | `managed_runtimes.py`、`runtime_management.py`、`kernel/drivers/acp/native_cli.py` | 当前运行不热换版本；未知原生版本不能套用已验证的加载层补丁 |
 | 项目能力 | `kernel/app/capabilities/effective.py`、`skill_tree.py`、`kernel/drivers/skill_execution/` | 继承/阻断、专属范围、源文件只读；运行投影与 UI 一致 |
 | Hermes/OpenClaw | `kernel/drivers/hermes/`、`kernel/drivers/openclaw/` | HTTP/ACP 与 Gateway 的会话身份、工具加载及取消契约不同 |

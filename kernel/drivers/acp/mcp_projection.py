@@ -158,12 +158,15 @@ def _env_names(raw: Any, *, server_name: str, acc: _Acc) -> tuple[str, ...]:
 
 
 def _resolve_env(
-    names: Sequence[str], *, server_name: str, acc: _Acc
+    names: Sequence[str], *, server_name: str, acc: _Acc, values: Mapping[str, str] | None = None
 ) -> list[dict[str, str]]:
-    """按名字从进程环境取值 → ACP 的 ``[{name, value}]``。取不到就省略 + warning。"""
+    """按名字从进程环境取值 → ACP 的 ``[{name, value}]``。取不到就省略 + warning。
+
+    ``values`` 只来自开对话时现读的 Agent 自带 MCP 定义（``drivers.native_mcp_raw``），在内存里优先于进程环境。
+    """
     resolved: list[dict[str, str]] = []
     for name in names:
-        value = os.environ.get(name)
+        value = (values or {}).get(name, os.environ.get(name))
         if value is None:
             acc.warnings.append(
                 f"mcp[{server_name}]：环境变量 {name} 在本进程里没有，"
@@ -183,7 +186,7 @@ def _string_list(raw: Any) -> list[str]:
 
 
 def _headers(
-    raw: Any, *, server_name: str, acc: _Acc
+    raw: Any, *, server_name: str, acc: _Acc, values: Mapping[str, str] | None = None
 ) -> list[dict[str, str]]:
     """``{头名: 环境变量名}`` → ACP 的 ``[{name, value}]``。
 
@@ -202,7 +205,7 @@ def _headers(
                 f"mcp[{server_name}]：头 {header_name} 的取值不是一个变量名，已跳过"
             )
             continue
-        value = os.environ.get(env_name)
+        value = (values or {}).get(env_name, os.environ.get(env_name))
         if value is None:
             acc.warnings.append(
                 f"mcp[{server_name}]：头 {header_name} 要的环境变量 {env_name} "
@@ -221,6 +224,7 @@ def _translate_one(name: str, raw: Any, acc: _Acc) -> dict[str, Any] | None:
     declared_type = raw.get("type") or raw.get("transport")
     url = raw.get("url")
     command = raw.get("command")
+    values = raw.get("_kausEnvValues") if isinstance(raw.get("_kausEnvValues"), Mapping) else None
 
     if isinstance(url, str) and url:
         kind = str(declared_type).strip().lower() if declared_type else "http"
@@ -232,7 +236,7 @@ def _translate_one(name: str, raw: Any, acc: _Acc) -> dict[str, Any] | None:
             )
             kind = "http"
         server: dict[str, Any] = {"type": kind, "name": name, "url": url}
-        headers = _headers(raw.get("headers"), server_name=name, acc=acc)
+        headers = _headers(raw.get("headers"), server_name=name, acc=acc, values=values)
         if headers:
             server["headers"] = headers
         return server
@@ -254,7 +258,7 @@ def _translate_one(name: str, raw: Any, acc: _Acc) -> dict[str, Any] | None:
             "name": name,
             "command": command,
             "args": _string_list(raw.get("args")),
-            "env": _resolve_env(env_names, server_name=name, acc=acc),
+            "env": _resolve_env(env_names, server_name=name, acc=acc, values=values),
         }
 
     acc.warnings.append(
@@ -268,6 +272,15 @@ def _servers_of(capability_id: str, value: Any, acc: _Acc) -> list[tuple[str, An
     if not isinstance(value, Mapping):
         acc.warnings.append(f"mcp[{capability_id}]：config 不是映射，已跳过")
         return []
+    if isinstance(value.get("nativeRef"), Mapping):
+        # 导入后分给别的 Agent 的原生 MCP：开对话这一刻按原格式现读（密文只在内存里）。
+        from drivers.native_mcp_raw import resolve
+        ref = value["nativeRef"]
+        definition = resolve(ref)
+        if definition is None:
+            acc.warnings.append(f"mcp[{ref.get('name') or capability_id}]：来源配置里已没有这条 MCP，本次未送达")
+            return []
+        return [(str(ref.get("name") or capability_id), definition)]
     if _SERVER_KEYS & set(value):
         # 逐条行：capability_id 就是名字。
         return [(str(value.get("name") or capability_id), value)]
@@ -298,6 +311,8 @@ def project_mcp_servers(effective: EffectiveCapabilities) -> McpProjection:
             if not name:
                 acc.warnings.append("mcp：有一条 server 没有名字，已跳过")
                 continue
+            if name in by_name:
+                acc.warnings.append(f"mcp[{name}]：有两条同名的 MCP 声明，只保留后一条（树里更近的那一级）")
             server = _translate_one(name, raw, acc)
             if server is not None:
                 by_name[name] = server

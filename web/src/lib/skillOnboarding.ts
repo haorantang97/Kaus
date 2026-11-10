@@ -12,6 +12,7 @@ export interface CapabilityOnboardingStatus extends CapabilityInvitation {
   ready: boolean;
   skillCount: number;
   mcpCount: number;
+  pluginCount?: number;
   rootProjectId?: string;
   rootProjectName?: string;
 }
@@ -25,6 +26,6 @@ export function finishSkillOnboarding(id: string, outcome: "skipped" | "done"): 
 }
 
 export const skillOnboardingText = {
-  zh: { title: "能力分配", skip: "跳过", done: "完成", failure: "未能保存，请重试", loading: "正在读取能力", skills: "项技能", mcp: "个 MCP", hint: "拖动或通过菜单分配到项目。" },
-  en: { title: "Capabilities", skip: "Skip", done: "Done", failure: "Could not save. Try again.", loading: "Reading capabilities", skills: "skills", mcp: "MCP servers", hint: "Drag items or use their menus to assign them to Projects." },
+  zh: { title: "能力分配", skip: "跳过", done: "完成", failure: "未能保存，请重试", loading: "正在读取能力", skills: "项技能", mcp: "个 MCP", plugins: "个插件", hint: "拖动或通过菜单分配到项目。", importHint: "勾选要导入的能力，不导入的不会加载。" },
+  en: { title: "Capabilities", skip: "Skip", done: "Done", failure: "Could not save. Try again.", loading: "Reading capabilities", skills: "skills", mcp: "MCP servers", plugins: "plugins", hint: "Drag items or use their menus to assign them to Projects.", importHint: "Choose what to import. Anything not imported is not loaded." },
 };

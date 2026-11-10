@@ -1,0 +1,23 @@
+{
+  "_comment": "Storage and vocabulary conventions per Agent, used only to suggest which of its own capabilities are bound to it (drivers/capability_binding.py). No behaviour lives here.",
+  "hermes": {
+    "selfNames": ["hermes"],
+    "toolNames": ["terminal", "computer_use", "browser_navigate", "browser_click", "browser_snapshot", "browser_type",
+                  "delegate_task", "execute_code", "vision_analyze", "send_message", "skill_view", "skill_manage",
+                  "web_extract", "web_search", "read_file", "write_file", "search_files", "patch", "todo", "clarify",
+                  "cronjob", "image_generate", "text_to_speech", "memory", "session_search"]
+  },
+  "codex": {
+    "selfNames": ["codex"],
+    "ownedMarkets": ["openai-bundled", "openai-primary-runtime"],
+    "ownedPathMarkers": ["/.codex/", "/codex-runtimes/"]
+  },
+  "claude-code": {"selfNames": ["claude-code"]},
+  "gemini": {"selfNames": ["gemini-cli"]},
+  "antigravity": {"selfNames": ["antigravity"]},
+  "cursor": {"selfNames": ["cursor"]},
+  "copilot": {"selfNames": ["copilot"]},
+  "opencode": {"selfNames": ["opencode"]},
+  "goose": {"selfNames": ["goose"]},
+  "qwen": {"selfNames": ["qwen-code"]}
+}

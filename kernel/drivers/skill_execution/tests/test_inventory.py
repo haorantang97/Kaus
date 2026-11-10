@@ -4,6 +4,7 @@ from pathlib import Path
 from app.projects.models import Project
 from app.projects.models import AgentBinding
 from drivers.skill_execution.inventory import additional_roots, driver_roots
+from drivers.native_plugins import discover_native_plugins
 from drivers.skill_inventory import configured_roots, discover_skills
 
 
@@ -51,7 +52,13 @@ enabled=true
     rows = discover_skills(roots)
     assert {r["name"] for r in rows} == {"enabled:review", "native-user"}
     assert all(r["agentKey"] == "codex" for r in rows)
-    assert {r["defaultProjectId"] for r in rows} == {projects[0].id}
+    # 插件里的技能随插件整包走：不建默认分配，归属在插件条目上。
+    member = next(r for r in rows if r["name"] == "enabled:review")
+    assert member["nativePluginId"] and member["defaultProjectIds"] == []
+    assert next(r for r in rows if r["name"] == "native-user")["defaultProjectId"] == projects[0].id
+    plugins = discover_native_plugins(projects, home=tmp_path, env={})
+    assert [(r["pluginRef"], r["defaultProjectIds"], r["id"]) for r in plugins] == [
+        ("enabled@market", [projects[0].id], member["nativePluginId"])]
     assert {n["code"] for n in notes} >= {"codex_plugin_version_ambiguous"}
 
 
@@ -112,8 +119,9 @@ def test_claude_installed_scopes_manifest_paths_and_disabled_state(tmp_path):
     skill(marketplace / "skills")
     rows = discover_skills(additional_roots(projects, home=tmp_path, env={}))
     assert {r["name"] for r in rows} == {"user:default", "user:extra", "project:default", "project:extra"}
-    assert {r["defaultProjectId"] for r in rows if r["name"].startswith("project:")} == {projects[1].id}
-    assert {r["defaultProjectId"] for r in rows if r["name"].startswith("user:")} == {projects[0].id}
+    assert all(r["nativePluginId"] and r["defaultProjectIds"] == [] for r in rows)
+    owners = {r["pluginRef"]: r["defaultProjectIds"] for r in discover_native_plugins(projects, home=tmp_path, env={})}
+    assert owners == {"project@market": [projects[1].id], "user@market": [projects[0].id]}
 
 
 def test_claude_project_disable_cannot_be_seeded_at_ancestor(tmp_path):
@@ -128,10 +136,12 @@ def test_claude_project_disable_cannot_be_seeded_at_ancestor(tmp_path):
     settings.write_text(json.dumps({"enabledPlugins": {"user@market": False}}))
     notes = []
     rows = discover_skills(additional_roots(projects, home=tmp_path, env={}, diagnostics=notes))
-    assert len(rows) == 1
-    assert rows[0]["defaultProjectId"] == projects[0].id
-    assert rows[0]["defaultBlockedProjectIds"] == [projects[1].id]
+    assert len(rows) == 1 and rows[0]["nativePluginId"]
     assert notes == []
+    manifest(package, "claude-code", {"name": "user"})
+    plugin, = discover_native_plugins(projects, home=tmp_path, env={})
+    assert plugin["defaultProjectIds"] == [projects[0].id]
+    assert plugin["defaultBlockedProjectIds"] == [projects[1].id]
 
 
 def test_read_only_inventory_missing_or_malformed_files_does_not_mutate_sources(tmp_path):
@@ -205,9 +215,9 @@ def test_project_plugin_disable_is_a_project_block_and_restores_on_refresh(tmp_p
     with SqliteUnitOfWork(tmp_path / 'domain.db') as uow:
         for project in projects:
             asyncio.run(uow.repositories.projects.save(project))
-        service = SkillTreeService(uow.database, discover=lambda: discover_skills(additional_roots(projects, home=tmp_path, env={})))
+        service = SkillTreeService(uow.database, discover=lambda: discover_native_plugins(projects, home=tmp_path, env={}))
         snapshot = service.snapshot()
-        ident = next(row['id'] for row in snapshot['skills'] if row['name'] == 'shared:review')
+        ident = next(row['id'] for row in snapshot['skills'] if row['name'] == 'shared')
         entries = {row['projectId']: row for row in snapshot['entries'] if row['skillId'] == ident}
         assert not entries[projects[0].id]['blocked'] and not entries[projects[2].id]['blocked']
         assert entries[projects[1].id]['blocked'] and entries[projects[3].id]['blocked']
@@ -236,7 +246,7 @@ def test_user_copy_then_block_is_not_cleared_by_native_policy_refresh(tmp_path):
     with SqliteUnitOfWork(tmp_path / 'domain.db') as uow:
         for project in projects:
             asyncio.run(uow.repositories.projects.save(project))
-        service = SkillTreeService(uow.database, discover=lambda: discover_skills(additional_roots(projects, home=tmp_path, env={})))
+        service = SkillTreeService(uow.database, discover=lambda: discover_native_plugins(projects, home=tmp_path, env={}))
         view = service.snapshot()
         ident = view['skills'][0]['id']
         view = service.act({'revision': view['revision'], 'action':'copy', 'skillId':ident,

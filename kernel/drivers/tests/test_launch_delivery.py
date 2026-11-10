@@ -160,6 +160,15 @@ def test_unmanaged_native_mcp_is_left_alone(tmp_path: Path) -> None:
     assert "EXCLUDED" not in spec.env
 
 
+def test_native_mcp_kaus_has_not_seen_yet_keeps_loading(tmp_path: Path) -> None:
+    # 配置库只认识 github（aaa）：docs 是导入之后才加的，用户还没机会安排，照常加载。
+    effective = _effective(native_mcp=(_native("native-mcp-aaa"),)).model_copy(update={"native_mcp_known": ("native-mcp-aaa",)})
+    plan = plan_launch(effective, adapter=EXCLUDING_ADAPTER, instructions_file=None,
+                       workspace_root=str(tmp_path), project_id=PROJECT, native_inventory=INVENTORY)
+    assert plan.excluded_names == () and plan.summary["nativeMcpNew"] == ["docs"]
+    assert {row["name"] for row in plan.native_assigned} == {"github", "docs"}
+
+
 def test_unassigned_native_mcp_is_excluded_and_marked_unverified(tmp_path: Path) -> None:
     effective = _effective(native_mcp=(_native("native-mcp-aaa"),))
     plan = plan_launch(effective, adapter=EXCLUDING_ADAPTER, instructions_file=None,
@@ -167,7 +176,7 @@ def test_unassigned_native_mcp_is_excluded_and_marked_unverified(tmp_path: Path)
     assert plan.native_mcp_mode == MCP_UNVERIFIED
     assert plan.excluded_names == ("docs",)
     assert plan.summary == {"nativeMcpExcluded": ["docs"], "nativeMcp": [MCP_UNVERIFIED]}
-    assert any("未" in warning and "验证" in warning for warning in plan.warnings)
+    assert not any("验证" in warning for warning in plan.warnings)  # 未验证只记在摘要里
     spec, _metadata, warnings = apply_launch_plan(plan, _spec(), {}, adapter=EXCLUDING_ADAPTER, cwd=None)
     assert spec.env["EXCLUDED"] == "docs" and warnings == ("note",)
 
@@ -231,7 +240,7 @@ def test_claude_strict_mcp_passes_assigned_definitions_and_respects_disabled(tmp
     assert options["strictMcpConfig"] is True
     assert set(options["mcpServers"]) == {"github", "local"}  # docs 被排除、off 被用户关掉、gone 已不存在
     assert options["mcpServers"]["github"]["env"] == {"TOKEN": "synthetic"}  # 定义只在内存里传给子进程
-    assert any("gone" in w for w in warnings) and any(".mcp.json" in w for w in warnings)
+    assert any("gone" in w for w in warnings) and not any(".mcp.json" in w for w in warnings)  # 空的 .mcp.json 没什么可提示
     assert json.loads((config_dir / ".claude.json").read_text())["mcpServers"]["docs"]  # 用户文件没动
     assert spec.env == {"CLAUDE_CONFIG_DIR": str(config_dir)}
 
@@ -422,3 +431,16 @@ def test_without_an_adapter_native_memory_is_not_judged(tmp_path: Path) -> None:
     # 没有预设的裸 ACP：不知道是哪个 Agent，既不关也不报「未接管」。
     plan = _memory_plan(None, MEMORY_MCP, tmp_path=tmp_path)
     assert plan.native_memory_mode is None and "nativeMemory" not in plan.summary and plan.unapplied == ()
+
+
+def test_tree_managed_agent_loads_only_what_is_in_the_tree(tmp_path: Path) -> None:
+    # 显式导入的 Agent（2026-11-10）：没整理过也挡，新出现的也挡。
+    blank = _effective().model_copy(update={"tree_managed": True})
+    plan = plan_launch(blank, adapter=EXCLUDING_ADAPTER, instructions_file=None,
+                       workspace_root=str(tmp_path), project_id=PROJECT, native_inventory=INVENTORY)
+    assert set(plan.excluded_names) == {"github", "docs"}
+    known_one = _effective(native_mcp=(_native("native-mcp-aaa"),)).model_copy(
+        update={"native_mcp_known": ("native-mcp-aaa",), "tree_managed": True})
+    plan = plan_launch(known_one, adapter=EXCLUDING_ADAPTER, instructions_file=None,
+                       workspace_root=str(tmp_path), project_id=PROJECT, native_inventory=INVENTORY)
+    assert plan.excluded_names == ("docs",) and "nativeMcpNew" not in plan.summary

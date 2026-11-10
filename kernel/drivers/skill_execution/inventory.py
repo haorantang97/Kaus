@@ -1,4 +1,4 @@
-"""Static native skill sources. Never import plugins or infer cached enablement."""
+"""Static native skill sources. Never import plugin code or infer cached enablement."""
 from __future__ import annotations
 
 import json
@@ -38,7 +38,7 @@ def project_workspaces(projects, bindings, agent_key):
     return tuple(sorted((project, path) for project, path in result if path))
 
 
-def _plugin_skill_roots(package, manifest, *, agent, label, project, name, blocked=()):
+def _plugin_skill_roots(package, manifest, *, agent, label, project, name, blocked=(), plugin_id=None):
     paths = manifest.get("skills", [])
     paths = [paths] if isinstance(paths, str) else paths if isinstance(paths, list) else []
     # Claude's manifest paths supplement its conventional skills directory.
@@ -51,25 +51,20 @@ def _plugin_skill_roots(package, manifest, *, agent, label, project, name, block
         path = _resolved(package / relative)
         if path and path.is_relative_to(package) and path.is_dir() and path not in seen:
             seen.add(path)
-            result.append(NativeSkillRoot(path, agent, label, project, name_prefix=name + ":", blocked_project_ids=tuple(blocked)))
+            result.append(NativeSkillRoot(path, agent, label, project, name_prefix=name + ":",
+                                          blocked_project_ids=tuple(blocked), plugin_id=plugin_id))
     return result
 
 
-def additional_roots(projects, *, home, env, diagnostics=None, bindings=()):
-    """Return source roots with explicit project ownership, without DB writes.
-
-    diagnostics contains codes and plugin identifiers, never configuration bodies.
-    Unknown cached plugins and ambiguous versions are intentionally not seeded.
-    """
-    notes = diagnostics if diagnostics is not None else []
+def _scan_context(projects, *, home, env, bindings=()):
+    """``(根 Project id, Codex 目录, Claude 目录, [(Project id, 工作目录, agent)])``；没有根时 None。"""
     projects = tuple(projects)
     global_id = next((p.id for p in projects if p.slug == "default"), None)
     global_id = global_id or next((p.id for p in projects if not p.parent_project_id), None)
     if not global_id:
-        return ()
+        return None
     codex = Path(env.get("CODEX_HOME") or home / ".codex").expanduser()
     claude = Path(env.get("CLAUDE_CONFIG_DIR") or home / ".claude").expanduser()
-    roots = [NativeSkillRoot(home / ".agents/skills", "codex", "Codex", global_id)]
     known_projects = {p.id for p in projects}
     workspaces = {(p.id, _resolved(p.workspace_root), agent) for p in projects if p.workspace_root
                   for agent in ("codex", "claude-code")}
@@ -79,9 +74,22 @@ def additional_roots(projects, *, home, env, diagnostics=None, bindings=()):
             if isinstance(path, str) and path:
                 workspaces.add((binding.project_id, _resolved(path), binding.backend_key))
     workspaces = sorted((pid, path, agent) for pid, path, agent in workspaces if path)
-    for pid, workspace, agent in workspaces:
-        folder, label = (".agents/skills", "Codex") if agent == "codex" else (".claude/skills", "Claude Code")
-        roots.append(NativeSkillRoot(workspace / folder, agent, label, pid))
+    return global_id, codex, claude, workspaces
+
+
+def installed_plugins(projects, *, home, env, diagnostics=None, bindings=()):
+    """Codex / Claude Code 已安装且启用的插件，带 Project 归属；只读，不导入包里的任何东西。
+
+    每项：``agent`` / ``label`` / ``key``（``<插件>@<市场>``）/ ``name`` / ``package``（当前版本目录）/
+    ``manifest`` / ``projects``（默认分到哪些 Project）/ ``blocked``（工作目录里关掉它的 Project）。
+    原生技能来源（:func:`additional_roots`）和 Agent 自装插件导入（``drivers.native_plugins``）共用这一份判断。
+    """
+    notes = diagnostics if diagnostics is not None else []
+    context = _scan_context(projects, home=home, env=env, bindings=bindings)
+    if context is None:
+        return []
+    global_id, codex, claude, workspaces = context
+    result = []
 
     def note(code, plugin):
         notes.append({"code": code, "plugin": plugin})
@@ -123,8 +131,8 @@ def additional_roots(projects, *, home, env, diagnostics=None, bindings=()):
             if manifest.get("name") != name:
                 note("codex_plugin_manifest_unresolved", key)
                 continue
-            roots.extend(_plugin_skill_roots(package, manifest, agent="codex", label="Codex",
-                                            project=global_id, name=name, blocked=blocked))
+            result.append({"agent": "codex", "label": "Codex", "key": key, "name": name, "package": package,
+                           "manifest": manifest, "projects": [global_id], "blocked": blocked})
 
     installed = _read(claude / "plugins/installed_plugins.json").get("plugins", {})
     global_enabled = _read(claude / "settings.json").get("enabledPlugins", {})
@@ -166,9 +174,33 @@ def additional_roots(projects, *, home, env, diagnostics=None, bindings=()):
             name = manifest.get("name") or key.partition("@")[0]
             if not isinstance(name, str) or not name:
                 continue
-            for pid in targets:
-                roots.extend(_plugin_skill_roots(package, manifest, agent="claude-code", label="Claude Code",
-                                                project=pid, name=name, blocked=blocked))
+            if targets:
+                result.append({"agent": "claude-code", "label": "Claude Code", "key": key, "name": name,
+                               "package": package, "manifest": manifest, "projects": targets, "blocked": list(blocked)})
+    return result
+
+
+def additional_roots(projects, *, home, env, diagnostics=None, bindings=()):
+    """Return source roots with explicit project ownership, without DB writes.
+
+    diagnostics contains codes and plugin identifiers, never configuration bodies.
+    Unknown cached plugins and ambiguous versions are intentionally not seeded.
+    """
+    context = _scan_context(projects, home=home, env=env, bindings=bindings)
+    if context is None:
+        return ()
+    global_id, _codex, _claude, workspaces = context
+    roots = [NativeSkillRoot(home / ".agents/skills", "codex", "Codex", global_id)]
+    for pid, workspace, agent in workspaces:
+        folder, label = (".agents/skills", "Codex") if agent == "codex" else (".claude/skills", "Claude Code")
+        roots.append(NativeSkillRoot(workspace / folder, agent, label, pid))
+    from drivers.native_plugins import native_plugin_id
+    for plugin in installed_plugins(projects, home=home, env=env, diagnostics=diagnostics, bindings=bindings):
+        for pid in plugin["projects"]:
+            roots.extend(_plugin_skill_roots(plugin["package"], plugin["manifest"], agent=plugin["agent"],
+                                            label=plugin["label"], project=pid, name=plugin["name"],
+                                            blocked=plugin["blocked"],
+                                            plugin_id=native_plugin_id(plugin["agent"], plugin["key"])))
     return tuple(roots)
 
 

@@ -54,26 +54,52 @@ def read_connections(path: Path) -> tuple[str, ...]:
     return read_connection_settings(path)[0]
 
 
+def read_connection_transports(path: Path) -> dict[str, str]:
+    """``presets[i] -> transport id`` chosen per connection (``acp`` is the implicit default).
+
+    A transport the preset no longer declares is dropped (back to the default) instead of
+    failing the whole file; the shape itself still has to be a string map.
+    """
+    from drivers.acp.presets import PRESETS
+
+    if not path.exists():
+        return {}
+    value = json.loads(path.read_text(encoding="utf-8"))
+    raw = value.get("transports", {}) if isinstance(value, dict) else {}
+    if not isinstance(raw, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in raw.items()):
+        raise ValueError("引擎传输记录格式不正确")
+    known = read_connection_settings(path)[0]
+    return {key: transport for key, transport in raw.items()
+            if key in known and transport != "acp" and transport in PRESETS[key].transports}
+
+
 def merge_connections(config: Mapping[str, Any] | None, path: Path) -> dict[str, Any]:
     result = dict(config or {})
     entries = list(result.get("backends") or [])
     configured = {str(x.get("id", "")).removeprefix("backend:") for x in entries if isinstance(x, dict)}
     presets, native = read_connection_settings(path)
+    transports = read_connection_transports(path)
     for preset_id in presets:
         if preset_id not in configured:
             entry = {"id": f"backend:{preset_id}", "driver": "acp", "preset": preset_id}
             if preset_id in native:
                 entry["native_cli_path"] = native[preset_id]
+            if preset_id in transports:
+                entry["transport"] = transports[preset_id]
             entries.append(entry)
     if entries:
         result["backends"] = entries
     return result
 
 
-def _write_connections(path: Path, preset_ids: tuple[str, ...], native_paths: dict[str, str] | None = None) -> None:
+def _write_connections(path: Path, preset_ids: tuple[str, ...], native_paths: dict[str, str] | None = None,
+                       transports: dict[str, str] | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     native = native_paths if native_paths is not None else read_connection_settings(path)[1]
-    data = json.dumps({"version": 1, "presets": list(preset_ids), "nativePaths": native}, ensure_ascii=False, indent=2) + "\n"
+    chosen = transports if transports is not None else read_connection_transports(path)
+    chosen = {key: value for key, value in chosen.items() if key in preset_ids}
+    data = json.dumps({"version": 1, "presets": list(preset_ids), "nativePaths": native, "transports": chosen},
+                      ensure_ascii=False, indent=2) + "\n"
     fd, temp = tempfile.mkstemp(prefix=".engine-connections-", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
@@ -115,12 +141,18 @@ def build_engine_connection_router(*, registry: Any, repositories: Any, auth_pol
         if not native and preset:
             native = read_connection_settings(path)[1].get(preset.id)
         runtime = getattr(driver, "runtime_identity", {}) if driver else {}
-        return {"nativePath": native or (shutil.which(preset.native_executable or preset.executable) if preset and preset.executable else None),
-                "canSelectExecutable": supports_native_cli(preset) and (driver is None or preset.id in read_connections(path)),
-                "loginAvailable": bool(preset and preset.login_command),
-                # 设置里可以填 API key（不走订阅）的引擎：Kaus 启动它时设这个变量。
-                "apiKeyEnv": preset.api_key_env if preset else None,
-                "runtimeIdentity": runtime}
+        fields = {"nativePath": native or (shutil.which(preset.native_executable or preset.executable) if preset and preset.executable else None),
+                  "canSelectExecutable": supports_native_cli(preset) and (driver is None or preset.id in read_connections(path)),
+                  "loginAvailable": bool(preset and preset.login_command),
+                  # 设置里可以填 API key（不走订阅）的引擎：Kaus 启动它时设这个变量。
+                  "apiKeyEnv": preset.api_key_env if preset else None,
+                  "runtimeIdentity": runtime}
+        if preset and preset.transports:
+            # 这一行有替代传输（例如官方 app-server）：当前用的哪一条、能选哪几条。缺省 acp。
+            current = (getattr(spec, "options", {}) or {}).get("transport") if spec else None
+            fields["activeTransport"] = current or read_connection_transports(path).get(preset.id) or "acp"
+            fields["transports"] = ["acp", *preset.transports]
+        return fields
 
     def identity(driver, record):
         key = getattr(getattr(driver, "preset", None), "id", None) or getattr(driver, "product_id", None) or record.key
@@ -258,6 +290,41 @@ def build_engine_connection_router(*, registry: Any, repositories: Any, auth_pol
             return {"backendId": backend_id, "registered": True,
                     **({"onboarding": onboarding} if onboarding else {})}
 
+    async def set_transport(backend_id: str, body: dict = Body(...)) -> dict[str, Any]:
+        """Switch one connection between its preset's transports; new sessions use the new one."""
+        from dataclasses import replace
+        transport = body.get("transport")
+        driver = registry.try_get(backend_id)
+        preset = getattr(driver, "preset", None)
+        if driver is None or preset is None:
+            raise ApiError(404, "backend_not_registered", "Agent 未接入")
+        if set(body) - {"transport"} or not isinstance(transport, str) or (transport != "acp" and transport not in preset.transports):
+            raise ApiError(400, "invalid_engine_transport", "请选择这个 Agent 提供的传输方式")
+        async with lock:
+            saved, native = read_connection_settings(path)
+            spec = getattr(driver, "assembly_spec", None)
+            if preset.id not in saved or spec is None:
+                raise ApiError(409, "engine_config_managed_externally", "此连接由本地配置管理，请在原配置中修改")
+            transports = read_connection_transports(path)
+            if transport == "acp":
+                transports.pop(preset.id, None)
+            else:
+                transports[preset.id] = transport
+            try:
+                _write_connections(path, saved, native, transports)
+            except (OSError, ValueError) as exc:
+                raise ApiError(503, "engine_connection_unavailable", "无法保存 Agent 接入配置") from exc
+            options = {key: value for key, value in spec.options.items() if key != "transport"}
+            if transport != "acp":
+                options["transport"] = transport
+            driver.assembly_spec = replace(spec, options=options)
+            if refresh_backends:
+                # Rebuilds the driver when the connection is idle; a busy one switches after its runs end.
+                await refresh_backends([driver.backend_id])
+        current = registry.try_get(backend_id)
+        state = (getattr(current, "runtime_identity", {}) or {}).get("updateState", "current")
+        return {"backendId": backend_id, "transport": transport, "updateState": state}
+
     async def refresh(body: dict = Body(default={})) -> dict[str, Any]:
         ids = body.get("backendIds")
         if set(body) - {"backendIds"} or (ids is not None and (not isinstance(ids, list)
@@ -306,4 +373,5 @@ def build_engine_connection_router(*, registry: Any, repositories: Any, auth_pol
     router.add_api_route("/engine-connections", endpoint(connect), methods=["POST"], dependencies=[auth])
     router.add_api_route("/engine-connections/refresh", endpoint(refresh), methods=["POST"], dependencies=[auth])
     router.add_api_route("/engine-connections/{backend_id}/login", endpoint(login), methods=["POST"], dependencies=[auth])
+    router.add_api_route("/engine-connections/{backend_id}/transport", endpoint(set_transport), methods=["PUT"], dependencies=[auth])
     return router

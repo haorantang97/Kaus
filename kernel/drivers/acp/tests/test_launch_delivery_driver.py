@@ -152,7 +152,7 @@ async def test_native_mcp_not_assigned_is_excluded_at_launch(tmp_path, monkeypat
     effective = _effective(native_mcp=(assigned,))
     projection = await driver.session_options_for(conversation, effective)
     assert projection.summary == {"nativeMcpExcluded": ["docs"], "nativeMcp": ["unverified"]}
-    assert any("验证" in warning for warning in projection.warnings)
+    assert not any("验证" in warning for warning in projection.warnings)  # 未验证只记在摘要里
     handle = await driver.start_runtime(conversation, "card", session_options=projection.options)
     try:
         assert module.seen == {"excluded": ("docs",), "assigned": ("github",)}

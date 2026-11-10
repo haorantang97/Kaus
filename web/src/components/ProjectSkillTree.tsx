@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowRight, ArrowUp, Ban, Check, ChevronRight, Copy, CornerDownLeft, CornerUpLeft, FileText, Folder, GripVertical, MoreHorizontal, MoveRight, Plug, Plus, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, Ban, Bell, Check, ChevronRight, Copy, CornerDownLeft, CornerUpLeft, Download, FileText, Folder, GripVertical, Lock, MoreHorizontal, MoveRight, Plug, Plus, Puzzle, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { useLocale } from "../i18n";
 import { affectedProjects, matchesSkill, orderedEntries, projectAncestors } from "../lib/skillTree";
 import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
-import { applySkillTreeAction, fetchSkillTree, SkillTreeError, type SkillTreeAction, type SkillTreeEntry, type SkillTreeProject, type SkillTreeSkill, type SkillTreeSnapshot } from "../lib/skillTreeApi";
+import { applySkillTreeAction, CAPABILITY_CHANGES_EVENT, fetchCapabilityChanges, fetchSkillTree, SkillTreeError, type SkillTreeAction, type SkillTreeEntry, type SkillTreeProject, type SkillTreeSkill, type SkillTreeSnapshot } from "../lib/skillTreeApi";
+import { CapabilityImportDialog } from "./CapabilityImportDialog";
+import { CapabilityChangesPanel } from "./CapabilityChangesPanel";
 import { EngineIcon } from "./EngineIcon";
-import { Modal, Spinner } from "./ui";
+import { AddPluginDialog } from "./AddPluginDialog";
+import { removePlugin } from "../lib/libraryApi";
+import { confirmAsync, Modal, Spinner, toast } from "./ui";
 import "./project-skill-tree.css";
 
 interface Props {
@@ -38,8 +42,28 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
   const [destination, setDestination] = useState<(Item & { copy: boolean }) | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [undoToken, setUndoToken] = useState<string | null>(null);
+  const [addingPlugin, setAddingPlugin] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [changesOpen, setChangesOpen] = useState(false);
+  const [unseenChanges, setUnseenChanges] = useState(false);
+  // Agent 那边的变化：打开技能树、回到窗口、变化面板处理后检查一次（不常驻轮询）。
+  useEffect(() => {
+    const controller = new AbortController();
+    const check = () => { fetchCapabilityChanges(controller.signal).then(r => setUnseenChanges(r.unseen)).catch(() => {}); };
+    check();
+    window.addEventListener("focus", check);
+    window.addEventListener(CAPABILITY_CHANGES_EVENT, check);
+    return () => { controller.abort(); window.removeEventListener("focus", check); window.removeEventListener(CAPABILITY_CHANGES_EVENT, check); };
+  }, [refreshKey]);
+  // 整个插件从能力库删除：已启用它的项目一起停用（后端删目录记录、能力行与文件）。
+  const uninstallPlugin = async (skill: SkillTreeSkill) => {
+    setMenu(null);
+    if (!skill.pluginId || !await confirmAsync(t("library.removeConfirm", { name: skill.name }), { okLabel: t("library.remove"), danger: true })) return;
+    try { await removePlugin(skill.pluginId); toast(t("library.removed"), "ok"); await load(); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
+  };
   const [status, setStatus] = useState("");
-  const [ghost, setGhost] = useState<{ x: number; y: number; name: string; mcp?: boolean } | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number; name: string; mcp?: boolean; plugin?: boolean } | null>(null);
   const [drop, setDrop] = useState<Drop | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
@@ -159,7 +183,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     if (!current || !data) return;
     if (!current.active && Math.hypot(e.clientX - current.x, e.clientY - current.y) < 5) return;
     current.active = true;
-    setGhost({ x: e.clientX, y: e.clientY, name: current.skill.name, mcp: current.skill.kind === "mcp" });
+    setGhost({ x: e.clientX, y: e.clientY, name: current.skill.name, mcp: current.skill.kind === "mcp", plugin: current.skill.kind === "plugin" });
     const element = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-skill-drop]");
     let target: Drop | null = null;
     if (element && root.current?.contains(element)) {
@@ -225,8 +249,11 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
       style={{ "--tree-depth": depth } as CSSProperties} data-skill-drop={skill.pendingAssignment ? undefined : "row"} data-project-id={entry.projectId} data-agent-key={skill.agentKey ?? ""} data-skill-id={skill.id}>
       <button type="button" className="skill-tree-icon skill-tree-grip" aria-label={t("skillTree.drag", { name: skill.name })} title={t("skillTree.drag", { name: skill.name })}
         disabled={entry.blocked || busy} onPointerDown={e => beginDrag(e, item)}><GripVertical size={15} /></button>
-      {skill.kind === "mcp" ? <Plug size={15} className="skill-tree-type" role="img" aria-label="MCP" /> : <FileText size={15} className="skill-tree-type" aria-hidden="true" />}
+      {skill.kind === "mcp" ? <Plug size={15} className="skill-tree-type" role="img" aria-label="MCP" />
+        : skill.kind === "plugin" ? <Puzzle size={15} className="skill-tree-type" role="img" aria-label={t("library.plugin")} />
+        : <FileText size={15} className="skill-tree-type" aria-hidden="true" />}
       <span className="skill-tree-name" title={skill.description || skill.name}>{skill.name}</span>
+      {skill.bound && <span className="skill-tree-type" role="img" aria-label={t("skillTree.bound")} title={t("skillTree.bound")}><Lock size={12} aria-hidden="true" /></span>}
       {skill.pendingAssignment && <span className="skill-tree-pending">{t("skillTree.pendingAssignment")}</span>}
       {entry.inherited && <span className="skill-tree-source" title={t("skillTree.inherited", { name: projectName(entry.sourceProjectId) })}><CornerUpLeft size={12} /><span>{projectName(entry.sourceProjectId)}</span></span>}
       {entry.blocked && <Ban size={13} aria-label={t("skillTree.blocked")} />}
@@ -301,13 +328,22 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
       <span className="skill-tree-status" role="status">{busy ? <Spinner /> : status && <Check size={14} aria-label={status} />}</span>
       <button className="skill-tree-icon" disabled={!undoToken || busy} title={t("skillTree.undo")} aria-label={t("skillTree.undo")} onClick={() => undoToken && void write({ action: "undo", undoToken })}><Undo2 size={18} /></button>
       <button className="skill-tree-icon" disabled={busy} title={t("skillTree.refresh")} aria-label={t("skillTree.refresh")} onClick={() => void load()}><RotateCcw size={16} /></button>
+      <button className="skill-tree-icon" disabled={busy} title={t("library.addButton")} aria-label={t("library.addButton")} onClick={() => setAddingPlugin(true)}><Puzzle size={16} /></button>
+      <button className="skill-tree-icon" disabled={busy} title={t("skillTree.importButton")} aria-label={t("skillTree.importButton")} onClick={() => setImporting(true)}><Download size={16} /></button>
+      <button className="skill-tree-icon skill-tree-changes" disabled={busy} title={t("changes.title")} aria-label={unseenChanges ? t("changes.unseen") : t("changes.title")} onClick={() => setChangesOpen(true)}>
+        <Bell size={16} />{unseenChanges && <span className="skill-tree-dot" data-testid="capability-changes-dot" />}
+      </button>
     </div>
+    {importing && <CapabilityImportDialog onClose={() => setImporting(false)} onImported={() => { setImporting(false); toast(t("import.done"), "ok"); void load(); }} />}
+    {changesOpen && <CapabilityChangesPanel onClose={() => setChangesOpen(false)} onChanged={() => void load()} />}
+    {addingPlugin && <AddPluginDialog onClose={() => setAddingPlugin(false)}
+      onInstalled={() => { setAddingPlugin(false); toast(t("library.installed"), "ok"); void load(); }} />}
     {error && <div className="skill-tree-error" role="alert"><span>{error}</span><button className="skill-tree-icon" aria-label={t("skillTree.dismiss")} onClick={() => setError(null)}><X size={14} /></button></div>}
     <div className="skill-tree-scroll" ref={scroll}>
       {!data ? <div className="skill-tree-loading"><Spinner />{t("ui.loading")}</div> : roots.map(p => renderProject(p, 0, new Set()))}
       {visibleProjects?.size === 0 && <div className="skill-tree-empty">{t("skillTree.noResults")}</div>}
     </div>
-    {ghost && createPortal(<div className="skill-tree-ghost" style={{ left: ghost.x + 16, top: ghost.y + 12 }}>{ghost.mcp ? <Plug size={15} /> : <FileText size={15} />}<span>{ghost.name}</span>{drop && <><ArrowRight size={13} /><span>{projectName(drop.projectId)}</span></>}</div>, document.body)}
+    {ghost && createPortal(<div className="skill-tree-ghost" style={{ left: ghost.x + 16, top: ghost.y + 12 }}>{ghost.mcp ? <Plug size={15} /> : ghost.plugin ? <Puzzle size={15} /> : <FileText size={15} />}<span>{ghost.name}</span>{drop && <><ArrowRight size={13} /><span>{projectName(drop.projectId)}</span></>}</div>, document.body)}
     {menu && createPortal(<div className="skill-tree-menu-backdrop" onPointerDown={() => setMenu(null)}>
       <div className="skill-tree-menu" ref={menuRef} role="menu" data-skill-tree-owner={treeId} style={{ left: Math.max(12, menu.x), top: Math.max(12, menu.y) }} onPointerDown={e => e.stopPropagation()} onKeyDown={e => {
         if (!["ArrowDown", "ArrowUp"].includes(e.key)) return;
@@ -324,6 +360,8 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
           <button role="menuitem" onClick={() => void write({ action: "block", skillId: menu.skill.id, targetProjectId: menu.entry.projectId })}><Ban size={15} />{t("skillTree.block")}</button>
           {canClearOverride && <button role="menuitem" onClick={() => void write({ action: "remove", skillId: menu.skill.id, targetProjectId: menu.entry.projectId })}><Trash2 size={15} />{t("skillTree.remove")}</button>}
         </> : <button role="menuitem" disabled={menu.entry.inherited} onClick={() => void write({ action: "restore", skillId: menu.skill.id, targetProjectId: menu.entry.projectId })}><RotateCcw size={15} />{t("skillTree.restore")}</button>}
+        {menu.skill.kind === "plugin" && menu.skill.pluginId && <><hr />
+          <button role="menuitem" onClick={() => void uninstallPlugin(menu.skill)}><Trash2 size={15} />{t("library.remove")}</button></>}
       </div>
     </div>, root.current?.closest<HTMLElement>('[role="dialog"], [data-kaus-modal]') ?? document.body)}
     {destination && <Modal onClose={() => setDestination(null)} width={420}><div className="skill-tree-dialog" role="dialog" aria-modal="true" aria-label={t(destination.skill.pendingAssignment ? "skillTree.assign" : destination.copy ? "skillTree.copy" : "skillTree.move")}>

@@ -247,3 +247,27 @@ def test_initialize_carries_the_operating_rules_for_any_main_agent():
     assert "user_confirmed=true" in rules and "切回" in rules and "审批" in rules
     assert "明确同意" in rules and "不再询问" in rules and "完全访问" in rules
     assert "不删除" in rules and "Project 配置" in rules
+
+
+def test_plugin_tools_need_consent_and_walk_marketplaces(monkeypatch):
+    calls = []
+    responses = {
+        ("POST", "/api/library/plugins/inspect"): {"kind": "marketplace", "name": "team", "plugins": [{"name": "deploy"}]},
+        ("POST", "/api/library/plugins"): {"id": "deploy", "name": "deploy"},
+        ("GET", "/api/library/plugins"): {"plugins": [{"id": "deploy", "name": "deploy", "capabilityType": "plugins", "capabilityId": "deploy"}]},
+    }
+
+    def http(method, path, body=None):
+        calls.append((method, path, body))
+        return responses.get((method, path), {})
+    monkeypatch.setattr(mcp, "_http", http)
+    assert mcp.call_tool("kaus_install_plugin", {"source": "https://github.com/x/team"})["isError"]
+    assert calls == []
+    listed = mcp.call_tool("kaus_install_plugin", {"source": "https://github.com/x/team", "user_confirmed": True})
+    assert '"marketplace"' in listed["content"][0]["text"] and ("POST", "/api/library/plugins", {"source": "https://github.com/x/team"}) not in calls
+    installed = mcp.call_tool("kaus_install_plugin", {"source": "https://github.com/x/team", "plugin": "deploy", "user_confirmed": True})
+    assert '"installed": true' in installed["content"][0]["text"]
+    assert mcp.call_tool("kaus_enable_plugin", {"plugin_id": "deploy", "project_id": "project:site"})["isError"]
+    mcp.call_tool("kaus_enable_plugin", {"plugin_id": "deploy", "project_id": "project:site", "user_confirmed": True})
+    assert ("PUT", "/api/projects/project%3Asite/capabilities/plugins/deploy", {"value": {}}) in calls
+    assert mcp.call_tool("kaus_enable_plugin", {"plugin_id": "nope", "project_id": "project:site", "user_confirmed": True})["isError"]

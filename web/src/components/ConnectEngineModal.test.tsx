@@ -3,11 +3,11 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ConnectEngineModal } from "./ConnectEngineModal";
-import { connectEngine, fetchEngineCatalog, openEngineLogin, refreshEngineConnections, chooseNativeExecutable, type EnginePreset } from "../lib/enginePresets";
+import { connectEngine, fetchEngineCatalog, openEngineLogin, refreshEngineConnections, chooseNativeExecutable, setEngineTransport, type EnginePreset } from "../lib/enginePresets";
 
 vi.mock("../lib/enginePresets", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/enginePresets")>(),
-  fetchEngineCatalog: vi.fn(), connectEngine: vi.fn(), openEngineLogin: vi.fn(), refreshEngineConnections: vi.fn(), chooseNativeExecutable: vi.fn(),
+  fetchEngineCatalog: vi.fn(), connectEngine: vi.fn(), openEngineLogin: vi.fn(), refreshEngineConnections: vi.fn(), chooseNativeExecutable: vi.fn(), setEngineTransport: vi.fn(),
 }));
 
 const engine = (id: string, extra: Partial<EnginePreset> = {}): EnginePreset => ({
@@ -240,4 +240,24 @@ it("桌面文件选择结果用于接入，取消保持路径", async () => {
   await user.click(screen.getByRole("button", { name: "接入" }));
   await waitFor(() => expect(connectEngine).toHaveBeenCalledWith("custom", "/Applications/custom cli"));
   expect(openEngineLogin).not.toHaveBeenCalled();
+});
+
+describe("连接传输方式", () => {
+  it("只有声明了替代传输的已接入连接才有下拉；切换后调用接口并保留选择", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchEngineCatalog).mockResolvedValue({ engines: [
+      engine("codex", { registered: true, activeTransport: "acp", transports: ["acp", "app-server"] }),
+      engine("plain", { registered: true }),
+    ] });
+    vi.mocked(setEngineTransport).mockResolvedValue({ backendId: "backend:codex", transport: "app-server", updateState: "current" });
+    render(<ConnectEngineModal onClose={() => {}} initialBackendId="backend:codex" />);
+    const advanced = await screen.findByTestId("connect-advanced");
+    const select = within(advanced).getByRole("combobox", { name: "传输方式" });
+    expect(select).toHaveValue("acp");
+    await user.selectOptions(select, "app-server");
+    expect(setEngineTransport).toHaveBeenCalledWith("backend:codex", "app-server");
+    await waitFor(() => expect(within(screen.getByTestId("connect-advanced")).getByRole("combobox", { name: "传输方式" })).toHaveValue("app-server"));
+    await user.click(screen.getByTestId("connect-preset-plain"));
+    expect(screen.queryByRole("combobox", { name: "传输方式" })).toBeNull();
+  });
 });

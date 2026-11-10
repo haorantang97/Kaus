@@ -803,6 +803,27 @@ def build_driver(spec: BackendSpec, *, managed_root: Path | None = None) -> Any:
             raise BackendConfigError(
                 f"{spec.backend_id}: acp driver 必须给 command 或 preset"
             )
+        transport = str(spec.options.get("transport") or "").strip()
+        if transport and transport != "acp":
+            # 预设声明的替代传输（AcpPreset.transports）：按能力表选模块，不按产品名分支。
+            module_path = preset.transports.get(transport) if preset is not None else None
+            if not module_path:
+                raise BackendConfigError(f"{spec.backend_id}: 未知的传输 {transport!r}")
+            from importlib import import_module
+            try:
+                driver = import_module(module_path).build_driver(
+                    spec, preset=preset, process_env=process_env,
+                    native_cli_path=spec.options.get("native_cli_path"), managed_root=managed_root)
+            except ValueError as exc:
+                raise BackendConfigError(f"{spec.backend_id}: 原生 CLI 路径不可用") from exc
+            from managed_runtimes import launch_fingerprint
+            driver.assembly_spec = spec
+            driver.managed_runtime_root = managed_root
+            driver.managed_runtime_configured = False
+            driver.assembly_fingerprint = launch_fingerprint(driver)
+            driver.runtime_identity = {"launchFingerprint": driver.assembly_fingerprint, "updateState": "current",
+                                       "transport": transport}
+            return driver
         driver_class = AcpDriver
         if preset is not None and preset.id == "openclaw":
             from drivers.openclaw.driver import OpenClawAcpDriver
@@ -1345,8 +1366,12 @@ def open_session_runtime(
     from app.api.skill_tree import build_skill_tree_router
     from app.capabilities.skill_tree import SkillTreeService
     from drivers.skill_inventory import configured_roots, discover_skills
+    from app.api.plugin_library import build_plugin_library_router
+    from app.capabilities.plugin_library import PluginLibrary
     skill_database = getattr(repositories.settings, "_db", None)
     skill_tree = None
+    # 能力库（设计稿第 7 节）：插件装在 state/ 旁的 capability-library/，目录项进技能树。
+    plugin_library = PluginLibrary(resolved_token_path.parent / "capability-library")
     if skill_database is not None:
         def skill_inventory_ready(agent_key):
             for driver in registry.list_drivers():
@@ -1366,15 +1391,44 @@ def open_session_runtime(
         skill_tree = SkillTreeService(skill_database, inventory_ready=skill_inventory_ready,
                                       onboarding_enabled=skill_onboarding_enabled)
         from drivers.mcp_inventory import configured_mcp_sources, discover_mcp
+        from drivers.native_plugins import connected_agents, discover_native_plugins
+        from drivers.capability_binding import annotate as annotate_capabilities, supported_kinds
+        from drivers.skill_execution import adapter_for
+
+        def isolation_support():
+            # Which kinds of its own capabilities each connected Agent can leave out of one
+            # launch; the rest are Agent-bound (design capability-import §3).
+            support = {}
+            for driver in registry.list_drivers():
+                preset = getattr(driver, "preset", None)
+                if preset is None:
+                    continue
+                key = preset.skill_scope_key or preset.id
+                try:
+                    adapter = adapter_for(preset.skill_projection_adapter)
+                except Exception:  # noqa: BLE001 - an adapter that cannot load isolates nothing
+                    adapter = None
+                support[key] = tuple(sorted({*support.get(key, ()), *supported_kinds(adapter)}))
+            return support
 
         def discover_capabilities():
             context = skill_tree.inventory_context()
             # Native MCP definitions are catalogue records only (`<agent>:mcp`);
-            # the source Agent keeps loading them itself.
-            return [*discover_skills(configured_roots(registry, *context)),
-                    *discover_mcp(configured_mcp_sources(registry, *context))]
+            # the source Agent keeps loading them itself. Library plugins are the
+            # third kind (`plugins`), read from the capability library on disk.
+            # Plugins an Agent installed itself (`<agent>:plugins`) are imported the same
+            # way as its native MCP: catalogue records, default-assigned where they apply.
+            native = [*discover_skills(configured_roots(registry, *context)),
+                      *discover_mcp(configured_mcp_sources(registry, *context)),
+                      *discover_native_plugins(context[0], agents=connected_agents(registry), bindings=context[1])]
+            return [*annotate_capabilities(native, supported=isolation_support()), *plugin_library.discover()]
         skill_tree.discover = discover_capabilities
-        router.routes.extend(build_skill_tree_router(skill_tree, auth_policy=auth_policy).routes)
+        plugin_library.skill_tree = skill_tree
+        from app.capabilities.capability_import import CapabilityImports
+        capability_imports = CapabilityImports(skill_tree, plugin_library.root)
+        router.routes.extend(build_skill_tree_router(skill_tree, auth_policy=auth_policy,
+                                                     imports=capability_imports).routes)
+    router.routes.extend(build_plugin_library_router(plugin_library, auth_policy=auth_policy).routes)
     from native_archives import NativeArchiveStore, NativeArchiveService
     from app.api.native_archives import build_native_archive_router
     native_archives = NativeArchiveService(NativeArchiveStore(resolved_token_path.parent / 'native-archives'), repositories)

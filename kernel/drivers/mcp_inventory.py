@@ -298,5 +298,7 @@ def discover_mcp(sources: Iterable[NativeMcpSource]) -> list[dict]:
                 "capabilityType": source.capability_scope + ":mcp",
                 "capabilityId": record_id,
                 "server": summary,
+                # 给别的 Agent 用时，开对话那一刻按原格式读完整定义（``drivers.native_mcp_raw``）。
+                "sourceFormat": source.format, "sourceKey": source.key, "sourceShape": source.shape,
             }
     return list(result.values())

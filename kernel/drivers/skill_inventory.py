@@ -22,6 +22,9 @@ class NativeSkillRoot:
     project_id: str
     nested_skills: bool = False
     name_prefix: str = ""
+    #: 这个来源是某个 Agent 自装插件里的技能目录：记下插件的目录记录 id
+    #: （``drivers.native_plugins.native_plugin_id``）。这些技能随插件整包走，不单独分配。
+    plugin_id: str | None = None
     blocked_project_ids: tuple[str, ...] = ()
     generated: bool = False
     source_conversation_id: str | None = None
@@ -91,6 +94,8 @@ def discover_skills(roots: Iterable[NativeSkillRoot]) -> list[dict]:
                 identity = source.agent_key + "\0" + (source.name_prefix + "\0" if source.name_prefix else "") + resolved
                 skill_id = "native-" + hashlib.sha256(identity.encode()).hexdigest()[:24]
                 if skill_id in result:
+                    if source.plugin_id:
+                        continue
                     projects = result[skill_id]["defaultProjectIds"]
                     if source.project_id not in projects:
                         projects.append(source.project_id)
@@ -120,6 +125,9 @@ def discover_skills(roots: Iterable[NativeSkillRoot]) -> list[dict]:
                     "defaultBlockedProjectIds": list(source.blocked_project_ids),
                     "capabilityType": source.agent_key + ":skills",
                     "capabilityId": skill_id,
+                    # 插件里的技能：树上不单列、不建默认分配，托管技能范围跟着插件的分配走。
+                    **({"nativePluginId": source.plugin_id, "defaultProjectId": None,
+                        "defaultProjectIds": [], "defaultBlockedProjectIds": []} if source.plugin_id else {}),
                     **({"generated": True, "originProjectId": source.project_id,
                         "sourceConversationId": source.source_conversation_id, "replacesId": source.replaces_id}
                         if source.generated else {}),

@@ -6,10 +6,10 @@ Kaus 是面向产品使用的本地多 Agent 工作台。它复用原生 Agent �
 
 | 功能 | 当前行为 | 主要说明 |
 | --- | --- | --- |
-| Agent 接入 | 全局接入一次；Project 中选择已接入引擎。产品身份与传输/配置身份分开。正式接入有 20 个 ACP 预设，Hermes HTTP 另有驱动；Alma、Devin 已于 2026-11-02 删除 | [引擎身份](../engine-identity.md)、[适配验收](../product/agent-adapter-acceptance-20261017.md) |
+| Agent 接入 | 全局接入一次；Project 中选择已接入引擎。产品身份与传输/配置身份分开。正式接入有 20 个 ACP 预设，Hermes HTTP 另有驱动；Codex 另可按连接切到官方 `codex app-server` 传输（2026-11-09，默认关，真机未验）；Alma、Devin 已于 2026-11-02 删除 | [引擎身份](../engine-identity.md)、[适配验收](../product/agent-adapter-acceptance-20261017.md) |
 | 对话 | 结构化流式事件、工具审批、附件、文件/图片预览、断线回放、复制、编辑、收藏与左侧轮次定位 | [对话交互](../conversation-interaction.md) |
 | Project | 唯一永久配置树；继承、覆盖、阻断；通用能力与 Agent 专属能力共同编排 | [技能树](../product/skill-project-tree.md)、[运行隔离](../product/skill-runtime-isolation.md) |
-| 首次接入 | 原生技能与全局 MCP（7 个主流 Agent）只读发现，默认归入母项目对应 Agent 分组；接入弹窗里登录后即进入一次「能力分配」，可跳过，不再另行弹窗 | [引导](../product/skill-onboarding-20261017.md) |
+| 首次接入 | 原生技能与全局 MCP（7 个主流 Agent）只读发现，默认归入母项目对应 Agent 分组；接入弹窗里登录后即进入一次「能力分配」，可跳过，不再另行弹窗。**2026-11-10 起改为勾选导入、只认技能树（已实现；此前接入的 Agent 在用「导入能力」之前保持原安排）**（[能力导入与归属](../product/capability-import-20261110.md)） | [引导](../product/skill-onboarding-20261017.md) |
 | 协作组 | 右下角独立工作区；拖入会话添加成员，成员使用隔离的组内运行会话；独立组长配置共用主驱动 | [组路由](../product/group-routing.md)、[资料](../product/group-materials.md) |
 | 历史与接续 | 普通对话自动管理；项目菜单“添加已有对话”；接续打开关联的新会话，用户审阅后发送 | [保存](../product/native-archive-storage.md)、[接续](../product/cross-agent-continuation-20261017.md) |
 | 终端 | 支持的驱动接续原生会话，可选 Terminal、cmux、iTerm2；卡片/终端共享写入控制 | [终端](../terminal-integration.md)、[覆盖](../product/terminal-adapter-completion-20261017.md) |
@@ -70,3 +70,5 @@ Kaus 是面向产品使用的本地多 Agent 工作台。它复用原生 Agent �
 - 布局：三层以上选中后画布滚最少距离把子级列露出来（之前落在面板底下）。
 - 实测（Chrome，mock 后端，1440×900）：连续滚轮 3s 58.3fps（最大帧间隔 34ms）；最后一个滚轮事件后 196ms 静止（含 110ms 无输入判定）；拖拽甩动 1.3 格 248ms 静止，过冲 3.4px 一次回正。截图在 `~/Data/Projects/kaus/.tmp/wheel/`（不入库）。
 - 测试：`AgentGraph.test.tsx` 新增面板开合 / Esc / 关闭钮 / 点空白与平移区分 / 方向键 6 条，`wheelGeometry.test.ts` 新增吸附缓动 3 条；`web npm run check` 115 文件 / 1081 用例与构建通过。未做真机触控板验收；`prefers-reduced-motion` 只走代码路径未实测。
+
+11 月 9 日（未提交）：Codex 官方 `codex app-server` 传输作为可选第二条路（`kernel/drivers/codex_app_server/`，`driver_kind = "native"`）。连接详情「高级」里一个下拉在 `acp`（codex-acp，默认）与 `app-server` 之间切换，写 `engine-connections.json` 的 `transports`，空闲时重建驱动；Project 指令走 `thread/start.developerInstructions`，原生 MCP 排除、Project MCP（含 `kaus-memory`）与自带记忆关闭走 `thread/start.config`，API key 只从加密存储注入子进程；codex-acp 的会话 id 与 app-server 的 `thread.id` 同源，既有对话理论上可直接 `thread/resume`。全部基于协议源码与假服务测试，`codex` 本机未安装，真机验收与是否改默认见[待办](open-items.md)「Codex app-server 传输」。

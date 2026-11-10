@@ -162,6 +162,30 @@ def exclude_native_mcp(spec, metadata, *, excluded, assigned, cwd):
     return spec.model_copy(update={"command": command}), metadata, warnings
 
 
+# Agent 自己装的扩展：本次只加载分到这里的（2026-11-09，设计稿第 6 节补充）。
+#: ``--extensions`` 白名单经 ``--acp`` 这条路没在真实 Gemini CLI 上跑过。
+NATIVE_PLUGIN_EXCLUSION_VERIFIED = False
+#: 只写这一个名字表示一个扩展都不加载（``packages/cli/src/config/extensions/extensionEnablement.ts``
+#: 对 ``none`` 的特判）；空白名单等于不过滤。
+NO_EXTENSIONS = "none"
+
+
+def exclude_native_plugins(spec, metadata, *, excluded, kept):
+    """Gemini CLI has only an allow-list: ``--extensions`` / ``-e`` (``config.ts``).
+
+    The names are the extension names from ``gemini-extension.json``, matched without
+    case. Every extension left on is listed; with none left, the special ``none``
+    value is used. ``~/.gemini/extensions`` is not modified.
+    """
+    if not excluded:
+        return spec, metadata, ()
+    names = [str(row.get("name")) for row in kept if row.get("name")]
+    if any("," in name for name in names):
+        return spec, metadata, ("含逗号的扩展名无法通过 --extensions 表达，本次没有关掉未分到这里的扩展",)
+    command = (*spec.command, "--extensions", ",".join(names) or NO_EXTENSIONS)
+    return spec.model_copy(update={"command": command}), metadata, ()
+
+
 # 开对话前关掉自带记忆（2026-11-09，设计稿第 5 节「改向」）。
 #: 系统设置覆盖文件这条路（``GEMINI_CLI_SYSTEM_SETTINGS_PATH``）没在真实 Gemini CLI 上跑过。
 NATIVE_MEMORY_DISABLE_VERIFIED = False

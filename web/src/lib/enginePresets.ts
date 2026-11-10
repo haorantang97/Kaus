@@ -9,6 +9,10 @@ export interface EngineSetupFields {
   loginAvailable?: boolean;
   /** 填 API key 时 Kaus 在启动这台引擎的进程里设的变量名；没有就不提供 API key 入口。 */
   apiKeyEnv?: string | null;
+  /** 这台引擎当前走的传输（`acp` 为缺省适配器）；只有预设声明了替代传输时才出现。
+   *  字段名避开目录分组用的 `transport`（native / community）。 */
+  activeTransport?: string | null;
+  transports?: string[];
   runtimeIdentity?: {
     adapterVersion?: string | null; engineVersion?: string | null;
     protocolVersion?: string | number | null; nativePath?: string | null;
@@ -48,6 +52,10 @@ export function connectEngine(presetId: string, nativePath?: string): Promise<{ 
 
 export function refreshEngineConnections(backendIds?: string[]): Promise<{ backends: EngineConnection[]; count: number }> {
   return sessionRequest("/api/engine-connections/refresh", { method: "POST", body: backendIds ? { backendIds } : {} });
+}
+
+export function setEngineTransport(backendId: string, transport: string): Promise<{ backendId: string; transport: string; updateState: string }> {
+  return sessionRequest(`/api/engine-connections/${encodeURIComponent(backendId)}/transport`, { method: "PUT", body: { transport } });
 }
 
 export function openEngineLogin(backendId: string): Promise<{ launched: true; backendId: string; launcher: string }> {

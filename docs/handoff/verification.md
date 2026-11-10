@@ -3,6 +3,116 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 10 日：能力导入与归属（勾选导入、只认技能树）
+
+依据 [能力导入与归属](../product/capability-import-20261110.md)（第 9 节记与设计的差异）。
+
+- **判定 Agent 绑定能力**（`kernel/drivers/capability_binding.py`，约定数据在 `agent_capability_traits.json`）：应用包或 Agent 运行时目录里的 MCP、Agent 自带市场的插件记为 `agent_owned`；技能名就是 Agent 自己记为 `agent_self`；内容调用该 Agent 专有工具 ≥10 次记为 `agent_tools`；该 Agent 对这一类没有关闭方式记为 `not_isolable`（只对当前加载了适配器的 Agent 判断）。每条原生能力同时算指纹。在本机 Hermes 的 44 个自带技能上只读试跑，判出的正好是 `claude-code`、`codex`、`computer-use`、`hermes-agent`。发现时由 `session_bootstrap` 统一标注。
+- **导入服务**（`kernel/app/capabilities/capability_import.py`，接口 `/api/skill-tree/import*`、`/api/skill-tree/changes*`）：首次接入的 Agent 记入 `skill_tree.import_state.v1`，发现时不再自动登记（绑定能力除外）。导入时技能复制进 `<数据目录>/capability-library/skills/<id>/`，记录标 `imported` / `shared`，默认分到根项目；别的 Agent 已导入同一文件夹的技能合并为一条（`importedAs`）；旧规则下接入的 Agent 第一次导入时，没勾的移出树。跳过 = 只保留绑定能力。变化检查按 Agent 对比导入时确认的指纹，分新增、移除、有更新；看过记 `seen`；可导入、忽略、同步（重新复制）。
+- **加载**（`effective.py`、`launch_delivery.py`、`mcp_projection.py`、`native_mcp_raw.py`、`skill_execution/common.py`）：显式导入的 Agent（`tree_managed`）强制托管技能范围；自带 MCP、插件不在树上的一律挡掉，新出现的也不例外。别的 Agent 导入、分到本项目的能力：技能从库副本选入（`shared`），MCP 以 `nativeRef` 进入，开对话时按原格式现读定义、密文只在内存里拼进 `mcpServers`，插件按包位置送达。运行目录里库副本的支持文件改为硬链接（Agent 自己目录里的只复制），超过 7 天的旧运行目录清理。
+- **界面**：接入时先出勾选名单（绑定能力置灰、已在树中的合并、可展开看简介和来源、全选；一项不选或跳过都要确认「以空白状态接入」），导入后再进入原来的分配树。技能树顶栏新增「导入能力」（选 Agent → 同一份名单，旧规则下已在树上的预先勾选）和「能力变化」（有未看过的变化时按钮和「配置」页签显示黄点，打开即消失）。分组标题改为只显示 Agent 名，绑定能力带锁形标记。
+- **试跑中改掉的问题**：没加载适配器的 Agent 原先被全部判成「不能隔离」而置灰，改为不判断；旧规则下已在树上的条目在「导入能力」里原先默认不勾、导入会误删，改为预先勾选。插件库已有的 `libraryPath` 字段与导入副本字段撞名，改名为 `importCopy`。
+
+结果：新增 `app/tests/test_capability_import.py` 6 项（绑定能力保留且不出现在可选里、公共文件夹合并并供所有 Agent 使用、旧 Agent 首次导入移出未选项且预先勾选、变化检查与看过/忽略/同步、导入的原生 MCP 给别的 Agent 时密文只在内存、导入入口的 Agent 列表），`drivers/tests/test_capability_binding.py` 5 项，`test_launch_delivery.py`、`test_native_plugins.py` 各 +1（只认技能树），`skill_execution/tests/test_common_links.py` 2 项（硬链接与清理）；`app/tests/test_skill_onboarding.py` 3 项按新规则改写。前端新增 `CapabilityImport.test.tsx` 2 项，`CapabilityOnboardingStep.test.tsx` 3 项改写，`ProjectSkillTree.test.tsx` 分组名断言随文案更新。隔离实例（8899，临时家目录与数据库，合成的 Codex 技能）里走了「导入能力 → 只导入一项 → 另一项移出树 → 原处新增与修改 → 黄点出现 → 打开面板黄点消失 → 同步后库副本更新」，试跑用的配置和数据已删除。全量：内核 4,473 通过 / 129 跳过，宿主 384 通过，前端 124 个文件 / 1,090 项及构建通过。
+
+未做：经真实 Agent 开会话的生效验证（任务书 P2）；接入流程里的勾选名单只在单元测试中走过（隔离实例里没有真实接入 Agent）。
+
+## 11 月 10 日：插件作为整包；Codex 逐个关掉插件；Antigravity 互通未能实测
+
+项目负责人定：配置树上的条目都是完整的包，插件里的技能和 MCP 不单列（见 product-decisions「配置树里的条目」）。
+
+- **插件里的技能随插件走**：`NativeSkillRoot.plugin_id`，插件技能目录里发现的技能记录带 `nativePluginId`（与插件条目的 id 一致，`native_plugins.native_plugin_id`），不建默认分配。`skill_tree` 快照里不显示这些技能，也不显示它们以前单独建的分配行；接入引导不把它们计入技能数。托管技能范围（`effective._resolve_effective_for_binding`）跳过它们的旧分配行，改为在插件分到当前 Project 时把它们加入范围。只有本来就处在托管模式时才加，分配一个插件不会把 Agent 切到托管模式。旧行不删，只是不再生效。
+- **补上的缺口**：技能树读取分配行的条件（`ARRANGED_TYPES_SQL`）原来不含 `<agent>:plugins`，导致昨天导入的自装插件在树上不显示，撤销时也不会恢复。已补上。
+- **Codex 逐个关**：11 月 10 日在隔离的 `CODEX_HOME` 里继续实测，按次覆盖 `skills.config = [{path = <插件里的 SKILL.md>, enabled = false}]` 能让该技能变为未启用，`mcp_servers.<插件 MCP 名>.enabled = false` 能让插件带的 MCP 不再启动（`mcpServerStatus/list` 里消失，和写进 `config.toml` 的效果一样）。所以 `codex.exclude_native_plugins` 改为逐个关掉被排除插件的技能和 MCP，已有的 `enabled = true` 条目（托管技能范围设的）不改；删掉了「只能整体关」的 `NATIVE_PLUGIN_EXCLUSION` 模式。顺带测了自带 MCP 的按名关闭：`mcp_servers.alpha.enabled=false` 用 `-c` 传入有效。
+- **提示文案**：项目负责人要求不说「未隔离」，改说原生 Agent 不支持隔离。`timeline.projectUnapplied.reason.native_not_isolated` 改为「原生 Agent 不支持按项目隔离，它自带的配置照常加载」（英文同义），覆盖 MCP 与插件两种情况。前端组件测试 63 个文件 / 575 项通过。
+- **Antigravity 原生界面互通**：没有测成。桌面版自带的 `agentapi new-conversation` 要求 `ANTIGRAVITY_LS_ADDRESS` 和运行中语言服务器的 CSRF 令牌；令牌是另一个程序的凭据，没有去取。而且 `agentapi` 直连桌面版，不能代表 Kaus 的路径（`agy_acp_server`，另一份 Google 登录，本机未安装）。已在任务书加用例 Q：逐个 Agent 检查 Kaus 里开的对话在它自己的界面里是否可见。
+
+结果：`drivers/tests/test_native_plugins.py` 增至 10 项（新增：Codex 逐个关掉插件的技能与 MCP、不改托管范围设的条目；树上只显示插件整包，屏蔽插件后它的技能不在托管范围里，根项目里在）。`skill_execution/tests/test_inventory.py` 中 5 项按整包规则改写：归属与屏蔽改为在插件条目上检查，两项技能树流程改为对插件条目操作。全量：内核 4,457 通过 / 129 跳过，宿主 384 通过，前端 123 个文件 / 1,088 项及构建通过。
+
+## 11 月 9 日：插件与 MCP 撞车、Agent 自装插件导入
+
+起因：项目负责人问两个插件带同一个 MCP 怎么办、为什么要排除 Claude Code 自带 MCP、为什么 Kaus 不导入 Agent 自己装的插件（答：不是拿不到，是还没做）。认可的做法分五条，全部已实现；第 5 条在 11 月 10 日按项目负责人的提议，用本机的 Codex 与 Claude Code 实测后做了修正：
+
+1. **插件里的 MCP 撞名**（`launch_delivery.expand_plugins`）：定义完全一样的只送一次；同名但定义不同的，后来者改名为 `<插件名>-<MCP 名>`，摘要记 `pluginMcpRenamed`。项目 MCP 同名但命令不同时不被覆盖。`acp/mcp_projection.project_mcp_servers` 遇到同名声明只保留后一条并提醒。
+2. **Claude 严格模式**：严格模式只加载显式传入的 MCP，会挡掉插件自带的；`claude.deliver_plugins` 在 `strictMcpConfig` 下把能力库插件的 MCP 以带前缀的名字写进 `mcpServers`。
+3. **工作目录 `.mcp.json`**：严格模式下，`claude.exclude_native_mcp` 把用户在 `~/.claude.json` `projects[<cwd>]` 里批准过的项（`enableAllProjectMcpServers` / `enabledMcpjsonServers`，减去 `disabledMcpjsonServers`）显式带上，只对没批准的提醒。
+4. **整理之后新装的自带 MCP**：配置库没见过的（不在 `native_mcp_known` 里）照常加载，摘要记 `nativeMcpNew`，等用户下次整理；不再因为「没分配」被排除。
+5. **Agent 自己装的插件当初始配置**（`kernel/drivers/native_plugins.py`）：接入时只读地找出已安装且启用的插件，写进技能树目录（`kind: plugin`，能力类型 `<agent>:plugins`），默认分到它原本生效的 Project（用户级安装分到根，Claude Code 的项目级安装分到对应工作目录的 Project），所以不整理就什么都不变。怎样算已安装，和原有的原生技能来源共用一份判断：从 `skill_execution/inventory.py` 提出了 `installed_plugins`。规则是 Claude Code 读 `plugins/installed_plugins.json`，`enabledPlugins` 为 false 的不算，工作目录里关掉的记为屏蔽；Codex 只认 `config.toml` 里 `enabled = true` 的，多个版本又没指定时不导入；Gemini 读 `~/.gemini/extensions/*/gemini-extension.json`。`effective.without_native_plugins` 把它们和能力库插件分开，并记下 `native_plugins_known`。用户整理过（有分配或屏蔽）之后，启动时 `plan_launch(native_plugin_inventory=…)` 找出「配置库认识、但没分到这里」的插件，交给适配器的 `exclude_native_plugins`；ACP 驱动启动时按这次的工作目录重新读一遍。
+   - Claude Code：在 SDK `settings`（标志设置层）里写 `enabledPlugins: {"<插件>@<市场>": false}`；如果已经传了设置文件路径，就不动并提醒。严格 MCP 模式下，把仍然加载的插件的 MCP 也明确带上。
+   - Gemini：用 `--extensions` 只列出留下的扩展，一个都不留时写 `none`（`packages/cli/src/config/extensions/extensionEnablement.ts` 有这个特判，`config.ts` 里这个参数用逗号分隔）。
+   - Codex：只能整体关（`NATIVE_PLUGIN_EXCLUSION = "all"`）。这个 Project 一个自装插件都不留时，用 `CODEX_CONFIG` 传 `features.plugins = false`；只关一部分做不到，就报 `native_not_isolated`，插件照常加载。
+   - 没有钩子的 Agent 报 `plugins` / `native_not_isolated`。
+
+**本机实测（11 月 10 日，隔离的配置目录，合成插件，未调用模型）**：
+- Codex 0.166.0-alpha.6（ChatGPT 桌面版自带）：用 `codex plugin marketplace add` / `plugin add` 装进隔离的 `CODEX_HOME`，再用 app-server 的 `skills/list` / `plugin/installed` 看结果。按次覆盖 `plugins."demo-kit@probe-market".enabled=false` **不起作用**，插件和技能照样加载；`features.plugins=false` 起作用。只用按次覆盖去加市场和插件、不先安装，插件**不加载**。据此，能力库里的 Codex 格式插件不再「原样交出」：删掉了 `codex.deliver_plugins` 和 `NATIVE_PLUGIN_FORMATS`，改为拆成技能与 MCP 送达。安装位置 `plugins/cache/<市场>/<插件>/<版本>/` 和启用记录 `config.toml` 也一并核对过。另外直接只读本机真实的 `~/.codex`，按规则读出 11 个插件，正好是 `config.toml` 里启用的那 11 个。远程安装的 openai-curated-remote 有 11 个包在缓存里，但没写进 `config.toml`，不导入。
+- Claude Code 2.1.309（Claude 桌面版自带）：用 `plugin marketplace add` / `plugin install` 装进隔离的 `CLAUDE_CONFIG_DIR`。`--settings '{"enabledPlugins":{"demo-kit@probe-market":false}}'` 让 `plugin list` 显示 disabled，用户 `settings.json` 里仍是 true；`installed_plugins.json` 格式和缓存路径与读取规则一致。本机真实的 Claude Code 没装插件。
+- 试验目录已删除。经 claude-agent-acp / codex-acp 真开会话的那一段没跑，三个钩子仍标 `NATIVE_PLUGIN_EXCLUSION_VERIFIED = False`。
+
+结果：`drivers/tests/test_plugin_delivery.py` 增至 9 项（MCP 合并 / 加前缀、项目 MCP 不被覆盖、严格模式、`.mcp.json` 批准）。`drivers/tests/test_launch_delivery.py` +1（没见过的自带 MCP 照常加载）。新增 `drivers/tests/test_native_plugins.py` 9 项，覆盖：Claude 按安装记录与范围导入、跳过已关的和只在缓存里的、id 稳定；Gemini 扩展；Codex 只认 `config.toml` 启用的；没整理过就不动；整理后只关已知未分配的、新装的照常加载；只屏蔽也算整理过、没有钩子报未隔离；Claude 标志层与严格模式 MCP、已有设置文件时不动；Gemini 白名单与 `none`；Codex 只能整体关。`skill_execution/tests/test_inventory.py` 10 项在重构后照常通过。全部在临时目录里跑，没起真实 Agent。宿主 `tests/test_engine_connections.py` 第一轮失败：它只隔离了技能和 MCP 的来源，新的插件导入读到了本机真实 Codex 的 11 个插件，并且接入引导把插件算成了技能。已让测试同样指向合成目录，接入引导改为单独返回 `pluginCount`，界面显示「N 个插件」。全量（修正后）：内核 4,456 通过 / 129 跳过，宿主 384 通过，前端 123 个文件 / 1,088 项及构建通过。
+
+未做：经 Agent 适配器真开会话、确认插件真的被关掉（任务书用例 P2）；Gemini 扩展在 Agent 里手动禁用的记录不读（格式没有成文），会照样导入；插件里的技能在技能树里既作为原生技能、又随插件条目出现，屏蔽插件时这些技能也一起消失，界面还没把两者放在一起显示。
+
+## 11 月 9 日第三期：插件与能力库
+
+项目负责人定：插件格式以外部为准（Claude Code 插件 `.claude-plugin/plugin.json`、Codex 插件 `.codex-plugin/plugin.json`、Gemini 扩展 `gemini-extension.json`），来源只做本地文件夹和 Git 地址；插件市场就是带清单的仓库（Claude `.claude-plugin/marketplace.json`、Codex `.agents/plugins/marketplace.json`），检查时列出其中的插件供选择，不调用任何市场接口。入口两个：能力库（技能树）和对话（控制 MCP）。后端前半段由 Fable 起草，项目负责人随后决定不再默认用 Fable，于是停下它，余下部分在这里补完并核对。
+
+- **识别与存储**：`kernel/drivers/plugin_packages.py` 只读文件，不执行包里的任何东西：解析清单，按 `SKILL.md` 计技能目录，从 `.mcp.json` 或清单读 MCP 定义，钩子、命令、子 Agent 只检测有无。`kernel/app/capabilities/plugin_library.py` 把包放进 `<数据目录>/capability-library/plugins/<id>/`：本地目录复制（不跟随符号链接，最多 5000 个文件、200 MB）；Git 地址用 `git clone --depth 1 --no-recurse-submodules`（只收 https/ssh，有超时，记录提交号）。
+- **能力库**：每个插件是技能树目录里的第三类条目（`kind: plugin`，能力类型 `plugins`），分配、移动、复制、屏蔽、撤销都沿用技能树原有的动作，沿项目树继承。删除插件会一并删掉目录条目、各项目里的能力行和文件。目录记录带 `pluginId`，供界面删除时使用。
+- **送达**（`launch_delivery.expand_plugins`，中间层不认引擎名）：如果适配器的 `NATIVE_PLUGIN_FORMATS` 包含该格式、并且有 `deliver_plugins`，就原样交出（Claude Code 走 `_meta.claudeCode.options.plugins` 的本地路径，并把插件技能补进技能白名单；Codex 原本声明了 `codex` 格式，11 月 10 日实测按次覆盖加载不了，已改为拆开送）。其他情况拆开送：技能目录并入托管技能投射，MCP 作为项目 MCP；钩子、命令、子 Agent 报 `plugin_parts_unsupported`，包不见了报 `plugin_unavailable`，没有技能投射的 Agent 只拿到 MCP，技能报 `unsupported`。原生送达都没在真实 Agent 上验证过（`NATIVE_PLUGIN_DELIVERY_VERIFIED = False`）。与自带记忆的处理一致，「未验证」只记在 `summary.pluginNative` 里，每次启动不再提醒。
+- **接口**：`GET /api/library/plugins`、`POST /api/library/plugins/inspect`（返回单个插件或插件市场列表）、`POST /api/library/plugins`（可带 `plugin` 指定市场里的某个插件）、`DELETE /api/library/plugins/{id}`。错误码：`source_required`、`source_unsupported`、`source_not_found`、`not_a_plugin`、`clone_failed`、`too_large`、`plugin_not_found`。
+- **控制 MCP**：`kaus_library`、`kaus_install_plugin`（需 `user_confirmed`；遇到市场先返回列表，让用户选一个）、`kaus_enable_plugin`（需 `user_confirmed`，走通用能力端点）。
+- **界面**：技能树顶栏新增「添加插件」（拼图图标）。对话框里可以选文件夹或粘贴 Git 地址，先「检查」显示格式与内容（技能、MCP、钩子、命令），遇到市场则列出插件单选，再「安装」。装好后条目出现在技能树里，拖到项目上即启用。插件条目用拼图图标，行菜单里有「从能力库删除」（先确认）。
+
+结果：内核新增 `drivers/tests/test_plugin_packages.py`、`app/tests/test_plugin_library.py`（合计 13 项，Fable 写）和 `drivers/tests/test_plugin_delivery.py` 5 项（原生交出且不提醒、拆成技能与 MCP 并报未生效、包不见了、没有技能投射时只送 MCP、Claude 钩子追加插件并放宽白名单）；控制 MCP 新增 1 项（需确认、市场先列表、启用走能力端点）。前端新增 `AddPluginDialog.test.tsx` 2 项。全量结果见本节末尾。
+
+实测（隔离实例 8899，合成的 Claude Code 插件：1 个技能、1 个 MCP）：「检查」正确识别格式与内容；安装后插件挂在根项目下、标「待分配」——之前未分配的插件在树里不显示，所以改为让未分配的插件也走技能树原有的待分配机制（`skill_tree.snapshot`），测试同步补了断言。从菜单「分配到…」选项目后标记消失，项目有效能力里出现 `plugins` 行；「从能力库删除」确认后条目与分配一起消失。全量（修正后）：内核 4,442 通过 / 129 跳过，宿主 384 通过，前端 123 个文件 / 1,088 项及构建通过。
+
+未做：真实 Agent 加载插件（任务书用例 P）；scp 形式的 Git 地址（`git@github.com:…`）不支持，要用 https 或 ssh:// 地址。
+
+## 11 月 9 日：Codex 官方 app-server 传输（可选，默认关）
+
+> 核对（同日）：在主目录重跑，内核 4,422 通过 / 129 跳过，宿主 `tests/` 383 通过，前端 123 个文件 / 1,088 项及构建通过（含同时新增的插件对话框测试）。抽查：`session_bootstrap` 按预设声明的 `transports` 选模块，没有按产品名分支；驱动不读取 `~/.codex/auth.json`。新传输默认关闭，等跨 Agent 实测验证后再决定是否改为默认。
+
+
+范围：新增驱动包 `kernel/drivers/codex_app_server/`，直接对接 Codex 官方的 `codex app-server`（JSON-RPC 2.0 / stdio，与官方 IDE 扩展同一协议），作为 Codex 连接的**第二条传输**。默认仍是第三方 `codex-acp` 适配器（ACP 预设 `codex`）；连接设置 `transport = "app-server"` 才切过去。真实 `codex` 二进制本机未安装，本节全部是协议源码研读 + 假服务测试，**没有任何真机结论**。
+
+**依据**：`openai/codex` `main` @ `8703d32bd0ea5cf26768859a3dd476df906ba053`（2026-11-09 03:58 UTC，最新 release `rust-v0.167.0`）。方法表 `codex-rs/app-server-protocol/src/protocol/common.rs`（`client_request_definitions!` / `server_request_definitions!` / `server_notification_definitions!`）；参数结构 `protocol/v2/{thread,turn,item,shared,permissions,model,account}.rs`（`serde(rename_all = "camelCase")`，`AskForApproval` / `SandboxMode` 为 kebab-case，`ApprovalsReviewer` 为 `user` / `auto_review`）；`initialize` 结构 `protocol/v1.rs`（`clientInfo{name,title,version}`、`capabilities.experimentalApi`）；默认监听 `stdio://`（`codex-rs/app-server-transport/src/transport/mod.rs` `DEFAULT_LISTEN_URL`）；配置键 `codex-rs/config/src/config_toml.rs`（`developer_instructions`、`mcp_servers`、`memories`、`features`、`model_reasoning_effort`）与 `mcp_types.rs`（`McpServerConfig.enabled`、stdio / streamable HTTP 两种 transport）；`codex-acp` v2.6.0 `src/index.ts`（`CODEX_CONFIG` → `thread/start.config`）、`CodexAcpClient.ts`（`initialize` 带 `experimentalApi: true`；`newSession` 的 `sessionId = response.thread.id`）。`codex-rs/app-server/README.md` 现在只有增量说明，核心握手只能从源码读。
+
+**事件与方法映射**（`kernel/drivers/codex_app_server/translator.py`，纯函数，ID 规则与 ACP 翻译器同族：`runId = <threadId>:<runToken>:r<N>`，messageId / callId 直接用 app-server 的 item id，eventId 为 uuid5）：
+
+| app-server | Kaus 公共事件 / 方法 |
+| --- | --- |
+| `thread/start` / `thread/resume` 结果 `thread.id` | `native_session_id`；`session.created` / `session.resumed` |
+| `turn/start` 发出（Kaus 侧） | `run.started`；响应 `turn.id` 绑定本轮 |
+| `turn/completed` `status = completed / interrupted / failed` | `run.completed` / `run.interrupted` / `run.failed`（`error.codexErrorInfo` 作 code） |
+| `turn/start` 被拒（JSON-RPC error） | `run.failed`；含登录字样时同时写入登录态 `signed_out` |
+| `item/started` `reasoning` + `item/reasoning/summaryTextDelta` / `textDelta` | 开一段消息，`reasoning.delta`；随后的 `agentMessage` 并入同一张卡 |
+| `item/started` `agentMessage` / `plan` + `item/agentMessage/delta` / `item/plan/delta` + `item/completed` | `message.started` / `message.delta` / `message.completed(text)` |
+| `commandExecution` item + `item/commandExecution/outputDelta` | `tool.started(name=命令)` / `tool.updated(cumulative=false)` / `tool.completed(aggregatedOutput, is_error=exitCode≠0 或 failed/declined)` |
+| `fileChange` item（completed） | `tool.started(apply_patch)`、每条 change 一个 `file.changed(path, diff, operation)`、`tool.completed` |
+| `mcpToolCall` / `dynamicToolCall` / `webSearch` / `imageView` 等 item | 通用工具卡；`item/mcpToolCall/progress` → `tool.updated(progress)` |
+| `turn/plan/updated` | `plan.updated`（pending / inProgress / completed） |
+| `thread/tokenUsage/updated` | `usage.updated`（total 的 input / cached / output / reasoning / total，`modelContextWindow`） |
+| `item/commandExecution/requestApproval`、`item/fileChange/requestApproval`（服务端请求） | `permission.requested`，选项 `accept` / `acceptForSession` / `decline` / `cancel`（kind `allow_once` / `allow_always` / `reject_once` / `reject_always`，按 `availableDecisions` 过滤）；回执 `{decision}` |
+| `item/permissions/requestApproval` | `permission.requested`，选项 `grant` / `grantForSession` / `decline`；回执把请求的 profile 原样作为 `permissions` 返回（**未验证** `GrantedPermissionProfile` 是否接受） |
+| `item/tool/requestUserInput` | 每个问题一条 `question.requested`（选项为 `o1…`，`isOther` → 允许自由文本）；全部回答后回 `{answers:{id:{answers:[…]}}}` |
+| `serverRequest/resolved` | 关掉对应待审批卡（`decision = resolved_elsewhere`） |
+| `error` / `warning` / `deprecationNotice` / `configWarning` | `diagnostic.notice` |
+| `userMessage` item、`thread/*`、`model/rerouted` 等 | `extension.event`（namespace `codex-app-server`） |
+| `turn/interrupt` | `interrupt()`；回合以 `turn/completed(interrupted)` 收尾；`turn/start` 未返回时先等它返回再发 |
+| `model/list` + `thread/start{ephemeral:true}` | 模型目录（`supportedReasoningEfforts` → 档位）与当前模型 / effort / 审批档；在 `discovery_scope` 隔离家目录里跑 |
+| `account/read` | 登录态（`account == null && requiresOpenaiAuth` → `signed_out` → `AuthRequiredError`，提示 `codex login`） |
+
+**配置如何到进程**：复用送达层 `drivers/launch_delivery.py` 与 `drivers/skill_execution/codex.py` 的三个钩子（它们改的是进程规格里的 `CODEX_CONFIG` JSON，与 codex-acp 路径同一份代码）。本驱动在 `thread/start` / `thread/resume` 时把 `developer_instructions` 从该 JSON 取出作为官方参数 `developerInstructions`，其余（`mcp_servers.<名>.enabled=false`、`memories.generate_memories/use_memories=false`、`features.memories=false`）作为 `config`；Kaus Project MCP（含 `kaus-memory`）由 `drivers/acp/mcp_projection.project_mcp_servers` 翻译后转成 `config.mcp_servers.<名>={command,args,env}` / `{url,http_headers}`，只在本进程参数里，不落盘。模型 / effort / 审批档：`thread/start.model`、`config.model_reasoning_effort`、`approvalPolicy` + `approvalsReviewer` + `sandbox`（`ask` → `on-request/user/workspace-write`，`auto` → `on-request/auto_review/workspace-write`，`read_only` → `read-only`，`bypass` → `never/danger-full-access`，与终端 `-a/-s` 一致）；每轮 `turn/start` 带 `model` + `effort`，会话中改审批档时下一轮补 `approvalPolicy` / `approvalsReviewer` / `sandboxPolicy{type}`（**未验证**）。API key：只从宿主加密存储（`drivers/credentials.api_key_for`）按预设 `api_key_env` 注入子进程 `OPENAI_API_KEY`；不读 `~/.codex/auth.json`。`initialize` 用 `experimentalApi: false`（只用稳定 API；codex-acp 用 true）。
+
+**续接兼容**：codex-acp 的 ACP `sessionId` 就是 app-server 的 `thread.id`（`CodexAcpClient.newSession`），两条传输共用同一 `codex app-server` 与 `$CODEX_HOME/sessions` rollout；`kernel/drivers/codex/native_history.py` 按同一 id 读文件。因此**理论上**既有 Codex 对话切到 app-server 后可直接 `thread/resume`，`native_session_id` 不变；真机未验，切换前请先在一条新对话上试。
+
+**接线**：`AcpPreset.transports`（预设声明「替代传输 id → 构造模块」，codex 行 `{"app-server": "drivers.codex_app_server.driver"}`；`to_wire` 多 `transports`）；`session_bootstrap.build_driver` 读 `options.transport`，命中时 `import_module(...).build_driver(spec, preset=…, process_env=…, native_cli_path=…)`，不按产品名分支；`engine_connections.py`：`engine-connections.json` 新增 `transports: {预设: 传输}`，`merge_connections` 写进 backend 条目 `transport`，`PUT /api/engine-connections/{id}/transport {transport}` 保存后 `refresh_backends` 重建驱动（忙时 `pending_idle`，空闲后换），目录 / 连接行多 `activeTransport` + `transports`；前端 `ConnectEngineModal` 高级区一个下拉（`engines.connect.transportMode*`），`enginePresets.setEngineTransport`。驱动 `driver_kind = "native"`，能力表 `kernel/drivers/codex_app_server/capabilities.py` 全为 `declared`。
+
+**测试**（全部假服务与临时目录，不碰 `~/.codex`、真实库或 8877）：`kernel/drivers/codex_app_server/testing/fake_app_server.py`（11 个剧本；`KAUS_FAKE_APP_SERVER_RECORD` 记录收到的请求参数）；`tests/test_translator.py` 9 项、`tests/test_driver.py` 16 项（完整回合、工具增量、命令 / 文件审批接受与拒绝、提问、中断发 `turn/interrupt`、运行中二次发送 409、失败与 `turn/start` 被拒、未登录 → `auth_required`、`thread/resume` 带原 id、模型 / effort / 审批档进 `thread/start` 与 `turn/start`、指令 / 原生 MCP 排除 / Project MCP / 记忆关闭进 `config`、API key 只进子进程、`model/list` 目录、缺二进制 → unavailable、装配函数）；共用契约 `contract_tests/test_codex_app_server_contract.py` 26 通过 / 5 跳过（无 streaming-tool-output 全量快照、无思考状态事件、无认证卡、无子 run、非 HTTP）；`tests/test_engine_connections.py` 新增 1 项（切换持久化、驱动重建、改回、重启保留、未知值回退）；前端 `ConnectEngineModal.test.tsx` 新增 1 项。结果：内核 `cd kernel && pytest -q` 4,422 通过 / 129 跳过（此前 4,371 / 124：+51 本节、+5 契约跳过项）；宿主 `pytest -q tests` 383 通过（此前 382）；前端 `npm run check`（`NODE_OPTIONS=--no-experimental-webstorage`）122 个文件 / 1,086 项、lint、typecheck 与构建通过（此前 1,085）。
+
+**未验证 / 限制**：① 真机一次没跑（`codex` 未安装）：`initialize` 不带 `experimentalApi` 是否足够、`thread/start.config` 深合并、`ephemeral` 线程不落盘、`turn/start.sandboxPolicy` 形状、`item/permissions/requestApproval` 回执、`account/read` 在只有 `OPENAI_API_KEY` 环境变量时的取值，全部待跨 Agent 实测（待办第 8 项）。② 不支持：项目技能范围（报 `skills` 未生效，按原生技能运行）、电脑操作 MCP 装配、`mcpServer/elicitation/request`（一律 decline）、`thread/list` 发现（只用账本）、`thread/fork`。③ `read_engine_settings` 只回最近一次探测 / 会话的模型与 effort。④ 登录仍在 `codex login`；不做 ChatGPT 令牌代理。
+
 ## 11 月 9 日第二期：原生记忆改向
 
 > 核对与调整（同日）：调整后在主目录重跑，内核 4,371 通过 / 124 跳过，宿主 `tests/` 382 通过，前端 122 个文件 / 1,085 项及构建通过（含 API key 入口与本节改动）。「自带记忆未接管」原本作为 `project.unapplied`（`kind: memory`，`native_memory_active`）出现在每条会话里，「机制未验证」也会在每次启动时提醒。关不掉自带记忆的 Agent 很常见（包括日常用的 Hermes），这样每条会话都会冒提示，所以改为只记在 `projection.summary.nativeMemory`，会话里不再提示，项目页的「未接管」标记待做。相应 2 项测试改为断言不提示。

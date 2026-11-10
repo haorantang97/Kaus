@@ -32,7 +32,7 @@ from drivers.instructions_projection import (
     invalid_instruction_entries,
 )
 from drivers.workspace_projection import inspect_block_drift, materialize_block
-from drivers.launch_delivery import home_of, plan_launch, same_directory
+from drivers.launch_delivery import expand_plugins, home_of, plan_launch, same_directory
 from runtime.capability_matrix import SupportLevel, evaluate_support
 from drivers.acp.runtime_state import _now
 
@@ -226,13 +226,18 @@ class AcpProjectionMixin:
         metadata: dict[str, Any] = {}
         summary: dict[str, Any] = {}
         warnings: list[str] = []
+        # 2026-11-09：能力库插件（设计稿第 6 节）。先按这个 Agent 的能力拆开：原生格式留给
+        # 启动钩子原样送；其余把技能目录并进托管技能选择、MCP 并进 Project MCP，再往下投射。
+        binding = self._binding_snapshot(conversation.agent_binding_id)
+        adapter = self._skill_adapter()
+        plugin_expansion = expand_plugins(effective, adapter=self._runtime_adapter(),
+                                          can_project_skills=adapter is not None and binding is not None)
+        effective = plugin_expansion.effective
         mcp_projection = project_mcp_servers(effective)
         if mcp_projection.servers and not (self.quirks.mcp_via_session_new or
                 (self.preset and self.preset.project_mcp_via_runtime)):
             raise UnsupportedCapabilityError("当前引擎不支持项目 MCP；请在项目中停用对应服务后重试")
         warnings.extend(mcp_projection.warnings)
-        binding = self._binding_snapshot(conversation.agent_binding_id)
-        adapter = self._skill_adapter()
         if selection_of(effective) is None:
             self._skill_plans.pop(conversation.id, None)
         if selection_of(effective) is not None and (adapter is None or binding is None):
@@ -273,7 +278,7 @@ class AcpProjectionMixin:
         # 2026-11-09：开对话前自动送达（设计稿第 3 / 3a 节）。算出这次要怎么送：
         # 适配器有启动注入就注入；否则**现在**写工作目录指令文件的受管块；自带 MCP
         # 里未分配给本 Project 的那些记下来，启动时按适配器自己的机制排除。
-        launch_plan = self._plan_launch(conversation, effective, workspace_root)
+        launch_plan = self._plan_launch(conversation, effective, workspace_root, plugins=plugin_expansion)
         summary.update(launch_plan.summary)
         warnings.extend(launch_plan.warnings)
         remember_options = getattr(self._runtime_adapter(), "remember_session_options", None)
@@ -360,6 +365,21 @@ class AcpProjectionMixin:
         )
         return tuple(discover_mcp(sources))
 
+    def _native_plugin_inventory(self, workspace_root: str | None) -> tuple[dict[str, Any], ...]:
+        """这台 Agent 此刻装着、对这个工作目录生效的插件（只读；``drivers.native_plugins``）。
+
+        id 只由 Agent 与 ``<插件>@<市场>`` 决定，与配置库一致；这里的 Project 只是让
+        「项目级安装」按工作目录对上，归属本身不用。
+        """
+        if self.preset is None:
+            return ()
+        from types import SimpleNamespace
+        from drivers.native_plugins import discover_native_plugins
+        env = self.agent_spec.build_env()
+        scope = SimpleNamespace(id="launch", slug="default", parent_project_id=None, workspace_root=workspace_root)
+        return tuple(discover_native_plugins((scope,), home=home_of(env), env=env,
+                                             agents=(self.preset.skill_scope_key or self.preset.id,)))
+
     def _workspace_in_use(self, conversation: Conversation, workspace_root: str | None) -> bool:
         """同一个工作目录里是不是另有会话正在跑（它的进程读的是改之前的文件）。"""
         for state in self._runtimes.values():
@@ -370,7 +390,8 @@ class AcpProjectionMixin:
                 return True
         return False
 
-    def _plan_launch(self, conversation: Conversation, effective: EffectiveCapabilities, workspace_root: str | None):
+    def _plan_launch(self, conversation: Conversation, effective: EffectiveCapabilities, workspace_root: str | None,
+                     *, plugins=None):
         """算这次启动的送达计划并记下来（``start_runtime`` 再把它落到进程规格上）。"""
         root = workspace_root or self._workspace_root_for(conversation.agent_binding_id)
         plan = plan_launch(
@@ -380,7 +401,9 @@ class AcpProjectionMixin:
             workspace_root=root,
             project_id=effective.project_id,
             native_inventory=self._native_mcp_inventory(effective),
+            native_plugin_inventory=self._native_plugin_inventory(root),
             workspace_in_use=self._workspace_in_use(conversation, root),
+            plugins=plugins,
         )
         self._launch_plans[conversation.id] = plan
         return plan

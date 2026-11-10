@@ -738,8 +738,8 @@ class CreateSessionOptions(_DriverModel):
 class UnappliedCapability(_DriverModel):
     """One kind of effective Project capability that did not reach the engine (D-03).
 
-    ``kind`` is ``instructions`` / ``mcp`` / ``skills`` / ``project`` (the
-    effective set itself could not be read). ``names`` are capability ids only;
+    ``kind`` is ``instructions`` / ``mcp`` / ``skills`` / ``plugins`` / ``memory`` /
+    ``project`` (the effective set itself could not be read). ``names`` are capability ids only;
     ``reason`` is a short code such as ``not_materialized``, ``unsupported``,
     ``projection_failed`` or a :data:`ProjectionUnsupportedReason`.
     """
