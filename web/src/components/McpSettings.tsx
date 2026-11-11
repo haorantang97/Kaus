@@ -173,7 +173,7 @@ function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onC
       {detail.sourcePath && <p className="mt-1 break-all text-xs" style={{ color: cream(42) }}>{t("import.source")} · {detail.sourcePath}</p>}
     </div>
 
-    {detail.group !== "notImported" && detail.status !== "missing" && <div className="kaus-mcp-section">
+    {detail.group !== "notImported" && detail.status !== "missing" && detail.status !== "failed" && <div className="kaus-mcp-section">
       <McpToolSwitches key={toolsKey} skillId={id} disabled={detail.disabledTools} onSnapshot={() => void act(async () => {})} />
     </div>}
 

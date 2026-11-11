@@ -86,7 +86,9 @@ class McpManager:
             group = "available"
         server = record.get("server") or {}
         projects = tree["assigned"].get((record.get("capabilityType"), record.get("capabilityId")), [])
-        row = {"id": record["id"], "name": record.get("name") or record["id"], "description": record.get("description") or "",
+        # An Agent's MCP has only a generated "transport · target" description; the row shows that as target.
+        row = {"id": record["id"], "name": record.get("name") or record["id"],
+               "description": (record.get("description") or "") if library else "",
                "origin": "kaus" if library else "agent", "agentKey": record.get("agentKey"), "agentLabel": record.get("agentLabel") or "",
                "group": group, "status": status, "transport": server.get("transport"),
                "target": server.get("url") or " ".join([str(server.get("command") or ""), *map(str, server.get("args") or ())]).strip(),

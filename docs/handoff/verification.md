@@ -18,9 +18,11 @@
 - 从能力库删除：Kaus 添加的整条删掉（定义、密钥、树上分配、工具缓存与开关）；导入的退回「未导入」，Agent 那边的原配置不动。
 - 在 Kaus 添加的 MCP：第一步只支持手动填写（本地命令 + 参数 + 环境变量，或远程地址 + 请求头）。定义存 `<能力库>/mcp/lib-mcp-<12 位>.json`，只存名字；环境变量值和请求头值一律按密钥处理，Fernet 加密存同目录 `.secrets.json`（钥匙 `.key`，目录 0700、文件 0600），接口从不回传明文，编辑时留空保持原值。树上作为通用 `mcp` 行（`capability_id` 以 `lib-mcp-` 开头，模块与内置 MCP 行不受影响），刚添加时挂在根下待分配；开对话时由 `effective.with_library_mcp` 带上 `libraryRef`，`mcp_projection` 现读解密，值只在内存里。没存值的变量解析为空串，状态记为「需要登录或密钥」。
 
+**原始诊断**：取工具清单失败时，`drivers/mcp_tool_list.py` 现在记下最内层异常与该 MCP 自己写到 stderr 的末尾（最多 1500 字），其中出现的环境变量值、请求头值替换为 `***`；此前只有异常类名（如「ExceptionGroup」）。详情里出错时不再重复显示工具区。Agent 自带 MCP 的生成说明（「stdio · 命令」）不再当作说明显示，只作为连接目标。
+
 **代码**：`kernel/drivers/library_mcp.py`（定义与加密存储、`resolve`）、`kernel/app/capabilities/mcp_manager.py`（列表、检查、增改删、绑定、导入与路由 `/api/mcp*`）、`mcp_tools.py`（Kaus 添加的 MCP 的指纹与清单）、`effective.py`、`skill_tree.py`、`drivers/acp/mcp_projection.py`、`session_bootstrap.py`；前端 `McpSettings.tsx`、`McpEditDialog.tsx`、`lib/mcpApi.ts`、`ConfigOverlay.tsx`、`settings.css`、中英文案。
 
-**测试**：新增 `kernel/app/tests/test_mcp_manager.py`（4 项：加密存储与跨 Agent 送达、编辑后重查、缺密钥与出错分组、导入 / 绑定 / 取消绑定 / 不可取消）与 `web/src/components/McpSettings.test.tsx`（3 项）。kernel 4,217 通过、127 跳过；前端 1,081 项通过，构建成功。
+**测试**：新增 `kernel/app/tests/test_mcp_manager.py`（4 项：加密存储与跨 Agent 送达、编辑后重查、缺密钥与出错分组、导入 / 绑定 / 取消绑定 / 不可取消）与 `web/src/components/McpSettings.test.tsx`（3 项），`drivers/tests/test_mcp_tools.py` 补 1 项（stderr 作诊断、密钥遮掉）。隔离实例（端口 8899，假 HOME、5 个假 MCP）里在浏览器走过列表、出错诊断与手动添加；测试值不出现在接口、定义文件与加密文件之外。kernel 4,217 通过、127 跳过；前端 1,081 项通过，构建成功。
 
 **本机测试环境**：Homebrew 的 Node 已是 26，自带的 `localStorage` 遮住了 jsdom 的，现有前端测试全部在 `setup.ts` 的 `localStorage.clear()` 处报错；本次用 `NODE_OPTIONS=--no-experimental-webstorage` 跑通。CI 用自己的 Node 版本，不受影响；本机是否在测试配置里固定这个参数待定。
 

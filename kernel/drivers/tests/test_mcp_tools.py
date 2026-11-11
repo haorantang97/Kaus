@@ -58,6 +58,16 @@ def test_a_server_that_cannot_start_is_reported_not_raised(tmp_path):
     assert failure.value.code == "failed"
 
 
+def test_a_failing_server_keeps_its_own_stderr_as_the_diagnostic_with_keys_masked(tmp_path):
+    script = tmp_path / "broken.py"
+    script.write_text("import os, sys\nsys.stderr.write('cannot open db with token ' + os.environ['TOKEN'] + '\\n')\nsys.exit(1)\n")
+    with pytest.raises(McpListError) as failure:
+        list_tools({"name": "x", "command": sys.executable, "args": [str(script)],
+                    "env": [{"name": "TOKEN", "value": "sk-test-secret-123"}]}, timeout=10)
+    assert failure.value.code == "failed"
+    assert "cannot open db with token ***" in str(failure.value) and "sk-test-secret-123" not in str(failure.value)
+
+
 @pytest.fixture()
 def world(tmp_path):
     unit = SqliteUnitOfWork(tmp_path / "db.sqlite3")
