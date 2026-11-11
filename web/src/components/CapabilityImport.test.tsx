@@ -55,7 +55,7 @@ describe("capability import and change report", () => {
     expect(importCapabilities).toHaveBeenCalledWith("codex", ["new-skill"]);
     await user.click(screen.getByRole("button", { name: "同步" }));
     expect(syncCapability).toHaveBeenCalledWith("pdf");
-    await user.click(screen.getByRole("button", { name: "知道了" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
     expect(ignoreCapabilityChanges).toHaveBeenCalledWith("codex", ["gone"]);
   });
 
@@ -69,7 +69,7 @@ describe("capability import and change report", () => {
     expect(pdf).not.toBeChecked();  // later: nothing preselected
     expect(screen.getByRole("checkbox", { name: "全选" })).not.toBeChecked();
     const check = screen.getByRole("button", { name: "Agent 自查" });
-    expect(check).toHaveAttribute("title", "由该 Agent 只读复核名单里还没定的配置");
+    expect(check).toHaveAttribute("title", "只读复核未判定项");
     expect(screen.getByRole("checkbox", { name: "notes" })).toBeDisabled();
     await user.click(pdf);
     await user.click(screen.getByRole("button", { name: "导入 2 项" }));
@@ -114,6 +114,6 @@ describe("capability import and change report", () => {
     await user.click(await screen.findByRole("button", { name: /Codex/ }));
     expect(await screen.findByRole("checkbox", { name: "Agent 自带记忆" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "Agent 自带记忆" })).not.toBeChecked();
-    expect(screen.getByText("无法按项目关闭，如需清空请在该 Agent 内操作")).toBeVisible();
+    expect(screen.getByText("不可按项目关闭")).toBeVisible();
   });
 });

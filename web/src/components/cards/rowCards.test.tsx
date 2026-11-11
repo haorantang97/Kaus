@@ -190,7 +190,7 @@ describe("折叠态里的状态词（★L 第 5 条）", () => {
     const { ReasoningCard } = await import("./ReasoningCard");
     render(<ReasoningCard status="thinking" summary="在规划" seconds={4} />);
     const row = screen.getByTestId("reasoning-row");
-    expect(row).toHaveTextContent("思考了 4s");
+    expect(row).toHaveTextContent("思考 4s");
     expect(row).not.toHaveTextContent("thinking");
     await user.click(row.querySelector("button") as HTMLButtonElement);
     expect(row).toHaveTextContent("thinking");

@@ -187,15 +187,15 @@ describe("侧栏自动收起的适用范围", () => {
     renderApp("/");
     await waitFor(() => expect(screen.getByTestId("conversation-sidebar")).toBeInTheDocument());
     expect(screen.queryByTestId("sidebar-hotzone")).toBeNull();
-    expect(screen.queryByTitle("钉住侧栏")).toBeNull();
+    expect(screen.queryByTitle("固定侧栏")).toBeNull();
 
     await user.click(screen.getAllByRole("button", { name: "项目" })[0]);
     await waitFor(() => expect(screen.getByTestId("sidebar-hotzone")).toBeInTheDocument());
-    expect(screen.getByTitle("钉住侧栏")).toBeInTheDocument();
+    expect(screen.getByTitle("固定侧栏")).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
     await waitFor(() => expect(screen.queryByTestId("sidebar-hotzone")).toBeNull());
-    expect(screen.queryByTitle("钉住侧栏")).toBeNull();
+    expect(screen.queryByTitle("固定侧栏")).toBeNull();
   });
 });
 
@@ -308,7 +308,7 @@ describe("404 与幽灵页", () => {
     const page = screen.getByTestId("not-found");
     expect(page.querySelectorAll("button")).toHaveLength(0);
     // 项目页的头部动作（新会话 / 到终端打开 / 设置）一个都不该出现。
-    expect(screen.queryByRole("button", { name: "到终端打开" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "在终端打开" })).toBeNull();
   });
 });
 

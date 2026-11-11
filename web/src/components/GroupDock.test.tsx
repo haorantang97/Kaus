@@ -547,7 +547,7 @@ describe("Group 浮窗：删除组", () => {
     await openAndExpand(user, "重构评审组");
     expect(screen.getByTestId("group-delete")).toHaveAccessibleName("删除组");
     await user.click(screen.getByTestId("group-delete"));
-    expect(screen.getByText(/无法恢复/)).toBeInTheDocument();
+    expect(screen.getByText(/不可恢复/)).toBeInTheDocument();
     expect(screen.queryByText(/提升为普通会话/)).toBeNull();
     expect(screen.queryByRole("radio")).toBeNull();
     seed([]);
@@ -569,7 +569,7 @@ describe("Group 浮窗：新建组与推送刷新", () => {
     await user.click(screen.getByTestId("group-dock-pill"));
     await user.click(screen.getByTestId("group-new"));
     await user.type(screen.getByLabelText("组名"), "新组");
-    await user.click(screen.getByRole("button", { name: "建组" }));
+    await user.click(screen.getByRole("button", { name: "创建" }));
 
     expect(api.createGroup).toHaveBeenCalledWith({ title: "新组" });
     // 写完必须重取：列表是后端说了算的（这里是第 2 次调用）。
@@ -861,7 +861,7 @@ describe("batch52 第 5 件：在本组叫什么（AD-173）", () => {
     await user.click(await screen.findByTestId("member-actions-m1"));
     await user.click(screen.getByTestId("member-rename-m1"));
     // 改的是**组内**名字，弹窗那句话得把这件事说清楚。
-    expect(await screen.findByText(/会话自己的标题不变/)).toBeInTheDocument();
+    expect(await screen.findByText(/留空则使用会话标题/)).toBeInTheDocument();
     await user.type(screen.getByTestId("group-rename-input"), "写手");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
@@ -870,7 +870,7 @@ describe("batch52 第 5 件：在本组叫什么（AD-173）", () => {
     );
     // 用户敲的是「写手」，他接下来真的会被告知的名字是「写手#2」——回执说后者。
     await waitFor(() =>
-      expect(screen.getByText("组内改名：写手#2")).toBeInTheDocument(),
+      expect(screen.getByText("已重命名为 写手#2")).toBeInTheDocument(),
     );
   });
 
@@ -1144,7 +1144,7 @@ describe("拖拽入组（★J-4）", () => {
     expect(pill.className).toMatch(/is-drop-target/);
     fireEvent.drop(pill, { dataTransfer: conversationDrag("conversation:9") });
     expect(api.addGroupMember).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByText(/当前有 2 个组/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/请拖到目标组/)).toBeInTheDocument());
     // 停在组列表：每一行都是放置目标。
     expect(screen.getByTestId("group-dock-panel")).toHaveAttribute("data-level", "list");
   });
@@ -1193,7 +1193,7 @@ describe("拖项目进组 = 启动新成员（★J-4，batch43）", () => {
       }),
     );
     expect(api.addGroupMember).not.toHaveBeenCalled();
-    expect(await screen.findByText("已从 X 启动一名成员")).toBeInTheDocument();
+    expect(await screen.findByText("已从 X 添加成员")).toBeInTheDocument();
   });
 
   it("轮盘那头只知道裸名字：落到同一个项目上（matchProjectId）", async () => {
@@ -1212,7 +1212,7 @@ describe("拖项目进组 = 启动新成员（★J-4，batch43）", () => {
     );
     // 拖源没带显示名时退回项目自己的名字，不写一句通名。
     // （toast 是模块级的，上一条用例那句还没散场，所以这里按"至少有一条"验。）
-    expect((await screen.findAllByText("已从 X 启动一名成员")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("已从 X 添加成员")).length).toBeGreaterThan(0);
   });
 
   it("拖到胶囊：只开着一个组时直接从这个项目起一名成员", async () => {
@@ -1240,7 +1240,7 @@ describe("拖项目进组 = 启动新成员（★J-4，batch43）", () => {
 
     fireEvent.drop(pill, { dataTransfer: projectDrag("project:default", "X") });
     expect(api.spawnGroupMember).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getAllByText(/当前有 2 个组/).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(/请拖到目标组/).length).toBeGreaterThan(0));
   });
 
   it.each(["binding_required", "engine_not_selectable"])("项目默认引擎不可用时进入选择流程：%s", async (code) => {
@@ -1253,12 +1253,12 @@ describe("拖项目进组 = 启动新成员（★J-4，batch43）", () => {
 
     await openAndExpand(user, "重构评审组");
     const pane = await screen.findByTestId("group-pane-members");
-    const previousSuccessNotices = screen.queryAllByText("已从 X 启动一名成员").length;
+    const previousSuccessNotices = screen.queryAllByText("已从 X 添加成员").length;
     fireEvent.drop(pane, { dataTransfer: projectDrag("project:default", "X") });
 
     expect(await screen.findByTestId("group-spawn-form")).toBeInTheDocument();
     expect(screen.queryByText("choose an engine")).toBeNull();
-    expect(screen.queryAllByText("已从 X 启动一名成员")).toHaveLength(previousSuccessNotices);
+    expect(screen.queryAllByText("已从 X 添加成员")).toHaveLength(previousSuccessNotices);
   });
 
   it("两种 MIME 互不误触发：会话只走加入，项目只走 spawn", async () => {
@@ -1358,7 +1358,7 @@ describe("Group 浮窗：成员回复进时间线（batch45a）", () => {
     renderDock();
 
     await openAndExpand(user, "重构评审组");
-    expect(await screen.findByTestId("group-turn-tools-t1")).toHaveTextContent("跑了 4 个工具");
+    expect(await screen.findByTestId("group-turn-tools-t1")).toHaveTextContent("4 次工具调用");
     // 工具**只给数**：一个工具名都不该出现在这条时间线上。
     expect(screen.queryByText(/read_file/)).not.toBeInTheDocument();
 
@@ -1380,7 +1380,7 @@ describe("成员终端入口", () => {
     renderDock();
     await openAndExpand(user, "评审");
     await user.click(screen.getByTestId("member-actions-group-member"));
-    await user.click(await screen.findByRole("menuitem", { name: "到终端打开" }));
+    await user.click(await screen.findByRole("menuitem", { name: "在终端打开" }));
     expect(navigate).toHaveBeenCalledWith("/conversations/conversation%3Agroup-member");
     expect(sessionStorage.getItem("kaus.surface.autoExternal")).toBe("conversation:group-member");
   });
@@ -1392,7 +1392,7 @@ describe("成员终端入口", () => {
     renderDock();
     await openAndExpand(user, "评审");
     await user.click(screen.getByTestId("member-actions-m1"));
-    expect(await screen.findByRole("menuitem", { name: "到终端打开" })).toBeDisabled();
+    expect(await screen.findByRole("menuitem", { name: "在终端打开" })).toBeDisabled();
     expect(navigate).not.toHaveBeenCalled();
   });
 
@@ -1403,7 +1403,7 @@ describe("成员终端入口", () => {
     await openAndExpand(user, "评审");
     await user.click(screen.getByTestId("member-actions-m1"));
     await waitFor(() => expect(session.fetchBackendUiCapabilities).toHaveBeenCalledWith("backend:mock"));
-    expect(screen.queryByRole("menuitem", { name: "到终端打开" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "在终端打开" })).toBeNull();
   });
 });
 

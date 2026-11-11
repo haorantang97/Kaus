@@ -56,7 +56,7 @@ _SENSITIVE_SUFFIXES = frozenset({".pem", ".key", ".p12", ".pfx", ".token", ".env
 
 
 def _forbidden() -> ApiError:
-    return ApiError(403, "file_access_denied", "这个文件不在当前会话允许访问的范围内。")
+    return ApiError(403, "file_access_denied", "文件不在会话可访问范围内")
 
 
 def _safe_parts(path: Path) -> bool:
@@ -75,7 +75,7 @@ def _mime_for(path: Path) -> str:
         return "text/plain"
     mime = _MIME_TYPES.get(suffix)
     if mime is None:
-        raise ApiError(415, "file_type_unsupported", "暂不支持这个文件类型。")
+        raise ApiError(415, "file_type_unsupported", "不支持此文件类型")
     return mime
 
 

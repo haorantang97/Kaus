@@ -47,7 +47,7 @@ from runtime.session_host import SessionHost  # noqa: E402
 TEST_TOKEN = "test-token-0123456789"
 SLUG = "batch33"
 
-LOGIN_HINT = "在终端运行 `fake-cli login`，然后重试"
+LOGIN_HINT = "在终端运行 `fake-cli login` 后重试"
 AUTH_METHODS = ("terminal-login", "api-key")
 
 
@@ -61,10 +61,10 @@ class SignedOutDriver(MockDriver):
 
     async def start_runtime(self, conversation, surface="card"):  # noqa: ANN001
         raise AuthRequiredError(
-            "Fake Engine 还没有登录",
+            "Fake Engine 未登录",
             failure=FailureHint(
                 code="auth_required",
-                message="Fake Engine 还没有登录",
+                message="Fake Engine 未登录",
                 hint=LOGIN_HINT,
             ),
             auth_methods=AUTH_METHODS,
@@ -160,7 +160,7 @@ def test_send_message_returns_400_auth_required_with_the_login_command(
     assert response.status_code == 400
     body = response.json()["error"]
     assert body["code"] == "auth_required"
-    assert body["message"] == "Fake Engine 还没有登录"
+    assert body["message"] == "Fake Engine 未登录"
     assert body["detail"]["hint"] == LOGIN_HINT
     assert body["detail"]["cause"] == "auth_required"
 

@@ -46,7 +46,7 @@ from runtime.session_host import SessionHost  # noqa: E402
 TEST_TOKEN = "test-token-0123456789"
 SLUG = "batch35"
 
-SPAWN_MESSAGE = "引擎进程没能拉起来：/nowhere/fake-agent — ENOENT (2)：这个可执行文件不存在"
+SPAWN_MESSAGE = "引擎进程启动失败：/nowhere/fake-agent — ENOENT (2)：这个可执行文件不存在"
 SPAWN_HINT = "在终端手动执行同一条命令看它能否启动"
 
 

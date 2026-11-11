@@ -74,11 +74,11 @@ class GroupCoordinator:
             catalog = await scoped_model_catalog(driver, binding)
             hook = getattr(driver, 'group_context_isolation', None)
             if not hook or not hook():
-                raise ApiError(400, 'coordinator_isolation_unavailable', '该引擎尚未支持组长上下文隔离，请选择已支持的引擎')
+                raise ApiError(400, 'coordinator_isolation_unavailable', '该引擎不支持组长上下文隔离')
         except ApiError:
             raise
         except Exception as exc:
-            raise ApiError(400, 'coordinator_unavailable', '暂时无法读取所选引擎的模型与能力') from exc
+            raise ApiError(400, 'coordinator_unavailable', '无法读取引擎模型与能力') from exc
         snapshot = await register_binding_snapshot(driver, binding, self.repos.projects)
         controls = conversation_controls_of(driver, binding, default={})
         if not catalog.models:
@@ -86,7 +86,7 @@ class GroupCoordinator:
             # catalog. The driver explicitly attests that case; an empty result
             # after failed discovery or authentication never grants this path.
             if catalog.degraded or not getattr(catalog, 'engine_default_available', False):
-                message = next(iter(catalog.diagnostics), None) or '暂时无法读取所选引擎的模型与能力'
+                message = next(iter(catalog.diagnostics), None) or '无法读取引擎模型与能力'
                 raise ApiError(400, 'model_catalog_unavailable', message)
             if config.model_id or config.provider_id:
                 raise ApiError(400, 'model_not_available', '该引擎仅支持使用当前模型配置')

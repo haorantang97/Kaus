@@ -109,7 +109,7 @@ def build_agent_credentials_router(store: AgentCredentialStore, *, auth_policy: 
         try:
             store.set(normalize_backend_id(backend_id), value if isinstance(value, str) else "")
         except ValueError as exc:
-            raise ApiError(400, "invalid_api_key", "请填写有效的 API key。") from exc
+            raise ApiError(400, "invalid_api_key", "API key 无效") from exc
         return {"backendId": normalize_backend_id(backend_id), "configured": True}
 
     @endpoint

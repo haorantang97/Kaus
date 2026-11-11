@@ -76,11 +76,11 @@ export function CapabilityOnboardingStep({ invitation, footerStart, onFinish }: 
   return <div ref={body} role="group" aria-labelledby="capability-onboarding-title" data-testid="capability-onboarding-step">
     <h3 id="capability-onboarding-title" className="kaus-modal-title flex items-center gap-2"><EngineIcon engine={invitation.agentKey} size={20} />{invitation.agentLabel} · {text.title}</h3>
     {showTree && phase === "import" ? <>
-      <p className="mt-1 mb-2 text-xs" style={{ color: cream(58) }}>{counts} · {text.importHint}</p>
+      <p className="mt-1 mb-2 text-xs" style={{ color: cream(58) }}>{counts}</p>
       <CapabilityImportList agentKey={invitation.agentKey} variant="connect" footerStart={footerStart}
         onImported={() => setPhase("arrange")} onSkipped={() => void finish("skipped")} />
     </> : showTree ? <>
-      <p className="mt-1 mb-2 text-xs" style={{ color: cream(58) }}>{counts} · {text.hint}</p>
+      <p className="mt-1 mb-2 text-xs" style={{ color: cream(58) }}>{counts}</p>
       <div className="flex min-h-64" style={{ height: "min(52vh, 520px)" }}>
         <ProjectSkillTree focusProject={status.rootProjectId} initialAgent={invitation.agentKey} onBusyChange={setTreeBusy} />
       </div>

@@ -19,11 +19,11 @@ describe("模块配置里的 Agent", () => {
   it("没接通时给出「去连接」，接通后不显示", async () => {
     const onConnect = vi.fn();
     const { rerender } = render(<WorkbenchRuntimeFields runtime={runtime([])} onConnect={onConnect} />);
-    await userEvent.setup().click(screen.getByRole("button", { name: "去连接" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "连接" }));
     expect(onConnect).toHaveBeenCalled();
     rerender(<WorkbenchRuntimeFields runtime={runtime([{ id: "backend:codex", probeState: "unavailable" }])} onConnect={onConnect} />);
-    expect(screen.getByRole("button", { name: "去连接" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "连接" })).toBeInTheDocument();
     rerender(<WorkbenchRuntimeFields runtime={runtime([{ id: "backend:codex", probeState: "available" }])} onConnect={onConnect} />);
-    expect(screen.queryByRole("button", { name: "去连接" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "连接" })).toBeNull();
   });
 });

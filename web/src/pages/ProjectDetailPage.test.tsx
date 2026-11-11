@@ -192,7 +192,7 @@ describe("项目详情页", () => {
     const head = screen.getByRole("banner");
     expect(within(head).getByText("pronto")).toBeInTheDocument();
     expect(within(head).getByText("运行中")).toBeInTheDocument();
-    for (const label of ["新建对话", "到终端打开"]) {
+    for (const label of ["新建对话", "在终端打开"]) {
       expect(within(head).getByRole("button", { name: label })).toBeInTheDocument();
     }
     // 会话优先于配置，首屏能直接继续已有对话。
@@ -434,7 +434,7 @@ describe("项目详情页", () => {
   it("项目终端打开项目目录，不切换到最近会话", async () => {
     const user = userEvent.setup();
     const props = renderPage();
-    await user.click(await screen.findByRole("button", { name: "到终端打开" }));
+    await user.click(await screen.findByRole("button", { name: "在终端打开" }));
     expect(openProjectTerminal).toHaveBeenCalledWith("project:pronto");
     expect(props.onOpenConversation).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem("kaus.surface.autoExternal")).toBeNull();
@@ -444,13 +444,13 @@ describe("项目详情页", () => {
     mocked.fetchRecentConversations.mockResolvedValue({ conversations: [], count: 0, nextUpdatedAfter: null });
     renderPage();
     await screen.findByRole("heading", { name: "Pronto" });
-    expect(screen.getByRole("button", { name: "到终端打开" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "在终端打开" })).toBeEnabled();
   });
 
   it("未设置项目目录时不猜测其他对话的工作目录", async () => {
     renderPage({ projectRef: "default" });
     await screen.findByRole("heading", { name: "X" });
-    expect(screen.getByRole("button", { name: "到终端打开" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "在终端打开" })).toBeDisabled();
   });
 
   it("会话列表打开原对话，项目和引擎的新建入口分别保留对应去向", async () => {

@@ -211,7 +211,7 @@ describe("第 1 件：运行中按 Enter 进队列，这一轮结束后发出", 
     expect(box).toHaveValue("");
     expect(screen.getByTestId("message-queue")).toHaveTextContent("第二句");
     expect(mocked.saveMessageQueue).toHaveBeenLastCalledWith("conversation:1", [expect.objectContaining({ text: "第二句" })]);
-    await user.click(screen.getByRole("button", { name: "取消这条" }));
+    await user.click(screen.getByRole("button", { name: "移除" }));
     expect(screen.queryByTestId("message-queue")).toBeNull();
     expect(mocked.saveMessageQueue).toHaveBeenLastCalledWith("conversation:1", []);
   });

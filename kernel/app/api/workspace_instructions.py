@@ -82,7 +82,7 @@ def build_workspace_instructions_router(
                 if root:
                     break
         if root is None:
-            raise ApiError(409, WORKSPACE_REQUIRED, "这个项目还没有工作目录；先选一个文件夹")
+            raise ApiError(409, WORKSPACE_REQUIRED, "项目未设置工作目录")
         return root
 
     async def _conventions(project: Any) -> dict[str, dict[str, Any]]:
@@ -175,7 +175,7 @@ def build_workspace_instructions_router(
             raise ApiError(400, "invalid_import_request", "需要 file（文件名）与 mode（import / keep）")
         conventions = await _conventions(project)
         if filename not in conventions:
-            raise ApiError(400, "file_not_declared", f"这个项目的 Agent 没有声明读取 {filename}")
+            raise ApiError(400, "file_not_declared", f"项目 Agent 未声明读取 {filename}")
         root = await _workspace_root(project)
         decisions = await _decisions()
         stamp = datetime.now(tz=timezone.utc).isoformat()
@@ -188,7 +188,7 @@ def build_workspace_instructions_router(
             raise ApiError(409, "workspace_denied", denial)
         text = _read(root, filename)
         if text is None:
-            raise ApiError(404, "file_not_found", f"工作目录里没有 {filename}，或它过大 / 不是文本")
+            raise ApiError(404, "file_not_found", f"{filename} 不存在、过大或非文本文件")
         outside = user_content(text, INSTRUCTIONS_MARKER)
         if not outside:
             raise ApiError(409, "nothing_to_import", f"{filename} 里受管块之外没有内容")
@@ -215,7 +215,7 @@ def build_workspace_instructions_router(
         if outcome.unsupported:
             reason = next((row.reason for row in outcome.unsupported if row.reason), None) or "unsupported"
             detail = next((row.detail for row in outcome.unsupported if row.detail), None) or ""
-            raise ApiError(409, reason, detail or "文件没能换成受管块", capabilityId=row_id)
+            raise ApiError(409, reason, detail or "受管块转换失败", capabilityId=row_id)
         decisions.setdefault(project.id, {})[filename] = {"mode": "import", "at": stamp, "capabilityId": row_id}
         await repositories.settings.save(DECISIONS_KEY, decisions)
         return {"projectId": project.id, "file": filename, "mode": "import",

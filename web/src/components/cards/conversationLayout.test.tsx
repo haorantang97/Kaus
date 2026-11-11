@@ -211,7 +211,7 @@ describe("工具行（G-3）", () => {
         <ToolCard item={tool({ itemId: "tool:c", name: "gamma" })} showOutput />
       </ToolGroup>,
     );
-    expect(screen.getByTestId("tool-group")).toHaveTextContent("运行了 3 个工具");
+    expect(screen.getByTestId("tool-group")).toHaveTextContent("3 次工具调用");
     expect(screen.queryAllByTestId("tool-row")).toHaveLength(0);
 
     await userEvent.click(screen.getAllByRole("button")[0]);
@@ -222,10 +222,10 @@ describe("工具行（G-3）", () => {
 describe("推理行（G-4）", () => {
   it("有耗时写「思考了 Ns」，没耗时只写「思考」", () => {
     const view = render(<ReasoningCard text="想了想" seconds={4.2} />);
-    expect(screen.getByTestId("reasoning-row")).toHaveTextContent("思考了 4s");
+    expect(screen.getByTestId("reasoning-row")).toHaveTextContent("思考 4s");
     view.rerender(<ReasoningCard text="想了想" />);
     expect(screen.getByTestId("reasoning-row")).toHaveTextContent("思考");
-    expect(screen.getByTestId("reasoning-row")).not.toHaveTextContent("思考了");
+    expect(screen.getByTestId("reasoning-row")).not.toHaveTextContent("4s");
   });
 
   it("运行中显示「正在思考…」与三点状态", () => {

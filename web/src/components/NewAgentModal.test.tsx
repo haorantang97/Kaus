@@ -22,7 +22,7 @@ describe("新建项目", () => {
     const onCreated = vi.fn();
     render(<NewAgentModal initialDisplay="" initialId="" onClose={() => {}} onCreated={onCreated} />);
     await user.type(screen.getByPlaceholderText("例如：Marketing"), "site");
-    await user.type(screen.getByPlaceholderText("这个项目做什么、当前目标（选填）"), "公司官网改版");
+    await user.type(screen.getByPlaceholderText("选填"), "公司官网改版");
     await user.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith("site"));
     expect(createProjectMemory).toHaveBeenCalledWith("project:site", { kind: "overview", topic: "项目概述", body: "公司官网改版" });
@@ -41,7 +41,7 @@ describe("新建项目", () => {
     vi.mocked(createProjectMemory).mockRejectedValueOnce(new Error("down"));
     render(<NewAgentModal initialDisplay="" initialId="" onClose={() => {}} onCreated={onCreated} />);
     await user.type(screen.getByPlaceholderText("例如：Marketing"), "docs");
-    await user.type(screen.getByPlaceholderText("这个项目做什么、当前目标（选填）"), "文档站");
+    await user.type(screen.getByPlaceholderText("选填"), "文档站");
     await user.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith("docs"));
   });

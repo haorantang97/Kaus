@@ -139,8 +139,8 @@ describe("auth_required 的行内报错", () => {
   });
 
   it("keeps login diagnostics off the public status line", () => {
-    const failure = new SessionApiError(400, "auth_required", "Codex 还没有登录", {
-      detail: { cause: "auth_required", hint: "在终端运行 `codex login`，然后重试" },
+    const failure = new SessionApiError(400, "auth_required", "Codex 未登录", {
+      detail: { cause: "auth_required", hint: "在终端运行 `codex login` 后重试" },
       authMethods: ["chatgpt"],
     });
     // The typed error retains its login hint for an explicit details/recovery view.
@@ -150,7 +150,7 @@ describe("auth_required 的行内报错", () => {
   });
 
   it("后端没给 hint 时不编一句出来", () => {
-    const failure = new SessionApiError(400, "auth_required", "这台引擎还没有登录", {
+    const failure = new SessionApiError(400, "auth_required", "引擎未登录", {
       detail: { cause: "auth_required" },
     });
     expect(describeFailure(failure)).toBe("请登录此 Agent 后重试");

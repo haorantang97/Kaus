@@ -237,7 +237,7 @@ describe("batch21 前端：终态不可信的那一轮不写耗时", () => {
 
     const tool = await screen.findByTestId("tool-row");
     await waitFor(() => expect(tool.textContent).toMatch(/\ds/));
-    expect(screen.getByTestId("reasoning-row")).toHaveTextContent("思考了");
+    expect(screen.getByTestId("reasoning-row")).toHaveTextContent("思考");
   });
 
   it("失败但不是 `runtime_lost`：耗时仍然是真的，照旧显示", async () => {

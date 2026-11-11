@@ -456,7 +456,7 @@ describe("引擎卡的模型 / 推理强度 / 未就绪（第 4、5 件）", () 
       />,
     );
     expect(screen.getByTestId("engine-model-value")).toHaveTextContent("engine-own");
-    expect(screen.getByText("默认模型 mock-small 未生效，由引擎决定")).toBeInTheDocument();
+    expect(screen.getByText("默认模型 mock-small 未生效")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "模型 · default" })).toBeNull();
   });
 
@@ -550,7 +550,7 @@ describe("登录态三档与原生会话数（batch19，AD-82/93）", () => {
     /* batch40（★L 第 3 条）：**已登录**是"一切正常"，收进详情；未登录才常显。 */
     expect(screen.queryByTestId("engine-auth")).toBeNull();
     await openDetails();
-    expect(screen.getByTestId("engine-auth-detail")).toHaveTextContent("已登录 · 用本机配置的凭据");
+    expect(screen.getByTestId("engine-auth-detail")).toHaveTextContent("已登录 · 本机凭据");
     expect(screen.queryByRole("button", { name: /去登录/ })).toBeNull();
   });
 
@@ -635,11 +635,11 @@ describe("引擎卡：ACP 这类 own-auth 引擎的登录态", () => {
     binding: { ...binding, defaultModelId: null },
     backend: cliBackend,
     capabilities,
-    catalog: { models: [], degraded: true, diagnostics: ["需要先在终端登录：codex login"] },
+    catalog: { models: [], degraded: true, diagnostics: ["需在终端登录：codex login"] },
     auth: {
       state: "signed_out",
       model: "own-auth",
-      hint: "在终端运行 `codex login`，然后重试",
+      hint: "在终端运行 `codex login` 后重试",
     },
   };
 
@@ -654,7 +654,7 @@ describe("引擎卡：ACP 这类 own-auth 引擎的登录态", () => {
     renderPanel([signedOutRow]);
     const auth = screen.getByTestId("engine-auth");
     expect(auth).toHaveTextContent("未登录");
-    expect(auth).toHaveTextContent("在终端运行 `codex login`，然后重试");
+    expect(auth).toHaveTextContent("在终端运行 `codex login` 后重试");
   });
 
   it("own-auth 的「已登录」写明是引擎自报的", async () => {

@@ -36,7 +36,7 @@ describe("Agent 自查", () => {
     const onMarked = vi.fn();
     render(<MemoryRouter><SelfCheckDialog agentKey="codex" agentLabel="Codex" onClose={() => {}} onMarked={onMarked} /></MemoryRouter>);
     expect(await screen.findByText("复核 2 项")).toBeVisible();
-    expect(screen.getByText(/Agent 绑定能力只能由所属 Agent 使用/)).toBeVisible();
+    expect(screen.getByText(/只读复核未判定项/)).toBeVisible();
     const model = screen.getByRole("combobox", { name: "模型" });
     await waitFor(() => expect(screen.getByRole("option", { name: "Small" })).toBeInTheDocument());
     expect(screen.queryByRole("option", { name: "Gone" })).toBeNull();

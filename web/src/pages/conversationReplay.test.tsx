@@ -171,7 +171,7 @@ async function expectWholeRunRendered() {
   expect(await screen.findByText("请列出当前目录")).toBeInTheDocument();
   expect(await screen.findByText("目录里有两个文件。")).toBeInTheDocument();
   expect(screen.getByTestId("tool-row")).toBeInTheDocument();
-  expect(screen.queryByText("发第一条消息开始。")).toBeNull();
+  expect(screen.queryByText("暂无消息")).toBeNull();
   expect(screen.queryByTestId("history-missing")).toBeNull();
 }
 
@@ -270,7 +270,7 @@ describe("batch18 第 1 件：首屏不再用'还没有消息'冒充'还没重�
     render(<ConversationPage conversationId="conversation:1" />);
     await attached();
     expect(screen.getByTestId("timeline-skeleton")).toBeInTheDocument();
-    expect(screen.queryByText("发第一条消息开始。")).toBeNull();
+    expect(screen.queryByText("暂无消息")).toBeNull();
   });
 
   it("快照说 0 条 → 才是真的空会话", async () => {

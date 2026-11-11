@@ -1038,7 +1038,7 @@ def build_group_router(
                 raise GroupApiError(
                     409,
                     "member_duplicate",
-                    "这条会话已经是本组成员",
+                    "会话已在本组",
                     detail={"memberId": member.id, "conversationId": conversation_id},
                 )
 
@@ -1125,7 +1125,7 @@ def build_group_router(
             raise GroupApiError(
                 409,
                 "member_left",
-                "这个成员已经被移出，不能暂停；要让他回来请用 /resume",
+                "成员已移出，无法暂停",
                 detail={"memberId": member.id},
             )
         if member.participation_state == "paused":

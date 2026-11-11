@@ -81,7 +81,7 @@ class SelfCheckService:
             for binding in await self.repositories.bindings.list_for_backend(backend_id):
                 if binding.enabled:
                     return agent, binding
-        raise ApiError(409, "agent_binding_missing", "这个 Agent 还没有加入任何 Project")
+        raise ApiError(409, "agent_binding_missing", "Agent 尚未加入项目")
 
     async def _undecided(self, agent_key: str) -> list[dict]:
         listing = await asyncio.to_thread(self.imports.candidates, agent_key)
@@ -130,7 +130,7 @@ class SelfCheckService:
     async def get(self, conversation_id: str) -> dict:
         record = await self.record(conversation_id)
         if record is None:
-            raise ApiError(404, "self_check_not_found", "这次自查不存在")
+            raise ApiError(404, "self_check_not_found", "自查记录不存在")
         result = {key: record.get(key) for key in ("conversationId", "agentKey", "agentLabel", "status",
                                                    "suggestions", "summary", "error", "createdAt")}
         result["count"] = len(record.get("items") or {})
@@ -149,7 +149,7 @@ class SelfCheckService:
         """``kaus_submit_review``：只收这次自查名单里的条目。"""
         record = await self.record(conversation_id)
         if record is None:
-            raise ApiError(404, "self_check_not_found", "这次自查不存在")
+            raise ApiError(404, "self_check_not_found", "自查记录不存在")
         if not isinstance(items, list):
             raise ApiError(400, "self_check_invalid", "items 必须是列表")
         known = record.get("items") or {}

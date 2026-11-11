@@ -272,7 +272,7 @@ describe("第 1 件：「到终端打开」入口", () => {
     await user.click(button);
     await waitFor(() => expect(mocked.openExternalSurface).toHaveBeenCalledWith("conversation:1", { draft: "还没发送的草稿" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("还没发送的草稿"));
-    expect(await screen.findByText("草稿已复制，可粘贴到终端")).toBeInTheDocument();
+    expect(await screen.findByText("草稿已复制")).toBeInTheDocument();
 
     writeText.mockClear();
     mocked.openExternalSurface.mockResolvedValue({ conversationId: "conversation:1", surface: "external-cli", launch,
@@ -293,7 +293,7 @@ describe("第 1 件：「到终端打开」入口", () => {
     renderPage();
     await user.click(await findOpenButton());
 
-    expect(await screen.findByText(/将结束原终端中的 Agent/)).toBeInTheDocument();
+    expect(await screen.findByText(/将结束原终端并重新打开/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "结束并重新打开" }));
 
     await waitFor(() => expect(mocked.openExternalSurface).toHaveBeenCalledTimes(2));
@@ -322,7 +322,7 @@ describe("第 1 件：「到终端打开」入口", () => {
     renderPage();
     await user.click(await findOpenButton());
     const status = await screen.findByTestId("terminal-status");
-    expect(status).toHaveTextContent("等待你处理");
+    expect(status).toHaveTextContent("等待处理");
     expect(status).toHaveAttribute("title", "Claude needs your permission to use Bash");
     await user.click(screen.getByRole("button", { name: "切到终端" }));
     expect(mocked.focusExternalSurface).toHaveBeenCalledWith("conversation:1");
@@ -352,7 +352,7 @@ describe("第 2 件：外部态（只读）", () => {
     expect(banner).toHaveTextContent("open");
     const box = screen.getByLabelText("消息");
     expect(box).toBeDisabled();
-    expect(box).toHaveAttribute("placeholder", "终端运行中 · 输入暂不可用");
+    expect(box).toHaveAttribute("placeholder", "终端运行中");
     // 入口本身换成了横幅上的「切回 Kaus」，页头那枚不再出现。
     expect(screen.queryByTestId("open-external")).toBeNull();
   });

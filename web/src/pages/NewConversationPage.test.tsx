@@ -831,7 +831,7 @@ describe("first-message attachments and delivery boundaries", () => {
     await waitFor(() => expect(mocked.fetchBackendUiCapabilities).toHaveBeenCalled());
     expect(screen.queryByRole("button", { name: "添加附件" })).toBeNull();
     fireEvent.paste(screen.getByLabelText("消息"), { clipboardData: { files: [new File(["x"], "x.png", { type: "image/png" })] } });
-    expect(screen.getByText(/此引擎尚未确认支持附件/)).toBeInTheDocument();
+    expect(screen.getByText(/引擎未确认支持附件/)).toBeInTheDocument();
     expect(uploadConversationAttachment).not.toHaveBeenCalled();
     expect(mocked.createConversation).not.toHaveBeenCalled();
   });

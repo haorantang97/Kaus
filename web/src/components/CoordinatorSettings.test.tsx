@@ -75,10 +75,10 @@ describe("独立组长", () => {
       method: "PUT", body: expect.objectContaining({ config: expect.objectContaining({ modelId: null, reasoningMode: "medium" }) }) })));
   });
   it("目录或登录失败不会伪装成引擎默认", async () => {
-    api.fetchModelCatalog.mockResolvedValue({ models: [], engineDefaultAvailable: true, degraded: true, diagnostics: ["需要先登录引擎"] });
+    api.fetchModelCatalog.mockResolvedValue({ models: [], engineDefaultAvailable: true, degraded: true, diagnostics: ["引擎未登录"] });
     render(<CoordinatorSettings group={group} />);
     fireEvent.click(screen.getByRole("button", { name: "组长配置" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("需要先登录引擎");
+    expect(await screen.findByRole("alert")).toHaveTextContent("引擎未登录");
     expect(screen.queryByText("引擎默认")).toBeNull();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "设为默认" })).toBeDisabled();

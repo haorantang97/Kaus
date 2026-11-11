@@ -24,14 +24,14 @@ describe("MCP 工具开关", () => {
     await user.click(screen.getByRole("checkbox", { name: "delete_page" }));
     expect(setMcpToolSwitches).toHaveBeenCalledWith("m1", ["read_page", "delete_page"]);
     await waitFor(() => expect(onSnapshot).toHaveBeenCalledWith({ revision: "r2" }));
-    await user.click(screen.getByRole("button", { name: "重新获取工具清单" }));
+    await user.click(screen.getByRole("button", { name: "刷新工具" }));
     expect(fetchMcpTools).toHaveBeenLastCalledWith("m1", true, undefined);
   });
 
   it("says the server needs a login or key before its tools can be listed", async () => {
     vi.mocked(fetchMcpTools).mockResolvedValue({ skillId: "m1", status: "auth_required", tools: [] });
     render(<McpToolSwitches skillId="m1" disabled={[]} onSnapshot={() => {}} />);
-    expect(await screen.findByText("需要登录或密钥才能列出工具，目前只能整体开关")).toBeVisible();
+    expect(await screen.findByText("需登录或密钥，仅支持整体开关")).toBeVisible();
     expect(screen.queryByRole("checkbox")).toBeNull();
   });
 });

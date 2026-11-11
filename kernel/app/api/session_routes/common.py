@@ -294,7 +294,7 @@ def auth_required_error(
     message = (
         failure.message
         if isinstance(failure, FailureHint)
-        else plain_text(str(exc)) or "这台引擎还没有登录"
+        else plain_text(str(exc)) or "引擎未登录"
     )
     return SessionApiError(
         400, "auth_required", message, detail=detail or None, **(extra or {})
@@ -304,7 +304,7 @@ def auth_required_error(
 def spawn_failed_error(
     exc: AgentSpawnError, extra: dict[str, Any] | None = None
 ) -> SessionApiError:
-    """「引擎进程没能拉起来」→ 503 ``agent_spawn_failed``（AD-159）。
+    """「引擎进程启动失败」→ 503 ``agent_spawn_failed``（AD-159）。
 
     为什么不是 500、也不是笼统的 ``runtime_start_failed``：500 说的是「我们
     自己坏了」，而这一条的根因与修法都在用户这台机器上；``runtime_start_failed``
@@ -315,7 +315,7 @@ def spawn_failed_error(
     message = (
         failure.message
         if isinstance(failure, FailureHint)
-        else plain_text(str(exc)) or "引擎进程没能拉起来"
+        else plain_text(str(exc)) or "引擎进程启动失败"
     )
     detail = failure.to_detail() if isinstance(failure, FailureHint) else {}
     return SessionApiError(
@@ -331,11 +331,11 @@ def start_failed_error(exc: BaseException, extra: dict[str, Any]) -> SessionApiE
     """「引擎没能起来」→ 503 ``runtime_start_failed``，认得出根因就带修法。"""
     failure = getattr(exc, "failure", None)
     if isinstance(failure, FailureHint):
-        message = f"引擎没能起来，这条消息一个字都没发出去：{failure.message}"
+        message = f"引擎启动失败，消息未发送：{failure.message}"
         detail = failure.to_detail()
     else:
         message = (
-            "引擎没能起来，这条消息一个字都没发出去："
+            "引擎启动失败，消息未发送："
             f"{type(exc).__name__}: {exc}"
         )
         detail = {}

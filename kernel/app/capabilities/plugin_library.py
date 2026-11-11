@@ -154,7 +154,7 @@ class PluginLibrary:
         """``("git", url)`` 或 ``("local", 绝对路径)``。"""
         text = (source or "").strip()
         if not text:
-            raise ApiError(400, "source_required", "请给出本地目录或 Git 地址")
+            raise ApiError(400, "source_required", "请输入本地目录或 Git 地址")
         scheme = text.split("://", 1)[0].lower() if "://" in text else None
         if scheme is not None:
             if scheme in self.allowed_git_schemes:
@@ -164,7 +164,7 @@ class PluginLibrary:
             return "git", text
         path = Path(os.path.expanduser(text))
         if not path.is_absolute():
-            raise ApiError(400, "source_unsupported", "本地来源请给绝对路径")
+            raise ApiError(400, "source_unsupported", "本地路径须为绝对路径")
         return "local", str(path)
 
     def _clone(self, url: str, target: Path, *, ref: str | None = None) -> str:
@@ -179,7 +179,7 @@ class PluginLibrary:
             result = subprocess.run([*command, "--", url, str(target)], capture_output=True, text=True,
                                     timeout=self.clone_timeout, env=env, check=False, stdin=subprocess.DEVNULL)
         except FileNotFoundError as exc:
-            raise ApiError(500, "clone_failed", "本机没有 git") from exc
+            raise ApiError(500, "clone_failed", "未安装 git") from exc
         except subprocess.TimeoutExpired as exc:
             raise ApiError(504, "clone_failed", f"克隆超时（{int(self.clone_timeout)} 秒）") from exc
         if result.returncode != 0:
@@ -267,13 +267,13 @@ class PluginLibrary:
                 marketplace = read_marketplace(root)
                 if marketplace is not None:
                     if not plugin:
-                        raise ApiError(400, "plugin_required", "这是一个插件市场，请指定要安装的插件名")
+                        raise ApiError(400, "plugin_required", "来源为插件市场，请指定插件名")
                     entry = marketplace.find(plugin)
                     if entry is None:
-                        raise ApiError(404, "plugin_not_in_marketplace", f"市场里没有名为 {plugin} 的插件")
+                        raise ApiError(404, "plugin_not_in_marketplace", f"插件市场中无插件 {plugin}")
                     root, source_record, extra_cleanup = self._resolve_entry(root, entry, source_record=source_record)
                 elif plugin:
-                    raise ApiError(400, "plugin_required", "这个来源本身就是一个插件，不需要插件名")
+                    raise ApiError(400, "plugin_required", "来源为单个插件，无需插件名")
                 package = read_package(root)
             except PackageError as exc:
                 raise _error(exc) from exc
@@ -282,7 +282,7 @@ class PluginLibrary:
                                existing["source"].get("plugin")) == (
                     source_record["type"], source_record["location"], source_record.get("plugin"))
                 if same_source and existing["format"] == package.format and existing["name"] == package.name:
-                    raise ApiError(409, "plugin_already_installed", f"{package.name} 已在能力库里（{existing['id']}）",
+                    raise ApiError(409, "plugin_already_installed", f"{package.name} 已在能力库中（{existing['id']}）",
                                    pluginId=existing["id"])
             plugin_id = "plugin-" + uuid.uuid4().hex[:12]
             folder = self.plugin_dir(plugin_id)

@@ -40,7 +40,7 @@ describe("MCP settings", () => {
     view();
     const bound = await screen.findByRole("region", { name: "Agent 绑定" });
     expect(within(bound).getByText("Agent 自有")).toBeVisible();
-    expect(within(bound).getByRole("img", { name: /仅该 Agent 可用/ })).toBeVisible();
+    expect(within(bound).getByRole("img", { name: /仅所属 Agent 可用/ })).toBeVisible();
     expect(within(screen.getByRole("region", { name: "需要处理" })).getByText("需要登录或密钥")).toBeVisible();
     expect(within(screen.getByRole("region", { name: "未导入" })).getByText("fs")).toBeVisible();
     // Only the unchecked, imported ones are checked on the first visit.
@@ -70,7 +70,7 @@ describe("MCP settings", () => {
     await user.type(screen.getByRole("textbox", { name: "名称" }), "notes");
     await user.type(screen.getByRole("textbox", { name: "命令" }), "python3");
     await user.type(screen.getByRole("textbox", { name: "参数（每行一个）" }), "fake.py{enter}notes");
-    await user.click(screen.getByRole("button", { name: "添加一项" }));
+    await user.click(screen.getByRole("button", { name: "添加" }));
     await user.type(screen.getAllByRole("textbox", { name: "名称" }).at(-1)!, "TOKEN");
     await user.type(screen.getByLabelText("TOKEN 的值"), "secret-value");
     await user.click(screen.getByRole("button", { name: "保存" }));

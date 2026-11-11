@@ -126,7 +126,7 @@ async def test_auth_required_gives_a_degraded_catalog_with_a_login_diagnostic(
     catalog = await driver.get_model_catalog(binding)
     assert catalog.models == ()
     assert catalog.degraded is True
-    assert catalog.diagnostics == ("需要先在终端登录：fake-cli login",)
+    assert catalog.diagnostics == ("需在终端登录：fake-cli login",)
 
 
 async def test_auth_required_shows_up_as_signed_out_with_a_hint(
@@ -138,7 +138,7 @@ async def test_auth_required_shows_up_as_signed_out_with_a_hint(
     auth = await driver.read_auth_state(binding)
     assert auth.state == "signed_out"
     assert auth.model == "own-auth"
-    assert auth.hint == "在终端运行 `fake-cli login`，然后重试"
+    assert auth.hint == "在终端运行 `fake-cli login` 后重试"
     assert auth.checked_at is not None
 
 
@@ -222,7 +222,7 @@ async def test_start_runtime_raises_a_typed_auth_error(
     assert error.auth_methods == ("terminal-login",)
     assert error.failure is not None
     assert error.failure.code == AUTH_REQUIRED
-    assert error.failure.hint == "在终端运行 `fake-cli login`，然后重试"
+    assert error.failure.hint == "在终端运行 `fake-cli login` 后重试"
     # 失败顺手把登录态记下来：引擎卡不用再去问一次。
     assert (await driver.read_auth_state(binding)).state == "signed_out"
 

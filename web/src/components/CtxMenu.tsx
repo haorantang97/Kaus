@@ -118,7 +118,7 @@ export function CtxMenu({
   const Actions = ({ onOk, okLabel, danger, disabled }: { onOk: () => void; okLabel: string; danger?: boolean; disabled?: boolean }) => (
     <div className="mt-2 flex items-center justify-end gap-3 text-xs">
       <button onClick={() => { setErr(null); setRunning(null); setMode("menu"); }} style={{ color: cream(55) }}>
-        取消
+        {t("common.cancel")}
       </button>
       <button disabled={busy || disabled} onClick={onOk} style={{ color: danger ? "var(--danger)" : "var(--accent-text)" }}>
         {okLabel}
@@ -128,7 +128,7 @@ export function CtxMenu({
   const runFork = () => {
     const nextId = forkId.trim();
     if (!nextId) {
-      setErr("新 ID 不能为空");
+      setErr(t("ctx.forkIdRequired"));
       return;
     }
     run(() => forkAgent(node.name, nextId));
@@ -154,20 +154,20 @@ export function CtxMenu({
             }}><MessageSquarePlus className="size-3.5" />{t("project.history.add")}</button>
             <button role="menuitem" disabled={busy} className={item} onClick={() => run(() => setPin(node.name, !node.is_pinned))}>
               {node.is_pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
-              {node.is_pinned ? "取消置顶" : "置顶"}
+              {node.is_pinned ? t("ctx.unpin") : t("ctx.pin")}
             </button>
             <button role="menuitem" disabled={busy} className={item} onClick={() => setMode("rename")}>
               <Pencil className="size-3.5" />
-              改名
+              {t("ctx.rename")}
             </button>
             <button role="menuitem" disabled={busy} className={item} onClick={() => setMode("fork")}>
               <Copy className="size-3.5" />
-              复制
+              {t("ctx.fork")}
             </button>
             {!isDefault && (
               <button role="menuitem" disabled={busy} className={item} style={{ color: "var(--danger)" }} onClick={() => setMode("delete")}>
                 <Trash2 className="size-3.5" />
-                删除
+                {t("ctx.delete")}
               </button>
             )}
           </>
@@ -176,7 +176,7 @@ export function CtxMenu({
         {mode === "rename" && (
           <Field>
             <div className="mb-1 text-[0.7rem]" style={{ color: cream(55) }}>
-              新显示名
+              {t("ctx.displayName")}
             </div>
             <input
               autoFocus
@@ -187,26 +187,26 @@ export function CtxMenu({
               onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) run(() => renameAgent(node.name, renameVal.trim())); }}
             />
             {err && <ErrorNotice error={err} className="mt-1 text-[0.7rem]" />}
-            <Actions onOk={() => run(() => renameAgent(node.name, renameVal.trim()))} okLabel="保存" />
+            <Actions onOk={() => run(() => renameAgent(node.name, renameVal.trim()))} okLabel={t("common.save")} />
           </Field>
         )}
 
         {mode === "fork" && (
           <Field>
             <div className="mb-1 text-[0.7rem]" style={{ color: cream(55) }}>
-              复制为新 ID（小写、连字符）
+              {t("ctx.forkId")}
             </div>
             <input
               autoFocus
               value={forkId}
               onChange={(e) => setForkId(e.target.value)}
-              placeholder="如 trading-2"
+              placeholder={t("ctx.forkIdExample")}
               className="w-full rounded px-2 py-1 text-xs outline-none"
               style={inputStyle}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) runFork(); }}
             />
             {err && <ErrorNotice error={err} className="mt-1 text-[0.7rem]" />}
-            <Actions onOk={runFork} okLabel="复制" />
+            <Actions onOk={runFork} okLabel={t("ctx.fork")} />
           </Field>
         )}
 
@@ -226,7 +226,7 @@ export function CtxMenu({
               {t("project.delete.stopConfirm", { count: running })}
             </div>}
             {err && <ErrorNotice error={err} className="mt-1 text-[0.7rem]" />}
-            <Actions onOk={() => void runDelete()} okLabel={running !== null ? t("project.delete.stopAndDelete") : "删除"} disabled={descendants === null} danger />
+            <Actions onOk={() => void runDelete()} okLabel={running !== null ? t("project.delete.stopAndDelete") : t("ctx.delete")} disabled={descendants === null} danger />
           </Field>
         )}
       </div>

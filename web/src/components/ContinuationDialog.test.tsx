@@ -73,7 +73,7 @@ it("shows readable target capabilities and source-only skills only when expanded
   expect(screen.getByText("Code review")).toBeVisible();
   expect(screen.getByText("Hermes evolution")).toBeVisible();
   expect(screen.queryByText("skills")).toBeNull();
-  expect(screen.getByText("在新对话中继续，发送后开始执行。")).toBeVisible();
+  expect(screen.queryByText("在新对话中继续，发送后开始执行。")).toBeNull();
   expect(createContinuation).not.toHaveBeenCalled();
 });
 

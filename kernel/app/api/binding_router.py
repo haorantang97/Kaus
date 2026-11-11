@@ -471,7 +471,7 @@ def build_binding_write_router(
             backend = await repositories.backends.get(backend_id)
             driver = registry.try_get(backend_id) if registry is not None else None
             if backend is None or driver is None or driver.driver_kind == "mock":
-                raise ApiError(409, "engine_not_connected", "请先接入这个引擎")
+                raise ApiError(409, "engine_not_connected", "引擎未接入")
             require_new_work(driver, backend_id=backend_id)
             ordinary = [
                 item for item in await repositories.bindings.list_for_backend(normalized, backend_id)
@@ -489,7 +489,7 @@ def build_binding_write_router(
                 return binding_to_wire(await repositories.bindings.save(chosen.evolve(enabled=True)))
             new_id = make_binding_id(project.slug, backend.key)
             if await repositories.bindings.get(new_id) is not None:
-                raise ApiError(409, "binding_id_conflict", "这个关联标识已被占用")
+                raise ApiError(409, "binding_id_conflict", "关联标识已被占用")
             binding = AgentBinding.create(
                 project=project, backend=backend, display_name=backend.display_name,
                 is_default=False, origin="domain",
@@ -527,11 +527,11 @@ def build_binding_write_router(
             )
         if not path.exists():
             raise ApiError(
-                400, "workspace_root_not_found", f"这个目录不存在：{raw}"
+                400, "workspace_root_not_found", f"目录不存在：{raw}"
             )
         if not path.is_dir():
             raise ApiError(
-                400, "workspace_root_not_a_directory", f"这不是一个目录：{raw}"
+                400, "workspace_root_not_a_directory", f"不是目录：{raw}"
             )
         updated = await repositories.projects.save(
             project.evolve(workspace_root=str(path), updated_at=_now())
@@ -819,15 +819,14 @@ def build_binding_write_router(
             raise ApiError(
                 409,
                 "default_binding_not_deletable",
-                "默认 Binding 不可删——先把别的 Binding 设成默认"
-                "（POST /api/bindings/{id}/make-default）再删这条",
+                "默认引擎不可解除，请先设置其他默认引擎",
             )
         active = await _active_runtime_ids(binding)
         if active:
             raise ApiError(
                 409,
                 "binding_has_active_runtime",
-                f"这条 Binding 名下还有 {len(active)} 条活跃 Runtime，先停掉再删",
+                f"有 {len(active)} 个运行中的会话，请先停止",
                 activeConversationIds=active,
             )
         # C-4 / v1.0 §16.6：只删 Dashboard 自己的行。

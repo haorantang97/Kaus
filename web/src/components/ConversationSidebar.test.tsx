@@ -100,7 +100,7 @@ describe("会话行菜单", () => {
     actions.deleteConversation.mockResolvedValue({ conversationId: "c1", deleted: true });
     await user.click(screen.getByRole("button", { name: "接口层重构 对话菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
-    expect(screen.getByText(/只删除 Kaus 里的这条对话记录/)).toBeInTheDocument();
+    expect(screen.getByText(/仅删除 Kaus 记录/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "取消" }));
     expect(actions.deleteConversation).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "接口层重构 对话菜单" }));

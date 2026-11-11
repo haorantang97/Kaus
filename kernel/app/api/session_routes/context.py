@@ -203,7 +203,7 @@ class SessionRouteContext:
         message = (
             failure.describe()
             if isinstance(failure, FailureHint)
-            else plain_text(str(exc)) or "这台引擎还没有登录"
+            else plain_text(str(exc)) or "引擎未登录"
         )
         with contextlib.suppress(Exception):
             await self.host.emit_conversation_event(

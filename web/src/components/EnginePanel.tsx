@@ -248,16 +248,6 @@ export function formatCheckedAt(iso: string): string {
   return Number.isNaN(at.getTime()) ? iso : at.toLocaleString();
 }
 
-/** 「这一项后端还没有写端点」。工程状态，不是能力备注，只出现在本面板。 */
-function Pending() {
-  const { t } = useLocale();
-  return (
-    <Pill tone="muted" title={t("common.pending.title")}>
-      {t("common.pending")}
-    </Pill>
-  );
-}
-
 /* ------------------------------------------------------------------ *
  * 可改字段（批次十一第 2 件）
  * ------------------------------------------------------------------ */
@@ -755,7 +745,6 @@ export function EngineCard({
             {model ?? unsetLabel}
           </span>
           {/* 没有模型目录就没得选：只读，不写「本引擎不支持」（AD-71）。 */}
-          <Pending />
         </span>
       )}
       {modelHint && <SourceNote text={modelHint} />}
@@ -778,7 +767,6 @@ export function EngineCard({
           <span style={{ color: reasoning ? undefined : cream(45) }}>
             {reasoning ?? t("engine.value.unset")}
           </span>
-          <Pending />
         </span>
       )}
       {reasoningHint && <SourceNote text={reasoningHint} />}

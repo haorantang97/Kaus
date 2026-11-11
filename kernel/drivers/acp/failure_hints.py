@@ -121,22 +121,22 @@ def auth_required(
     """
     methods = tuple(dict.fromkeys(m for m in auth_methods if m))
     if login_command:
-        hint = f"在终端运行 `{login_command}`，然后重试"
+        hint = f"在终端运行 `{login_command}` 后重试"
     elif methods:
         hint = (
-            "先在终端把这台引擎登录好，然后重试"
-            f"（它列出的登录方式：{'、'.join(methods)}）"
+            "在终端登录后重试"
+            f"（登录方式：{'、'.join(methods)}）"
         )
     else:
-        hint = "先在终端把这台引擎的 CLI 登录好，然后重试"
-    return FailureHint(code=AUTH_REQUIRED, message=f"{engine} 还没有登录", hint=hint)
+        hint = "在终端登录引擎 CLI 后重试"
+    return FailureHint(code=AUTH_REQUIRED, message=f"{engine} 未登录", hint=hint)
 
 
 def login_diagnostic(login_command: str | None) -> str:
     """目录探测撞上登录时，挂在空目录上的那一句（``ModelCatalog.diagnostics``）。"""
     if login_command:
-        return f"需要先在终端登录：{login_command}"
-    return "需要先在终端登录这台引擎，登录后模型列表才会出现"
+        return f"需在终端登录：{login_command}"
+    return "需在终端登录引擎"
 
 
 # --------------------------------------------------------------------------- #
@@ -237,7 +237,7 @@ def spawn_failed(
     detail = f"{cause}；stderr: {excerpt}" if excerpt else cause
     return FailureHint(
         code=AGENT_SPAWN_FAILED,
-        message=f"引擎进程没能拉起来：{executable} — {detail}",
+        message=f"引擎进程启动失败：{executable} — {detail}",
         hint=SPAWN_HINT,
     )
 

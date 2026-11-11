@@ -37,8 +37,8 @@ describe("指令送达", () => {
     const { SessionApiError } = await import("../lib/sessionApi");
     api.fetchInstructionFiles.mockRejectedValue(new SessionApiError(409, "workspace_required", "x"));
     const { rerender } = render(<ProjectInstructionsEditor projectId="project:site" effective={effective(true)} projectLabel={id => id} onChanged={() => {}} />);
-    expect(await screen.findByText(/还没有工作目录/)).toBeInTheDocument();
+    expect(await screen.findByText(/未设置工作目录/)).toBeInTheDocument();
     rerender(<ProjectInstructionsEditor projectId="project:site" effective={effective(false)} projectLabel={id => id} onChanged={() => {}} />);
-    await waitFor(() => expect(screen.queryByText(/还没有工作目录/)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/未设置工作目录/)).toBeNull());
   });
 });

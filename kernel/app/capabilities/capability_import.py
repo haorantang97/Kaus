@@ -337,7 +337,7 @@ class CapabilityImports:
                 if record is None:
                     raise ApiError(404, "capability_not_found", "能力不存在")
                 if record.get("importedAs") or (record.get("imported") and record.get("shared")):
-                    raise ApiError(409, "capability_already_imported", "已导入能力库，不能再标为绑定")
+                    raise ApiError(409, "capability_already_imported", "已导入能力库，无法标为绑定")
                 record["userBound"] = True
                 record["bound"], record["boundReason"] = True, "user_marked"
             self._keep_bound(conn, records)

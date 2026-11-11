@@ -71,7 +71,7 @@ describe("项目记忆卡片", () => {
     expect(rows.find(row => row.textContent?.includes("提交前跑测试"))).toHaveTextContent("从 Codex 导入");
     await user.click(screen.getByRole("button", { name: "改动历史" }));
     const history = await screen.findByTestId("memory-history");
-    expect(history).toHaveTextContent("到期收起 · 冻结 · Kaus");
+    expect(history).toHaveTextContent("已到期 · 冻结 · Kaus");
     expect(history).toHaveTextContent("合并 · 约定 · 从 Codex 导入");
   });
 });

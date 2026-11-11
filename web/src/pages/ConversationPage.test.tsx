@@ -150,7 +150,7 @@ describe("原生历史来源状态", () => {
       historyStorage: { mode: "native_text", status: "source_unavailable", missing: ["native_content_unavailable"], nativeSessionId: "native-1" },
     }));
     expect(screen.queryByTestId("native-history-unavailable")).toBeNull();
-    expect(screen.queryByText("发第一条消息开始。")).toBeNull();
+    expect(screen.queryByText("暂无消息")).toBeNull();
     expect(screen.queryByTestId("history-missing")).toBeNull();
     expect(screen.queryByTestId("external-history-group")).toBeNull();
     expect(screen.queryByText("Stale native body")).toBeNull();
@@ -424,7 +424,7 @@ describe("工具行的分组与骨架（G-3 / G-10）", () => {
     push(envelope(3, { type: "tool.started", callId: "c3", name: "gamma", input: { preview: "三" } }));
 
     const group = await screen.findByTestId("tool-group");
-    expect(group).toHaveTextContent("运行了 3 个工具");
+    expect(group).toHaveTextContent("3 次工具调用");
     expect(screen.queryAllByTestId("tool-row")).toHaveLength(0);
     await userEvent.click(group.querySelector("button")!);
     expect(screen.queryAllByTestId("tool-row")).toHaveLength(3);
@@ -436,7 +436,7 @@ describe("工具行的分组与骨架（G-3 / G-10）", () => {
     const { container } = render(<ConversationPage conversationId="conversation:1" />);
     expect(await screen.findByTestId("timeline-skeleton")).toBeInTheDocument();
     expect(container.querySelectorAll(".kaus-skeleton-line")).toHaveLength(3);
-    expect(screen.queryByText("发第一条消息开始。")).toBeNull();
+    expect(screen.queryByText("暂无消息")).toBeNull();
   });
 });
 

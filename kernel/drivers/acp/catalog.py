@@ -481,7 +481,7 @@ class AcpCatalogMixin:
         """认得出「要先登录」就造一个带修法的异常，顺手把登录态记进缓存。"""
         failure = self._auth_failure(exc)
         if failure is None and looks_like_missing_credentials(exc.code, exc.message):
-            failure = FailureHint(code="auth_required", message="引擎缺少可用的模型凭据", hint="在引擎中配置对应模型服务的 API Key，然后重试。")
+            failure = FailureHint(code="auth_required", message="引擎缺少可用的模型凭据", hint="在引擎中配置模型服务的 API Key 后重试")
         if failure is None:
             return None
         self._catalog[binding_id] = _CatalogSnapshot(

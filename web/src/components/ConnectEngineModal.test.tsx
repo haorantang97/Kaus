@@ -53,7 +53,7 @@ describe("接入引擎面板", () => {
     ] });
     vi.mocked(connectEngine).mockResolvedValue({ backendId: "backend:deepseek-acp", registered: true });
     render(<ConnectEngineModal onClose={() => {}} onAttach={attach} />);
-    const list = await screen.findByRole("listbox", { name: "选一个引擎" });
+    const list = await screen.findByRole("listbox", { name: "选择引擎" });
     expect(within(list).getAllByRole("option")).toHaveLength(1);
     expect(within(list).getByRole("option")).toHaveTextContent("DeepSeek Harness");
     expect(screen.getByTestId("connect-details")).toHaveTextContent("install-community-dsh");
@@ -88,7 +88,7 @@ describe("接入引擎面板", () => {
         probeState: "available", productId: "hermes", productName: "Hermes", preferred: true }),
     ] });
     render(<ConnectEngineModal onClose={() => {}} onAttach={attach} attachable={[{ id: "backend:my-http", displayName: "Hermes HTTP" }]} />);
-    const list = await screen.findByRole("listbox", { name: "选一个引擎" });
+    const list = await screen.findByRole("listbox", { name: "选择引擎" });
     expect(within(list).getAllByRole("option")).toHaveLength(1);
     expect(within(list).getByRole("option")).toHaveTextContent(/^Hermes$/);
     expect(screen.queryByText(/Hermes \(ACP\)|Hermes HTTP/)).toBeNull();
@@ -99,7 +99,7 @@ describe("接入引擎面板", () => {
 
   it("目录来自后端，新增厂家不依赖前端手抄清单", async () => {
     render(<ConnectEngineModal onClose={() => {}} />);
-    const list = await screen.findByRole("listbox", { name: "选一个引擎" });
+    const list = await screen.findByRole("listbox", { name: "选择引擎" });
     await waitFor(() => expect(within(list).getAllByRole("option")).toHaveLength(3));
     expect(screen.getByTestId("connect-preset-new-vendor")).toHaveTextContent("New Vendor");
     expect(fetchEngineCatalog).toHaveBeenCalledWith(expect.any(AbortSignal));

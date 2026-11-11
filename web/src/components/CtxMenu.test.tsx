@@ -12,14 +12,14 @@ it("uses keyboard navigation and restores focus when closed", async () => {
   const view = render(<CtxMenu node={node} x={0} y={0} onClose={close} onChanged={() => {}} />);
   expect(screen.getByRole("menuitem", { name:"添加已有对话" })).toHaveFocus();
   await user.keyboard("{End}"); expect(screen.getByRole("menuitem", { name:"删除" })).toHaveFocus();
-  await user.keyboard("{Home}{ArrowDown}{ArrowDown}"); expect(screen.getByRole("menuitem", { name:"改名" })).toHaveFocus();
+  await user.keyboard("{Home}{ArrowDown}{ArrowDown}"); expect(screen.getByRole("menuitem", { name:"重命名" })).toHaveFocus();
   await user.keyboard("{Escape}"); expect(close).toHaveBeenCalledOnce();
   view.unmount(); expect(opener).toHaveFocus(); opener.remove();
 });
 it("keeps the rename input mounted while typing several characters", async () => {
   const user = userEvent.setup();
   render(<CtxMenu node={node} x={0} y={0} onClose={() => {}} onChanged={() => {}} />);
-  await user.click(screen.getByRole("menuitem", { name:"改名" }));
+  await user.click(screen.getByRole("menuitem", { name:"重命名" }));
   const input = screen.getByRole("textbox");
   await user.clear(input); await user.type(input, "New sample");
   expect(input).toHaveValue("New sample"); expect(input).toHaveFocus();
@@ -38,7 +38,7 @@ it("confirms stopping running conversations before deleting a Project", async ()
   await user.click(screen.getByRole("menuitem", { name: "删除" }));
   expect(screen.getByText("删除「Sample」？其对话将移入“已归档”。")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "删除" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("有 2 个对话正在运行，删除会先停止它们");
+  expect(await screen.findByRole("alert")).toHaveTextContent("2 个对话运行中，删除前将停止");
   expect(remove).toHaveBeenLastCalledWith("sample", { force: false });
   expect(changed).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "停止并删除" }));
@@ -65,7 +65,7 @@ it("names the sub-projects a delete removes together, truncating a long list", a
   expect(await screen.findByText("删除「Sample」及其 5 个子项目（Alpha、Beta、c…）？所有对话将移入“已归档”。")).toBeInTheDocument();
   expect(preview).toHaveBeenCalledWith("sample");
   await user.click(screen.getByRole("button", { name: "删除" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("有 3 个对话正在运行，删除会先停止它们");
+  expect(await screen.findByRole("alert")).toHaveTextContent("3 个对话运行中，删除前将停止");
   await user.click(screen.getByRole("button", { name: "停止并删除" }));
   expect(remove).toHaveBeenLastCalledWith("sample", { force: true });
   remove.mockRestore();

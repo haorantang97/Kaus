@@ -165,7 +165,7 @@ class McpManager:
 
     def update(self, mcp_id: str, definition: Mapping[str, Any]) -> dict:
         if not ID_PATTERN.match(mcp_id):
-            raise ApiError(409, "mcp_not_editable", "只能编辑在 Kaus 里添加的 MCP；Agent 自带的请在该 Agent 里修改")
+            raise ApiError(409, "mcp_not_editable", "仅可编辑手动添加的 MCP")
         try:
             self.library.save(definition, mcp_id)
         except LibraryMcpError as exc:
@@ -186,7 +186,7 @@ class McpManager:
                 self.tree._delete_all(conn, record)
                 self.tree._save_setting(conn, CATALOG_KEY, catalog)
             else:
-                raise ApiError(409, "mcp_not_removable", "这条 MCP 不在能力库里")
+                raise ApiError(409, "mcp_not_removable", "此 MCP 不在能力库中")
             for key in (CACHE_KEY, DISABLED_KEY):
                 table = self.tree._setting(conn, key)
                 if table.pop(mcp_id, None) is not None:
@@ -204,7 +204,7 @@ class McpManager:
     def _native(self, conn, catalog: dict, mcp_id: str) -> dict:
         record = self._mcp(catalog, mcp_id)
         if not record.get("agentKey") or ":" not in str(record.get("capabilityType")):
-            raise ApiError(409, "mcp_not_agent_owned", "在 Kaus 里添加的 MCP 不属于任何 Agent")
+            raise ApiError(409, "mcp_not_agent_owned", "手动添加的 MCP 不属于任何 Agent")
         return record
 
     def _seed_root(self, conn, record: dict) -> None:
@@ -235,9 +235,9 @@ class McpManager:
             catalog = self.tree._sync_catalog(conn, discovered)
             record = self._native(conn, catalog, mcp_id)
             if record.get("boundReason") == "not_isolable":
-                raise ApiError(409, "capability_not_isolable", "原生 Agent 不支持隔离，不能取消绑定")
+                raise ApiError(409, "capability_not_isolable", "原生 Agent 不支持隔离，无法取消绑定")
             if not record.get("bound"):
-                raise ApiError(409, "mcp_not_bound", "这条 MCP 没有绑定")
+                raise ApiError(409, "mcp_not_bound", "此 MCP 未绑定")
             record.pop("userBound", None)
             record["userUnbound"] = True
             record["bound"] = False
@@ -255,7 +255,7 @@ class McpManager:
         record = self._mcp(catalog, mcp_id)
         agent = record.get("agentKey")
         if not agent or record.get("libraryRef"):
-            raise ApiError(409, "mcp_not_agent_owned", "在 Kaus 里添加的 MCP 不属于任何 Agent")
+            raise ApiError(409, "mcp_not_agent_owned", "手动添加的 MCP 不属于任何 Agent")
         ids = [mcp_id]
         if agent not in imports:
             ids += [r["id"] for r in catalog.values() if r.get("agentKey") == agent and r["id"] != mcp_id

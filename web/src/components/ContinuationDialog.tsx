@@ -1,6 +1,6 @@
 import { engineAcceptsNewWork } from "../lib/engineAvailability";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { FileText, GitBranch, LoaderCircle } from "lucide-react";
+import { FileText, LoaderCircle } from "lucide-react";
 import { useLocale } from "../i18n";
 import { Modal, ModalTitle, Button, inputStyle } from "./ui";
 import { createContinuation, previewContinuation, type ContinuationPreview, type ContinuationSource } from "../lib/continuations";
@@ -77,7 +77,6 @@ export function ContinuationDialog({ source, onClose, onCreated, targetProjectId
   return <Modal onClose={busy ? () => undefined : onClose} width={680}>
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t("continuation.title")} tabIndex={-1} onKeyDown={containFocus}>
     <ModalTitle>{t("continuation.title")}</ModalTitle>
-    <p className="mb-4 flex items-center gap-2 text-xs opacity-60"><GitBranch size={14} aria-hidden />{t("continuation.newThread")}</p>
     <label className="mb-4 flex items-center gap-3 text-sm">Agent
       <select ref={agentRef} style={inputStyle()} aria-label={t("continuation.target")} disabled={busy} value={backend} onChange={event => void choose(event.target.value)}>
         <option value="" disabled>{t("continuation.target")}</option>
