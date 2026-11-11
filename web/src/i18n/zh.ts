@@ -1469,4 +1469,9 @@ export const zh = {
   "skillTree.mcpSettings": "MCP 设置",
   "settingsRows.agentMenu": "Agent 菜单",
   "settingsRows.agentMenuFor": "{name} 菜单",
+  "groupRows.materialMenu": "资料菜单",
+  "groupRows.materialMenuFor": "{title} 资料菜单",
+  "groupRows.materialDeleteConfirm": "删除资料「{title}」？",
+  "groupRows.intakeMenu": "记录菜单",
+  "groupRows.intakeMenuFor": "{name} 记录菜单",
 } as const;

@@ -43,6 +43,7 @@
 .workbench-intake-open{display:flex;align-items:center;gap:10px;min-width:0;flex:1;padding:11px 14px;text-align:left;color:inherit;border-radius:12px}
 .workbench-page .workbench-intake-row .workbench-intake-open:hover{background:transparent;box-shadow:none}
 .workbench-intake-row:hover{background:color-mix(in srgb,var(--midground-base) 8%,transparent)}
+.workbench-intake-row:hover .kaus-conversation-menu-trigger,.workbench-intake-row:focus-within .kaus-conversation-menu-trigger{opacity:1}
 .workbench-intake-row strong{font-weight: 400;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .workbench-intake-row span{margin-left:auto;opacity:.52;white-space:nowrap;font-size:12px}
 .workbench-intake-project{display:flex;align-items:center;gap:12px;padding:4px 0 16px}

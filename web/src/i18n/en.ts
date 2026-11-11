@@ -1353,4 +1353,9 @@ export const en: Record<keyof typeof zh, string> = {
   "skillTree.mcpSettings": "MCP settings",
   "settingsRows.agentMenu": "Agent menu",
   "settingsRows.agentMenuFor": "{name} menu",
+  "groupRows.materialMenu": "Material menu",
+  "groupRows.materialMenuFor": "{title} material menu",
+  "groupRows.materialDeleteConfirm": "Delete material “{title}”?",
+  "groupRows.intakeMenu": "Record menu",
+  "groupRows.intakeMenuFor": "{name} record menu",
 };
