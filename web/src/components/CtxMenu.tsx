@@ -1,9 +1,9 @@
 import { ErrorNotice } from "./ui";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Copy, MessageSquarePlus, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Copy, MessageSquarePlus, Pencil, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import { ADD_EXISTING_CONVERSATIONS } from "../lib/projectHistory";
-import { deleteAgent, deletePreview, forkAgent, renameAgent, runningConversationsOf, setPin, type OrgNode } from "../lib/api";
+import { deleteAgent, deletePreview, forkAgent, renameAgent, runningConversationsOf, type OrgNode } from "../lib/api";
 import { cream, dname } from "./ui";
 
 const Field = ({ children }: { children: React.ReactNode }) => <div className="p-2.5">{children}</div>;
@@ -13,7 +13,7 @@ type Mode = "menu" | "rename" | "fork" | "delete";
 /** Sub-project names shown in the delete confirm before truncating. */
 const NAMED_DESCENDANTS = 3;
 
-// Project ⋯ menu (wheel nodes and the project page header) — pin / rename / fork / delete.
+// Project ⋯ menu (wheel nodes and the project page header) — add existing conversations / rename / fork / delete.
 // Positioned at (x, y) = panel top-left. A transparent backdrop closes it.
 export function CtxMenu({
   node,
@@ -152,10 +152,6 @@ export function CtxMenu({
               window.dispatchEvent(new CustomEvent(ADD_EXISTING_CONVERSATIONS, { detail: { projectRef: node.name } }));
               onClose();
             }}><MessageSquarePlus className="size-3.5" />{t("project.history.add")}</button>
-            <button role="menuitem" disabled={busy} className={item} onClick={() => run(() => setPin(node.name, !node.is_pinned))}>
-              {node.is_pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
-              {node.is_pinned ? "取消置顶" : "置顶"}
-            </button>
             <button role="menuitem" disabled={busy} className={item} onClick={() => setMode("rename")}>
               <Pencil className="size-3.5" />
               改名

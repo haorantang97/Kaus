@@ -2,7 +2,7 @@ import { failureSummary } from "../lib/userFacingErrors";
 /* 项目详情页（IA §2.3 / §3，替代 ProfileDrawer 的借位）。
  *
  * 分区顺序：
- *   ① 头部      面包屑 · 显示名 · slug · 状态 chip · 新建对话 / 到终端打开 / 设置
+ *   ① 头部      面包屑 · 显示名 · slug · 状态 chip · 新建对话 / 到终端打开 / 整理技能 / ⋯
  *   ② 会话      `GET /api/conversations?project=`
  *   ③ 指令      ProjectInstructionsEditor：分节、继承、本级改写 / 屏蔽（替代旧守则编辑器）。
  *   ④ 能力      effective-capabilities 表：类型 / 内容摘要 / 来源 / 操作（指令不在这里重复）
@@ -14,11 +14,9 @@ import { failureSummary } from "../lib/userFacingErrors";
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, ChevronRight, Maximize2, MessageSquare, MoreHorizontal, Plus, Sparkles, Terminal, X } from "lucide-react";
+import { ChevronRight, Maximize2, MessageSquare, MoreHorizontal, Plus, Sparkles, Terminal, X } from "lucide-react";
 
 import { useLocale } from "../i18n";
-import { AddExistingConversationsDialog } from "../components/AddExistingConversationsDialog";
-import { ProjectHistoryMenu } from "../components/ProjectHistoryMenu";
 import { ProjectHistoryViewer } from "../components/ProjectHistoryViewer";
 import { useProjectHistory } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
@@ -88,7 +86,6 @@ export function ProjectDetailPage({
   const [projects, setProjects] = useState<ProjectWire[]>([]);
   const [capabilities, setCapabilities] = useState<EffectiveCapabilitiesWire | null>(null);
   const [conversations, setConversations] = useState<ConversationIndexEntryWire[] | null>(null);
-  const [addingHistory, setAddingHistory] = useState(false);
   const [viewHistory, setViewHistory] = useState<ArchiveItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openingTerminal, setOpeningTerminal] = useState(false);
@@ -224,7 +221,6 @@ export function ProjectDetailPage({
               </Pill>
             )}
             <span className="ml-auto flex flex-wrap items-center gap-2">
-              {project && <ProjectHistoryMenu projectName={project.displayName || project.slug} onAdd={() => setAddingHistory(true)} />}
               <Button variant="primary" className="kaus-project-primary" onClick={() => onNewConversation(projectId)}>
                 <span className="inline-flex items-center gap-1">
                   <Plus className="size-4" /> {t("project.action.newConversation")}
@@ -235,6 +231,12 @@ export function ProjectDetailPage({
                 <Terminal className="size-4" aria-hidden="true" />
                 <span className="sr-only">{t("project.action.openTerminal")}</span>
               </Button>
+              {onArrangeSkills && (
+                <Button onClick={() => onArrangeSkills(legacyName)} title={t("skillTree.arrange")} className="!px-2">
+                  <Sparkles className="size-4" aria-hidden="true" />
+                  <span className="sr-only">{t("skillTree.arrange")}</span>
+                </Button>
+              )}
               {/* 改名、删除（含子项目级联确认与强制停止）等与轮盘节点共用 CtxMenu。 */}
               <button type="button" className="kaus-button kaus-button--ghost !px-2" data-testid="project-more"
                 onClick={(event) => onOpenMenu(legacyName, event.currentTarget.getBoundingClientRect())}
@@ -278,21 +280,14 @@ export function ProjectDetailPage({
                   <span className="shrink-0 text-[0.65rem]" style={{ color: cream(45) }}>
                     {tDynamic(`project.conversationStatus.${conversation.status}`, conversation.status)}
                   </span>
-                  <ArrowUpRight size={17} className="kaus-project-conversation-arrow" aria-hidden="true" />
                 </button>
               ))}
               {historyItems.map(item => <button key={item.id} type="button" className="kaus-project-conversation" onClick={() => setViewHistory(item)}>
-                <span className="kaus-project-conversation-icon"><MessageSquare size={17} /></span><span className="min-w-0 flex-1 truncate">{item.title}</span><ArrowUpRight size={17} className="kaus-project-conversation-arrow" aria-hidden="true" />
+                <span className="kaus-project-conversation-icon"><MessageSquare size={17} /></span><span className="min-w-0 flex-1 truncate">{item.title}</span>
               </button>)}
             </div>
           )}
         </Card>
-
-        {onArrangeSkills && <Card title={t("skillTree.title")} icon={Sparkles}>
-          <button type="button" className="kaus-project-conversation" onClick={() => onArrangeSkills(legacyName)}>
-            <span className="flex-1 text-left">{t("skillTree.arrange")}</span><ArrowUpRight size={17} aria-hidden="true" />
-          </button>
-        </Card>}
 
         {/* ③ 指令 */}
         {projectId && <ProjectInstructionsEditor projectId={projectId} effective={capabilities}
@@ -310,7 +305,6 @@ export function ProjectDetailPage({
         />
 
       </div>
-      {addingHistory && project && <AddExistingConversationsDialog projectId={project.id} projectName={project.displayName || project.slug} onClose={() => setAddingHistory(false)} />}
       {viewHistory && <ProjectHistoryViewer item={viewHistory} projectId={projectId} onClose={() => setViewHistory(null)} onOpenConversation={onOpenConversation} />}
     </div>
   );

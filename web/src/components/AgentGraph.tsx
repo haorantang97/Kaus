@@ -797,7 +797,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
                     >
                       <div className="ag-rootline" />
                       <div className="ag-rootnm">{displayName("default")}</div>
-                      <div className="ag-rootsub">{t("graph.rootSub")}</div>
                     </div>
                   </>
                 ) : (
@@ -817,7 +816,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
                       >
                         <Plus className="size-3.5" />
                         <span className="ag-nm">{t("graph.addProject")}</span>
-                        <span className="ag-rl">{t("graph.addProject.under", { name: displayName(path[ci - 1]) })}</span>
                       </div>
                     )}
                   </>
@@ -859,21 +857,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
                     <span className="kaus-project-enter-label">{t(onNewConversation ? "graph.openProject" : "graph.details")}</span>
                   </button>
                 </div>
-              </div>
-              <div className="ag-panel-section">
-                <h3>{t("graph.section.identity")}</h3>
-                <div className="ag-prow"><span>{t("graph.row.type")}</span><span>{sel === "default" ? t("graph.value.apexRoot") : t("graph.value.project")}</span></div>
-                <div className="ag-prow"><span>{t("graph.row.parent")}</span><span>{node.parent ? displayName(node.parent) : t("graph.value.topLevel")}</span></div>
-              </div>
-              <div className="ag-panel-section">
-                <h3>{t("graph.section.structure")}</h3>
-                <div className="ag-stat-row">
-                  <div><strong>{domainKids(sel).length}</strong><span>{t("graph.stat.children")}</span></div>
-                </div>
-              </div>
-              <div className="ag-panel-section">
-                <h3>{t("graph.section.inheritance")}</h3>
-                <div className="ag-prow"><span>{t("graph.row.parentConfig")}</span><span>{node.parent ? t("graph.value.fromParent", { name: displayName(node.parent) }) : t("graph.value.localBaseline")}</span></div>
               </div>
             </>
           )}
