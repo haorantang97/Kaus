@@ -273,7 +273,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
       {entry.inherited && <span className="skill-tree-source" title={t("skillTree.inherited", { name: projectName(entry.sourceProjectId) })}><CornerUpLeft size={12} /><span>{projectName(entry.sourceProjectId)}</span></span>}
       {entry.blocked && <Ban size={13} aria-label={t("skillTree.blocked")} />}
       <button type="button" className="skill-tree-icon skill-tree-more" disabled={busy || locked} aria-label={t("skillTree.actions", { name: skill.name })} title={t("common.more")}
-        onClick={e => { const rect = e.currentTarget.getBoundingClientRect(); setMenu({ ...item, x: Math.min(rect.right - 210, window.innerWidth - 228), y: Math.min(rect.bottom + 4, window.innerHeight - 324) }); }}><MoreHorizontal size={17} /></button>
+        onClick={e => { const rect = e.currentTarget.getBoundingClientRect(); setMenu({ ...item, x: Math.min(rect.right - 210, window.innerWidth - 228), y: Math.min(rect.bottom + 4, window.innerHeight - 324) }); }}><MoreHorizontal size={16} /></button>
     </div>
     </Fragment>;
   };
@@ -309,7 +309,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
         <span className="skill-tree-count">{allEntries.filter(e => !e.blocked && !skillMap.get(e.skillId)?.pendingAssignment).length}</span>
         {onAddProject && <button className="skill-tree-icon skill-tree-more" title={t("graph.addProject")} aria-label={t("skillTree.addChild", { name: project.displayName || project.slug })} onClick={() => onAddProject(project.slug)}><Plus size={16} /></button>}
         {onOpenProject && <button className="skill-tree-icon" title={t("skillTree.openProject")} aria-label={t("skillTree.openNamed", { name: project.displayName || project.slug })} onClick={() => onOpenProject(project.slug)}><CornerDownLeft size={17} /></button>}
-        {onProjectMenu && <button className="skill-tree-icon skill-tree-more" title={t("common.more")} aria-label={t("skillTree.projectActions", { name: project.displayName || project.slug })} onClick={e => onProjectMenu(project.slug, e.currentTarget.getBoundingClientRect())}><MoreHorizontal size={17} /></button>}
+        {onProjectMenu && <button className="skill-tree-icon skill-tree-more" title={t("common.more")} aria-label={t("skillTree.projectActions", { name: project.displayName || project.slug })} onClick={e => onProjectMenu(project.slug, e.currentTarget.getBoundingClientRect())}><MoreHorizontal size={16} /></button>}
       </div>
       {open && <div className="skill-tree-children">
         {common.map(e => renderSkill(e, depth + 1))}

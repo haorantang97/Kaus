@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, Ellipsis, GitBranch, Globe, Terminal } from "lucide-react";
+import { Archive, ArchiveRestore, MoreHorizontal, GitBranch, Globe, Terminal } from "lucide-react";
 
 import { useLocale } from "../../i18n";
 import { UsagePill } from "../../components/cards/UsageBar";
@@ -155,7 +155,7 @@ export function ConversationHeader({
           ) : (
             <span className="kaus-conversation-actions" ref={actionsRef}>
               <button type="button" className="kaus-chat-icon-action" title={t("conversation.actions")} aria-label={t("conversation.actions")}
-                aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen(value => !value)}><Ellipsis size={17} aria-hidden /></button>
+                aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen(value => !value)}><MoreHorizontal size={16} aria-hidden /></button>
               {actionsOpen && <span className="kaus-bar-pop" role="menu" aria-label={t("conversation.actions")}>
                 {onOpenContinuation && <button type="button" role="menuitem" className="kaus-bar-pop-item" disabled={continuationDisabled}
                   onClick={() => { setActionsOpen(false); onOpenContinuation(); }}><GitBranch size={14} aria-hidden />{t("continuation.title")}</button>}

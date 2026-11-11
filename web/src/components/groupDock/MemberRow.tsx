@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Ellipsis, Terminal } from "lucide-react";
+import { MoreHorizontal, Terminal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useLocale, type DictKey } from "../../i18n";
@@ -88,7 +88,7 @@ function MemberActions({
         data-testid={`member-actions-${member.id}`}
         onClick={() => setOpen((current) => !current)}
       >
-        <Ellipsis size={16} aria-hidden />
+        <MoreHorizontal size={16} aria-hidden />
       </button>
       {open && (
         <span className="kaus-bar-pop" role="menu" aria-label={t("group.member.actions")}>

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Archive, EllipsisVertical, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Archive, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import "./conversation-row-menu.css";
 
@@ -74,7 +74,7 @@ export function RowMenu({ triggerLabel, menuLabel, busy = false, items, point, t
       title={menuLabel} aria-haspopup="menu" aria-expanded={open} disabled={busy}
       onClick={() => { setAt(null); setOpen(value => !value); }} onKeyDown={event => {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setAt(null); setOpen(true); }
-      }}><EllipsisVertical size={16} aria-hidden /></button>
+      }}><MoreHorizontal size={16} aria-hidden /></button>
     {open && createPortal(<div ref={panel} className="kaus-conversation-menu" role="menu" aria-label={menuLabel}
       onKeyDown={event => {
         if (event.nativeEvent.isComposing) return;
@@ -95,8 +95,10 @@ export function RowMenu({ triggerLabel, menuLabel, busy = false, items, point, t
   </span>;
 }
 
-export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, onRename, onArchive, onDelete }: {
+export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, onRename, onArchive, onDelete, point }: {
   title: string;
+  /** Row right-click opens the same menu at the pointer. */
+  point?: RowMenuPoint | null;
   pinned: boolean;
   canArchive: boolean;
   busy: boolean;
@@ -107,7 +109,7 @@ export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, on
   onDelete?: () => void;
 }) {
   const { t } = useLocale();
-  return <RowMenu busy={busy}
+  return <RowMenu busy={busy} point={point}
     triggerLabel={t("conversation.menuFor", { title })}
     menuLabel={t("conversation.menu")}
     items={[

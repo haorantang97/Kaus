@@ -14,7 +14,7 @@ import { ConversationStatusMark } from "./ConversationStatusMark";
 import { backendDisplay } from "../lib/backend-display";
 import { readCollapsedGroups, writeCollapsedGroups } from "../lib/shellPrefs";
 import { archiveConversation, deleteConversation, patchConversation } from "../lib/sessionApi";
-import { ConversationRowMenu } from "./ConversationRowMenu";
+import { ConversationRowMenu, type RowMenuPoint } from "./ConversationRowMenu";
 import { usePointerDrag, type DragPosition } from "../lib/pointerDrag";
 
 /* 侧栏 = 会话列表（★定稿 B / AD-79）。
@@ -91,6 +91,9 @@ export function ConversationSidebar({
   const beginDrag = usePointerDrag();
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [pins, setPins] = useState(readSidebarPins);
+  // Row right-click opens the row's ⋯ menu at the pointer (same menu, same actions).
+  const [menuPoint, setMenuPoint] = useState<{ id: string; point: RowMenuPoint } | null>(null);
+  const menuSeq = useRef(0);
   const [drop, setDrop] = useState<{ id: string; after: boolean } | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const savePins = (next: SidebarPins) => {
@@ -268,6 +271,7 @@ export function ConversationSidebar({
                          ——一行里同时有标题、组名、终端图标、引擎字母和时间时，
                          最先被挤掉的恰恰是标题（真机上就是这样）。 */
                       title={engineName ? `${conversation.title} · ${engineName}` : conversation.title}
+                      onContextMenu={event => { event.preventDefault(); menuSeq.current += 1; setMenuPoint({ id: conversation.id, point: { x: event.clientX, y: event.clientY, seq: menuSeq.current } }); }}
                     >
                       <ConversationStatusMark status={status} />
                       {renaming?.id === conversation.id ? <input className="kaus-sidebar-title-input" autoFocus aria-label={t("sidebar.renameField")}
@@ -290,7 +294,8 @@ export function ConversationSidebar({
                         onPin={() => savePins({ ...pins, [group.projectId]: isPinned ? pinned.filter(id => id !== conversation.id) : [...pinned, conversation.id] })}
                         onRename={() => setRenaming({ id: conversation.id, title: conversation.title })}
                         onArchive={() => { void archive(conversation.id, group.projectId); }}
-                        onDelete={() => { void remove(conversation.id, group.projectId, conversation.title); }} />
+                        onDelete={() => { void remove(conversation.id, group.projectId, conversation.title); }}
+                        point={menuPoint?.id === conversation.id ? menuPoint.point : null} />
                     </div>
                   );
                 })}

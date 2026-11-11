@@ -44,6 +44,12 @@ describe("会话行菜单", () => {
     expect(readSidebarPins()["project:pronto"]).toEqual([]);
     expect(onOpen).not.toHaveBeenCalled();
   });
+  it("右键会话行打开同一份菜单，不打开会话", async () => {
+    const user = userEvent.setup(), { onOpen } = setup();
+    await user.pointer({ keys: "[MouseRight]", target: screen.getByText("接口层重构") });
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["置顶", "重命名", "归档", "删除"]);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
   it("支持键盘菜单导航、Escape回焦及点击外部关闭", async () => {
     const user = userEvent.setup(); setup();
     const trigger = screen.getByRole("button", { name: "接口层重构 对话菜单" });

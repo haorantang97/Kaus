@@ -1,6 +1,6 @@
 import { WorkbenchModuleIcon } from "../components/WorkbenchModuleIcon";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowUpRight, EyeOff, LoaderCircle, MoreHorizontal, Pin, PinOff, Plus, Power, RefreshCw, Settings2, Trash2 } from "lucide-react";
+import { ArrowUpRight, EyeOff, LoaderCircle, MoreHorizontal, Pin, PinOff, Plus, Power, RefreshCw, Settings2, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import { confirmAsync } from "../components/ui";
 import { WorkspacePicker } from "../components/WorkspacePicker";
@@ -60,7 +60,7 @@ export function WorkbenchPage({moduleId,modules,loading,failed,onRefresh,navigat
     {!item.builtin&&<button role="menuitem" disabled={busy} onClick={()=>void remove(item)}><Trash2 size={15}/>{t("workbench.remove")}</button>}
   </div>;
   return <div className={`workbench-page ${moduleId?"is-module":""}`}>
-    <header className="workbench-header"><div className="workbench-heading">{moduleId&&<button className="kaus-chat-icon-action" aria-label={t("workbench.title")} title={t("workbench.title")} onClick={()=>navigate(workbenchPath())}><ArrowLeft size={18}/></button>}<h1>{module?.name??t("workbench.title")}</h1></div><div className="workbench-actions">
+    <header className="workbench-header"><div className="workbench-heading"><h1>{module?.name??t("workbench.title")}</h1></div><div className="workbench-actions">
       {module?<button className="kaus-chat-icon-action" title={t("workbench.config")} aria-label={t("workbench.config")} onClick={()=>setConfig(module.id)}><Settings2 size={18}/></button>:<button className="workbench-primary" disabled={busy} onClick={()=>void pick()}>{busy?<LoaderCircle size={17} className="kaus-ui-spin"/>:<Plus size={17}/>} {t("workbench.add")}</button>}
     </div></header>
     {actionError&&<div className="workbench-inline-error" role="alert">{actionError}</div>}
@@ -69,7 +69,7 @@ export function WorkbenchPage({moduleId,modules,loading,failed,onRefresh,navigat
       {!modules.length&&<div className="workbench-empty">{t("workbench.empty")}</div>}
       {!modules.length&&<WorkbenchExamples onInstalled={item=>{notifyWorkbenchChanged();onRefresh();navigate(workbenchPath(item.id));}}/>}
       {modules.map(item=><article key={item.id} className={`workbench-card ${!item.enabled?"is-disabled":""}`} draggable={item.enabled} onDragStart={event=>writeModuleDrag(event,item.id)}>
-        <div className="workbench-card-top"><div className="workbench-module-icon"><WorkbenchModuleIcon module={item} size={25}/></div><button className="kaus-chat-icon-action" aria-label={`${item.name} · ${t("common.more")}`} onClick={()=>setMenu(menu===item.id?null:item.id)}><MoreHorizontal size={18}/></button>{menu===item.id&&actions(item)}</div>
+        <div className="workbench-card-top"><div className="workbench-module-icon"><WorkbenchModuleIcon module={item} size={25}/></div><button className="kaus-chat-icon-action" aria-label={`${item.name} · ${t("common.more")}`} onClick={()=>setMenu(menu===item.id?null:item.id)}><MoreHorizontal size={16}/></button>{menu===item.id&&actions(item)}</div>
         <button className="workbench-card-open" onClick={()=>navigate(workbenchPath(item.id))}><h2>{item.name}</h2>{item.description&&<p>{item.description}</p>}<footer><span>{!item.enabled&&t("workbench.disabled")}</span><ArrowUpRight size={18}/></footer></button>
       </article>)}
     </div>}

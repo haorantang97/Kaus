@@ -241,7 +241,7 @@ export function ProjectDetailPage({
               <button type="button" className="kaus-button kaus-button--ghost !px-2" data-testid="project-more"
                 onClick={(event) => onOpenMenu(legacyName, event.currentTarget.getBoundingClientRect())}
                 disabled={!net?.nodes[legacyName]} title={t("common.more")} aria-label={t("common.more")} aria-haspopup="menu">
-                <MoreHorizontal className="size-4" aria-hidden="true" />
+                <MoreHorizontal size={16} aria-hidden="true" />
               </button>
             </span>
           </div>
@@ -426,7 +426,7 @@ function CapabilityRowMenu({
         disabled={busy}
         onClick={() => setOpen((value) => !value)}
       >
-        <MoreHorizontal className="size-3.5" />
+        <MoreHorizontal size={16} />
       </button>
       {open && (
         <span className="kaus-bar-pop" role="menu" aria-label={t("capabilities.action.aria")}>

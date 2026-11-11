@@ -24,7 +24,7 @@ export function CardRowMenu<A extends string>({ label, actions, busy, actionLabe
     <span className="kaus-cap-menu" ref={ref}>
       <button type="button" className="kaus-cap-menu-button" aria-label={label} title={label}
         aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen(value => !value)}>
-        <MoreHorizontal className="size-3.5" />
+        <MoreHorizontal size={16} />
       </button>
       {open && (
         <span className="kaus-bar-pop" role="menu" aria-label={label}>
