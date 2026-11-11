@@ -82,7 +82,7 @@ export function CapabilityOnboardingStep({ invitation, footerStart, onFinish }: 
     </> : showTree ? <>
       <p className="mt-1 mb-2 text-xs" style={{ color: cream(58) }}>{counts}</p>
       <div className="flex min-h-64" style={{ height: "min(52vh, 520px)" }}>
-        <ProjectSkillTree focusProject={status.rootProjectId} initialAgent={invitation.agentKey} onBusyChange={setTreeBusy} />
+        <ProjectSkillTree focusProject={status.rootProjectId} initialAgent={invitation.agentKey} onBusyChange={setTreeBusy} embedded />
       </div>
     </> : <p role="status" className="flex min-h-40 items-center justify-center gap-2 text-xs" style={{ color: cream(50) }}><Spinner />{text.loading}</p>}
     {failed && <p role="alert" className="mt-2 text-xs" style={{ color: "var(--danger)" }}>{text.failure}</p>}

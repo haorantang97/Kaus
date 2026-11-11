@@ -23,6 +23,8 @@ interface Props {
   onProjectMenu?: (slug: string, rect: DOMRect) => void;
   onAddProject?: (slug: string) => void;
   onReparentProject?: (slug: string, parent: string) => void;
+  /** Inside the connect flow: only arranging; no import, plugin or change-report entries, no links out. */
+  embedded?: boolean;
 }
 type Item = { skill: SkillTreeSkill; entry: SkillTreeEntry };
 type HookEvent = "session_start" | "prompt_submit" | "before_tool" | "after_tool" | "after_file_edit" | "turn_end" | "session_end";
@@ -31,7 +33,7 @@ type Drag = Item & { pointerId: number; x: number; y: number; active: boolean };
 type Menu = Item & { x: number; y: number };
 type Pending = { action: Omit<SkillTreeAction, "revision">; skill: SkillTreeSkill; target: SkillTreeProject; affected: SkillTreeProject[] };
 
-export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, onOpenProject, onBusyChange, onFocusProject, onProjectMenu, onAddProject, onReparentProject }: Props) {
+export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, onOpenProject, onBusyChange, onFocusProject, onProjectMenu, onAddProject, onReparentProject, embedded = false }: Props) {
   const { t } = useLocale();
   const treeId = useId();
   const [data, setData] = useState<SkillTreeSnapshot | null>(null);
@@ -264,10 +266,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
         : skill.kind === "plugin" ? <Puzzle size={15} className="skill-tree-type" role="img" aria-label={t("library.plugin")} />
         : skill.kind === "hook" ? <Anchor size={15} className="skill-tree-type" role="img" aria-label={t("hook.kind")} />
         : <FileText size={15} className="skill-tree-type" aria-hidden="true" />}
-      {/* MCP 本身的设置（状态、工具开关、绑定）只在设置 → MCP（2026-11-12：一个功能一处入口）；点名称即打开。 */}
-      {skill.kind === "mcp"
-        ? <button type="button" className="skill-tree-name skill-tree-link" title={skill.description || skill.name} onClick={() => openMcp(skill.id)}>{skill.name}</button>
-        : <span className="skill-tree-name" title={skill.kind === "hook" ? hookDetail(skill) : skill.description || skill.name}>{skill.name}</span>}
+      <span className="skill-tree-name" title={skill.kind === "hook" ? hookDetail(skill) : skill.description || skill.name}>{skill.name}</span>
       {skill.kind === "hook" && skill.event && <span className="skill-tree-source" title={hookDetail(skill)}>{hookEvent(skill)}</span>}
       {skill.bound && <span className="skill-tree-type" role="img" aria-label={locked ? t("skillTree.notIsolable") : t("skillTree.bound")} title={locked ? t("skillTree.notIsolable") : t("skillTree.bound")}><Lock size={12} aria-hidden="true" /></span>}
       {skill.pendingAssignment && <span className="skill-tree-pending">{t("skillTree.pendingAssignment")}</span>}
@@ -345,11 +344,13 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
       <span className="skill-tree-status" role="status">{busy ? <Spinner /> : status && <Check size={14} aria-label={status} />}</span>
       <button className="skill-tree-icon" disabled={!undoToken || busy} title={t("skillTree.undo")} aria-label={t("skillTree.undo")} onClick={() => undoToken && void write({ action: "undo", undoToken })}><Undo2 size={18} /></button>
       <button className="skill-tree-icon" disabled={busy} title={t("skillTree.refresh")} aria-label={t("skillTree.refresh")} onClick={() => void load()}><RotateCcw size={16} /></button>
+      {!embedded && <>
       <button className="skill-tree-icon" disabled={busy} title={t("library.addButton")} aria-label={t("library.addButton")} onClick={() => setAddingPlugin(true)}><Puzzle size={16} /></button>
       <button className="skill-tree-icon" disabled={busy} title={t("skillTree.importButton")} aria-label={t("skillTree.importButton")} onClick={() => setImporting(true)}><Download size={16} /></button>
       <button className="skill-tree-icon skill-tree-changes" disabled={busy} title={t("changes.title")} aria-label={unseenChanges ? t("changes.unseen") : t("changes.title")} onClick={() => setChangesOpen(true)}>
         <Bell size={16} />{unseenChanges && <span className="skill-tree-dot" data-testid="capability-changes-dot" />}
       </button>
+      </>}
     </div>
     {importing && <CapabilityImportDialog onClose={() => setImporting(false)} onImported={() => { setImporting(false); toast(t("import.done"), "ok"); void load(); }} />}
     {changesOpen && <CapabilityChangesPanel onClose={() => setChangesOpen(false)} onChanged={() => void load()} />}
@@ -377,6 +378,9 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
           <button role="menuitem" onClick={() => void write({ action: "block", skillId: menu.skill.id, targetProjectId: menu.entry.projectId })}><Ban size={15} />{t("skillTree.block")}</button>
           {canClearOverride && <button role="menuitem" onClick={() => void write({ action: "remove", skillId: menu.skill.id, targetProjectId: menu.entry.projectId })}><Trash2 size={15} />{t("skillTree.remove")}</button>}
         </> : <button role="menuitem" disabled={menu.entry.inherited} onClick={() => void write({ action: "restore", skillId: menu.skill.id, targetProjectId: menu.entry.projectId })}><RotateCcw size={15} />{t("skillTree.restore")}</button>}
+        {/* MCP 本身的设置（状态、工具开关、绑定）只在设置 → MCP（2026-11-12：一个功能一处入口）。 */}
+        {menu.skill.kind === "mcp" && !embedded && <><hr />
+          <button role="menuitem" onClick={() => { setMenu(null); openMcp(menu.skill.id); }}><Plug size={15} />{t("skillTree.mcpSettings")}</button></>}
         {menu.skill.kind === "plugin" && menu.skill.pluginId && <><hr />
           <button role="menuitem" onClick={() => void uninstallPlugin(menu.skill)}><Trash2 size={15} />{t("library.remove")}</button></>}
       </div>

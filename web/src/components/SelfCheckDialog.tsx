@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Check, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useLocale } from "../i18n";
 import { conversationPath } from "../lib/routes";
@@ -7,16 +7,19 @@ import { fetchModelCatalog, type ModelDescriptorWire } from "../lib/sessionApi";
 import {
   fetchSelfCheck, fetchSelfCheckOptions, markCapabilitiesBound, startSelfCheck, type SelfCheckOptions, type SelfCheckRun,
 } from "../lib/skillTreeApi";
-import { Button, Modal, ModalTitle, Pill, Spinner, cream, inputStyle } from "./ui";
+import { Button, Pill, Spinner, confirmAsync, cream, inputStyle } from "./ui";
 
 const POLL_MS = 2000;
 
-/* 「Agent 自查」（2026-11-11）：像一个对话窗口。所选 Agent 只读复核它名单里还没定的配置，
-   回答列出属于或疑似属于 Agent 绑定的条目，每条下面写理由；点条目名直接标为绑定。 */
-export function SelfCheckDialog({ agentKey, agentLabel, onClose, onMarked }: {
+/* 「Agent 自查」（2026-11-11）：所选 Agent 只读复核它名单里还没定的配置，回答列出属于或疑似属于
+   Agent 绑定的条目，每条下面写理由；点条目名确认后标为绑定。2026-11-12 起在导入名单的同一窗口里
+   替换内容显示（返回回到名单），不再叠一层弹窗。 */
+export function SelfCheckPanel({ agentKey, agentLabel, onBack, onLeave, onMarked }: {
   agentKey: string;
   agentLabel: string;
-  onClose: () => void;
+  onBack: () => void;
+  /** Leaving the import window entirely (to open the self-check conversation). */
+  onLeave?: () => void;
   onMarked: () => void;
 }) {
   const { t } = useLocale();
@@ -57,17 +60,20 @@ export function SelfCheckDialog({ agentKey, agentLabel, onClose, onMarked }: {
     finally { setBusy(false); }
   };
   const mark = async (id: string) => {
+    if (!await confirmAsync(t("mcp.bindConfirm", { agent: agentLabel }), { okLabel: t("selfCheck.markBound") })) return;
     setBusy(true); setError(null);
     try { await markCapabilitiesBound(agentKey, [id]); setMarked(old => new Set(old).add(id)); onMarked(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
     finally { setBusy(false); }
   };
-  const openConversation = () => { if (run) { onClose(); navigate(conversationPath(run.conversationId)); } };
+  const openConversation = () => { if (run) { onLeave?.(); navigate(conversationPath(run.conversationId)); } };
   const name = (item: { kind: string; name: string | null }) => item.kind === "memory" ? t("import.nativeMemory") : item.name ?? "";
 
-  return <Modal onClose={onClose} width={620}>
-    <ModalTitle><span className="inline-flex items-center gap-2"><ShieldCheck size={18} />{t("selfCheck.title")} · {agentLabel}</span></ModalTitle>
-    <p className="mt-1 text-xs leading-relaxed" style={{ color: cream(58) }}>{t("selfCheck.explain")}</p>
+  return <div data-testid="self-check-panel">
+    <div className="flex items-center gap-2 text-sm">
+      <button type="button" className="skill-tree-icon" title={t("import.cancel")} aria-label={t("import.cancel")} onClick={onBack}><ArrowLeft size={15} /></button>
+      <ShieldCheck size={16} aria-hidden="true" /><span>{t("selfCheck.title")} · {agentLabel}</span>
+    </div>
     <div className="mt-3 flex items-center gap-2">
       <select aria-label={t("selfCheck.model")} value={model} disabled={!options || busy || running}
         onChange={event => setModel(event.target.value)} style={{ ...inputStyle(), flex: 1 }}>
@@ -101,7 +107,6 @@ export function SelfCheckDialog({ agentKey, agentLabel, onClose, onMarked }: {
                     title={t("selfCheck.markBound")} aria-label={t("selfCheck.markBoundOf", { name: name(item) })}
                     onClick={() => void mark(item.id)}>{name(item)}</button>}
               <Pill tone={item.verdict === "bound" ? "gold" : "muted"}>{t(`selfCheck.verdict.${item.verdict}`)}</Pill>
-              {marked.has(item.id) && <span className="text-xs" style={{ color: cream(50) }}>{t("selfCheck.marked")}</span>}
             </div>
             <p className="mt-0.5 text-xs leading-relaxed" style={{ color: cream(62) }}>{item.reason}</p>
           </li>)}
@@ -109,10 +114,8 @@ export function SelfCheckDialog({ agentKey, agentLabel, onClose, onMarked }: {
       </>}
       {error && <p role="alert" className="text-xs" style={{ color: "var(--danger)" }}>{error}</p>}
     </div>
-    <div className="mt-4 flex items-center gap-2">
-      {run && <Button onClick={openConversation}><ArrowUpRight size={14} />{t("selfCheck.openConversation")}</Button>}
-      <span className="flex-1" />
-      <Button onClick={onClose}>{t("common.close")}</Button>
-    </div>
-  </Modal>;
+    {run && onLeave && <div className="mt-4 flex items-center gap-2">
+      <Button onClick={openConversation}><ArrowUpRight size={14} />{t("selfCheck.openConversation")}</Button>
+    </div>}
+  </div>;
 }

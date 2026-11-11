@@ -9,7 +9,12 @@ type Pair = { key: string; value: string };
 /* 添加或编辑在 Kaus 里添加的 MCP（设计稿 mcp-management 第 3 节）。添加时顶部可搜官方 MCP 登记表，
    选中一条即填入下方表单，仍由用户确认与填值。环境变量值与请求头值按密钥处理：加密保存、从不回显；
    编辑时留空表示保持原值。 */
-export function McpEditDialog({ editing, onClose, onSaved }: {
+export function McpEditDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (saved: McpDetail) => void }) {
+  return <Modal onClose={onClose} width={540}><McpEditForm onClose={onClose} onSaved={onSaved} /></Modal>;
+}
+
+/** The form itself; the MCP detail shows it in place when editing (2026-11-12: no stacked dialog). */
+export function McpEditForm({ editing, onClose, onSaved }: {
   editing?: McpDetail | null;
   onClose: () => void;
   onSaved: (saved: McpDetail) => void;
@@ -70,7 +75,7 @@ export function McpEditDialog({ editing, onClose, onSaved }: {
   const label = (text: string, field: React.ReactNode) => <label className="mt-3 block text-xs" style={{ color: cream(62) }}>
     <span className="mb-1 block">{text}</span>{field}</label>;
 
-  return <Modal onClose={onClose} width={540}>
+  return <>
     <ModalTitle>{editing ? t("mcp.edit") : t("mcp.add")}</ModalTitle>
     {!editing && <div className="relative mt-2">
       <Search size={14} aria-hidden="true" style={{ position: "absolute", left: 9, top: 10, color: cream(45) }} />
@@ -116,5 +121,5 @@ export function McpEditDialog({ editing, onClose, onSaved }: {
       <Button variant="primary" disabled={busy || !name.trim() || (transport === "stdio" ? !command.trim() : !url.trim())}
         onClick={() => void submit()}>{t("mcp.save")}</Button>
     </div>
-  </Modal>;
+  </>;
 }

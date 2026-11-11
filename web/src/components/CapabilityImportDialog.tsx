@@ -20,7 +20,7 @@ export function CapabilityImportDialog({ onClose, onImported }: { onClose: () =>
   }, []);
   return <Modal onClose={onClose} width={560}>
     <ModalTitle>{agent ? <span className="inline-flex items-center gap-2"><EngineIcon engine={agent.agentKey} size={18} />{agent.agentLabel} · {t("import.title")}</span> : t("import.title")}</ModalTitle>
-    {agent ? <CapabilityImportList agentKey={agent.agentKey} variant="later" onCancel={() => setAgent(null)} onImported={onImported} />
+    {agent ? <CapabilityImportList agentKey={agent.agentKey} variant="later" onCancel={() => setAgent(null)} onLeave={onClose} onImported={onImported} />
       : error ? <p role="alert" className="mt-2 text-xs" style={{ color: "var(--danger)" }}>{error}</p>
       : !agents ? <p className="flex items-center gap-2 py-6 text-xs" style={{ color: cream(50) }}><Spinner />{t("ui.loading")}</p>
       : !agents.length ? <p className="py-6 text-center text-xs" style={{ color: cream(50) }}>{t("import.noAgents")}</p>

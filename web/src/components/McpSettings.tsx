@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight, Info, Lock, Network, Pencil, Plug, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { useLocale } from "../i18n";
 import { bindMcp, checkMcp, fetchMcp, fetchMcpList, importMcp, removeMcp, unbindMcp,
   type McpDetail, type McpGroup, type McpItem, type McpStatus } from "../lib/mcpApi";
-import { shellViewPath } from "../lib/routes";
 import { EngineIcon } from "./EngineIcon";
-import { McpEditDialog } from "./McpEditDialog";
+import { McpEditDialog, McpEditForm } from "./McpEditDialog";
 import { McpToolSwitches } from "./McpToolSwitches";
 import { Button, Modal, Pill, Spinner, confirmAsync, cream } from "./ui";
 
@@ -93,7 +91,6 @@ export function McpSettings() {
 
 function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onClose: () => void; onChanged: () => void; onEdited: () => void }) {
   const { t } = useLocale();
-  const navigate = useNavigate();
   const [detail, setDetail] = useState<McpDetail | null>(null);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -135,6 +132,11 @@ function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onC
       { okLabel: t("mcp.remove"), danger: true })) return;
     await act(() => removeMcp(id), true);
   };
+
+  if (editing) return <Modal onClose={onClose} width={580}>
+    <McpEditForm editing={detail} onClose={() => setEditing(false)}
+      onSaved={() => { setEditing(false); onEdited(); void recheck(); }} />
+  </Modal>;
 
   return <Modal onClose={onClose} width={580}>
     <div className="flex items-start gap-3">
@@ -179,28 +181,22 @@ function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onC
 
     {agent && <div className="kaus-mcp-section">
       <h4>{t("mcp.section.binding")}</h4>
-      {detail.group === "bound" ? <>
-        <p className="flex items-center gap-1.5 text-xs" style={{ color: cream(62) }}><Lock size={12} aria-hidden="true" />
-          {t(`mcp.reason.${reason(detail.boundReason)}`)}</p>
-        <p className="mt-1 text-xs" style={{ color: cream(52) }}>
-          {detail.boundReason === "not_isolable" ? t("mcp.notIsolableExplain") : t("mcp.boundExplain", { agent: detail.agentLabel })}</p>
-        {detail.boundReason !== "not_isolable" && <div className="mt-2"><Button disabled={busy} onClick={() => void act(() => unbindMcp(id))}>{t("mcp.unbind")}</Button></div>}
-      </> : <>
-        <p className="text-xs" style={{ color: cream(52) }}>{t("mcp.sharedExplain")}</p>
-        <div className="mt-2"><Button disabled={busy} onClick={() => void bind()}>{t("mcp.bind")}</Button></div>
-      </>}
+      <div className="flex items-center gap-2">
+        <span className="flex flex-1 items-center gap-1.5 text-xs" style={{ color: cream(62) }}>
+          {detail.group === "bound" ? <><Lock size={12} aria-hidden="true" />{t(`mcp.reason.${reason(detail.boundReason)}`)} · {
+            detail.boundReason === "not_isolable" ? t("mcp.notIsolableExplain") : t("mcp.boundExplain", { agent: detail.agentLabel })}</>
+            : t("mcp.sharedExplain")}
+        </span>
+        {detail.group === "bound"
+          ? detail.boundReason !== "not_isolable" && <Button disabled={busy} onClick={() => void act(() => unbindMcp(id))}>{t("mcp.unbind")}</Button>
+          : <Button disabled={busy} onClick={() => void bind()}>{t("mcp.bind")}</Button>}
+      </div>
     </div>}
 
     {detail.group !== "notImported" && <div className="kaus-mcp-section">
       <h4>{t("mcp.section.assignment")}</h4>
-      <div className="flex items-center gap-2">
-        <span className="flex-1 text-xs" style={{ color: cream(62) }}>
-          {detail.projects.length ? detail.projects.map(p => p.name).join("、") : t("mcp.unassigned")}</span>
-        <Button onClick={() => { onClose(); navigate(shellViewPath("agents")); }}>{t("mcp.openTree")}</Button>
-      </div>
+      <p className="text-xs" style={{ color: cream(62) }}>{detail.projects.length ? detail.projects.map(p => p.name).join("、") : t("mcp.unassigned")}</p>
     </div>}
 
-    {editing && <McpEditDialog editing={detail} onClose={() => setEditing(false)}
-      onSaved={() => { setEditing(false); onEdited(); void recheck(); }} />}
   </Modal>;
 }

@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { SelfCheckDialog } from "./SelfCheckDialog";
+import { SelfCheckPanel } from "./SelfCheckDialog";
+import { ConfirmHost } from "./ui";
 import { fetchSelfCheck, fetchSelfCheckOptions, markCapabilitiesBound, startSelfCheck } from "../lib/skillTreeApi";
 import { fetchModelCatalog } from "../lib/sessionApi";
 
@@ -34,9 +35,8 @@ describe("Agent 自查", () => {
   it("runs with the chosen model, lists each suggestion with its reason, and marks one bound on click", async () => {
     const user = userEvent.setup();
     const onMarked = vi.fn();
-    render(<MemoryRouter><SelfCheckDialog agentKey="codex" agentLabel="Codex" onClose={() => {}} onMarked={onMarked} /></MemoryRouter>);
+    render(<MemoryRouter><SelfCheckPanel agentKey="codex" agentLabel="Codex" onBack={() => {}} onLeave={() => {}} onMarked={onMarked} /><ConfirmHost /></MemoryRouter>);
     expect(await screen.findByText("复核 2 项")).toBeVisible();
-    expect(screen.getByText(/只读复核未判定项/)).toBeVisible();
     const model = screen.getByRole("combobox", { name: "模型" });
     await waitFor(() => expect(screen.getByRole("option", { name: "Small" })).toBeInTheDocument());
     expect(screen.queryByRole("option", { name: "Gone" })).toBeNull();
@@ -48,8 +48,11 @@ describe("Agent 自查", () => {
     expect(screen.getByText("大量调用 Codex 专有工具")).toBeVisible();
     expect(screen.getByText("疑似")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "将 Agent 自带记忆 标为绑定" }));
-    expect(markCapabilitiesBound).toHaveBeenCalledWith("codex", ["codex:memory"]);
-    expect(await screen.findByText("已标为绑定")).toBeVisible();
+    // Marking bound confirms the consequence first (product decision 2026-11-11).
+    expect(await screen.findByText("绑定后仅 Codex 可用。")).toBeVisible();
+    expect(markCapabilitiesBound).not.toHaveBeenCalled();
+    await user.click(screen.getAllByRole("button", { name: "标为绑定" }).at(-1)!);
+    await waitFor(() => expect(markCapabilitiesBound).toHaveBeenCalledWith("codex", ["codex:memory"]));
     expect(onMarked).toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "打开对话" })).toBeVisible();
   });

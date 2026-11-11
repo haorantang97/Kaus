@@ -3,19 +3,21 @@ import { Anchor, Brain, ChevronRight, FileText, Plug, Puzzle, ShieldCheck } from
 import { useLocale } from "../i18n";
 import { fetchImportCandidates, importCapabilities, skipCapabilityImport, type ImportCandidate } from "../lib/skillTreeApi";
 import { Button, Spinner, confirmAsync, cream } from "./ui";
-import { SelfCheckDialog } from "./SelfCheckDialog";
+import { SelfCheckPanel } from "./SelfCheckDialog";
 
 /* 导入 Agent 原有能力的勾选名单（设计稿 capability-import 第 4 节）。
    接入时出现一次；之后从技能树的「导入能力」随时找回没导入的。勾了才进技能树，不在树上的不加载。
    Agent 绑定能力置灰、固定给它自己用；别的 Agent 已导入的同一项显示「已在技能树中」，导入时合并。
    「Agent 自带记忆」（2026-11-11）：勾选 = 已有记忆复制进项目记忆；勾不勾开对话时都关掉它自带的那份；
    关不掉的置灰并附说明。 */
-export function CapabilityImportList({ agentKey, variant, onImported, onSkipped, onCancel, footerStart }: {
+export function CapabilityImportList({ agentKey, variant, onImported, onSkipped, onCancel, onLeave, footerStart }: {
   agentKey: string;
   variant: "connect" | "later";
   onImported: () => void;
   onSkipped?: () => void;
   onCancel?: () => void;
+  /** Leaving the window (the self-check opens its conversation). */
+  onLeave?: () => void;
   footerStart?: React.ReactNode;
 }) {
   const { t } = useLocale();
@@ -65,7 +67,7 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
 
   const icon = (kind: ImportCandidate["kind"]) => kind === "mcp" ? <Plug size={15} /> : kind === "plugin" ? <Puzzle size={15} />
     : kind === "memory" ? <Brain size={15} /> : kind === "hook" ? <Anchor size={15} /> : <FileText size={15} />;
-  const memoryLabel = (item: ImportCandidate) => item.state === "bound" ? t("import.memoryLocked")
+  const memoryLabel = (item: ImportCandidate) => item.state === "bound" ? ""
     : item.state === "imported" ? t("import.memoryCopied", { count: item.memory?.copied ?? 0 })
     : item.state === "closed" ? (item.memory?.readable ? t("import.memoryEmpty") : t("import.memoryUnreadable"))
     : t("import.memoryCount", { count: item.memory?.count ?? 0 });
@@ -74,6 +76,8 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
     : item.state === "imported" ? t("import.imported") : item.available === false ? t("skillTree.sourceUnavailable") : "";
   const name = (item: ImportCandidate) => item.kind === "memory" ? t("import.nativeMemory") : item.name;
 
+  if (checking) return <SelfCheckPanel agentKey={agentKey} agentLabel={agentLabel} onBack={() => setChecking(false)}
+    onLeave={onLeave} onMarked={() => setReload(n => n + 1)} />;
   if (!items) return <p role="status" className="flex min-h-40 items-center justify-center gap-2 text-xs" style={{ color: cream(50) }}>
     {error ?? <><Spinner />{t("ui.loading")}</>}</p>;
 
@@ -90,8 +94,6 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
         <ShieldCheck size={14} />{t("selfCheck.title")}
       </Button>}
     </div>
-    {checking && <SelfCheckDialog agentKey={agentKey} agentLabel={agentLabel} onClose={() => setChecking(false)}
-      onMarked={() => setReload(n => n + 1)} />}
     <ul className="max-h-[48vh] overflow-auto rounded-md" style={{ border: "1px solid var(--line, rgba(255,255,255,.08))" }}>
       {!items.length && <li className="px-3 py-6 text-center text-xs" style={{ color: cream(50) }}>{t("import.none")}</li>}
       {items.map(item => {
