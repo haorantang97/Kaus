@@ -80,10 +80,6 @@ function postJSON<T>(url: string, body: unknown): Promise<T> {
   return writeJSON<T>(url, "POST", body);
 }
 
-export function setPin(name: string, pinned: boolean) {
-  return postJSON(`/api/agent/${encodeURIComponent(name)}/pin`, { pinned });
-}
-
 export function renameAgent(name: string, display: string) {
   return postJSON(`/api/agent/${encodeURIComponent(name)}/rename`, { display });
 }

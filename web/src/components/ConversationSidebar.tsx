@@ -5,7 +5,6 @@ import { ChevronDown, ChevronRight, Terminal } from "lucide-react";
 import { useLocale } from "../i18n";
 import { confirmAsync, cream, toast } from "./ui";
 import { AddExistingConversationsDialog } from "./AddExistingConversationsDialog";
-import { ProjectHistoryMenu } from "./ProjectHistoryMenu";
 import { ProjectHistoryViewer } from "./ProjectHistoryViewer";
 import { ADD_EXISTING_CONVERSATIONS, projectHistoryApi, useProjectHistory, type HistoryProject } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
@@ -191,7 +190,7 @@ export function ConversationSidebar({
           });
           return (
             <div key={group.projectId} className="kaus-sidebar-group">
-              <div className="kaus-sidebar-project-head"><button
+              <button
                 type="button"
                 className="kaus-sidebar-group-head"
                 aria-expanded={open}
@@ -207,7 +206,7 @@ export function ConversationSidebar({
                 {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
                 <span className="flex-1 truncate">{group.displayName}</span>
                 <span style={{ color: cream(38) }}>{group.conversations.length}</span>
-              </button><ProjectHistoryMenu projectName={group.displayName} onAdd={() => setAddingHistory({ id: group.projectId, slug: group.projectSlug, displayName: group.displayName })} /></div>
+              </button>
               {open &&
                 ordered.map((conversation) => {
                   const historical = historyByRow.get(conversation.id);

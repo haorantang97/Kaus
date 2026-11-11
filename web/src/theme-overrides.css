@@ -946,33 +946,6 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
 .ag-act.g:hover {
   color: var(--midground-base);
 }
-.ag-panel-section {
-  padding: 20px 22px;
-}
-.ag-panel-section h3 {
-  margin-bottom: 12px;
-  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
-  font: 500 12px/1.5 var(--theme-font-wheel-sans);
-}
-.ag-prow {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 5px 0;
-  font: 12.5px var(--theme-font-wheel-mono);
-}
-.ag-prow span:first-child {
-  flex: none;
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.ag-prow span:last-child {
-  font-weight: 600;
-  text-align: right;
-}
 .ag-stat-row {
   display: flex;
   gap: 26px;
@@ -3098,7 +3071,6 @@ body.dark .kaus-cap-row.is-head {
 .kaus-project-conversation:hover { background: var(--surface-hover); }
 .kaus-project-conversation-icon { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; color: color-mix(in srgb, var(--midground-base) 65%, transparent); background: transparent; }
 body.dark .kaus-project-conversation-icon { color: var(--accent-text); }
-.kaus-project-conversation-arrow { flex-shrink: 0; color: var(--accent-text); }
 .kaus-engine-transports { margin-top: 14px; font-size: 12px; color: color-mix(in srgb, var(--midground-base) 70%, transparent); }
 .kaus-engine-transports summary { cursor: pointer; }
 .kaus-engine-transports select { width: 100%; margin-top: 10px; }

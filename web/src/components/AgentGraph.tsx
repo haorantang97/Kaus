@@ -860,21 +860,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
                   </button>
                 </div>
               </div>
-              <div className="ag-panel-section">
-                <h3>{t("graph.section.identity")}</h3>
-                <div className="ag-prow"><span>{t("graph.row.type")}</span><span>{sel === "default" ? t("graph.value.apexRoot") : t("graph.value.project")}</span></div>
-                <div className="ag-prow"><span>{t("graph.row.parent")}</span><span>{node.parent ? displayName(node.parent) : t("graph.value.topLevel")}</span></div>
-              </div>
-              <div className="ag-panel-section">
-                <h3>{t("graph.section.structure")}</h3>
-                <div className="ag-stat-row">
-                  <div><strong>{domainKids(sel).length}</strong><span>{t("graph.stat.children")}</span></div>
-                </div>
-              </div>
-              <div className="ag-panel-section">
-                <h3>{t("graph.section.inheritance")}</h3>
-                <div className="ag-prow"><span>{t("graph.row.parentConfig")}</span><span>{node.parent ? t("graph.value.fromParent", { name: displayName(node.parent) }) : t("graph.value.localBaseline")}</span></div>
-              </div>
             </>
           )}
         </aside>

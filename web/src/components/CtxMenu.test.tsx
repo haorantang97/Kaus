@@ -12,7 +12,7 @@ it("uses keyboard navigation and restores focus when closed", async () => {
   const view = render(<CtxMenu node={node} x={0} y={0} onClose={close} onChanged={() => {}} />);
   expect(screen.getByRole("menuitem", { name:"添加已有对话" })).toHaveFocus();
   await user.keyboard("{End}"); expect(screen.getByRole("menuitem", { name:"删除" })).toHaveFocus();
-  await user.keyboard("{Home}{ArrowDown}{ArrowDown}"); expect(screen.getByRole("menuitem", { name:"重命名" })).toHaveFocus();
+  await user.keyboard("{Home}{ArrowDown}"); expect(screen.getByRole("menuitem", { name:"重命名" })).toHaveFocus();
   await user.keyboard("{Escape}"); expect(close).toHaveBeenCalledOnce();
   view.unmount(); expect(opener).toHaveFocus(); opener.remove();
 });

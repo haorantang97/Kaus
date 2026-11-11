@@ -27,10 +27,6 @@
 .project-history-message header time { margin-left:auto; font-size:11px; }
 .project-history-assets { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; }
 .project-history-assets button { display:inline-flex; align-items:center; gap:6px; padding:7px 10px; border:1px solid color-mix(in srgb,currentColor 12%,transparent); border-radius:9px; background:transparent; color:inherit; font-size:12px; cursor:pointer; }
-.kaus-sidebar-project-head { display:flex; align-items:center; }
-.kaus-sidebar-project-head > .kaus-sidebar-group-head { min-width:0; flex:1; }
-.kaus-sidebar-project-head > .project-history-menu { opacity:0; }
-.kaus-sidebar-project-head:hover > .project-history-menu, .kaus-sidebar-project-head:focus-within > .project-history-menu { opacity:1; }
 @media (prefers-reduced-motion:no-preference) { .project-history-icon { transition:background .15s ease; } }
 
 .project-history-select-all { display:flex; align-items:center; gap:9px; padding:8px 9px 0; font-size:12px; opacity:.7; }
