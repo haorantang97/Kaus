@@ -951,7 +951,6 @@ export const zh = {
   "engines.connect.chooseExecutable": "选择可执行文件",
   "engines.connect.manualPath": "指定 CLI",
   "engines.connect.savePath": "保存路径",
-  "engines.connect.details": "详情",
   "engines.connect.advanced": "高级",
   "engines.connect.pendingUpdate": "空闲后更新",
   "engines.connect.adapterSetup": "适配器安装",
@@ -1239,7 +1238,6 @@ export const zh = {
   "settings.archive.title": "已归档对话",
   "settings.archive.empty": "暂无归档",
   "settings.archive.restore": "恢复",
-  "settings.archive.confirmDelete": "确认删除",
 
   /* ---- 组长配置（CoordinatorSettings；设置页「组长」分栏共用）。 ---- */
   "group.coordinator.label": "组长",
@@ -1469,4 +1467,6 @@ export const zh = {
   "ctx.forkIdExample": "例如 trading-2",
   "ctx.forkIdRequired": "请输入项目标识",
   "skillTree.mcpSettings": "MCP 设置",
+  "settingsRows.agentMenu": "Agent 菜单",
+  "settingsRows.agentMenuFor": "{name} 菜单",
 } as const;

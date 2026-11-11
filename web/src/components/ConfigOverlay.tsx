@@ -1,7 +1,7 @@
-import { ErrorNotice } from "./ui";
+import { ErrorNotice, confirmAsync } from "./ui";
 import { EngineIcon } from "./EngineIcon";
-import { useEffect, useState } from "react";
-import { Archive, ArchiveRestore, ArrowUpRight, Bot, Check, FolderInput, Gauge, Info, Languages, Moon, Network, Settings2, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Archive, ArchiveRestore, ArrowUpRight, Bot, FolderInput, Gauge, Info, Languages, Moon, Network, Settings2, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { LegacyApiError, restoreDeletedAgent } from "../lib/api";
 import { NewAgentModal } from "./NewAgentModal";
@@ -17,6 +17,7 @@ import { AgentConnections } from "./AgentConnections";
 import { AccountQuotaSettings } from "./AccountQuotaSettings";
 import { McpSettings } from "./McpSettings";
 import { AsyncState, Overlay } from "./ui";
+import { RowMenu, type RowMenuPoint } from "./ConversationRowMenu";
 import "./settings.css";
 
 type Section = "general" | "agents" | "mcp" | "usage" | "coordinator" | "archive" | "about";
@@ -42,7 +43,8 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThem
   const [projects, setProjects] = useState<ProjectWire[] | null>(null);
   const [archived, setArchived] = useState<ArchivedConversationWire[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [menuPoint, setMenuPoint] = useState<{ id: string; point: RowMenuPoint } | null>(null);
+  const menuSeq = useRef(0);
   /** Rescue flows for a deleted Project's conversation: move elsewhere, or recreate the Project. */
   const [moving, setMoving] = useState<{ item: ArchivedConversationWire; projectId?: string } | null>(null);
   const [recreating, setRecreating] = useState<{ item: ArchivedConversationWire; project: ProjectWire } | null>(null);
@@ -100,8 +102,8 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThem
     catch (e) { setError(describeFailure(e)); }
   };
   const remove = async (item: ArchivedConversationWire) => {
-    if (confirmDelete !== item.id) { setConfirmDelete(item.id); return; }
-    setConfirmDelete(null); setBusyId(item.id); setError(null);
+    if (!await confirmAsync(t("conversation.row.deleteConfirm", { title: item.title }), { okLabel: t("conversation.row.delete"), danger: true })) return;
+    setBusyId(item.id); setError(null);
     try {
       await deleteConversation(item.id);
       setArchived(current => current?.filter(row => row.id !== item.id) ?? null);
@@ -160,22 +162,27 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThem
           <h2>{t("settings.archive.title")}</h2>
           {error && archived && <ErrorNotice error={error} className="text-xs" />}
           <AsyncState data={archived} err={archived ? null : error}>{items => items.length === 0 ? <p className="kaus-settings-empty">{t("settings.archive.empty")}</p> :
-            <div className="kaus-archive-list">{items.map(item => { const owner = archivedProject(item.projectId); const confirming = confirmDelete === item.id; return <div key={item.id} className="kaus-archive-row">
-              <div><strong>{item.backendId && <EngineIcon engine={item.backendId} size={13} />}{item.title}</strong><span>{owner.label}{item.backendId ? ` · ${backendDisplay(item.backendId).displayName}` : ""}</span></div>
-              <button type="button" title={t("drift.view")} aria-label={`${t("drift.view")} ${item.title}`}
-                onClick={() => navigate(conversationPath(item.id))}><ArrowUpRight size={16} /></button>
-              {owner.retired && owner.project ? <>
-                <button type="button" disabled={busyId !== null} title={t("project.restore")} aria-label={`${t("project.restore")} ${item.title}`}
-                  onClick={() => void restoreProject(item, owner.project!)}><ArchiveRestore size={16} /></button>
-                <button type="button" disabled={busyId !== null || !item.backendId} title={t("project.move")} aria-label={`${t("project.move")} ${item.title}`}
-                  onClick={() => setMoving({ item })}><FolderInput size={16} /></button>
-              </> : <button type="button" disabled={busyId !== null} title={t("settings.archive.restore")} aria-label={`${t("settings.archive.restore")} ${item.title}`}
-                onClick={() => void restore(item)}><ArchiveRestore size={16} /></button>}
-              <button type="button" disabled={busyId !== null} className={confirming ? "is-danger" : undefined}
-                title={confirming ? t("settings.archive.confirmDelete") : t("group.row.delete")}
-                aria-label={`${confirming ? t("settings.archive.confirmDelete") : t("group.row.delete")} ${item.title}`}
-                onBlur={() => { if (confirming) setConfirmDelete(null); }}
-                onClick={() => void remove(item)}>{confirming ? <Check size={16} /> : <Trash2 size={16} />}</button>
+            <div className="kaus-archive-list">{items.map(item => { const owner = archivedProject(item.projectId); return <div key={item.id} className="kaus-archive-row"
+              onContextMenu={event => {
+                if (busyId !== null) return;
+                event.preventDefault();
+                menuSeq.current += 1;
+                setMenuPoint({ id: item.id, point: { x: event.clientX, y: event.clientY, seq: menuSeq.current } });
+              }}>
+              <button type="button" className="kaus-archive-row-open" onClick={() => navigate(conversationPath(item.id))}>
+                <span><strong>{item.backendId && <EngineIcon engine={item.backendId} size={13} />}{item.title}</strong><small>{owner.label}{item.backendId ? ` · ${backendDisplay(item.backendId).displayName}` : ""}</small></span>
+              </button>
+              <RowMenu busy={busyId !== null} triggerLabel={t("conversation.menuFor", { title: item.title })} menuLabel={t("conversation.menu")}
+                point={menuPoint?.id === item.id ? menuPoint.point : null}
+                items={[
+                  ...(owner.retired && owner.project ? [
+                    { id: "restore-project", icon: <ArchiveRestore size={16} aria-hidden />, label: t("project.restore"), onSelect: () => void restoreProject(item, owner.project!) },
+                    { id: "move", icon: <FolderInput size={16} aria-hidden />, label: t("project.move"), disabled: !item.backendId, onSelect: () => setMoving({ item }) },
+                  ] : [
+                    { id: "restore", icon: <ArchiveRestore size={16} aria-hidden />, label: t("settings.archive.restore"), onSelect: () => void restore(item) },
+                  ]),
+                  { id: "delete", icon: <Trash2 size={16} aria-hidden />, label: t("conversation.row.delete"), separated: true, onSelect: () => void remove(item) },
+                ]} />
             </div>; })}</div>}
           </AsyncState>
         </>}

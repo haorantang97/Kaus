@@ -882,7 +882,6 @@ export const en: Record<keyof typeof zh, string> = {
   "engines.connect.chooseExecutable": "Choose executable",
   "engines.connect.manualPath": "Choose CLI",
   "engines.connect.savePath": "Save path",
-  "engines.connect.details": "Details",
   "engines.connect.advanced": "Advanced",
   "engines.connect.pendingUpdate": "Update when idle",
   "engines.connect.adapterSetup": "Adapter setup",
@@ -1123,7 +1122,6 @@ export const en: Record<keyof typeof zh, string> = {
   "settings.archive.title": "Archived conversations",
   "settings.archive.empty": "No archived conversations",
   "settings.archive.restore": "Restore",
-  "settings.archive.confirmDelete": "Confirm delete",
 
   /* ---- coordinator settings (CoordinatorSettings; shared with the settings "Coordinator" section). ---- */
   "group.coordinator.label": "Coordinator",
@@ -1353,4 +1351,6 @@ export const en: Record<keyof typeof zh, string> = {
   "ctx.forkIdExample": "e.g. trading-2",
   "ctx.forkIdRequired": "Enter a project ID",
   "skillTree.mcpSettings": "MCP settings",
+  "settingsRows.agentMenu": "Agent menu",
+  "settingsRows.agentMenuFor": "{name} menu",
 };

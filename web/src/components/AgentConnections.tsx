@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { KeyRound, Plug, Plus, RefreshCw, Settings2, Terminal } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { KeyRound, Plug, Plus, RefreshCw, Terminal } from "lucide-react";
 import { useLocale } from "../i18n";
 import { fetchAgentCredentials, fetchConnectedBackends, describeFailure } from "../lib/sessionApi";
 import { AgentApiKeyDialog } from "./AgentApiKeyDialog";
@@ -7,6 +7,7 @@ import { openEngineLogin, preferredEngineConnections, refreshEngineConnections, 
 import { backendDisplay, engineBrand } from "../lib/backend-display";
 import { EngineIcon } from "./EngineIcon";
 import { ConnectEngineModal } from "./ConnectEngineModal";
+import { RowMenu, type RowMenuItem, type RowMenuPoint } from "./ConversationRowMenu";
 import { Button, Pill, toast } from "./ui";
 
 export function AgentConnections({ refreshKey = 0 }: { refreshKey?: string | number }) {
@@ -20,6 +21,8 @@ export function AgentConnections({ refreshKey = 0 }: { refreshKey?: string | num
   // 填了 API key 的引擎（启动时不走订阅），以及正在编辑 key 的那一台。
   const [withKey, setWithKey] = useState<string[]>([]);
   const [keyFor, setKeyFor] = useState<EngineConnection | null>(null);
+  const [menuPoint, setMenuPoint] = useState<{ id: string; point: RowMenuPoint } | null>(null);
+  const menuSeq = useRef(0);
   useEffect(() => {
     const controller = new AbortController();
     setError("");
@@ -69,17 +72,28 @@ export function AgentConnections({ refreshKey = 0 }: { refreshKey?: string | num
         <Button onClick={() => setOpen("")}><Plus size={15} />{t("engines.connect.title")}</Button></div>
     </div>
     {error && <p role="alert" className="kaus-group-error">{error}</p>}
-    <div>{preferredEngineConnections(connections).map(item => <div className="kaus-agent-connection" key={item.id}>
-      <div><strong><EngineIcon engine={item.productId ?? item.id} size={20} />{engineBrand(item.productId ?? item.id)?.name ?? item.productName ?? backendDisplay(item.id).displayName}</strong>
-        <small>{item.runtimeIdentity?.engineVersion ?? item.version}</small></div>
-      <div className="flex items-center gap-2">
-        {withKey.includes(item.id) && <Pill tone="muted">{t("engines.apiKey.inUse")}</Pill>}
-        <small>{t(item.runtimeIdentity?.updateState === "pending_idle" ? "engines.connect.pendingUpdate" : item.probeState === "available" ? "engines.connect.available" : item.probeState === "unavailable" ? "engines.connect.unavailable" : "engines.connect.registered")}</small>
-        {item.apiKeyEnv && <Button onClick={() => setKeyFor(item)} aria-label={t("engines.apiKey.open")} title={t("engines.apiKey.open")}><KeyRound size={15} /></Button>}
-        {item.loginAvailable && <Button disabled={busy} onClick={() => void login(item.id)} aria-label={t("engines.connect.openLogin")} title={t("engines.connect.openLogin")}><Terminal size={15} /></Button>}
-        <Button onClick={() => setOpen(item.id)} aria-label={t("engines.connect.details")} title={t("engines.connect.details")}><Settings2 size={15} /></Button>
-      </div>
-    </div>)}</div>
+    <div>{preferredEngineConnections(connections).map(item => {
+      const name = engineBrand(item.productId ?? item.id)?.name ?? item.productName ?? backendDisplay(item.id).displayName;
+      const actions: RowMenuItem[] = [
+        ...(item.apiKeyEnv ? [{ id: "key", icon: <KeyRound size={16} aria-hidden />, label: t("engines.apiKey.open"), onSelect: () => setKeyFor(item) }] : []),
+        ...(item.loginAvailable ? [{ id: "login", icon: <Terminal size={16} aria-hidden />, label: t("engines.connect.openLogin"), disabled: busy, onSelect: () => void login(item.id) }] : []),
+      ];
+      return <div className="kaus-agent-connection" key={item.id} onContextMenu={event => {
+        if (!actions.length) return;
+        event.preventDefault();
+        menuSeq.current += 1;
+        setMenuPoint({ id: item.id, point: { x: event.clientX, y: event.clientY, seq: menuSeq.current } });
+      }}>
+        <button type="button" className="kaus-agent-connection-open" onClick={() => setOpen(item.id)}>
+          <span><strong><EngineIcon engine={item.productId ?? item.id} size={20} />{name}</strong>
+            <small>{item.runtimeIdentity?.engineVersion ?? item.version}</small></span>
+          {withKey.includes(item.id) && <Pill tone="muted">{t("engines.apiKey.inUse")}</Pill>}
+          <small>{t(item.runtimeIdentity?.updateState === "pending_idle" ? "engines.connect.pendingUpdate" : item.probeState === "available" ? "engines.connect.available" : item.probeState === "unavailable" ? "engines.connect.unavailable" : "engines.connect.registered")}</small>
+        </button>
+        {actions.length > 0 && <RowMenu triggerLabel={t("settingsRows.agentMenuFor", { name })} menuLabel={t("settingsRows.agentMenu")}
+          point={menuPoint?.id === item.id ? menuPoint.point : null} items={actions} />}
+      </div>;
+    })}</div>
     {keyFor && keyFor.apiKeyEnv && <AgentApiKeyDialog backendId={keyFor.id} envName={keyFor.apiKeyEnv} configured={withKey.includes(keyFor.id)}
       name={engineBrand(keyFor.productId ?? keyFor.id)?.name ?? keyFor.productName ?? backendDisplay(keyFor.id).displayName}
       onClose={changed => { setKeyFor(null); if (changed) setReload(n => n + 1); }} />}

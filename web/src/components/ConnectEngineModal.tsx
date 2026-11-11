@@ -115,7 +115,9 @@ export function ConnectEngineModal({
       registered: true, detected: false, installed: null, probeState: "unknown",
     }))];
   const filtered = groupEnginePresets(entries.filter(entry => engineAcceptsNewWork(entry) || (!onAttach && entry.registered && entry.backendId === initialBackendId))).filter((row) => `${row.label} ${row.variants.map((entry) => `${entry.label} ${entry.id}`).join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
-  const selectedGroup = filtered.find((row) => row.variants.some((entry) => current ? entry.id === current : entry.backendId === initialBackendId)) ?? filtered[0];
+  // Opened to add (no preselection, not attaching): start on an engine that is not connected yet.
+  const unconnected = !onAttach && !initialBackendId && !current ? filtered.find((row) => !row.variants.some((entry) => entry.registered)) : undefined;
+  const selectedGroup = filtered.find((row) => row.variants.some((entry) => current ? entry.id === current : entry.backendId === initialBackendId)) ?? unconnected ?? filtered[0];
   const preset = selectedGroup?.variants.find((entry) => current ? entry.id === current : entry.backendId === initialBackendId) ?? selectedGroup?.preferred;
   const attached = !!onAttach && !!preset?.registered && !attachable.some((row) => row.id === preset.backendId);
   const path = preset ? paths[preset.id] ?? preset.nativePath ?? "" : "";
