@@ -3,7 +3,7 @@
 .kaus-settings-nav button { display:flex; align-items:center; gap:10px; min-height:38px; padding:8px 12px; border:0; border-radius:7px; background:transparent; color:var(--midground-base); font-size:13px; text-align:left; }
 .kaus-settings-nav button:hover { background:var(--control-hover); }
 .kaus-settings-nav button.is-active { background:color-mix(in srgb,var(--midground-base) 9%,transparent); font-weight: 400; }
-.kaus-settings-nav button:focus-visible,.kaus-archive-row button:focus-visible { outline: none; }
+.kaus-settings-nav button:focus-visible { outline: none; }
 .kaus-settings-content { min-width:0; }
 .kaus-settings-content h2 { display:flex; align-items:center; gap:9px; font-size:15px; font-weight: 400; margin:0 0 20px; }
 .kaus-settings-section { padding:4px 0 24px; margin-bottom:8px; }
@@ -16,20 +16,21 @@
 .kaus-settings-save-status { position:absolute; right:-24px; top:50%; width:16px; height:16px; transform:translateY(-50%); }
 .kaus-settings-heading { display:flex; align-items:baseline; justify-content:space-between; }
 .kaus-settings-heading>span,.kaus-settings-empty { color:color-mix(in srgb,var(--midground-base) 55%,transparent); font-size:12px; }
-.kaus-archive-row { display:flex; align-items:center; gap:8px; padding:13px 0; }
-.kaus-archive-row>div { min-width:0; flex:1; }
-.kaus-archive-row strong { display:block; font-size:13px; font-weight: 400; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.kaus-archive-row span { display:block; margin-top:5px; font-size:11px; opacity:.55; }
-.kaus-archive-row button { display:grid; place-items:center; width:32px; height:32px; border:0; border-radius:6px; color:inherit; background:transparent; }
-.kaus-archive-row button:hover:not(:disabled) { background:var(--control-hover); }
-.kaus-archive-row button:disabled { opacity:.4; }
-.kaus-archive-row button.is-danger { color:var(--danger); }
-.kaus-agent-connection { display:flex; align-items:center; gap:12px; padding:15px 0; }
-.kaus-agent-connection>div { flex:1; min-width:0; }
+.kaus-archive-row,.kaus-agent-connection { display:flex; align-items:center; gap:4px; }
+.kaus-archive-row-open,.kaus-agent-connection-open { display:flex; align-items:center; gap:12px; flex:1; min-width:0; margin:0 -8px; padding:13px 8px; border:0; border-radius:8px; background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.kaus-archive-row-open:hover,.kaus-agent-connection-open:hover { background:var(--control-hover); }
+.kaus-archive-row-open:focus-visible,.kaus-agent-connection-open:focus-visible { outline:2px solid var(--accent-text); outline-offset:-2px; }
+.kaus-archive-row-open>span { display:block; flex:1; min-width:0; }
+.kaus-archive-row-open strong { display:block; font-size:13px; font-weight: 400; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kaus-archive-row-open small { display:block; margin-top:5px; font-size:11px; opacity:.55; }
+.kaus-agent-connection-open { padding:15px 8px; }
+.kaus-agent-connection-open>span:first-child { flex:1; min-width:0; }
 .kaus-agent-connection strong { display:flex; align-items:center; gap:9px; font-size:13px; font-weight: 400; }
 .kaus-agent-connection .kaus-engine-icon { flex-shrink:0; }
-.kaus-agent-connection small { display:block; font-size:11px; color:color-mix(in srgb,var(--midground-base) 65%,transparent); }
-.kaus-agent-connection>div>small { margin:5px 0 0 29px; }
+.kaus-agent-connection-open small { display:block; font-size:11px; color:color-mix(in srgb,var(--midground-base) 65%,transparent); }
+.kaus-agent-connection-open>span>small { margin:5px 0 0 29px; }
+.kaus-archive-row:hover .kaus-conversation-menu-trigger,.kaus-archive-row:focus-within .kaus-conversation-menu-trigger,
+.kaus-agent-connection:hover .kaus-conversation-menu-trigger,.kaus-agent-connection:focus-within .kaus-conversation-menu-trigger { opacity:1; }
 @media(max-width:720px) { .kaus-settings { grid-template-columns:1fr; gap:22px; } .kaus-settings-nav { flex-direction:row; flex-wrap:wrap; position:static; } .kaus-settings-nav button { padding:7px 10px; } }
 @media(max-width:480px) { .kaus-settings-preference-row { gap:12px; } .kaus-settings-save-status { right:-18px; } }
 

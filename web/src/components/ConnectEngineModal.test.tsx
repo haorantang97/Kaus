@@ -31,6 +31,13 @@ beforeEach(() => {
 });
 
 describe("接入引擎面板", () => {
+  it("无预选打开时停在未连接的引擎上", async () => {
+    vi.mocked(fetchEngineCatalog).mockResolvedValue({ engines: [engine("alpha", { registered: true }), engine("zulu")] });
+    render(<ConnectEngineModal onClose={() => {}} />);
+    await screen.findByTestId("connect-preset-zulu");
+    expect(screen.getByTestId("connect-preset-zulu")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("connect-details")).toHaveTextContent("zulu Agent");
+  });
   it("下架引擎仅可通过现有连接的详情打开", async () => {
     vi.mocked(fetchEngineCatalog).mockResolvedValue({ engines:[
       engine('retired', { registered:true, catalogStatus:'legacy', version:'1.0' }), engine('active'),

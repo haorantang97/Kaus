@@ -1441,4 +1441,6 @@ export const en: Record<keyof typeof zh, string> = {
   "card.artifact.location": "Location",
   "card.user.expand": "Show more",
   "card.user.collapse": "Show less",
+  "settingsRows.agentMenu": "Agent menu",
+  "settingsRows.agentMenuFor": "{name} menu",
 };

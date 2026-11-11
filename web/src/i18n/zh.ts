@@ -1555,4 +1555,6 @@ export const zh = {
   "card.artifact.location": "位置",
   "card.user.expand": "展开全文",
   "card.user.collapse": "收起",
+  "settingsRows.agentMenu": "Agent 菜单",
+  "settingsRows.agentMenuFor": "{name} 菜单",
 } as const;
