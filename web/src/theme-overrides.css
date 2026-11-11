@@ -3061,6 +3061,7 @@ body.dark .kaus-cap-row.is-head {
 .kaus-material { padding: 10px 0; border-bottom: 1px solid #8882; font-size: 12px; }
 .kaus-material-head, .kaus-material-editor-foot { display: flex; align-items: center; gap: 4px; }
 .kaus-material-head strong, .kaus-material-editor-foot small { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.kaus-material:hover .kaus-conversation-menu-trigger, .kaus-material:focus-within .kaus-conversation-menu-trigger { opacity: 1; }
 .kaus-material details { margin-top: 5px; }
 .kaus-material summary { cursor: pointer; overflow-wrap: anywhere; color: var(--text-muted); }
 .kaus-material pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 8px 0 0; }

@@ -101,7 +101,6 @@ export const en: Record<keyof typeof zh, string> = {
   "workbench.removeConfirm": "Remove the module and keep its data.",
   "workbench.optional": "Optional",
   "workbench.noModule": "Module not added",
-  "workbench.external": "Application",
   "workbench.busyConfig": "Task is running",
 
   "continuation.incompatibleFile": "Cannot transfer",
@@ -1441,4 +1440,9 @@ export const en: Record<keyof typeof zh, string> = {
   "card.artifact.location": "Location",
   "card.user.expand": "Show more",
   "card.user.collapse": "Show less",
+  "groupRows.materialMenu": "Material menu",
+  "groupRows.materialMenuFor": "{title} material menu",
+  "groupRows.materialDeleteConfirm": "Delete material “{title}”?",
+  "groupRows.intakeMenu": "Record menu",
+  "groupRows.intakeMenuFor": "{name} record menu",
 };

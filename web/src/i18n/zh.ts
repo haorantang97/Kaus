@@ -98,7 +98,6 @@ export const zh = {
   "workbench.removeConfirm": "移除入口并保留模块数据。",
   "workbench.optional": "选填",
   "workbench.noModule": "模块未添加",
-  "workbench.external": "独立应用",
   "workbench.busyConfig": "任务运行中",
 
   "continuation.incompatibleFile": "无法携带",
@@ -1555,4 +1554,9 @@ export const zh = {
   "card.artifact.location": "位置",
   "card.user.expand": "展开全文",
   "card.user.collapse": "收起",
+  "groupRows.materialMenu": "资料菜单",
+  "groupRows.materialMenuFor": "{title} 资料菜单",
+  "groupRows.materialDeleteConfirm": "删除资料「{title}」？",
+  "groupRows.intakeMenu": "记录菜单",
+  "groupRows.intakeMenuFor": "{name} 记录菜单",
 } as const;

@@ -1,8 +1,9 @@
-import { ErrorNotice } from "./ui";
+import { ErrorNotice, confirmAsync } from "./ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, FileUp, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useLocale } from "../i18n";
 import { toast } from "./ui";
+import { RowMenu, type RowMenuPoint } from "./ConversationRowMenu";
 import { deleteGroupMaterial, fetchGroupMaterials, isGroupOpen, saveGroupMaterial,
   type GroupMaterialInput, type GroupMaterialsWire, type GroupMaterialWire,
   type GroupMemberWire, type GroupMessageWire, type GroupWire } from "../lib/groupsApi";
@@ -34,6 +35,10 @@ export function GroupMaterialsPane({ group, members, changeToken }: {
   const generation = useRef(0);
   const alive = useRef(true);
   const fileInput = useRef<HTMLInputElement>(null);
+  const latest = useRef<GroupMaterialsWire | null>(null);
+  latest.current = bundle;
+  const [menuPoint, setMenuPoint] = useState<{ id: string; point: RowMenuPoint } | null>(null);
+  const menuSeq = useRef(0);
   const locked = !isGroupOpen(group) || ["running", "closing"].includes(group.thread?.status ?? "");
   const disabled = locked || pending || !bundle;
   useEffect(() => { alive.current = true; return () => { alive.current = false; generation.current++; }; }, []);
@@ -70,9 +75,12 @@ export function GroupMaterialsPane({ group, members, changeToken }: {
   }
   async function remove(item: GroupMaterialWire) {
     if (!bundle || disabled) return;
+    if (!await confirmAsync(t("groupRows.materialDeleteConfirm", { title: item.title }), { okLabel: t("group.material.remove"), danger: true })) return;
+    const current = latest.current;
+    if (!alive.current || !current?.items.some(x => x.id === item.id)) return;
     setPending(true); setError(null);
     try {
-      const result = await deleteGroupMaterial(group.id, item.id, bundle.revision);
+      const result = await deleteGroupMaterial(group.id, item.id, current.revision);
       if (alive.current) { generation.current++; setBundle(result); setLoading(false); }
     } catch (failure) { if (alive.current) setError(failure instanceof Error ? failure.message : String(failure)); }
     finally { if (alive.current) setPending(false); }
@@ -111,10 +119,17 @@ export function GroupMaterialsPane({ group, members, changeToken }: {
         <button type="submit" className="kaus-icon-btn" disabled={disabled || !draft.title.trim() || !draft.content.trim() || used > (bundle?.maxChars ?? 12000)} aria-label={t("group.material.save")} title={t("group.material.save")}><Check size={14} /></button>
       </div>
     </form>}
-    {bundle?.items.map(item => <article className="kaus-material" key={item.id}>
+    {bundle?.items.map(item => <article className="kaus-material" key={item.id} onContextMenu={e => {
+      if (disabled || draft) return;
+      e.preventDefault(); menuSeq.current += 1;
+      setMenuPoint({ id: item.id, point: { x: e.clientX, y: e.clientY, seq: menuSeq.current } });
+    }}>
       <div className="kaus-material-head"><strong>{item.title}</strong>
-        <button type="button" className="kaus-icon-btn" disabled={disabled || !!draft} aria-label={`${t("group.material.edit")} ${item.title}`} title={t("group.material.edit")} onClick={() => setDraft({ ...item, revision: bundle.revision })}><Pencil size={12} /></button>
-        <button type="button" className="kaus-icon-btn" disabled={disabled || !!draft} aria-label={`${t("group.material.remove")} ${item.title}`} title={t("group.material.remove")} onClick={() => void remove(item)}><Trash2 size={12} /></button>
+        <RowMenu busy={disabled || !!draft} triggerLabel={t("groupRows.materialMenuFor", { title: item.title })} menuLabel={t("groupRows.materialMenu")}
+          point={menuPoint?.id === item.id ? menuPoint.point : null} items={[
+            { id: "edit", icon: <Pencil size={16} aria-hidden />, label: t("group.material.edit"), onSelect: () => setDraft({ ...item, revision: bundle.revision }) },
+            { id: "delete", icon: <Trash2 size={16} aria-hidden />, label: t("group.material.remove"), onSelect: () => void remove(item), separated: true },
+          ]} />
       </div>
       {item.sourceLabel && <small className="kaus-group-dim">{item.sourceLabel}</small>}
       <details><summary>{item.content.slice(0, 64)}{item.content.length > 64 ? "…" : ""}</summary><pre>{item.content}</pre></details>
