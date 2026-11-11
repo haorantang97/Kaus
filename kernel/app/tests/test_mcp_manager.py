@@ -144,3 +144,33 @@ def test_not_isolable_binding_cannot_be_released(tmp_path):
         assert locked.value.code == "capability_not_isolable"
     finally:
         uow.close()
+
+
+def test_registry_entries_become_form_drafts_without_values():
+    from app.capabilities.mcp_registry import McpRegistry
+    payload = {"servers": [
+        {"server": {"name": "io.github.acme/notes-mcp", "description": "Notes", "version": "1.2.0",
+                    "packages": [{"registryType": "npm", "identifier": "@acme/notes-mcp", "version": "1.2.0",
+                                  "runtimeHint": "npx", "transport": {"type": "stdio"},
+                                  "runtimeArguments": [{"type": "positional", "value": "-y"}],
+                                  "environmentVariables": [{"name": "NOTES_TOKEN", "isRequired": True, "isSecret": True},
+                                                           {"name": "NOTES_DIR"}]}]}},
+        {"server": {"name": "com.example/remote", "version": "2", "remotes": [
+            {"type": "streamable-http", "url": "https://mcp.example.test/mcp",
+             "headers": [{"name": "Authorization", "isRequired": True, "value": "Bearer {key}"}]}]}},
+        {"server": {"name": "com.example/unsupported", "packages": [{"registryType": "nuget", "identifier": "x"}]}},
+    ]}
+    calls = []
+    registry = McpRegistry(fetch=lambda url: calls.append(url) or payload, clock=lambda: 0.0)
+    items = registry.search("notes")["items"]
+    assert [i["name"] for i in items] == ["notes-mcp", "remote"]
+    assert items[0]["draft"] == {"transport": "stdio", "command": "npx", "args": ["-y", "@acme/notes-mcp@1.2.0"],
+                                 "env": ["NOTES_TOKEN", "NOTES_DIR"], "required": ["NOTES_TOKEN"]}
+    assert items[1]["draft"] == {"transport": "http", "url": "https://mcp.example.test/mcp",
+                                 "headers": ["Authorization"], "required": ["Authorization"]}
+    registry.search("notes")
+    assert len(calls) == 1 and "search=notes" in calls[0]  # cached
+    failing = McpRegistry(fetch=lambda url: (_ for _ in ()).throw(OSError("offline")))
+    with pytest.raises(ApiError) as offline:
+        failing.search("")
+    assert offline.value.code == "mcp_registry_unavailable"

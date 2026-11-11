@@ -25,7 +25,8 @@ export function McpSettings() {
   const [items, setItems] = useState<McpItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
-  const [open, setOpen] = useState<string | null>(null);
+  // `/config?section=mcp&mcp=<id>` (from the skill tree) opens that MCP directly.
+  const [open, setOpen] = useState<string | null>(() => new URLSearchParams(window.location.search).get("mcp"));
   const [adding, setAdding] = useState(false);
   const autoChecked = useRef(false);
 
@@ -150,13 +151,12 @@ function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onC
     {error && <p role="alert" className="mt-2 text-xs" style={{ color: "var(--danger)" }}>{error}</p>}
 
     {detail.group === "notImported" ? <div className="kaus-mcp-section">
-      <p className="text-xs" style={{ color: cream(58) }}>{t("mcp.notImportedHint")}</p>
-      <div className="mt-2"><Button variant="primary" disabled={busy} onClick={() => void act(() => importMcp(id))}>{t("mcp.import")}</Button></div>
+      <div><Button variant="primary" disabled={busy} onClick={() => void act(() => importMcp(id))}>{t("mcp.import")}</Button></div>
     </div> : <div className="kaus-mcp-section">
       <h4>{t("mcp.section.status")}</h4>
       <div className="flex items-center gap-2">
         <Pill tone={STATUS_TONE[detail.status]}>{t(`mcp.status.${detail.status}`)}</Pill>
-        <span className="flex-1 text-xs" style={{ color: cream(55) }}>{t(`mcp.statusHint.${detail.status}`)}</span>
+        <span className="flex-1" />
         {detail.status !== "missing" && <button type="button" className="skill-tree-icon" disabled={busy} title={t("mcp.recheck")} aria-label={t("mcp.recheck")}
           onClick={() => void recheck()}><RotateCcw size={14} /></button>}
       </div>
@@ -173,7 +173,7 @@ function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onC
       {detail.sourcePath && <p className="mt-1 break-all text-xs" style={{ color: cream(42) }}>{t("import.source")} · {detail.sourcePath}</p>}
     </div>
 
-    {detail.group !== "notImported" && detail.status !== "missing" && detail.status !== "failed" && <div className="kaus-mcp-section">
+    {detail.group !== "notImported" && (detail.status === "ok" || detail.status === "unchecked") && <div className="kaus-mcp-section">
       <McpToolSwitches key={toolsKey} skillId={id} disabled={detail.disabledTools} onSnapshot={() => void act(async () => {})} />
     </div>}
 

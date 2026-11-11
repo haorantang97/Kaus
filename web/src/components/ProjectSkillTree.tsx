@@ -4,7 +4,6 @@ import { Anchor, ArrowDown, ArrowRight, ArrowUp, Ban, Bell, Check, ChevronRight,
 import { useLocale } from "../i18n";
 import { affectedProjects, matchesSkill, orderedEntries, projectAncestors } from "../lib/skillTree";
 import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
-import { McpToolSwitches } from "./McpToolSwitches";
 import { applySkillTreeAction, CAPABILITY_CHANGES_EVENT, fetchCapabilityChanges, fetchSkillTree, SkillTreeError, type SkillTreeAction, type SkillTreeEntry, type SkillTreeProject, type SkillTreeSkill, type SkillTreeSnapshot } from "../lib/skillTreeApi";
 import { CapabilityImportDialog } from "./CapabilityImportDialog";
 import { CapabilityChangesPanel } from "./CapabilityChangesPanel";
@@ -245,6 +244,11 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
   // 钩子（2026-11-11）：通用时点用中文名，Agent 专有时点原样显示；详情是时点、命令、超时三项。
   const hookEvent = (skill: SkillTreeSkill) => skill.agent ? `${skill.event}${skill.matcher ? ` · ${skill.matcher}` : ""}` : t(`hook.event.${skill.event as HookEvent}`);
   const hookDetail = (skill: SkillTreeSkill) => t("hook.detail", { event: hookEvent(skill), command: skill.command ?? "", timeout: skill.timeout ?? 60 });
+  const openMcp = (id: string) => {
+    // The router listens to popstate, so this opens Settings → MCP on that item without a reload.
+    window.history.pushState({}, "", `/config?section=mcp&mcp=${encodeURIComponent(id)}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
   const renderSkill = (entry: SkillTreeEntry, depth: number) => {
     const skill = skillMap.get(entry.skillId);
     if (!skill) return null;
@@ -252,9 +256,6 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     const isTarget = drop?.projectId === entry.projectId && drop.row === skill.id;
     // 原生 Agent 关不掉的：随 Agent 加载，树上锁住（拖动、菜单都不可用）。
     const locked = skill.boundReason === "not_isolable";
-    // MCP 单个工具开关（2026-11-11）：展开这一行，按工具清单逐个开关。
-    const toolsKey = `t:${entry.projectId}:${skill.id}`;
-    const toolsOpen = skill.kind === "mcp" && !entry.blocked && expanded.has(toolsKey);
     return <Fragment key={skill.id}><div className={`skill-tree-row skill-tree-skill${entry.inherited ? " is-inherited" : ""}${entry.blocked ? " is-blocked" : ""}${isTarget ? (drop.beforeSkillId === skill.id ? " drop-before" : " drop-after") : ""}`}
       style={{ "--tree-depth": depth } as CSSProperties} data-skill-drop={skill.pendingAssignment ? undefined : "row"} data-project-id={entry.projectId} data-agent-key={skill.agentKey ?? ""} data-skill-id={skill.id}>
       <button type="button" className="skill-tree-icon skill-tree-grip" aria-label={t("skillTree.drag", { name: skill.name })} title={t("skillTree.drag", { name: skill.name })}
@@ -263,10 +264,10 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
         : skill.kind === "plugin" ? <Puzzle size={15} className="skill-tree-type" role="img" aria-label={t("library.plugin")} />
         : skill.kind === "hook" ? <Anchor size={15} className="skill-tree-type" role="img" aria-label={t("hook.kind")} />
         : <FileText size={15} className="skill-tree-type" aria-hidden="true" />}
-      {skill.kind === "mcp" && !entry.blocked && <button type="button" className="skill-tree-icon" aria-expanded={toolsOpen}
-        title={t("mcpTools.title")} aria-label={t("mcpTools.of", { name: skill.name })} onClick={() => toggle(toolsKey)}>
-        <ChevronRight size={14} className={toolsOpen ? "is-open" : ""} /></button>}
-      <span className="skill-tree-name" title={skill.kind === "hook" ? hookDetail(skill) : skill.description || skill.name}>{skill.name}</span>
+      {/* MCP 本身的设置（状态、工具开关、绑定）只在设置 → MCP（2026-11-12：一个功能一处入口）；点名称即打开。 */}
+      {skill.kind === "mcp"
+        ? <button type="button" className="skill-tree-name skill-tree-link" title={skill.description || skill.name} onClick={() => openMcp(skill.id)}>{skill.name}</button>
+        : <span className="skill-tree-name" title={skill.kind === "hook" ? hookDetail(skill) : skill.description || skill.name}>{skill.name}</span>}
       {skill.kind === "hook" && skill.event && <span className="skill-tree-source" title={hookDetail(skill)}>{hookEvent(skill)}</span>}
       {skill.bound && <span className="skill-tree-type" role="img" aria-label={locked ? t("skillTree.notIsolable") : t("skillTree.bound")} title={locked ? t("skillTree.notIsolable") : t("skillTree.bound")}><Lock size={12} aria-hidden="true" /></span>}
       {skill.pendingAssignment && <span className="skill-tree-pending">{t("skillTree.pendingAssignment")}</span>}
@@ -275,10 +276,6 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
       <button type="button" className="skill-tree-icon skill-tree-more" disabled={busy || locked} aria-label={t("skillTree.actions", { name: skill.name })} title={t("common.more")}
         onClick={e => { const rect = e.currentTarget.getBoundingClientRect(); setMenu({ ...item, x: Math.min(rect.right - 210, window.innerWidth - 228), y: Math.min(rect.bottom + 4, window.innerHeight - 324) }); }}><MoreHorizontal size={17} /></button>
     </div>
-    {toolsOpen && <div style={{ paddingLeft: `calc(44px + ${depth} * 22px)` }}>
-      <McpToolSwitches skillId={skill.id} disabled={skill.disabledTools ?? []}
-        onSnapshot={next => { setData(next); setUndoToken(next.undoToken ?? null); }} />
-    </div>}
     </Fragment>;
   };
   const renderProject = (project: SkillTreeProject, depth: number, seen: Set<string>): React.ReactNode => {

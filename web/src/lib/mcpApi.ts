@@ -68,3 +68,14 @@ export const removeMcp = (id: string) => call<{ removed: string }>(one(id), "DEL
 export const bindMcp = (id: string) => call<McpDetail>(`${one(id)}/bind`, "POST", {});
 export const unbindMcp = (id: string) => call<McpDetail>(`${one(id)}/unbind`, "POST", {});
 export const importMcp = (id: string) => call<McpDetail>(`${one(id)}/import`, "POST", {});
+export interface McpRegistryItem {
+  id: string;
+  registryName: string;
+  name: string;
+  description: string;
+  version?: string;
+  repository?: string;
+  draft: { transport: "stdio" | "http"; command?: string; args?: string[]; env?: string[]; url?: string; headers?: string[]; required: string[] };
+}
+export const searchMcpRegistry = (query: string, signal?: AbortSignal) =>
+  call<{ items: McpRegistryItem[] }>(`/api/mcp/registry?q=${encodeURIComponent(query)}`, "GET", undefined, signal);

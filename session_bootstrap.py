@@ -1485,7 +1485,8 @@ def open_session_runtime(
         router.routes.extend(build_skill_tree_router(skill_tree, auth_policy=auth_policy,
                                                      imports=capability_imports, self_check=self_check,
                                                      mcp_tools=mcp_manager.tools).routes)
-        router.routes.extend(build_mcp_manager_router(mcp_manager, auth_policy=auth_policy).routes)
+        from app.capabilities.mcp_registry import McpRegistry
+        router.routes.extend(build_mcp_manager_router(mcp_manager, auth_policy=auth_policy, registry=McpRegistry()).routes)
     router.routes.extend(build_plugin_library_router(plugin_library, auth_policy=auth_policy).routes)
     router.routes.extend(build_hook_library_router(hook_library, auth_policy=auth_policy).routes)
     from native_archives import NativeArchiveStore, NativeArchiveService

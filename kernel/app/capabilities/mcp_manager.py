@@ -265,7 +265,7 @@ class McpManager:
         return self.detail(mcp_id)
 
 
-def build_mcp_manager_router(manager: McpManager, *, auth_policy: Any):
+def build_mcp_manager_router(manager: McpManager, *, auth_policy: Any, registry: Any = None):
     import asyncio
 
     from fastapi import APIRouter, Body, Depends
@@ -295,6 +295,14 @@ def build_mcp_manager_router(manager: McpManager, *, auth_policy: Any):
     @endpoint
     async def add_mcp(body: dict[str, Any] = Body(...)):
         return await asyncio.to_thread(manager.add, body)
+
+    if registry is not None:
+        from fastapi import Query
+
+        @router.get("/mcp/registry", dependencies=[auth])
+        @endpoint
+        async def search_registry(q: str = Query("")):
+            return await asyncio.to_thread(registry.search, q)
 
     @router.get("/mcp/{mcp_id}", dependencies=[auth])
     @endpoint
