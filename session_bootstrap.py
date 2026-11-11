@@ -1379,6 +1379,9 @@ def open_session_runtime(
     # 钩子（2026-11-11）：同一个能力库目录下的 hooks/。
     from app.capabilities.hook_library import HookLibrary, build_hook_library_router
     hook_library = HookLibrary(plugin_library.root)
+    # MCP 管理（2026-11-11）：在 Kaus 里添加的 MCP 也在能力库下（mcp/）。
+    from app.capabilities.mcp_manager import McpManager, build_mcp_manager_router
+    mcp_manager = None
     if skill_database is not None:
         def skill_inventory_ready(agent_key):
             for driver in registry.list_drivers():
@@ -1397,6 +1400,7 @@ def open_session_runtime(
 
         skill_tree = SkillTreeService(skill_database, inventory_ready=skill_inventory_ready,
                                       onboarding_enabled=skill_onboarding_enabled)
+        mcp_manager = McpManager(skill_tree, plugin_library.root)
         from drivers.mcp_inventory import configured_mcp_sources, discover_mcp
         from drivers.native_plugins import connected_agents, discover_native_plugins
         from drivers.capability_binding import annotate as annotate_capabilities, supported_kinds
@@ -1445,7 +1449,7 @@ def open_session_runtime(
                       *discover_native_plugins(context[0], agents=connected_agents(registry), bindings=context[1]),
                       *discover_native_hooks(hook_agents(), root_project_id(context[0]))]
             return [*annotate_capabilities(native, supported=isolation_support()), *plugin_library.discover(),
-                    *hook_library.discover()]
+                    *hook_library.discover(), *mcp_manager.discover()]
         skill_tree.discover = discover_capabilities
         plugin_library.skill_tree = skill_tree
         hook_library.skill_tree = skill_tree
@@ -1477,10 +1481,11 @@ def open_session_runtime(
                 row["backendIds"].add(driver.backend_id)
             return agents
         self_check = SelfCheckService(repositories, session_host, capability_imports, connected_agents_by_key)
-        from app.capabilities.mcp_tools import McpTools
+        mcp_manager.imports = capability_imports
         router.routes.extend(build_skill_tree_router(skill_tree, auth_policy=auth_policy,
                                                      imports=capability_imports, self_check=self_check,
-                                                     mcp_tools=McpTools(skill_tree)).routes)
+                                                     mcp_tools=mcp_manager.tools).routes)
+        router.routes.extend(build_mcp_manager_router(mcp_manager, auth_policy=auth_policy).routes)
     router.routes.extend(build_plugin_library_router(plugin_library, auth_policy=auth_policy).routes)
     router.routes.extend(build_hook_library_router(hook_library, auth_policy=auth_policy).routes)
     from native_archives import NativeArchiveStore, NativeArchiveService

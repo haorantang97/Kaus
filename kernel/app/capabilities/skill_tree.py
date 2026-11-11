@@ -43,11 +43,14 @@ IMPORT_KEY = "skill_tree.import_state.v1"
 #: Fields Kaus owns on a native record; a fresh discovery keeps them.
 #: ``userBound``: the user marked it bound to its Agent (Agent 自查, 2026-11-11); kept across refreshes.
 MCP_DISABLED_KEY = "skill_tree.mcp_disabled_tools.v1"
-KAUS_FIELDS = ("imported", "shared", "importedAs", "importCopy", "originFingerprint", "userBound")
+#: ``userUnbound``: the user released a rule-bound item for every Agent (MCP 管理, 2026-11-11).
+KAUS_FIELDS = ("imported", "shared", "importedAs", "importCopy", "originFingerprint", "userBound", "userUnbound")
 ARRANGED_TYPES_SQL = ("capability_type = 'skills' OR capability_type LIKE '%:skills' "
                       "OR capability_type LIKE '%:mcp' OR capability_type = 'plugins' "
                       "OR capability_type LIKE '%:plugins' OR capability_type = 'hooks' "
-                      "OR capability_type LIKE '%:hooks'")
+                      "OR capability_type LIKE '%:hooks' "
+                      # MCP added in Kaus (drivers.library_mcp); module and built-in MCP rows stay out.
+                      "OR (capability_type = 'mcp' AND capability_id LIKE 'lib-mcp-%')")
 
 
 def _dump(value) -> str:
@@ -230,6 +233,9 @@ class SkillTreeService:
                     record[key] = old[key]
             if record.get("userBound") and not record.get("bound"):
                 record["bound"], record["boundReason"] = True, "user_marked"
+            elif record.get("userUnbound") and record.get("boundReason") != "not_isolable":
+                record["bound"] = False
+                record.pop("boundReason", None)
             if record.get("importCopy"):
                 # An imported Skill runs from the library copy; the Agent's file is its origin.
                 record["originPath"], record["sourcePath"] = record.get("sourcePath"), record["importCopy"]
@@ -384,7 +390,8 @@ class SkillTreeService:
         allocated = {row["skillId"] for row in assignments if row["mode"] == "local"}
         for skill in skills:
             # 新生成的技能与刚装进能力库的插件：还没分配到任何 Project 时挂在根下待分配。
-            if skill.get("generated") or skill.get("kind") == "plugin":
+            if skill.get("generated") or skill.get("kind") == "plugin" \
+                    or (skill.get("kind") == "mcp" and str(skill.get("id", "")).startswith("lib-mcp-")):
                 skill["pendingAssignment"] = skill["id"] not in allocated
         return {"revision": revision, "projects": projects, "skills": skills,
                 "assignments": assignments, "entries": entries}

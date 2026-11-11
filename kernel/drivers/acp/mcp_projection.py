@@ -281,6 +281,15 @@ def _servers_of(capability_id: str, value: Any, acc: _Acc) -> list[tuple[str, An
             acc.warnings.append(f"mcp[{ref.get('name') or capability_id}]：来源配置里已没有这条 MCP，本次未送达")
             return []
         return [(str(ref.get("name") or capability_id), definition)]
+    if isinstance(value.get("libraryRef"), Mapping):
+        # 在 Kaus 里添加的 MCP（drivers.library_mcp）：定义在能力库，密文加密另存，同样现读。
+        from drivers.library_mcp import resolve as resolve_library
+        definition = resolve_library(value["libraryRef"])
+        name = str(value.get("name") or capability_id)
+        if definition is None:
+            acc.warnings.append(f"mcp[{name}]：能力库里已没有这条 MCP，本次未送达")
+            return []
+        return [(name, definition)]
     if _SERVER_KEYS & set(value):
         # 逐条行：capability_id 就是名字。
         return [(str(value.get("name") or capability_id), value)]

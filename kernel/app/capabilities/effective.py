@@ -182,6 +182,26 @@ def with_plugin_locations(effective: EffectiveCapabilities, catalog: Any) -> Eff
     return effective.model_copy(update={"entries": tuple(entries)})
 
 
+def with_library_mcp(effective: EffectiveCapabilities, catalog: Any) -> EffectiveCapabilities:
+    """Hydrate MCP rows added in Kaus (2026-11-11, ``drivers.library_mcp``) with their library reference.
+
+    The persistent row only says which MCP; the definition stays in the capability library and its
+    key values stay encrypted there until ``drivers.acp.mcp_projection`` reads them for one launch.
+    """
+    refs = {(item.get("capabilityType"), item.get("capabilityId")): item for item in (catalog or {}).values()
+            if isinstance(item, dict) and item.get("kind") == "mcp" and isinstance(item.get("libraryRef"), dict)}
+    if not refs:
+        return effective
+    entries = []
+    for entry in effective.entries:
+        item = refs.get((entry.capability_type, entry.capability_id))
+        if item is not None:
+            entry = entry.model_copy(update={"config": {**entry.config, "value": {
+                "libraryRef": dict(item["libraryRef"]), "name": item.get("name") or entry.capability_id}}})
+        entries.append(entry)
+    return effective.model_copy(update={"entries": tuple(entries)})
+
+
 MCP_DISABLED_KEY = "skill_tree.mcp_disabled_tools.v1"
 
 
@@ -305,7 +325,7 @@ async def _resolve_effective_for_binding(
     settings = getattr(repositories, "settings", None)
     catalog = await settings.get("skill_tree.catalog.v1") if settings else None
     effective = with_hook_definitions(without_native_hooks(with_plugin_locations(effective, catalog)), catalog)
-    effective = with_mcp_tool_switches(effective, catalog, await _mcp_switches(repositories))
+    effective = with_mcp_tool_switches(with_library_mcp(effective, catalog), catalog, await _mcp_switches(repositories))
     shared = await _shared_imports(repositories, binding, catalog)
     if shared:
         effective = effective.model_copy(update={"entries": (*effective.entries, *shared)})
@@ -371,6 +391,7 @@ __all__ = [
     "is_native_mcp_record",
     "resolve_effective_for_binding",
     "resolve_effective_for_project",
+    "with_library_mcp",
     "with_plugin_locations",
     "without_native_mcp",
 ]

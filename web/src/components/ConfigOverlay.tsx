@@ -1,7 +1,7 @@
 import { ErrorNotice } from "./ui";
 import { EngineIcon } from "./EngineIcon";
 import { useEffect, useState } from "react";
-import { Archive, ArchiveRestore, ArrowUpRight, Bot, Check, FolderInput, Gauge, Info, Languages, Moon, Settings2, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUpRight, Bot, Check, FolderInput, Gauge, Info, Languages, Moon, Network, Settings2, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { LegacyApiError, restoreDeletedAgent } from "../lib/api";
 import { NewAgentModal } from "./NewAgentModal";
@@ -15,11 +15,12 @@ import { TerminalSettings } from "./TerminalSettings";
 import { SelectPopover } from "./SelectPopover";
 import { AgentConnections } from "./AgentConnections";
 import { AccountQuotaSettings } from "./AccountQuotaSettings";
+import { McpSettings } from "./McpSettings";
 import { AsyncState, Overlay } from "./ui";
 import "./settings.css";
 
-type Section = "general" | "agents" | "usage" | "coordinator" | "archive" | "about";
-const SECTIONS: readonly Section[] = ["general", "agents", "usage", "coordinator", "archive", "about"];
+type Section = "general" | "agents" | "mcp" | "usage" | "coordinator" | "archive" | "about";
+const SECTIONS: readonly Section[] = ["general", "agents", "mcp", "usage", "coordinator", "archive", "about"];
 
 /* AGPL 第 13 条：通过网络使用修改版的人要能拿到源码，这里给出许可证与源码入口。 */
 const SOURCE_URL = "https://github.com/haorantang97/Kaus";
@@ -119,6 +120,7 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThem
   const sections = [
     { id: "general" as const, icon: Settings2, label: t("capabilities.scope.common") },
     { id: "agents" as const, icon: Bot, label: "Agent" },
+    { id: "mcp" as const, icon: Network, label: "MCP" },
     { id: "usage" as const, icon: Gauge, label: t("settings.usage") },
     { id: "coordinator" as const, icon: Bot, label: t("group.coordinator.label") },
     { id: "archive" as const, icon: Archive, label: t("conversation.archived") },
@@ -151,6 +153,7 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThem
           </div>
         </>}
         {section === "agents" && <AgentConnections refreshKey={`${refreshKey}:${reload}`} />}
+        {section === "mcp" && <McpSettings key={`${refreshKey}:${reload}`} />}
         {section === "usage" && <AccountQuotaSettings key={`${refreshKey}:${reload}`} />}
         {section === "coordinator" && <div className="kaus-settings-section"><h2>{t("group.coordinator.default")}</h2><CoordinatorSettings global /></div>}
         {section === "archive" && <>

@@ -3,6 +3,29 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 11 日：MCP 管理（第一步）
+
+依据 `product-decisions.md`「MCP 管理」「绑定的说明口径」与设计稿 `docs/product/mcp-management-design-20261111.md`。入口按负责人定放在设置里，与「Agent」并列；这一页只管 MCP（设计稿第 8 节第 2 问负责人未答，按建议处理，技能与插件的绑定仍看技能树和导入名单）。
+
+**页面**（设置 → MCP）：
+- 一个统一列表，四组：可用（导入的、在 Kaus 添加的）、需要处理（需要登录或密钥、出错、来源已不在）、Agent 绑定（每行注明原因，组标题旁提示两种绑定的后果）、未导入（Agent 自己配置、还不在能力库里的，开对话时不加载）。
+- 状态取自工具清单缓存；从没检查过的，首次打开页面时自动检查一次，右上角「检查连接」全部重查。
+- 详情：状态（出错时可展开原始诊断）、连接（本地命令或远程地址、环境变量名 / 请求头名，Kaus 添加的显示是否已设置值）、工具开关（复用 `McpToolSwitches`）、绑定（标为绑定前确认框写明「之后只有 {Agent} 能用」；取消绑定；「原生 Agent 不支持隔离」的不能取消）、分配（只读列出 Project，「打开技能树」跳到 Agent 页）。顶栏：编辑（只限 Kaus 添加的）、从能力库删除（垃圾桶）。
+- 未导入的详情里只有「导入能力库」。还按旧规则安排的 Agent，导入时把它已在树上的一并保留，不会因第一次导入掉出树。
+
+**规则**：
+- 取消绑定 = 进入能力库（`shared`），分到的 Project 里所有 Agent 都能用；规则判定的绑定被取消后记 `userUnbound`，之后重新发现也不会再判回绑定（`skill_tree.KAUS_FIELDS`）。
+- 从能力库删除：Kaus 添加的整条删掉（定义、密钥、树上分配、工具缓存与开关）；导入的退回「未导入」，Agent 那边的原配置不动。
+- 在 Kaus 添加的 MCP：第一步只支持手动填写（本地命令 + 参数 + 环境变量，或远程地址 + 请求头）。定义存 `<能力库>/mcp/lib-mcp-<12 位>.json`，只存名字；环境变量值和请求头值一律按密钥处理，Fernet 加密存同目录 `.secrets.json`（钥匙 `.key`，目录 0700、文件 0600），接口从不回传明文，编辑时留空保持原值。树上作为通用 `mcp` 行（`capability_id` 以 `lib-mcp-` 开头，模块与内置 MCP 行不受影响），刚添加时挂在根下待分配；开对话时由 `effective.with_library_mcp` 带上 `libraryRef`，`mcp_projection` 现读解密，值只在内存里。没存值的变量解析为空串，状态记为「需要登录或密钥」。
+
+**代码**：`kernel/drivers/library_mcp.py`（定义与加密存储、`resolve`）、`kernel/app/capabilities/mcp_manager.py`（列表、检查、增改删、绑定、导入与路由 `/api/mcp*`）、`mcp_tools.py`（Kaus 添加的 MCP 的指纹与清单）、`effective.py`、`skill_tree.py`、`drivers/acp/mcp_projection.py`、`session_bootstrap.py`；前端 `McpSettings.tsx`、`McpEditDialog.tsx`、`lib/mcpApi.ts`、`ConfigOverlay.tsx`、`settings.css`、中英文案。
+
+**测试**：新增 `kernel/app/tests/test_mcp_manager.py`（4 项：加密存储与跨 Agent 送达、编辑后重查、缺密钥与出错分组、导入 / 绑定 / 取消绑定 / 不可取消）与 `web/src/components/McpSettings.test.tsx`（3 项）。kernel 4,217 通过、127 跳过；前端 1,081 项通过，构建成功。
+
+**本机测试环境**：Homebrew 的 Node 已是 26，自带的 `localStorage` 遮住了 jsdom 的，现有前端测试全部在 `setup.ts` 的 `localStorage.clear()` 处报错；本次用 `NODE_OPTIONS=--no-experimental-webstorage` 跑通。CI 用自己的 Node 版本，不受影响；本机是否在测试配置里固定这个参数待定。
+
+**未做**：按 Agent 登录与登录状态（第二步）、从官方登记表添加（第三步）、厂商连接器的只读展示、技能树里点 MCP 跳到这里；没有在真实 Agent 上验证，只用假 MCP 与临时目录。
+
 ## 11 月 11 日：导入名单的可访问名称
 
 隔离实例界面复查（原会话）发现两处，均已修好：
@@ -19,7 +42,7 @@
 
 **行为**：
 - **适用范围**：技能树上的 MCP，即各 Agent 自带、接入时发现的 `<agent>:mcp`，包括导入后分给别的 Agent 的。Project 里手写的通用 `mcp` 行本来就不在树上，这次没有开关。
-- **入口**：暂时在技能树 MCP 行左侧的展开钮（「工具」）。展开后列出工具开关，悬停看说明，右上角「重新获取工具清单」。「MCP 管理」页（设计稿 `docs/product/mcp-management-design-20261111.md`，待负责人定）做好后搬进它的详情。
+- **入口**：技能树 MCP 行左侧的展开钮（「工具」），以及同日做好的设置 → MCP 详情。展开后列出工具开关，悬停看说明，右上角「重新获取工具清单」。
 - **工具清单**：
   - 用 MCP 标准的 `tools/list` 取得：按来源配置现读这条 MCP 的完整定义，密文只在内存里；经官方 MCP SDK 客户端短暂启动 MCP（stdio / http / sse，20 秒超时），只取名字与说明，取完即关，不调用任何工具。
   - 缓存在 `app_settings["skill_tree.mcp_tools.v1"]`。定义的指纹变化、用户点刷新、或缓存超过 24 小时才重取：Kaus 不常驻连接，收不到服务器「工具变了」的通知，用最长 24 小时代替。

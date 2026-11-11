@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from app.api.api_errors import ApiError
@@ -47,6 +48,11 @@ class McpTools:
 
     def _value(self, conn, record: dict) -> tuple[dict, str]:
         """``(这条 MCP 的配置值, 定义指纹)``。原生记录按来源现读（密文只在内存里）。"""
+        if record.get("libraryRef"):
+            from drivers.library_mcp import LibraryMcp
+            path = Path(str(record["libraryRef"].get("path") or ""))
+            value = {"libraryRef": dict(record["libraryRef"]), "name": record.get("name")}
+            return value, LibraryMcp(path.parent.parent).fingerprint(path.stem) or _digest(value)
         if record.get("sourcePath") and record.get("agentKey"):
             ref = {key: record.get(key) for key in ("name", "sourcePath", "sourceFormat", "sourceKey", "sourceShape")}
             return {"nativeRef": ref}, str(record.get("fingerprint") or _digest([ref, record.get("server")]))
@@ -60,11 +66,15 @@ class McpTools:
 
     @staticmethod
     def _empty_secret(value: dict) -> bool:
-        """An Agent's own definition whose ``${VAR}`` resolved to nothing: a key is missing here."""
-        if not isinstance(value.get("nativeRef"), dict):
+        """A definition whose ``${VAR}`` (or stored key) resolved to nothing: a key is missing here."""
+        if isinstance(value.get("libraryRef"), dict):
+            from drivers.library_mcp import resolve as resolve_library
+            definition = resolve_library(value["libraryRef"]) or {}
+        elif isinstance(value.get("nativeRef"), dict):
+            from drivers.native_mcp_raw import resolve
+            definition = resolve(value["nativeRef"]) or {}
+        else:
             return False
-        from drivers.native_mcp_raw import resolve
-        definition = resolve(value["nativeRef"]) or {}
         return any(v == "" for v in (definition.get("_kausEnvValues") or {}).values())
 
     @staticmethod
@@ -95,7 +105,7 @@ class McpTools:
             return {"skillId": skill_id, **cached}
         server, warnings = self._server(record["capabilityId"], value)
         result: dict[str, Any] = {"fingerprint": fingerprint, "fetchedAt": datetime.now(timezone.utc).isoformat()}
-        if server is None and value.get("nativeRef"):
+        if server is None and (value.get("nativeRef") or value.get("libraryRef")):
             result.update(status="failed", tools=[], error="来源配置里已没有这条 MCP")
         elif server is None or any("环境变量" in w for w in warnings) or self._empty_secret(value):
             # A variable or header value is missing: listing needs a login or key first.
