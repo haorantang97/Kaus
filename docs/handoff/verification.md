@@ -26,6 +26,8 @@
 
 **本机测试环境**：Homebrew 的 Node 已是 26，自带的 `localStorage` 遮住了 jsdom 的，现有前端测试全部在 `setup.ts` 的 `localStorage.clear()` 处报错；本次用 `NODE_OPTIONS=--no-experimental-webstorage` 跑通。CI 用自己的 Node 版本，不受影响；本机是否在测试配置里固定这个参数待定。
 
+**验收**：11 月 12 日项目负责人在隔离实例上验收通过。实例与假 MCP 已删除。
+
 **未做**：按 Agent 登录与登录状态（第二步）、从官方登记表添加（第三步）、厂商连接器的只读展示、技能树里点 MCP 跳到这里；没有在真实 Agent 上验证，只用假 MCP 与临时目录。
 
 ## 11 月 11 日：导入名单的可访问名称
