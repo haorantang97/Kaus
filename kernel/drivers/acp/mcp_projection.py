@@ -267,6 +267,21 @@ def _translate_one(name: str, raw: Any, acc: _Acc) -> dict[str, Any] | None:
     return None
 
 
+def _with_login(definition: dict[str, Any], key: Any) -> dict[str, Any]:
+    """MCP 统一登录（2026-11-12）：Kaus 登录过的远程 MCP 带上 ``Authorization``，值只在内存里。"""
+    if not key or not definition.get("url"):
+        return definition
+    from drivers.mcp_oauth import authorization
+    value = authorization(str(key))
+    if not value:
+        return definition
+    import hashlib
+    alias = "KAUS_LOGIN_" + hashlib.sha256(str(key).encode()).hexdigest()[:12].upper()
+    headers = {k: v for k, v in (definition.get("headers") or {}).items() if str(k).lower() != "authorization"}
+    return {**definition, "headers": {**headers, "Authorization": alias},
+            "_kausEnvValues": {**(definition.get("_kausEnvValues") or {}), alias: value}}
+
+
 def _servers_of(capability_id: str, value: Any, acc: _Acc) -> list[tuple[str, Any]]:
     """一条能力行 → ``[(server 名字, server 配置)]``（两种行粒度都认，见模块文档）。"""
     if not isinstance(value, Mapping):
@@ -280,7 +295,7 @@ def _servers_of(capability_id: str, value: Any, acc: _Acc) -> list[tuple[str, An
         if definition is None:
             acc.warnings.append(f"mcp[{ref.get('name') or capability_id}]：来源配置里已没有这条 MCP，本次未送达")
             return []
-        return [(str(ref.get("name") or capability_id), definition)]
+        return [(str(ref.get("name") or capability_id), _with_login(definition, value.get("oauthKey")))]
     if isinstance(value.get("libraryRef"), Mapping):
         # 在 Kaus 里添加的 MCP（drivers.library_mcp）：定义在能力库，密文加密另存，同样现读。
         from drivers.library_mcp import resolve as resolve_library
@@ -289,7 +304,7 @@ def _servers_of(capability_id: str, value: Any, acc: _Acc) -> list[tuple[str, An
         if definition is None:
             acc.warnings.append(f"mcp[{name}]：能力库里已没有这条 MCP，本次未送达")
             return []
-        return [(name, definition)]
+        return [(name, _with_login(definition, value.get("oauthKey")))]
     if _SERVER_KEYS & set(value):
         # 逐条行：capability_id 就是名字。
         return [(str(value.get("name") or capability_id), value)]

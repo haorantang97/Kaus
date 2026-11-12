@@ -1474,4 +1474,7 @@ export const zh = {
   "groupRows.materialDeleteConfirm": "删除资料「{title}」？",
   "groupRows.intakeMenu": "记录菜单",
   "groupRows.intakeMenuFor": "{name} 记录菜单",
+  "mcp.signIn": "登录",
+  "mcp.signOut": "退出登录",
+  "mcp.signedIn": "已登录",
 } as const;

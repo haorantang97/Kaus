@@ -4,13 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { McpSettings } from "./McpSettings";
 import { ConfirmHost } from "./ui";
-import { addMcp, bindMcp, checkMcp, fetchMcp, fetchMcpList, searchMcpRegistry, type McpItem } from "../lib/mcpApi";
+import { addMcp, bindMcp, checkMcp, fetchMcp, fetchMcpList, loginMcp, searchMcpRegistry, signOutMcp, type McpItem } from "../lib/mcpApi";
 import { fetchMcpTools } from "../lib/skillTreeApi";
 
 vi.mock("../lib/mcpApi", async importOriginal => ({
   ...await importOriginal<typeof import("../lib/mcpApi")>(),
   fetchMcpList: vi.fn(), checkMcp: vi.fn(), fetchMcp: vi.fn(), addMcp: vi.fn(), updateMcp: vi.fn(),
-  removeMcp: vi.fn(), bindMcp: vi.fn(), unbindMcp: vi.fn(), importMcp: vi.fn(), searchMcpRegistry: vi.fn(),
+  removeMcp: vi.fn(), bindMcp: vi.fn(), unbindMcp: vi.fn(), importMcp: vi.fn(), searchMcpRegistry: vi.fn(), loginMcp: vi.fn(), signOutMcp: vi.fn(),
 }));
 vi.mock("../lib/skillTreeApi", async importOriginal => ({
   ...await importOriginal<typeof import("../lib/skillTreeApi")>(),
@@ -99,5 +99,25 @@ describe("MCP settings", () => {
     view();
     await waitFor(() => expect(fetchMcp).toHaveBeenCalledWith("native-gh", expect.anything()));
     window.history.pushState({}, "", "/");
+  });
+
+  it("signs in once in the browser for a remote MCP and can sign out", async () => {
+    const user = userEvent.setup();
+    const remote = { ...items[1], transport: "http" as const, target: "https://mail.example.test/mcp", signedIn: false,
+      definition: { transport: "http" as const, url: "https://mail.example.test/mcp", headers: [] } };
+    vi.mocked(fetchMcp).mockReset().mockResolvedValueOnce(remote)
+      .mockResolvedValue({ ...remote, signedIn: true, status: "ok", group: "available", toolCount: 3 });
+    vi.mocked(loginMcp).mockResolvedValue({ authorizationUrl: "https://auth.example.test/authorize?state=s" });
+    vi.mocked(signOutMcp).mockResolvedValue({ ...remote, signedIn: false });
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    view();
+    await user.click(await screen.findByRole("button", { name: "github 的详情" }));
+    await user.click(await screen.findByRole("button", { name: "登录" }));
+    expect(loginMcp).toHaveBeenCalledWith("native-gh");
+    expect(open).toHaveBeenCalledWith("https://auth.example.test/authorize?state=s", "_blank", "noopener");
+    expect(await screen.findByText("已登录", undefined, { timeout: 4000 })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "退出登录" }));
+    expect(signOutMcp).toHaveBeenCalledWith("native-gh");
+    open.mockRestore();
   });
 });

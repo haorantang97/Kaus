@@ -33,7 +33,8 @@ def _pairs(rows: Any) -> dict[str, str]:
             and isinstance(row.get("name"), str) and isinstance(row.get("value"), str)}
 
 
-async def _list(server: Mapping[str, Any], cwd: str | None, errlog: IO[str]) -> list[dict]:
+async def _list(server: Mapping[str, Any], cwd: str | None, errlog: IO[str], auth: Any = None,
+                statuses: list[int] | None = None) -> list[dict]:
     from mcp.client import Client
     from mcp.client.sse import sse_client
     from mcp.client.stdio import StdioServerParameters
@@ -49,11 +50,20 @@ async def _list(server: Mapping[str, Any], cwd: str | None, errlog: IO[str]) -> 
                 env=_pairs(server.get("env")) or None, cwd=cwd), errlog=errlog)
         elif kind in ("http", "sse"):
             headers = _pairs(server.get("headers"))
+
+            async def record(response):
+                # The SDK reports a 401 only as a generic error; the status says a sign-in is missing.
+                if statuses is not None:
+                    statuses.append(response.status_code)
+            hooks = {"response": [record]}
             if kind == "http":
-                http = await stack.enter_async_context(httpx2.AsyncClient(headers=headers, timeout=15))
+                http = await stack.enter_async_context(httpx2.AsyncClient(headers=headers, timeout=15, auth=auth, event_hooks=hooks))
                 transport = streamable_http_client(str(server["url"]), http_client=http)
             else:
-                transport = sse_client(str(server["url"]), headers=headers, timeout=15, sse_read_timeout=30)
+                def factory(headers=None, timeout=None, auth=None):
+                    return httpx2.AsyncClient(headers=headers, timeout=timeout, auth=auth, event_hooks=hooks)
+                transport = sse_client(str(server["url"]), headers=headers, timeout=15, sse_read_timeout=30, auth=auth,
+                                       httpx_client_factory=factory)
         else:
             raise McpListError("failed", "不支持的传输方式")
         client = await stack.enter_async_context(Client(transport, read_timeout_seconds=15))
@@ -91,19 +101,24 @@ def _diagnostic(errors: list[BaseException], stderr: str, secrets: list[str]) ->
     return text
 
 
-def list_tools(server: Mapping[str, Any], *, cwd: str | None = None, timeout: float = TIMEOUT_SECONDS) -> list[dict]:
-    """同步入口（在工作线程里调）。失败抛 :class:`McpListError`，消息附原始诊断（密钥值已遮掉）。"""
+def list_tools(server: Mapping[str, Any], *, cwd: str | None = None, timeout: float = TIMEOUT_SECONDS,
+               auth: Any = None) -> list[dict]:
+    """同步入口（在工作线程里调）。失败抛 :class:`McpListError`，消息附原始诊断（密钥值已遮掉）。
+
+    ``auth``：远程 MCP 的 httpx 鉴权（MCP 统一登录时是 SDK 的 ``OAuthClientProvider``）。"""
+    statuses: list[int] = []
     with tempfile.TemporaryFile("w+", encoding="utf-8", errors="replace") as errlog:
         async def run():
             async with asyncio.timeout(timeout):
-                return await _list(server, cwd, errlog)
+                return await _list(server, cwd, errlog, auth, statuses)
         try:
             return asyncio.run(run())
         except McpListError:
             raise
         except BaseException as exc:  # noqa: BLE001 - every transport failure becomes a code for the tree
             errors = _leaves(exc)
-            if any(_auth_failure(error) for error in errors):
+            if any(_auth_failure(error) for error in errors) or (statuses and statuses[-1] in (401, 403)) \
+                    or (401 in statuses and auth is None):
                 raise McpListError("auth_required", "需要登录或密钥才能列出工具") from exc
             errlog.seek(0)
             detail = _diagnostic(errors, errlog.read(), [*_pairs(server.get("env")).values(),

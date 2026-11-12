@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronRight, Info, Lock, Network, Pencil, Plug, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { ChevronRight, Info, LogIn, LogOut, Lock, Network, Pencil, Plug, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
-import { bindMcp, checkMcp, fetchMcp, fetchMcpList, importMcp, removeMcp, unbindMcp,
+import { bindMcp, checkMcp, fetchMcp, fetchMcpList, importMcp, loginMcp, removeMcp, signOutMcp, unbindMcp,
   type McpDetail, type McpGroup, type McpItem, type McpStatus } from "../lib/mcpApi";
 import { EngineIcon } from "./EngineIcon";
 import { McpEditDialog, McpEditForm } from "./McpEditDialog";
@@ -114,6 +114,31 @@ function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onC
     finally { setBusy(false); }
   };
   const recheck = () => act(async () => { await checkMcp([id]); setToolsKey(k => k + 1); });
+  // Sign-in happens in the browser; the detail follows until Kaus holds the token (or the window closes).
+  const [signingIn, setSigningIn] = useState(false);
+  const signIn = async () => {
+    setError(null);
+    try {
+      const started = await loginMcp(id);
+      if (started.authorizationUrl) window.open(started.authorizationUrl, "_blank", "noopener");
+      setSigningIn(true);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
+  };
+  useEffect(() => {
+    if (!signingIn) return;
+    let stopped = false;
+    const deadline = Date.now() + 10 * 60_000;
+    const poll = async () => {
+      if (stopped) return;
+      try {
+        const next = await fetchMcp(id);
+        if (next.signedIn && next.status !== "unchecked") { setDetail(next); setSigningIn(false); setToolsKey(k => k + 1); onChanged(); return; }
+      } catch { /* keep waiting */ }
+      if (Date.now() < deadline) window.setTimeout(() => void poll(), 2000); else setSigningIn(false);
+    };
+    void poll();
+    return () => { stopped = true; };
+  }, [signingIn, id, onChanged]);
 
   if (!detail) return <Modal onClose={onClose} width={560}>
     <p className="flex items-center gap-2 py-6 text-xs" style={{ color: cream(50) }}>{error ?? <><Spinner />{t("ui.loading")}</>}</p>
@@ -173,6 +198,17 @@ function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onC
       {keys.length > 0 && <ul className="mt-1 text-xs" style={{ color: cream(55) }}>{keys.map(key => <li key={key} className="flex gap-2">
         <code>{key}</code>{!agent && <span>{definition?.valuesSet?.includes(key) ? t("mcp.valueSet") : t("mcp.valueMissing")}</span>}</li>)}</ul>}
       {detail.sourcePath && <p className="mt-1 break-all text-xs" style={{ color: cream(42) }}>{t("import.source")} · {detail.sourcePath}</p>}
+      {/* MCP 统一登录（2026-11-12）：Kaus 登录一次，令牌给用到它的任何 Agent。 */}
+      {detail.signedIn !== undefined && (detail.signedIn
+        ? <div className="mt-2 flex items-center gap-2 text-xs" style={{ color: cream(62) }}>
+            <span className="flex-1">{t("mcp.signedIn")}</span>
+            <button type="button" className="skill-tree-icon" disabled={busy} title={t("mcp.signOut")} aria-label={t("mcp.signOut")}
+              onClick={() => void act(() => signOutMcp(id))}><LogOut size={14} /></button>
+          </div>
+        : detail.status === "auth_required" && <div className="mt-2">
+            <Button variant="primary" disabled={busy || signingIn} onClick={() => void signIn()}>
+              {signingIn ? <Spinner /> : <LogIn size={14} />}{t("mcp.signIn")}</Button>
+          </div>)}
     </div>
 
     {detail.group !== "notImported" && (detail.status === "ok" || detail.status === "unchecked") && <div className="kaus-mcp-section">

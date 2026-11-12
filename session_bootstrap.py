@@ -1482,6 +1482,11 @@ def open_session_runtime(
             return agents
         self_check = SelfCheckService(repositories, session_host, capability_imports, connected_agents_by_key)
         mcp_manager.imports = capability_imports
+        # MCP 统一登录（2026-11-12）：令牌加密存在能力库，开对话时由投射层带给任何 Agent。
+        from drivers import mcp_oauth
+        from app.capabilities.mcp_login import McpLogin
+        mcp_oauth.configure(plugin_library.root)
+        mcp_manager.login = McpLogin(mcp_manager.tools, mcp_oauth.OAuthStore(plugin_library.root))
         router.routes.extend(build_skill_tree_router(skill_tree, auth_policy=auth_policy,
                                                      imports=capability_imports, self_check=self_check,
                                                      mcp_tools=mcp_manager.tools).routes)

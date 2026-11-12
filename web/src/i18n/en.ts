@@ -1358,4 +1358,7 @@ export const en: Record<keyof typeof zh, string> = {
   "groupRows.materialDeleteConfirm": "Delete material “{title}”?",
   "groupRows.intakeMenu": "Record menu",
   "groupRows.intakeMenuFor": "{name} record menu",
+  "mcp.signIn": "Sign in",
+  "mcp.signOut": "Sign out",
+  "mcp.signedIn": "Signed in",
 };

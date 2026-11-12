@@ -19,6 +19,8 @@ export interface McpItem {
   disabledTools: string[];
   projects: { id: string; name: string }[];
   boundReason?: string;
+  /** Remote MCP only: Kaus holds a sign-in for it (MCP 统一登录, 2026-11-12). */
+  signedIn?: boolean;
   error?: string;
   checkedAt?: string;
 }
@@ -79,3 +81,6 @@ export interface McpRegistryItem {
 }
 export const searchMcpRegistry = (query: string, signal?: AbortSignal) =>
   call<{ items: McpRegistryItem[] }>(`/api/mcp/registry?q=${encodeURIComponent(query)}`, "GET", undefined, signal);
+/** Starts Kaus's sign-in for a remote MCP; open `authorizationUrl` in the browser. */
+export const loginMcp = (id: string) => call<{ authorizationUrl?: string; status?: "ok" }>(`${one(id)}/login`, "POST", {});
+export const signOutMcp = (id: string) => call<McpDetail>(`${one(id)}/login`, "DELETE");

@@ -33,6 +33,8 @@ class McpManager:
         self.library = LibraryMcp(Path(library_root))
         self.tools = tools or McpTools(tree)
         self.imports = imports
+        #: MCP 统一登录（2026-11-12）：``app.capabilities.mcp_login.McpLogin``，装配时注入。
+        self.login: Any = None
 
     # ------------------------------------------------------------------ discovery
 
@@ -73,6 +75,8 @@ class McpManager:
         cached = cache.get(record["id"]) or {}
         # A changed definition (or key) makes the last check stale.
         current = self.library.fingerprint(record["id"]) if library else record.get("fingerprint")
+        if current:
+            current = str(current) + self.tools._login_mark(record)
         if current and cached.get("fingerprint") != current:
             cached = {}
         status = "missing" if not present else cached.get("status") or "unchecked"
@@ -95,6 +99,8 @@ class McpManager:
                "toolCount": len(cached.get("tools") or []) if cached.get("status") == "ok" else None,
                "disabledTools": list(disabled.get(record["id"]) or []),
                "projects": [{"id": pid, "name": tree["projects"][pid]} for pid in projects]}
+        if server.get("transport") in ("http", "sse") and self.login is not None:
+            row["signedIn"] = self.login.store.signed_in(record["id"])
         if record.get("bound"):
             row["boundReason"] = record.get("boundReason") or "agent_owned"
         if cached.get("error"):
@@ -303,6 +309,35 @@ def build_mcp_manager_router(manager: McpManager, *, auth_policy: Any, registry:
         @endpoint
         async def search_registry(q: str = Query("")):
             return await asyncio.to_thread(registry.search, q)
+
+    from fastapi import Request
+    from fastapi.responses import HTMLResponse
+
+    @router.get("/mcp/oauth/callback")
+    async def oauth_callback(code: str | None = None, state: str | None = None, iss: str | None = None,
+                             error: str | None = None):
+        # The browser returns here from the sign-in page without Kaus's session token; the random
+        # state ties it to a sign-in the user started from Kaus.
+        from app.capabilities.mcp_login import CALLBACK_PAGE
+        matched = manager.login is not None and manager.login.callback(code, state, iss, error)
+        text = "已登录，可关闭此页" if matched and not error and code else "登录未完成"
+        return HTMLResponse(CALLBACK_PAGE.format(text=text), status_code=200 if matched else 400)
+
+    @router.post("/mcp/{mcp_id}/login", dependencies=[auth])
+    @endpoint
+    async def start_login(mcp_id: str, request: Request):
+        if manager.login is None:
+            raise ApiError(503, "mcp_login_unavailable", "MCP 登录不可用")
+        redirect = str(request.base_url).rstrip("/") + "/api/mcp/oauth/callback"
+        return await asyncio.to_thread(manager.login.start, mcp_id, redirect)
+
+    @router.delete("/mcp/{mcp_id}/login", dependencies=[auth])
+    @endpoint
+    async def sign_out(mcp_id: str):
+        if manager.login is None:
+            raise ApiError(503, "mcp_login_unavailable", "MCP 登录不可用")
+        await asyncio.to_thread(manager.login.sign_out, mcp_id)
+        return await asyncio.to_thread(manager.detail, mcp_id)
 
     @router.get("/mcp/{mcp_id}", dependencies=[auth])
     @endpoint

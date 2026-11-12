@@ -3,6 +3,24 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 12 日：MCP 统一登录
+
+依据 `product-decisions.md`「MCP 登录」（同日定：Kaus 统一登录一次，令牌给任何 Agent）。
+
+**行为**：
+- 远程 MCP（http / sse）在设置 → MCP 详情的「连接」里：状态为「需要登录或密钥」时显示「登录」；已登录显示「已登录」和退出图标。没有别的入口。
+- 点「登录」：后端在后台线程里用官方 MCP SDK 的 `OAuthClientProvider` 连这条 MCP；服务器回 401 后 SDK 发现授权服务器、动态注册（客户端名 Kaus）、生成 PKCE，把授权地址交回前端，在浏览器打开（桌面版走系统浏览器）。授权后浏览器回到本机 `GET /api/mcp/oauth/callback`（不带会话令牌，凭 SDK 的随机 `state` 对上发起的那次登录；对不上返回 400），SDK 换得令牌，随后取一次工具清单刷新状态。详情每 2 秒查看一次，最多 10 分钟。
+- 令牌与注册得到的客户端信息加密存在能力库 `mcp/.oauth.json`（与 Kaus 添加的 MCP 共用钥匙，0600），键是目录记录 id。
+- 开对话时：凡分到该 MCP 的 Agent（Kaus 添加的，或导入后共享给别的 Agent 的原生 MCP），投射层在内存里加上 `Authorization: Bearer …`；距过期不到 2 分钟时先用刷新令牌换新；刷新失败或没有刷新令牌，视为需要重新登录（不带头）。来源 Agent 自己仍按原生配置加载，不受影响。
+- 连接检查也带这份令牌；登录、退出会改变缓存指纹，状态随之重查。
+- 状态判断修正：远程 MCP 回 401 / 403 时，SDK 只报一个通用错误，此前被记成「出错」；现在按记录到的 HTTP 状态判为「需要登录或密钥」。
+
+**代码**：`kernel/drivers/mcp_oauth.py`（加密存储、刷新、给 SDK 的 `TokenStorage`）、`kernel/app/capabilities/mcp_login.py`（发起、回调、超时）、`mcp_manager.py`（路由 `POST/DELETE /api/mcp/{id}/login`、`GET /api/mcp/oauth/callback`，列表里的 `signedIn`）、`mcp_tools.py`（指纹带登录状态）、`drivers/acp/mcp_projection.py`（`oauthKey` → 请求头）、`effective.py`（共享与 Kaus 添加的 MCP 带 `oauthKey`）、`drivers/mcp_tool_list.py`（`auth`、HTTP 状态记录）、`session_bootstrap.py`；前端 `McpSettings.tsx`、`lib/mcpApi.ts`、中英文案。
+
+**测试**：`kernel/app/tests/test_mcp_login.py` 在本机回环上起一个假 OAuth MCP（受保护资源元数据、授权服务器元数据、动态注册、授权跳转、PKCE 校验、令牌与刷新端点），用官方 SDK 走完整流程：未登录判为需要登录 → 拿到授权地址 → 模拟浏览器跳回 → 已连接、1 个工具、令牌密文存放 → 分到项目后别的 Agent 的 `mcpServers` 带上令牌 → 退出；另测快过期时自动刷新、只有本地命令的 MCP 不能登录。前端 `McpSettings.test.tsx` 补登录 / 退出。kernel 4,224 通过、127 跳过；前端 1,092 项通过，构建成功。
+
+**未验证**：没有连真实的远程 OAuth MCP（如 Notion、Linear）；各家授权服务器对动态注册、回环回调地址的支持不一，个别服务若不允许动态注册，需要另行支持预先登记的客户端。
+
 ## 11 月 12 日：MCP 剩余步骤与全项目文案、入口排查
 
 依据 `product-decisions.md`「界面文案与入口」（同日定）。负责人以 Carte 项目「识别到多道菜」卡片为例：卡片上多出「选择」「删除」两个按钮和一句无意义说明，正确做法是点卡片即进入选择、删除沿用统一手势、不加说明。按同一标准排查 Kaus。

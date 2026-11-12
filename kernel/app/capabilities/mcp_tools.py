@@ -51,11 +51,12 @@ class McpTools:
         if record.get("libraryRef"):
             from drivers.library_mcp import LibraryMcp
             path = Path(str(record["libraryRef"].get("path") or ""))
-            value = {"libraryRef": dict(record["libraryRef"]), "name": record.get("name")}
-            return value, LibraryMcp(path.parent.parent).fingerprint(path.stem) or _digest(value)
+            value = {"libraryRef": dict(record["libraryRef"]), "name": record.get("name"), "oauthKey": record["id"]}
+            return value, (LibraryMcp(path.parent.parent).fingerprint(path.stem) or _digest(value)) + self._login_mark(record)
         if record.get("sourcePath") and record.get("agentKey"):
             ref = {key: record.get(key) for key in ("name", "sourcePath", "sourceFormat", "sourceKey", "sourceShape")}
-            return {"nativeRef": ref}, str(record.get("fingerprint") or _digest([ref, record.get("server")]))
+            return ({"nativeRef": ref, "oauthKey": record["id"]},
+                    str(record.get("fingerprint") or _digest([ref, record.get("server")])) + self._login_mark(record))
         row = conn.execute("SELECT config_json FROM project_capabilities WHERE capability_type=? AND capability_id=? "
                            "AND assignment_mode != 'block' LIMIT 1",
                            (record["capabilityType"], record["capabilityId"])).fetchone()
@@ -63,6 +64,14 @@ class McpTools:
         value = config.get("value", config) if isinstance(config, dict) else {}
         value = {k: v for k, v in value.items() if k != "disabledTools"} if isinstance(value, dict) else {}
         return value, _digest(value)
+
+    @staticmethod
+    def _login_mark(record: dict) -> str:
+        """Signing in or out changes what a listing can see, so it is part of the fingerprint."""
+        from drivers import mcp_oauth
+        if mcp_oauth._ROOT is None or not (record.get("server") or {}).get("url"):
+            return ""
+        return ":login" if mcp_oauth.OAuthStore(mcp_oauth._ROOT).signed_in(record["id"]) else ""
 
     @staticmethod
     def _empty_secret(value: dict) -> bool:

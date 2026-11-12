@@ -197,7 +197,8 @@ def with_library_mcp(effective: EffectiveCapabilities, catalog: Any) -> Effectiv
         item = refs.get((entry.capability_type, entry.capability_id))
         if item is not None:
             entry = entry.model_copy(update={"config": {**entry.config, "value": {
-                "libraryRef": dict(item["libraryRef"]), "name": item.get("name") or entry.capability_id}}})
+                "libraryRef": dict(item["libraryRef"]), "name": item.get("name") or entry.capability_id,
+                "oauthKey": item.get("id")}}})
         entries.append(entry)
     return effective.model_copy(update={"entries": tuple(entries)})
 
@@ -279,7 +280,7 @@ async def _shared_imports(repositories: Any, binding: Any, catalog: dict | None)
         elif ref.name == "mcp":
             result.append(EffectiveCapability(capability_type="mcp", capability_id="shared-" + str(item["id"]),
                 config={"value": {"nativeRef": {key: item.get(key) for key in (
-                    "name", "sourcePath", "sourceFormat", "sourceKey", "sourceShape")}},
+                    "name", "sourcePath", "sourceFormat", "sourceKey", "sourceShape")}, "oauthKey": item["id"]},
                     **({"disabledTools": switches[item["id"]]} if switches.get(item["id"]) else {})},
                 **common))
         elif ref.name == "plugins":
