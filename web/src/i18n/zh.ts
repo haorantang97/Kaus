@@ -1475,4 +1475,9 @@ export const zh = {
   "mcp.signIn": "登录",
   "mcp.signOut": "退出登录",
   "mcp.signedIn": "已登录",
+  "confirm.deleteMemory": "删除记忆「{name}」？",
+  "confirm.deleteInstruction": "删除指令「{name}」？",
+  "confirm.removeHistory": "从 Kaus 移出「{name}」？原生会话保留。",
+  "confirm.clearCapability": "删除本层赋值「{name}」？",
+  "confirm.removeFromProject": "从「{project}」移除「{name}」？",
 } as const;

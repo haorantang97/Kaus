@@ -22,7 +22,7 @@ import { useProjectHistory } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
 import { ProjectInstructionsEditor } from "../components/ProjectInstructionsEditor";
 import { ProjectMemoryCard } from "../components/ProjectMemoryCard";
-import { Button, Card, Modal, Pill, cream, toast } from "../components/ui";
+import { Button, Card, Modal, Pill, confirmAsync, cream, toast } from "../components/ui";
 import { type NetworkResp } from "../lib/api";
 import { openProjectTerminal } from "../lib/terminalApi";
 import {
@@ -473,6 +473,8 @@ export function CapabilitiesSection({
     async (row: { capabilityType: string; capabilityId: string }, action: CapabilityAction) => {
       if (!projectId) return;
       const key = `${row.capabilityType}/${row.capabilityId}`;
+      if (action === "clear" && !await confirmAsync(t("confirm.clearCapability", { name: key }),
+        { okLabel: t("capabilities.action.clear"), danger: true })) return;
       setBusy(key);
       try {
         if (action === "block" || action === "blockHere") {

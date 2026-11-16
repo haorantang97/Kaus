@@ -1359,4 +1359,9 @@ export const en: Record<keyof typeof zh, string> = {
   "mcp.signIn": "Sign in",
   "mcp.signOut": "Sign out",
   "mcp.signedIn": "Signed in",
+  "confirm.deleteMemory": "Delete memory “{name}”?",
+  "confirm.deleteInstruction": "Delete instruction “{name}”?",
+  "confirm.removeHistory": "Remove “{name}” from Kaus? The native session is kept.",
+  "confirm.clearCapability": "Delete this level's value “{name}”?",
+  "confirm.removeFromProject": "Remove “{name}” from “{project}”?",
 };

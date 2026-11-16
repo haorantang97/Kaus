@@ -7,7 +7,7 @@ import { ConversationSidebar } from "./ConversationSidebar";
 import { notifyHistoryChanged, projectHistoryApi, useProjectHistory } from "../lib/projectHistory";
 import { ArchiveApiError, nativeArchives, type ArchiveItem } from "../lib/nativeArchivesApi";
 import { setLocalePref } from "../i18n";
-import { Modal } from "./ui";
+import { ConfirmHost, Modal } from "./ui";
 vi.mock("../lib/projectHistory", async original => ({ ...await original<typeof import("../lib/projectHistory")>(), notifyHistoryChanged: vi.fn(), useProjectHistory: vi.fn(), projectHistoryApi: { choices: vi.fn(), candidates: vi.fn(), add: vi.fn(), list: vi.fn(), remove: vi.fn() } }));
 vi.mock("../lib/nativeArchivesApi", async original => ({ ...await original<typeof import("../lib/nativeArchivesApi")>(), nativeArchives: { detail: vi.fn(), asset: vi.fn() } }));
 vi.mock("./ContinuationDialog", () => ({ ContinuationDialog: ({ onClose }: { onClose: () => void }) => <Modal onClose={onClose}><h3>Continuation</h3><button onClick={onClose}>Close continuation</button></Modal> }));
@@ -99,13 +99,16 @@ it("shows project history in the sidebar even when the project has no Kaus conve
 });
 it("pages without JSON, closes only nested continuation with Escape, and removes only the selected project link", async () => {
   vi.mocked(nativeArchives.detail).mockResolvedValueOnce({ archive: item, messages: [{ index: 0, role: "user", text: "Page one" }], assets: [], nextOffset: 1, recordCount: 2, warnings: [] });
-  const close = vi.fn(); const user = userEvent.setup(); render(<ProjectHistoryViewer item={item} projectId="project:one" onClose={close} onOpenConversation={vi.fn()} />);
+  const close = vi.fn(); const user = userEvent.setup(); render(<><ProjectHistoryViewer item={item} projectId="project:one" onClose={close} onOpenConversation={vi.fn()} /><ConfirmHost /></>);
   await screen.findByText("Page one"); await user.click(screen.getByRole("button", { name: "加载更多" })); await screen.findByText("Original answer");
   await user.click(screen.getByRole("button", { name: "用其他 Agent 继续" })); expect(screen.getByText("Continuation")).toBeVisible();
   await user.keyboard("{Escape}"); expect(screen.queryByText("Continuation")).toBeNull(); expect(close).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "对话菜单" })); expect(screen.getByRole("menuitem", { name: "移出项目" })).toBeVisible();
   await user.keyboard("{Escape}"); expect(screen.queryByRole("menuitem")).toBeNull(); expect(close).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "对话菜单" })); await user.click(screen.getByRole("menuitem", { name: "移出项目" }));
+  expect(await screen.findByText(/原生会话保留/)).toBeVisible(); expect(projectHistoryApi.remove).not.toHaveBeenCalled();
+  await user.click(screen.getAllByRole("button", { name: "移出项目" }).at(-1)!);
+  await waitFor(() => expect(projectHistoryApi.remove).toHaveBeenCalled());
   expect(projectHistoryApi.remove).toHaveBeenCalledWith("h1", "project:one"); await waitFor(() => expect(close).toHaveBeenCalledOnce());
 });
 it("silently closes when a source disappears while loading more", async () => {

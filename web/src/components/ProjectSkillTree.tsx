@@ -246,6 +246,12 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
   // 钩子（2026-11-11）：通用时点用中文名，Agent 专有时点原样显示；详情是时点、命令、超时三项。
   const hookEvent = (skill: SkillTreeSkill) => skill.agent ? `${skill.event}${skill.matcher ? ` · ${skill.matcher}` : ""}` : t(`hook.event.${skill.event as HookEvent}`);
   const hookDetail = (skill: SkillTreeSkill) => t("hook.detail", { event: hookEvent(skill), command: skill.command ?? "", timeout: skill.timeout ?? 60 });
+  const removeHere = async (item: Item) => {
+    setMenu(null);
+    if (!await confirmAsync(t("confirm.removeFromProject", { name: item.skill.name, project: projectName(item.entry.projectId) }),
+      { okLabel: t("skillTree.remove"), danger: true })) return;
+    await write({ action: "remove", skillId: item.skill.id, targetProjectId: item.entry.projectId });
+  };
   const openMcp = (id: string) => {
     // The router listens to popstate, so this opens Settings → MCP on that item without a reload.
     window.history.pushState({}, "", `/config?section=mcp&mcp=${encodeURIComponent(id)}`);
@@ -376,7 +382,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
           <button role="menuitem" disabled={menuIndex === menuRows.length - 1} onClick={() => reorder(menu, 1)}><ArrowDown size={15} />{t("skillTree.down")}</button>
           <hr />
           <button role="menuitem" onClick={() => void write({ action: "block", skillId: menu.skill.id, targetProjectId: menu.entry.projectId })}><Ban size={15} />{t("skillTree.block")}</button>
-          {canClearOverride && <button role="menuitem" onClick={() => void write({ action: "remove", skillId: menu.skill.id, targetProjectId: menu.entry.projectId })}><Trash2 size={15} />{t("skillTree.remove")}</button>}
+          {canClearOverride && <button role="menuitem" onClick={() => void removeHere(menu)}><Trash2 size={15} />{t("skillTree.remove")}</button>}
         </> : <button role="menuitem" disabled={menu.entry.inherited} onClick={() => void write({ action: "restore", skillId: menu.skill.id, targetProjectId: menu.entry.projectId })}><RotateCcw size={15} />{t("skillTree.restore")}</button>}
         {/* MCP 本身的设置（状态、工具开关、绑定）只在设置 → MCP（2026-11-12：一个功能一处入口）。 */}
         {menu.skill.kind === "mcp" && !embedded && <><hr />

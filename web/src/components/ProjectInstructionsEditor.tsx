@@ -32,7 +32,7 @@ import {
   type InstructionFileWire,
 } from "../lib/sessionApi";
 import { backendDisplay } from "../lib/backend-display";
-import { Button, Card, Pill, cream, inputStyle, toast } from "./ui";
+import { Button, Card, Pill, confirmAsync, cream, inputStyle, toast } from "./ui";
 
 type Action = "edit" | "override" | "block" | "restore" | "unblock" | "delete";
 
@@ -109,7 +109,11 @@ export function ProjectInstructionsEditor({
       void run(() => putProjectCapability(projectId, INSTRUCTIONS_TYPE, section.id, { blocked: true }), t("instructions.toast.blocked"));
       return;
     }
-    void run(() => deleteProjectCapability(projectId, INSTRUCTIONS_TYPE, section.id), t(`instructions.toast.${action}`));
+    void (async () => {
+      if (action === "delete" && !await confirmAsync(t("confirm.deleteInstruction", { name: name(section) }),
+        { okLabel: t("instructions.action.delete"), danger: true })) return;
+      await run(() => deleteProjectCapability(projectId, INSTRUCTIONS_TYPE, section.id), t(`instructions.toast.${action}`));
+    })();
   };
 
   const add = t("instructions.add");

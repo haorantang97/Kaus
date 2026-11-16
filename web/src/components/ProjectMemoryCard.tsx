@@ -22,7 +22,7 @@ import {
 } from "../lib/sessionApi";
 import { relativeTime } from "../lib/shellPrefs";
 import { CardRowMenu } from "./CardRowMenu";
-import { Button, Card, Pill, cream, inputStyle, toast } from "./ui";
+import { Button, Card, Pill, confirmAsync, cream, inputStyle, toast } from "./ui";
 
 interface Draft { id: string | null; kind: "note" | "overview"; topic: string; body: string }
 
@@ -110,7 +110,10 @@ export function ProjectMemoryCard({ projectId, projectLabel }: {
             actionLabel={action => t(`memory.action.${action}`)}
             onPick={action => action === "edit"
               ? setDraft({ id: item.id, kind: item.kind, topic: item.topic, body: item.body })
-              : void run(() => deleteProjectMemory(projectId, item.id), t("memory.toast.deleted"))} />
+              : void (async () => {
+                if (!await confirmAsync(t("confirm.deleteMemory", { name: item.topic }), { okLabel: t("memory.action.delete"), danger: true })) return;
+                await run(() => deleteProjectMemory(projectId, item.id), t("memory.toast.deleted"));
+              })()} />
         </div>
         <p className="kaus-instruction-body">{item.body}</p>
       </li>
