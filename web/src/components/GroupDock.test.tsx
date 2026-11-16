@@ -859,7 +859,7 @@ describe("batch52 第 5 件：在本组叫什么（AD-173）", () => {
 
     await openAndExpand(user, "改名组");
     await user.click(await screen.findByTestId("member-actions-m1"));
-    await user.click(screen.getByTestId("member-rename-m1"));
+    await user.click(screen.getByRole("menuitem", { name: "组内名称" }));
     // 改的是**组内**名字，弹窗那句话得把这件事说清楚。
     expect(await screen.findByText(/留空则使用对话标题/)).toBeInTheDocument();
     await user.type(screen.getByTestId("group-rename-input"), "写手");
@@ -886,7 +886,7 @@ describe("batch52 第 5 件：在本组叫什么（AD-173）", () => {
 
     await openAndExpand(user, "改名组");
     await user.click(await screen.findByTestId("member-actions-m1"));
-    await user.click(screen.getByTestId("member-rename-m1"));
+    await user.click(screen.getByRole("menuitem", { name: "组内名称" }));
     // 弹窗里先带着现在的组内名字。
     const input = screen.getByTestId("group-rename-input") as HTMLInputElement;
     expect(input.value).toBe("写手");

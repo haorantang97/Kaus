@@ -22,3 +22,9 @@
 .kaus-sidebar-title-input { -webkit-user-select: text; user-select: text; }
 
 .kaus-internal-drag-preview { position: fixed; inset: 0 auto auto 0; z-index: 10000; max-width: 280px; padding: 8px 12px; border: 1px solid color-mix(in srgb,var(--midground-base) 12%,transparent); border-radius: 10px; background: var(--surface-3); color: var(--midground-base); box-shadow: 0 6px 20px #0002; pointer-events: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: inherit; font-size: 13px; }
+/* Rows outside the sidebar that open on click and carry the same ⋯ menu (2026-11-17). */
+.kaus-row-open { display:flex; align-items:center; gap:inherit; flex:1; min-width:0; padding:0; border:0; background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.kaus-row-open:focus-visible { outline:none; }
+.kaus-row-with-menu:hover .kaus-conversation-menu-trigger,
+.kaus-row-with-menu:focus-within .kaus-conversation-menu-trigger { opacity:1; }
+.kaus-group-member-title.kaus-row-open { display:block; }

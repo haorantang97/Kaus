@@ -14,3 +14,9 @@ export function reorderSidebarPin(pins: SidebarPins, project: string, source: st
   next.splice(next.indexOf(target) + (after ? 1 : 0), 0, source);
   return { ...pins, [project]: next };
 }
+export const SIDEBAR_PINS_EVENT = "kaus:sidebar-pins-changed";
+/** Persist pins and tell every list in this window (sidebar, project page) to follow. */
+export function saveSidebarPins(next: SidebarPins): void {
+  try { localStorage.setItem(SIDEBAR_PINS_KEY, JSON.stringify(next)); } catch { /* Keep this window's ordering when storage is unavailable. */ }
+  window.dispatchEvent(new CustomEvent(SIDEBAR_PINS_EVENT, { detail: next }));
+}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { readSidebarPins, reorderSidebarPin, SIDEBAR_PINS_KEY, type SidebarPins } from "../lib/sidebarPins";
+import { readSidebarPins, reorderSidebarPin, saveSidebarPins, SIDEBAR_PINS_EVENT, SIDEBAR_PINS_KEY, type SidebarPins } from "../lib/sidebarPins";
 import { useScrollFade } from "../hooks/useScrollFade";
 import { ChevronDown, ChevronRight, Terminal } from "lucide-react";
 import { useLocale } from "../i18n";
@@ -15,6 +15,7 @@ import { backendDisplay } from "../lib/backend-display";
 import { readCollapsedGroups, writeCollapsedGroups } from "../lib/shellPrefs";
 import { archiveConversation, deleteConversation, patchConversation } from "../lib/sessionApi";
 import { ConversationRowMenu, type RowMenuPoint } from "./ConversationRowMenu";
+import { HistoryRow } from "./ConversationRows";
 import { usePointerDrag, type DragPosition } from "../lib/pointerDrag";
 
 /* 侧栏 = 会话列表（★定稿 B / AD-79）。
@@ -96,11 +97,9 @@ export function ConversationSidebar({
   const menuSeq = useRef(0);
   const [drop, setDrop] = useState<{ id: string; after: boolean } | null>(null);
   const [announcement, setAnnouncement] = useState("");
-  const savePins = (next: SidebarPins) => {
-    setPins(next);
-    try { localStorage.setItem(SIDEBAR_PINS_KEY, JSON.stringify(next)); } catch { /* Preserve this window's ordering when storage is unavailable. */ }
-    window.dispatchEvent(new CustomEvent("kaus:sidebar-pins-changed", { detail: next }));
-  };
+  const savePins = (next: SidebarPins) => { setPins(next); saveSidebarPins(next); };
+  // Pins changed elsewhere in this window (the project page's row menu).
+  useEffect(() => { const sync = () => setPins(readSidebarPins()); window.addEventListener(SIDEBAR_PINS_EVENT, sync); return () => window.removeEventListener(SIDEBAR_PINS_EVENT, sync); }, []);
   useEffect(() => { const sync = (event: StorageEvent) => { if (event.key === SIDEBAR_PINS_KEY) setPins(readSidebarPins()); }; window.addEventListener("storage", sync); return () => window.removeEventListener("storage", sync); }, []);
   const announceMove = (title: string) => setAnnouncement(t("sidebar.reordered", { title }));
   useEffect(() => {
@@ -213,7 +212,9 @@ export function ConversationSidebar({
               {open &&
                 ordered.map((conversation) => {
                   const historical = historyByRow.get(conversation.id);
-                  if (historical) return <button key={conversation.id} type="button" className="sidebar-agent-row kaus-conversation-row flex cursor-pointer items-center gap-1.5" title={conversation.title} onClick={() => setViewHistory(historical)}><span className="kaus-status-slot" aria-hidden="true" /><span className="flex-1 truncate">{conversation.title}</span></button>;
+                  if (historical) return <HistoryRow key={conversation.id} item={historical.item} projectId={historical.projectId}
+                    className="sidebar-agent-row kaus-conversation-row flex items-center gap-1.5" onOpen={() => setViewHistory(historical)}
+                    onOpenConversation={id => onOpenConversation(id)}><span className="kaus-status-slot" aria-hidden="true" /><span className="flex-1 truncate">{conversation.title}</span></HistoryRow>;
                   const isPinned = pinned.includes(conversation.id);
                   const running = isRunning(conversation.state);
                   const status = conversationStatus(conversation);

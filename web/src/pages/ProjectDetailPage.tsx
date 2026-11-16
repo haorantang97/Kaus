@@ -18,6 +18,7 @@ import { ChevronRight, Maximize2, MessageSquare, MoreHorizontal, Plus, Sparkles,
 
 import { useLocale } from "../i18n";
 import { ProjectHistoryViewer } from "../components/ProjectHistoryViewer";
+import { ConversationRow, HistoryRow } from "../components/ConversationRows";
 import { useProjectHistory } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
 import { ProjectInstructionsEditor } from "../components/ProjectInstructionsEditor";
@@ -86,6 +87,8 @@ export function ProjectDetailPage({
   const [projects, setProjects] = useState<ProjectWire[]>([]);
   const [capabilities, setCapabilities] = useState<EffectiveCapabilitiesWire | null>(null);
   const [conversations, setConversations] = useState<ConversationIndexEntryWire[] | null>(null);
+  /** Bumped after a row's rename, archive or delete, to reload the list. */
+  const [conversationsRevision, setConversationsRevision] = useState(0);
   const [viewHistory, setViewHistory] = useState<ArchiveItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openingTerminal, setOpeningTerminal] = useState(false);
@@ -114,7 +117,6 @@ export function ProjectDetailPage({
     if (!projectId) return;
     let cancelled = false;
     setCapabilities(null);
-    setConversations(null);
     // 能力与会话各取各的：一个失败不该把另一个也弄没。
     fetchEffectiveCapabilities(projectId)
       .then((next) => {
@@ -123,6 +125,16 @@ export function ProjectDetailPage({
       .catch(() => {
         if (!cancelled) setCapabilities(null);
       });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, refreshKey]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    // A row action reloads only this list, keeping the rows on screen meanwhile.
+    if (!conversationsRevision) setConversations(null);
     fetchRecentConversations(undefined, { project: projectId, limit: 50 })
       .then(({ conversations: list }) => {
         if (!cancelled) setConversations(list);
@@ -133,7 +145,7 @@ export function ProjectDetailPage({
     return () => {
       cancelled = true;
     };
-  }, [projectId, refreshKey]);
+  }, [projectId, refreshKey, conversationsRevision]);
 
   /* 第 2 件：写完能力之后只重取能力表（不动会话列表、也不惊动外壳）。
      取失败**保留**桌面上那一份：一次网络抖动不该把整张表变成"加载中"。 */
@@ -269,22 +281,19 @@ export function ProjectDetailPage({
           ) : (
             <div className="kaus-project-conversations">
               {conversations.map((conversation) => (
-                <button
-                  key={conversation.id}
-                  type="button"
-                  className="kaus-project-conversation"
-                  onClick={() => onOpenConversation(conversation.id)}
-                >
+                <ConversationRow key={conversation.id} conversation={conversation} className="kaus-project-conversation"
+                  onOpen={() => onOpenConversation(conversation.id)} onChanged={() => setConversationsRevision(n => n + 1)}>
                   <span className="kaus-project-conversation-icon"><MessageSquare size={17} /></span>
                   <span className="min-w-0 flex-1 truncate">{conversation.title || conversation.id}</span>
                   <span className="shrink-0 text-[0.65rem]" style={{ color: cream(45) }}>
                     {tDynamic(`project.conversationStatus.${conversation.status}`, conversation.status)}
                   </span>
-                </button>
+                </ConversationRow>
               ))}
-              {historyItems.map(item => <button key={item.id} type="button" className="kaus-project-conversation" onClick={() => setViewHistory(item)}>
+              {historyItems.map(item => <HistoryRow key={item.id} item={item} projectId={projectId} className="kaus-project-conversation"
+                onOpen={() => setViewHistory(item)} onOpenConversation={onOpenConversation}>
                 <span className="kaus-project-conversation-icon"><MessageSquare size={17} /></span><span className="min-w-0 flex-1 truncate">{item.title}</span>
-              </button>)}
+              </HistoryRow>)}
             </div>
           )}
         </Card>
