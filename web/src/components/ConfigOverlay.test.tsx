@@ -119,11 +119,11 @@ it("已删除 Project 的归档对话保留原名称，可查看或手动删除"
   render(<MemoryRouter><ConfigOverlay onClose={() => {}} /><ConfirmHost /></MemoryRouter>);
   expect(fetchProjects).toHaveBeenCalledWith(undefined, { includeDisabled: true });
   await user.click(screen.getByRole("button", { name: "已归档" }));
-  expect(await screen.findByText(/Design · 已删除的 Project/)).toBeInTheDocument();
+  expect(await screen.findByText(/Design · 已删除的项目/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /^验收记录(?! 对话菜单)/ })).toBeEnabled();
   expect(screen.queryByRole("button", { name: "删除 验收记录" })).toBeNull();
   fireEvent.contextMenu(screen.getByRole("button", { name: /^验收记录(?! 对话菜单)/ }));
-  expect(await screen.findByRole("menuitem", { name: "恢复 Project" })).toBeEnabled();
+  expect(await screen.findByRole("menuitem", { name: "恢复项目" })).toBeEnabled();
   expect(screen.queryByRole("menuitem", { name: "恢复" })).toBeNull();
   await user.click(screen.getByRole("menuitem", { name: "删除" }));
   expect(deleteConversation).not.toHaveBeenCalled();
@@ -139,7 +139,7 @@ it("项目记录缺失时归档行标为已删除的 Project", async () => {
   const user = userEvent.setup();
   render(<MemoryRouter><ConfigOverlay onClose={() => {}} /></MemoryRouter>);
   await user.click(screen.getByRole("button", { name: "已归档" }));
-  expect(await screen.findByText(/^已删除的 Project/)).toBeInTheDocument();
+  expect(await screen.findByText(/^已删除的项目/)).toBeInTheDocument();
 });
 
 const deletedProject = () => vi.mocked(fetchProjects).mockResolvedValue({ projects: [
@@ -155,18 +155,18 @@ it("恢复 Project 原位恢复后只恢复所点的对话", async () => {
   const user = userEvent.setup();
   render(<MemoryRouter><ConfigOverlay onClose={() => {}} /></MemoryRouter>);
   await user.click(screen.getByRole("button", { name: "已归档" }));
-  await rowAction(user, "验收记录", "恢复 Project");
+  await rowAction(user, "验收记录", "恢复项目");
   await waitFor(() => expect(archiveConversation).toHaveBeenCalledWith("conversation:one", false));
   expect(restoreDeletedAgent).toHaveBeenCalledWith("a", "root");
   expect(await screen.findByText("暂无归档")).toBeInTheDocument();
 });
 it("原位置不可用时打开预填的新建 Project，同名创建后恢复对话", async () => {
   deletedProject();
-  vi.mocked(restoreDeletedAgent).mockRejectedValue(new LegacyApiError("原上级 Project 已不存在", 409, "project_parent_missing"));
+  vi.mocked(restoreDeletedAgent).mockRejectedValue(new LegacyApiError("原上级项目已不存在", 409, "project_parent_missing"));
   const user = userEvent.setup();
   render(<MemoryRouter><ConfigOverlay onClose={() => {}} /></MemoryRouter>);
   await user.click(screen.getByRole("button", { name: "已归档" }));
-  await rowAction(user, "验收记录", "恢复 Project");
+  await rowAction(user, "验收记录", "恢复项目");
   await user.click(await screen.findByRole("button", { name: "新建 Design a" }));
   await waitFor(() => expect(archiveConversation).toHaveBeenCalledWith("conversation:one", false));
 });
@@ -176,7 +176,7 @@ it("原位置已变动时同样打开预填的新建 Project", async () => {
   const user = userEvent.setup();
   render(<MemoryRouter><ConfigOverlay onClose={() => {}} /></MemoryRouter>);
   await user.click(screen.getByRole("button", { name: "已归档" }));
-  await rowAction(user, "验收记录", "恢复 Project");
+  await rowAction(user, "验收记录", "恢复项目");
   expect(await screen.findByRole("button", { name: "新建 Design a" })).toBeInTheDocument();
 });
 it("移到其他 Project 打开移动对话框", async () => {
@@ -184,6 +184,6 @@ it("移到其他 Project 打开移动对话框", async () => {
   const user = userEvent.setup();
   render(<MemoryRouter><ConfigOverlay onClose={() => {}} /></MemoryRouter>);
   await user.click(screen.getByRole("button", { name: "已归档" }));
-  await rowAction(user, "验收记录", "移到其他 Project");
+  await rowAction(user, "验收记录", "移到其他项目");
   expect(screen.getByRole("dialog")).toHaveTextContent("移动 验收记录");
 });

@@ -11,7 +11,7 @@ export const contentZh = {
   "chat.content.loadFailed": "文件打开失败",
   "chat.content.retry": "重试",
   "chat.content.previewUnavailable": "此格式不支持预览",
-  "chat.content.contextRequired": "请从原会话打开文件",
+  "chat.content.contextRequired": "请从原对话打开文件",
   "chat.content.remoteImage": "加载远程图片",
   "chat.content.remoteImageHint": "将连接图片来源网站",
   "chat.content.openLink": "在新窗口打开链接",
@@ -42,7 +42,7 @@ export const contentZh = {
   "chat.content.pdfRendering": "正在绘制页面…",
   "chat.content.pdfFailed": "PDF 预览失败",
   "chat.content.deliveryUnconfirmed": "发送结果未确认",
-  "chat.content.checkDelivery": "查看会话状态",
+  "chat.content.checkDelivery": "查看对话状态",
 } as const;
 
 export const contentEn: Record<keyof typeof contentZh, string> = {

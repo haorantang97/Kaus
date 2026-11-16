@@ -29,8 +29,8 @@ it("moves with the same engine and confirms a folder change", async () => {
   const user = userEvent.setup();
   render(<MoveConversationDialog item={item} projects={projects} onClose={() => {}} onMoved={moved} onContinued={() => {}} />);
   expect(screen.queryByRole("option", { name: "Design" })).toBeNull();
-  await user.selectOptions(screen.getByRole("combobox", { name: "目标 Project" }), "project:b");
-  await user.click(screen.getByRole("button", { name: "移到其他 Project" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "目标项目" }), "project:b");
+  await user.click(screen.getByRole("button", { name: "移到其他项目" }));
   expect(ensureProjectBinding).toHaveBeenCalledWith("project:b", "backend:codex");
   expect(await screen.findByRole("alert")).toHaveTextContent("原生会话可能无法续接");
   expect(moved).not.toHaveBeenCalled();
@@ -43,7 +43,7 @@ it("offers continuing with another agent in the chosen Project", async () => {
   vi.mocked(moveConversation).mockRejectedValue(new SessionApiError(409, "workspace_changed", "x"));
   const user = userEvent.setup();
   render(<MoveConversationDialog item={item} projects={projects} initialProjectId="project:b" onClose={() => {}} onMoved={() => {}} onContinued={() => {}} />);
-  await user.click(screen.getByRole("button", { name: "移到其他 Project" }));
+  await user.click(screen.getByRole("button", { name: "移到其他项目" }));
   await user.click(await screen.findByRole("button", { name: "用其他 Agent 继续" }));
   expect(screen.getByRole("dialog")).toHaveTextContent("接续 project:a → project:b");
 });

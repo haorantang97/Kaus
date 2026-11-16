@@ -699,7 +699,7 @@ describe("新会话草稿页", () => {
     expect(screen.queryByText(/404/)).toBeNull();
     expect(mocked.deleteConversation).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "打开会话确认" }));
+    await user.click(screen.getByRole("button", { name: "打开对话确认" }));
     expect(onCreated).toHaveBeenCalledWith("conversation:new", expect.objectContaining({ text: "发不出去的一句" }));
   });
 

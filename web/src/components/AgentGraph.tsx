@@ -1,6 +1,6 @@
 import "./project-polish.css";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { CornerDownLeft, MessageSquare, MoreHorizontal, Plus, X } from "lucide-react";
+import { CornerDownLeft, MoreHorizontal, Plus, X } from "lucide-react";
 import { type NetworkResp } from "../lib/api";
 import { useLocale } from "../i18n";
 import { Button, cream, dname, Overlay } from "./ui";
@@ -13,7 +13,8 @@ import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
 
 /** 每列末尾那个「+ 添加项目」虚节点的 id（不是真 profile，`nodes[]` 里查不到）。 */
 export const ADD_NODE_ID = "__add-child__";
-const PROJECT_ENTER_SHAPE = "M .57 .01 H .97 Q .997 .01 .997 .096 V .904 Q .997 .99 .97 .99 H .03 Q .003 .99 .003 .904 V .649 Q .003 .563 .03 .563 H .51 Q .54 .563 .54 .477 V .096 Q .54 .01 .57 .01 Z";
+// A plain rounded card since the new-conversation button left the panel (2026-11-17).
+const PROJECT_ENTER_SHAPE = "M .03 .01 H .97 Q .997 .01 .997 .13 V .87 Q .997 .99 .97 .99 H .03 Q .003 .99 .003 .87 V .13 Q .003 .01 .03 .01 Z";
 type AgentGraphMode = "chat" | "governance";
 /** `snap`：吸附 / 点击定位时的定时缓动段；滚动中为空，节点只跟一阶弹簧走。 */
 type WheelSnap = { from: number; to: number; start: number; duration: number };
@@ -25,13 +26,12 @@ type WheelGeometry = { columns: ColumnGeometry[]; statics: Record<string, { l: {
    保留旧版全部能力:拖拽改父级(+ReparentModal 影响预览)/ 顶层拖放区 / 草稿暂存 /
    ⋯菜单(置顶·改名·fork·删除,经 onOpenMenu→CtxMenu)/ 停用标记 /
    默认是对话浏览;治理模式才启用组织维护动作。 */
-export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onNewConversation, onOpenMenu, onAddChild, embedded = false, focusName = null, mode = "governance", onModeChange }: {
+export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onOpenMenu, onAddChild, embedded = false, focusName = null, mode = "governance", onModeChange }: {
   net: NetworkResp;
   onClose: () => void;
   onChanged: () => void;
   onGoProfile: (n: string) => void;
   onDetail: (n: string) => void;
-  onNewConversation?: (projectRef: string) => void;
   onOpenMenu: (name: string, rect: DOMRect) => void;
   /** 「+ 添加项目」：父级 = 该列的父节点（批次七 d 第 5 条）。不传则不显示虚节点。 */
   onAddChild?: (parentId: string) => void;
@@ -847,16 +847,14 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onN
                 <h2 className="ag-ph2">{dname(node)}</h2>
                 <div className="ag-prole">{sel === "default" ? t("graph.value.mainAgent") : t("graph.value.project")}{(node.killed || node.effective_killed) ? ` · ${t("graph.value.disabled")}` : ""}</div>
                 <div className="ag-pactions">
-                  <Button variant="primary" className="kaus-project-primary" onClick={() => (onNewConversation ?? onGoProfile)(sel)}>
-                    <MessageSquare size={17} /><span>{t(onNewConversation ? "graph.newConversation" : "graph.openChat")}</span>
-                  </Button>
-                  <button type="button" className="kaus-button kaus-project-secondary kaus-project-enter" style={{ clipPath: `url("#${enterShapeId}")` }} title={t(onNewConversation ? "graph.openProject" : "graph.details")} onClick={() => onDetail(sel)}>
+                  {/* 新对话入口在侧栏与项目页（2026-11-17：去掉轮盘面板的主按钮）。 */}
+                  <button type="button" className="kaus-button kaus-project-secondary kaus-project-enter" style={{ clipPath: `url("#${enterShapeId}")` }} title={t("graph.openProject")} onClick={() => onDetail(sel)}>
                     <svg className="kaus-project-enter-shape" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true" focusable="false">
                       <defs><clipPath id={enterShapeId} clipPathUnits="objectBoundingBox"><path d={PROJECT_ENTER_SHAPE} /></clipPath></defs>
                       <path d={PROJECT_ENTER_SHAPE} vectorEffect="non-scaling-stroke" />
                     </svg>
                     <CornerDownLeft className="kaus-project-enter-icon" size={22} aria-hidden="true" />
-                    <span className="kaus-project-enter-label">{t(onNewConversation ? "graph.openProject" : "graph.details")}</span>
+                    <span className="kaus-project-enter-label">{t("graph.openProject")}</span>
                   </button>
                 </div>
               </div>

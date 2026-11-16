@@ -198,9 +198,9 @@ describe("项目详情页", () => {
     // 会话优先于配置，首屏能直接继续已有对话。
     expect(screen.queryByText("已接引擎")).toBeNull();
     expect(await screen.findByText("项目配置")).toBeInTheDocument();
-    expect(screen.getByText("会话")).toBeInTheDocument();
+    expect(screen.getByText("对话")).toBeInTheDocument();
     expect(await screen.findByText("第一段")).toBeInTheDocument();
-    expect(screen.getByText("会话").compareDocumentPosition(screen.getByText("项目配置")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("对话").compareDocumentPosition(screen.getByText("项目配置")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(mocked.fetchRecentConversations).toHaveBeenCalledWith(undefined, { project: "project:pronto", limit: 50 });
 
     // ③ 能力表的四列与 AD-45 的「禁止」文案

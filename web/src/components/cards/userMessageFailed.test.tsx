@@ -99,7 +99,7 @@ describe("投递失败的用户消息（R6）", () => {
     expect(screen.getByRole("note")).toHaveTextContent("network timeout");
     expect(container.querySelector(".kaus-msg.is-user")).toHaveAttribute("data-delivery", "unconfirmed");
     expect(screen.queryByRole("button", { name: "重发" })).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "查看会话状态" }));
+    await userEvent.click(screen.getByRole("button", { name: "查看对话状态" }));
     expect(onCheckDelivery).toHaveBeenCalledTimes(1);
     expect(onRetryFailed).not.toHaveBeenCalled();
   });

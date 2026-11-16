@@ -373,14 +373,14 @@ describe("Group 浮窗：添加成员两条路", () => {
 
     await openAndExpand(user, "重构评审组");
     await user.click(await screen.findByTestId("group-add-member"));
-    await user.click(screen.getByRole("menuitem", { name: "选择已有会话" }));
+    await user.click(screen.getByRole("menuitem", { name: "选择已有对话" }));
     // 只列当前项目下的（缺省口径不含 group_only：它们已经在别的组里了）。
     await waitFor(() =>
       expect(session.fetchRecentConversations).toHaveBeenCalledWith(expect.anything(), {
         project: "project:default",
       }),
     );
-    await user.click(screen.getByRole("button", { name: "选择已有会话" }));
+    await user.click(screen.getByRole("button", { name: "选择已有对话" }));
     /* batch52 第 5 件（真机「藏过头了」第 1 条）：一行是「标题 · 引擎 · 项目」，
        不再只有标题——长列表里几条同名的旧会话此前长得一模一样。 */
     await user.click(await screen.findByRole("option", { name: "接口层重构 · Mock · X" }));
@@ -399,9 +399,9 @@ describe("Group 浮窗：添加成员两条路", () => {
     renderDock();
     await openAndExpand(user, '重构评审组');
     await user.click(await screen.findByTestId('group-add-member'));
-    await user.click(screen.getByRole('menuitem', {name:'选择已有会话'}));
+    await user.click(screen.getByRole('menuitem', {name:'选择已有对话'}));
     await waitFor(() => expect(session.fetchConnectedBackends).toHaveBeenCalled());
-    await user.click(screen.getByRole('button', {name:'选择已有会话'}));
+    await user.click(screen.getByRole('button', {name:'选择已有对话'}));
     expect(screen.queryByRole('option', {name:'接口层重构 · Mock · X'})).toBeNull();
     expect(api.addGroupMember).not.toHaveBeenCalled();
   });
@@ -429,8 +429,8 @@ describe("Group 浮窗：添加成员两条路", () => {
 
     await openAndExpand(user, "重构评审组");
     await user.click(await screen.findByTestId("group-add-member"));
-    await user.click(screen.getByRole("menuitem", { name: "选择已有会话" }));
-    await user.click(await screen.findByRole("button", { name: "选择已有会话" }));
+    await user.click(screen.getByRole("menuitem", { name: "选择已有对话" }));
+    await user.click(await screen.findByRole("button", { name: "选择已有对话" }));
     expect(await screen.findByRole("option", { name: "接口层重构 · X" })).toBeInTheDocument();
   });
 
@@ -446,12 +446,12 @@ describe("Group 浮窗：添加成员两条路", () => {
 
     await openAndExpand(user, "重构评审组");
     await user.click(await screen.findByTestId("group-add-member"));
-    await user.click(screen.getByRole("menuitem", { name: "选择已有会话" }));
-    await user.click(await screen.findByRole("button", { name: "选择已有会话" }));
+    await user.click(screen.getByRole("menuitem", { name: "选择已有对话" }));
+    await user.click(await screen.findByRole("button", { name: "选择已有对话" }));
     await user.click(await screen.findByRole("option", { name: "接口层重构 · Mock · X" }));
 
     await waitFor(() =>
-      expect(screen.getByText(/会话已在「另一个组」中/)).toBeInTheDocument(),
+      expect(screen.getByText(/对话已在「另一个组」中/)).toBeInTheDocument(),
     );
   });
 
@@ -861,7 +861,7 @@ describe("batch52 第 5 件：在本组叫什么（AD-173）", () => {
     await user.click(await screen.findByTestId("member-actions-m1"));
     await user.click(screen.getByTestId("member-rename-m1"));
     // 改的是**组内**名字，弹窗那句话得把这件事说清楚。
-    expect(await screen.findByText(/留空则使用会话标题/)).toBeInTheDocument();
+    expect(await screen.findByText(/留空则使用对话标题/)).toBeInTheDocument();
     await user.type(screen.getByTestId("group-rename-input"), "写手");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
@@ -1089,7 +1089,7 @@ describe("拖拽入组（★J-4）", () => {
     await openAndExpand(user, "重构评审组");
     const pane = await screen.findByTestId("group-pane-members");
     fireEvent.drop(pane, { dataTransfer: conversationDrag("conversation:9") });
-    expect(await screen.findByText("会话已在组内")).toBeInTheDocument();
+    expect(await screen.findByText("对话已在组内")).toBeInTheDocument();
 
     api.addGroupMember.mockRejectedValueOnce(
       new SessionApiError(409, "conversation_gone", "这条会话已经不在了"),
@@ -1177,7 +1177,7 @@ describe("拖项目进组 = 启动新成员（★J-4，batch43）", () => {
     api.spawnGroupMember.mockResolvedValue({
       group: g,
       member: member("m2"),
-      conversation: { conversationId: "conversation:m2", title: "新会话" },
+      conversation: { conversationId: "conversation:m2", title: "新对话" },
       initialMessage: null,
     });
     renderDock();

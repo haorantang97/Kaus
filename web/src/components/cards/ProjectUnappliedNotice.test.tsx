@@ -28,7 +28,7 @@ describe("Project capabilities not applied", () => {
       ],
     })} />);
     const row = screen.getByTestId("project-unapplied");
-    expect(row.textContent).toMatch(/Project (指令、MCP未生效|instructions, MCP not applied)/);
+    expect(row.textContent).toMatch(/(项目指令、MCP未生效|Project instructions, MCP not applied)/);
     const tooltip = row.querySelector("[title*='house-style']")?.getAttribute("title") ?? "";
     expect(tooltip).toMatch(/未应用或已过期|Not applied or out of date/);
     expect(tooltip).toMatch(/启动时投射失败|Projection failed at start/);

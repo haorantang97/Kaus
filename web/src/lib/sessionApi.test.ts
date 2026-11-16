@@ -163,7 +163,7 @@ describe("已删除 Project", () => {
     setLocalePref("en");
     expect(describeFailure(failure)).toBe("Project deleted");
     setLocalePref("zh");
-    expect(describeFailure(failure)).toBe("Project 已删除");
+    expect(describeFailure(failure)).toBe("项目已删除");
     const fetchMock = vi.fn(async (url: string) => jsonResponse(url === "/api/session-auth/bootstrap" ? { token: "t1" } : { projects: [], roots: [], count: 0 }));
     vi.stubGlobal("fetch", fetchMock);
     await fetchProjects();

@@ -147,7 +147,7 @@ describe("会话侧栏", () => {
   it("按项目分组，运行中的会话置顶且标题流光；没有会话的项目不出现", () => {
     const groups = buildConversationGroups(projects, [
       conversation("旧会话", "pronto", { updatedAt: "2026-09-01T10:00:00Z" }),
-      conversation("新会话", "pronto", { updatedAt: "2026-09-02T10:00:00Z" }),
+      conversation("新对话", "pronto", { updatedAt: "2026-09-02T10:00:00Z" }),
       conversation("跑着的", "pronto", { state: "running", updatedAt: "2026-08-01T10:00:00Z" }),
     ]);
     render(
@@ -165,7 +165,7 @@ describe("会话侧栏", () => {
     expect(screen.getByText("Pronto")).toBeInTheDocument();
 
     const rows = screen.getAllByRole("button").filter((el) => el.hasAttribute("data-conversation-id"));
-    expect(rows.map((row) => row.getAttribute("data-conversation-id"))).toEqual(["跑着的", "新会话", "旧会话"]);
+    expect(rows.map((row) => row.getAttribute("data-conversation-id"))).toEqual(["跑着的", "新对话", "旧会话"]);
     // 运行中：标题流光，读屏读到「运行中」；看过的空闲会话不显示状态。
     expect(rows[0].querySelector(".kaus-title-running")).not.toBeNull();
     expect(rows[0].querySelector('[data-status="running"]')).toHaveAttribute("aria-label", "运行中");
@@ -218,7 +218,7 @@ describe("会话侧栏", () => {
         onOpenConversation={onOpen}
       />,
     );
-    expect(screen.queryByRole("button", { name: "新会话" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "新对话" })).toBeNull();
     await user.click(screen.getByText("c1"));
     expect(onOpen).toHaveBeenCalledWith("c1");
   });

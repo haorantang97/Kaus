@@ -448,10 +448,6 @@ export function App() {
                 onClose={closeOverlay}
                 onChanged={reload}
                 onGoProfile={goProfile}
-                onNewConversation={(projectRef) => {
-                  setGraphFocus(projectRef);
-                  navigate(newConversationPath(projectRef));
-                }}
                 onDetail={goProfile}
                 onOpenMenu={openMenu}
                 onAddChild={(parentId) => { setNewAgentParent(parentId); setNewOpen(true); }}

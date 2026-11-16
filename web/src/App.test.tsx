@@ -90,7 +90,7 @@ describe("现代外壳的启动与重连", () => {
     expect(screen.queryByText("Legend")).toBeNull();
     expect(document.querySelector(".home-hero, .sidebar-manifesto, .app-sidebar")).toBeNull();
     expect(screen.queryByTestId("conversation-sidebar")).toBeNull();
-    expect(screen.queryByRole("button", { name: "新会话" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "新对话" })).toBeNull();
     expect(screen.getByTestId("pathname")).toHaveTextContent("/");
   });
 
@@ -102,10 +102,10 @@ describe("现代外壳的启动与重连", () => {
     // 批次七 d 第 4 条：导航顺序 + 去掉「New」，且「新会话」只有一个入口。
     /* batch42（用户裁决：概览页取消）：「概览」整项从导航里拿掉。 */
     const labels = [...document.querySelectorAll(".app-sidebar .shell-nav-item .shell-nav-label")].map((el) => el.textContent);
-    expect(labels).toEqual(["新会话", "项目", "协作组", "工作台", "设置"]);
+    expect(labels).toEqual(["新对话", "项目", "协作组", "工作台", "设置"]);
     expect(labels).not.toContain("概览");
     /* 「新会话」入口只剩导航顶部那一枚：`/` 本身就是草稿页，铭牌上那枚按钮也去掉了。 */
-    expect(screen.getAllByRole("button", { name: "新会话" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "新对话" })).toHaveLength(1);
   });
 
   it("会话页/项目页侧栏常驻：/conversations/:id 上没有热区", async () => {
@@ -166,7 +166,7 @@ describe("侧栏导航", () => {
 
     const labels = () =>
       [...document.querySelectorAll(".app-sidebar .shell-nav-item .shell-nav-label")].map((el) => el.textContent);
-    expect(labels()).toEqual(["新会话", "项目", "协作组", "工作台", "设置"]);
+    expect(labels()).toEqual(["新对话", "项目", "协作组", "工作台", "设置"]);
     expect(screen.queryByTestId("nav-more-toggle")).toBeNull();
   });
 
@@ -240,7 +240,7 @@ describe("从草稿页点导航", () => {
     stubFetch(200);
     renderApp("/");
     await waitFor(() => expect(screen.getByTestId("conversation-sidebar")).toBeInTheDocument());
-    await user.click(screen.getAllByRole("button", { name: "新会话" })[0]);
+    await user.click(screen.getAllByRole("button", { name: "新对话" })[0]);
     await waitFor(() => expect(screen.getByTestId("draft-greeting")).toBeInTheDocument());
   });
 });
