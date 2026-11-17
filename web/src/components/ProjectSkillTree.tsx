@@ -138,13 +138,16 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
   }, [menu]);
 
-  const write = async (action: Omit<SkillTreeAction, "revision">) => {
-    if (!data || mutation.current) return;
+  /** Returns the new snapshot when the write went through (its undo token belongs to exactly this change). */
+  const write = async (action: Omit<SkillTreeAction, "revision">): Promise<SkillTreeSnapshot | null> => {
+    let written: SkillTreeSnapshot | null = null;
+    if (!data || mutation.current) return null;
     mutation.current = true; ++requestId.current;
     setBusy(true); setError(null); setMenu(null); setDestination(null); setPending(null);
     try {
       const next = await applySkillTreeAction({ ...action, revision: data.revision });
       setData(next); setUndoToken(next.undoToken ?? null);
+      written = next;
       setStatus(t(action.action === "undo" ? "skillTree.undone" : "skillTree.saved"));
     } catch (failure) {
       if (failure instanceof SkillTreeError && failure.status === 409 && failure.code === "skill_tree_stale") {
@@ -152,6 +155,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
         setError(t("skillTree.conflict"));
       } else setError(failure instanceof Error ? failure.message : String(failure));
     } finally { mutation.current = false; setBusy(false); }
+    return written;
   };
   const toggle = (key: string) => setExpanded(old => { const next = new Set(old); if (next.has(key)) next.delete(key); else next.add(key); return next; });
   const arrange = (item: Item, target: Drop, copy: boolean) => {
@@ -246,13 +250,17 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
   // 钩子（2026-11-11）：通用时点用中文名，Agent 专有时点原样显示；详情是时点、命令、超时三项。
   const hookEvent = (skill: SkillTreeSkill) => skill.agent ? `${skill.event}${skill.matcher ? ` · ${skill.matcher}` : ""}` : t(`hook.event.${skill.event as HookEvent}`);
   const hookDetail = (skill: SkillTreeSkill) => t("hook.detail", { event: hookEvent(skill), command: skill.command ?? "", timeout: skill.timeout ?? 60 });
-  // The tree keeps an undo token after every write; the toast's 「撤销」 uses the newest one.
-  const undoLatest = useRef<() => void>(() => {});
-  undoLatest.current = () => { if (undoToken) void write({ action: "undo", undoToken }); };
+  // 「撤销」 undoes exactly this removal: the token is the one this write returned. The current write
+  // function (fresh revision) is read through a ref when the toast is clicked; a later change makes
+  // the old token stale and the tree reports it instead of undoing something else.
+  const writeLatest = useRef(write);
+  writeLatest.current = write;
   const removeHere = async (item: Item) => {
     setMenu(null);
-    await write({ action: "remove", skillId: item.skill.id, targetProjectId: item.entry.projectId });
-    undoToast(t("ui.removedFrom", { name: item.skill.name, project: projectName(item.entry.projectId) }), () => undoLatest.current());
+    const result = await write({ action: "remove", skillId: item.skill.id, targetProjectId: item.entry.projectId });
+    const token = result?.undoToken;
+    if (token) undoToast(t("ui.removedFrom", { name: item.skill.name, project: projectName(item.entry.projectId) }),
+      () => writeLatest.current({ action: "undo", undoToken: token }));
   };
   const openMcp = (id: string) => {
     // The router listens to popstate, so this opens Settings → MCP on that item without a reload.
