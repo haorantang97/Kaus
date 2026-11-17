@@ -20,6 +20,8 @@ export const projectHistoryApi = {
   candidates: (source: string, projectId: string) => request<{ sessions: HistoryCandidate[] }>(`candidates?source=${encodeURIComponent(source)}&projectId=${encodeURIComponent(projectId)}`),
   add: (sourceIds: string[], projectId: string) => request<{ archiveIds: string[]; count: number }>("add", { sourceIds, projectId }),
   remove: (id: string, projectId: string) => request<{ removed: boolean }>(`${encodeURIComponent(id)}/unlink`, { projectId }),
+  /** Undo of remove: the archive goes back into the project. */
+  link: (id: string, projectId: string) => request<{ linked: boolean }>(`${encodeURIComponent(id)}/link`, { projectId }),
   list: async (projectId?: string): Promise<ProjectHistory> => {
     const value = await request<ProjectHistory>(`project-items${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`);
     if (!Array.isArray(value.items) || !Array.isArray(value.projects)) throw new Error("history_response_invalid");

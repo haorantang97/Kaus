@@ -23,7 +23,7 @@ import { useProjectHistory } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
 import { ProjectInstructionsEditor } from "../components/ProjectInstructionsEditor";
 import { ProjectMemoryCard } from "../components/ProjectMemoryCard";
-import { Button, Card, Modal, Pill, confirmAsync, cream, toast } from "../components/ui";
+import { Button, Card, Modal, Pill, cream, toast, undoToast } from "../components/ui";
 import { type NetworkResp } from "../lib/api";
 import { openProjectTerminal } from "../lib/terminalApi";
 import {
@@ -479,11 +479,9 @@ export function CapabilitiesSection({
   const [busy, setBusy] = useState<string | null>(null);
 
   const run = useCallback(
-    async (row: { capabilityType: string; capabilityId: string }, action: CapabilityAction) => {
+    async (row: { capabilityType: string; capabilityId: string; config?: Record<string, unknown> }, action: CapabilityAction) => {
       if (!projectId) return;
       const key = `${row.capabilityType}/${row.capabilityId}`;
-      if (action === "clear" && !await confirmAsync(t("confirm.clearCapability", { name: key }),
-        { okLabel: t("capabilities.action.clear"), danger: true })) return;
       setBusy(key);
       try {
         if (action === "block" || action === "blockHere") {
@@ -493,7 +491,14 @@ export function CapabilitiesSection({
           await deleteProjectCapability(projectId, row.capabilityType, row.capabilityId);
         }
         await onChanged?.();
-        toast(t(`capabilities.toast.${action}`, { name: key }), "ok");
+        const previous = row.config && "value" in row.config ? row.config.value : row.config;
+        if (action === "clear" && previous !== undefined) {
+          // This level's value can be written back: 「撤销」 instead of asking first.
+          undoToast(t(`capabilities.toast.${action}`, { name: key }), async () => {
+            try { await putProjectCapability(projectId, row.capabilityType, row.capabilityId, { value: previous }); await onChanged?.(); }
+            catch (failure) { toast(t("capabilities.toast.failed", { error: describeFailure(failure) }), "bad"); }
+          });
+        } else toast(t(`capabilities.toast.${action}`, { name: key }), "ok");
       } catch (failure) {
         toast(t("capabilities.toast.failed", { error: describeFailure(failure) }), "bad");
       } finally {

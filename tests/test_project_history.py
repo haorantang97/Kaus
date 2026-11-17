@@ -96,5 +96,8 @@ def test_remove_only_unlinks_one_project_and_can_be_added_again(tmp_path):
     assert client.get('/api/native-archives/'+identity,params={'projectId':other.id}).json()['messages']
     assert client.get('/api/native-archives/'+identity,params={'projectId':project.id}).status_code==404
     assert file.read_bytes()==original
+    # 「撤销」 puts the same archive back into the project.
+    assert client.post(f'/api/native-archives/{identity}/link',json={'projectId':project.id}).json()=={'linked':True}
+    assert [item['id'] for item in client.get('/api/native-archives/project-items',params={'projectId':project.id}).json()['items']]==[identity]
     assert client.post('/api/native-archives/add',json=request).status_code==200
     assert len(client.get('/api/native-archives/project-items',params={'projectId':project.id}).json()['items'])==1

@@ -86,6 +86,14 @@ def build_native_archive_router(service, *, auth_policy):
         return Response(raw,media_type=info['mime'],headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(info['name']),
             'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"})
 
+    @router.post('/{archive_id}/link',dependencies=[auth])
+    @endpoint
+    async def link(archive_id: str,body: ProjectBody):
+        # Undo of「移出项目」(2026-11-18): the archive is still owned, only the association returns.
+        await project(body.projectId)
+        await call(service.store.link,archive_id,body.projectId)
+        return {'linked':True}
+
     @router.post('/{archive_id}/unlink',dependencies=[auth])
     @endpoint
     async def unlink(archive_id: str,body: ProjectBody):

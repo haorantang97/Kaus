@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { ConversationRow, HistoryRow } from "./ConversationRows";
 import { MemberRow } from "./groupDock/MemberRow";
-import { ConfirmHost } from "./ui";
+import { ConfirmHost, ToastHost } from "./ui";
 import { archiveConversation, deleteConversation, fetchBackendUiCapabilities, patchConversation, type ConversationIndexEntryWire } from "../lib/sessionApi";
 import { projectHistoryApi } from "../lib/projectHistory";
 import { readSidebarPins } from "../lib/sidebarPins";
@@ -17,7 +17,7 @@ vi.mock("../lib/sessionApi", async importOriginal => ({
 }));
 vi.mock("../lib/projectHistory", async importOriginal => ({
   ...await importOriginal<typeof import("../lib/projectHistory")>(),
-  projectHistoryApi: { remove: vi.fn() },
+  projectHistoryApi: { remove: vi.fn(), link: vi.fn() },
 }));
 
 const conversation = { id: "c1", projectId: "project:site", bindingId: "b1", backendId: "backend:codex", title: "接口层重构",
@@ -33,6 +33,7 @@ beforeEach(() => {
   vi.mocked(patchConversation).mockReset().mockResolvedValue({} as never);
   vi.mocked(fetchBackendUiCapabilities).mockReset().mockResolvedValue({ externalCli: { supported: false } } as never);
   vi.mocked(projectHistoryApi.remove).mockReset().mockResolvedValue(undefined as never);
+  vi.mocked(projectHistoryApi.link).mockReset().mockResolvedValue(undefined as never);
 });
 
 describe("对话行在各处一致", () => {
@@ -52,16 +53,17 @@ describe("对话行在各处一致", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
-  it("原生历史行：⋯ 与右键里移出项目（先确认）", async () => {
+  it("原生历史行：⋯ 与右键里移出项目，撤销放回项目", async () => {
     const user = userEvent.setup(); const onOpen = vi.fn();
-    render(<><HistoryRow item={archive} projectId="project:site" className="row" onOpen={onOpen} onOpenConversation={vi.fn()}>旧的 Codex 记录</HistoryRow><ConfirmHost /></>);
+    render(<><HistoryRow item={archive} projectId="project:site" className="row" onOpen={onOpen} onOpenConversation={vi.fn()}>旧的 Codex 记录</HistoryRow><ToastHost /></>);
     await user.click(screen.getByRole("button", { name: "旧的 Codex 记录" }));
     expect(onOpen).toHaveBeenCalledOnce();
     await user.pointer({ keys: "[MouseRight]", target: screen.getByRole("button", { name: "旧的 Codex 记录" }) });
     expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["用其他 Agent 继续", "移出项目"]);
     await user.click(screen.getByRole("menuitem", { name: "移出项目" }));
-    await user.click(screen.getAllByRole("button", { name: "移出项目" }).at(-1)!);
     await waitFor(() => expect(projectHistoryApi.remove).toHaveBeenCalledWith("h1", "project:site"));
+    await user.click(await screen.findByRole("button", { name: "撤销" }));
+    await waitFor(() => expect(projectHistoryApi.link).toHaveBeenCalledWith("h1", "project:site"));
   });
 
   it("协作组成员行：单击打开这位成员的对话，右键打开同一份菜单", async () => {

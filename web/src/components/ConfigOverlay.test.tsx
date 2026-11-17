@@ -88,7 +88,7 @@ it("账号额度只在进入对应分类时读取", async () => {
   const fetch = vi.spyOn(quota, "fetchAccountQuotas").mockResolvedValue({accounts:[],unavailable:[],updatedAt:"2026-10-17T00:00:00Z"});
   render(<MemoryRouter><ConfigOverlay onClose={() => {}} /></MemoryRouter>);
   expect(fetch).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", {name:"账号额度"}));
+  await user.click(screen.getByRole("button", {name:"额度"}));
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
   expect(await screen.findByText("暂无可显示的额度")).toBeInTheDocument();
 });

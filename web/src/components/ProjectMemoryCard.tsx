@@ -22,7 +22,7 @@ import {
 } from "../lib/sessionApi";
 import { relativeTime } from "../lib/shellPrefs";
 import { CardRowMenu } from "./CardRowMenu";
-import { Button, Card, Pill, confirmAsync, cream, inputStyle, toast } from "./ui";
+import { Button, Card, Pill, cream, inputStyle, toast, undoToast } from "./ui";
 
 interface Draft { id: string | null; kind: "note" | "overview"; topic: string; body: string }
 
@@ -50,9 +50,17 @@ export function ProjectMemoryCard({ projectId, projectLabel }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- history 只在打开时取，之后随 revision 刷新
   }, [projectId, revision]);
 
-  const run = async (work: () => Promise<unknown>, done: string) => {
+  /** ``undo``: the change can be put back, so the toast offers 「撤销」 instead of asking first. */
+  const run = async (work: () => Promise<unknown>, done: string, undo?: () => Promise<unknown>) => {
     setBusy(true);
-    try { await work(); reload(); toast(done, "ok"); return true; }
+    try {
+      await work(); reload();
+      if (undo) undoToast(done, async () => {
+        try { await undo(); reload(); } catch (failure) { toast(t("memory.toast.failed", { error: describeFailure(failure) }), "bad"); }
+      });
+      else toast(done, "ok");
+      return true;
+    }
     catch (failure) { toast(t("memory.toast.failed", { error: describeFailure(failure) }), "bad"); return false; }
     finally { setBusy(false); }
   };
@@ -110,10 +118,11 @@ export function ProjectMemoryCard({ projectId, projectLabel }: {
             actionLabel={action => t(`memory.action.${action}`)}
             onPick={action => action === "edit"
               ? setDraft({ id: item.id, kind: item.kind, topic: item.topic, body: item.body })
-              : void (async () => {
-                if (!await confirmAsync(t("confirm.deleteMemory", { name: item.topic }), { okLabel: t("memory.action.delete"), danger: true })) return;
-                await run(() => deleteProjectMemory(projectId, item.id), t("memory.toast.deleted"));
-              })()} />
+              : void run(() => deleteProjectMemory(projectId, item.id), t("memory.toast.deleted"), async () => {
+                // The memory history records the delete; undoing that entry restores the memory as it was.
+                const change = (await fetchMemoryHistory(projectId)).history.find(entry => entry.memoryId === item.id && entry.action === "delete");
+                if (change) await undoMemoryChange(projectId, change.id);
+              })} />
         </div>
         <p className="kaus-instruction-body">{item.body}</p>
       </li>

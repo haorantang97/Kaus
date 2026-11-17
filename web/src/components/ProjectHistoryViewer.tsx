@@ -7,7 +7,7 @@ import { renderMarkdown } from "../lib/md";
 import { ArtifactPreview } from "./cards/ArtifactPreview";
 import { ProjectHistoryMenu } from "./ProjectHistoryMenu";
 import { ContinuationDialog } from "./ContinuationDialog";
-import { Button, Modal, confirmAsync } from "./ui";
+import { Button, Modal, undoToast } from "./ui";
 import "./project-history.css";
 
 function markdown(text: string, assets: ArchiveAsset[]) {
@@ -46,9 +46,13 @@ export function ProjectHistoryViewer({ item, projectId, onClose, onOpenConversat
     finally { setBusy(false); }
   };
   const remove = async () => {
-    if (!await confirmAsync(t("confirm.removeHistory", { name: item.title }), { okLabel: t("project.history.remove"), danger: true })) return;
     setBusy(true); setError("");
-    try { await projectHistoryApi.remove(item.id, projectId); notifyHistoryChanged(); onClose(); }
+    try {
+      await projectHistoryApi.remove(item.id, projectId); notifyHistoryChanged(); onClose();
+      undoToast(t("ui.removedFromProject", { name: item.title }), async () => {
+        try { await projectHistoryApi.link(item.id, projectId); notifyHistoryChanged(); } catch { /* the list shows what is there */ }
+      });
+    }
     catch { setError(t("project.history.removeFailed")); }
     finally { setBusy(false); }
   };

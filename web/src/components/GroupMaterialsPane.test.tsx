@@ -2,7 +2,7 @@ import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GroupMaterialsPane } from "./GroupMaterialsPane";
-import { ConfirmHost } from "./ui";
+import { ToastHost } from "./ui";
 import { setLocalePref } from "../i18n";
 import { deleteGroupMaterial, fetchGroupMaterials, saveGroupMaterial, type GroupWire } from "../lib/groupsApi";
 vi.mock("../lib/groupsApi", async (original) => ({ ...await original<object>(), fetchGroupMaterials: vi.fn(), saveGroupMaterial: vi.fn(), deleteGroupMaterial: vi.fn() }));
@@ -58,24 +58,22 @@ describe("Group materials boundaries", () => {
 describe("Material card menu", () => {
   const item = { id: "m1", title: "背景", content: "正文", sourceKind: "note", sourceId: null, sourceLabel: null };
   const filled = { ...bundle, items: [item], charCount: 4 } as unknown as typeof bundle;
-  it("keeps edit and delete in the ⋯ menu and deletes only after confirmation", async () => {
+  it("keeps edit and delete in the ⋯ menu; delete is immediate and 撤销 saves it back", async () => {
     vi.mocked(fetchGroupMaterials).mockResolvedValue(filled);
     vi.mocked(deleteGroupMaterial).mockResolvedValue(bundle);
+    vi.mocked(saveGroupMaterial).mockResolvedValue(filled);
     const user = userEvent.setup();
-    render(<><GroupMaterialsPane {...props} /><ConfirmHost /></>);
+    render(<><GroupMaterialsPane {...props} /><ToastHost /></>);
     const trigger = await screen.findByRole("button", { name: "背景 资料菜单" });
     expect(screen.queryByRole("button", { name: /^编辑|^删除/ })).toBeNull();
     await waitFor(() => expect(trigger).toBeEnabled());
     await user.click(trigger);
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
-    expect(screen.getByText("删除资料「背景」？")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "取消" }));
-    expect(deleteGroupMaterial).not.toHaveBeenCalled();
-    await user.click(trigger);
-    await user.click(screen.getByRole("menuitem", { name: "删除" }));
-    await user.click(screen.getByRole("button", { name: "删除" }));
     await waitFor(() => expect(deleteGroupMaterial).toHaveBeenCalledWith("group-a", "m1", 2));
     expect(await screen.findByText("暂无资料")).toBeInTheDocument();
+    expect(screen.getByText("已删除「背景」")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "撤销" }));
+    await waitFor(() => expect(saveGroupMaterial).toHaveBeenCalledWith("group-a", expect.objectContaining({ title: "背景", content: "正文" })));
   });
   it("right-click opens the same menu and edit loads the material", async () => {
     vi.mocked(fetchGroupMaterials).mockResolvedValue(filled);

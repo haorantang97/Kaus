@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ProjectMemoryCard } from "./ProjectMemoryCard";
-import { ConfirmHost } from "./ui";
+import { ToastHost } from "./ui";
 
 const api = vi.hoisted(() => ({ fetchProjectMemories: vi.fn(), patchProjectMemory: vi.fn(), createProjectMemory: vi.fn(),
   deleteProjectMemory: vi.fn(), fetchMemoryHistory: vi.fn(), undoMemoryChange: vi.fn() }));
@@ -42,21 +42,19 @@ describe("项目记忆卡片", () => {
     await waitFor(() => expect(api.patchProjectMemory).toHaveBeenCalledWith("project:site", "m-own", { topic: "设计", body: "首页主色改成深蓝" }));
   });
 
-  it("删除记忆先确认，取消则不删", async () => {
+  it("删除记忆不再先问；提示里的撤销按改动历史恢复", async () => {
     const user = userEvent.setup();
     api.deleteProjectMemory.mockResolvedValue({});
-    render(<><ProjectMemoryCard projectId="project:site" projectLabel={id => id} /><ConfirmHost /></>);
+    api.fetchMemoryHistory.mockResolvedValue({ history: [{ id: "h9", memoryId: "m-own", action: "delete", before: null, after: null, actor: "user", at: "" }] });
+    api.undoMemoryChange.mockResolvedValue({});
+    render(<><ProjectMemoryCard projectId="project:site" projectLabel={id => id} /><ToastHost /></>);
     const list = await screen.findByTestId("project-memory");
     const own = within(list).getAllByRole("listitem").find(row => row.textContent?.includes("墨绿"))!;
     await user.click(within(own).getByRole("button", { name: "记忆操作" }));
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
-    expect(await screen.findByText("删除记忆「设计」？")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "取消" }));
-    expect(api.deleteProjectMemory).not.toHaveBeenCalled();
-    await user.click(within(own).getByRole("button", { name: "记忆操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "删除" }));
-    await user.click(screen.getAllByRole("button", { name: "删除" }).at(-1)!);
     await waitFor(() => expect(api.deleteProjectMemory).toHaveBeenCalledWith("project:site", "m-own"));
+    await user.click(await screen.findByRole("button", { name: "撤销" }));
+    await waitFor(() => expect(api.undoMemoryChange).toHaveBeenCalledWith("project:site", "h9"));
   });
 
   it("改动历史可以逐条撤销", async () => {

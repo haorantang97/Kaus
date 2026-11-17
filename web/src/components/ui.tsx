@@ -270,15 +270,21 @@ export function inputStyle(): CSSProperties {
 }
 
 /* ---------------- imperative toast ---------------- */
-type ToastItem = { id: number; msg: string; tone: "ok" | "bad" | "" };
+type ToastAction = { label: string; run: () => void };
+type ToastItem = { id: number; msg: string; tone: "ok" | "bad" | ""; action?: ToastAction };
 let _toasts: ToastItem[] = [];
 const _toastSubs = new Set<() => void>();
 function _emitToast() { for (const f of _toastSubs) f(); }
-export function toast(msg: string, tone: "ok" | "bad" | "" = "") {
+export function toast(msg: string, tone: "ok" | "bad" | "" = "", action?: ToastAction) {
   const id = Date.now() + Math.random();
-  _toasts = [..._toasts, { id, msg, tone }];
+  _toasts = [..._toasts, { id, msg, tone, action }];
   _emitToast();
-  setTimeout(() => { _toasts = _toasts.filter((t) => t.id !== id); _emitToast(); }, 3600);
+  // A toast with an action (撤销) stays long enough to reach it.
+  setTimeout(() => { _toasts = _toasts.filter((t) => t.id !== id); _emitToast(); }, action ? 8000 : 3600);
+}
+/** After a delete that can be put back: say so, with 「撤销」 (2026-11-18, product-decisions「删除与撤销」). */
+export function undoToast(msg: string, undo: () => void | Promise<unknown>) {
+  toast(msg, "", { label: t("ui.undo"), run: () => { void undo(); } });
 }
 export function ToastHost() {
   const items = useSyncExternalStore(
@@ -295,7 +301,7 @@ export function ToastHost() {
           role={t.tone === "bad" ? undefined : "status"}
           aria-live={t.tone === "bad" ? undefined : "polite"}
           aria-atomic="true"
-          className={`rounded-lg px-3.5 py-2 text-xs shadow-lg${t.tone === "bad" ? " pointer-events-auto" : ""}`}
+          className={`flex items-center gap-3 rounded-lg px-3.5 py-2 text-xs shadow-lg${t.tone === "bad" || t.action ? " pointer-events-auto" : ""}`}
           style={{
             background: "var(--panel)",
             border: `1px solid ${t.tone === "bad" ? "color-mix(in srgb, var(--danger) 40%, transparent)" : cream(16)}`,
@@ -304,6 +310,8 @@ export function ToastHost() {
           }}
         >
           {t.tone === "bad" ? <ErrorNotice error={t.msg} /> : t.msg}
+          {t.action && <button type="button" className="kaus-toast-action" style={{ color: "var(--accent-text)" }}
+            onClick={() => { const run = t.action!.run; _toasts = _toasts.filter(item => item.id !== t.id); _emitToast(); run(); }}>{t.action.label}</button>}
         </div>
       ))}
     </div>,

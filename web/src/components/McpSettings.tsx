@@ -6,7 +6,7 @@ import { bindMcp, checkMcp, fetchMcp, fetchMcpList, importMcp, loginMcp, removeM
 import { EngineIcon } from "./EngineIcon";
 import { McpEditDialog, McpEditForm } from "./McpEditDialog";
 import { McpToolSwitches } from "./McpToolSwitches";
-import { Button, Modal, Pill, Spinner, confirmAsync, cream } from "./ui";
+import { Button, Modal, Pill, Spinner, confirmAsync, cream, undoToast } from "./ui";
 
 const REASONS = ["agent_owned", "agent_self", "agent_tools", "not_isolable", "user_marked", "memory_not_isolable"] as const;
 type Reason = typeof REASONS[number];
@@ -153,8 +153,14 @@ function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onC
     await act(() => bindMcp(id));
   };
   const remove = async () => {
-    if (!await confirmAsync(agent ? t("mcp.removeImportedConfirm", { agent: detail.agentLabel }) : t("mcp.removeConfirm"),
-      { okLabel: t("mcp.remove"), danger: true })) return;
+    // An imported MCP only leaves the library (the Agent's own config stays), so it can be imported back:
+    // 「撤销」 instead of asking. One added in Kaus loses its stored keys, so that one still asks.
+    if (agent) {
+      await act(() => removeMcp(id), true);
+      undoToast(t("ui.deleted", { name: detail.name }), async () => { try { await importMcp(id); onChanged(); } catch { /* list shows the state */ } });
+      return;
+    }
+    if (!await confirmAsync(t("mcp.removeConfirm"), { okLabel: t("mcp.remove"), danger: true })) return;
     await act(() => removeMcp(id), true);
   };
 

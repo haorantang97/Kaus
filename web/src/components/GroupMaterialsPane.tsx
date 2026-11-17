@@ -1,4 +1,4 @@
-import { ErrorNotice, confirmAsync } from "./ui";
+import { ErrorNotice, undoToast } from "./ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, FileUp, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useLocale } from "../i18n";
@@ -75,13 +75,20 @@ export function GroupMaterialsPane({ group, members, changeToken }: {
   }
   async function remove(item: GroupMaterialWire) {
     if (!bundle || disabled) return;
-    if (!await confirmAsync(t("groupRows.materialDeleteConfirm", { title: item.title }), { okLabel: t("group.material.remove"), danger: true })) return;
     const current = latest.current;
     if (!alive.current || !current?.items.some(x => x.id === item.id)) return;
     setPending(true); setError(null);
     try {
       const result = await deleteGroupMaterial(group.id, item.id, current.revision);
       if (alive.current) { generation.current++; setBundle(result); setLoading(false); }
+      // The content is known here, so 「撤销」 saves it again instead of asking first.
+      undoToast(t("ui.deleted", { name: item.title }), async () => {
+        const { title, content, sourceKind, sourceId, sourceLabel } = item;
+        try {
+          const restored = await saveGroupMaterial(group.id, { title, content, sourceKind, sourceId, sourceLabel, expectedRevision: latest.current?.revision ?? 0 });
+          if (alive.current) { generation.current++; setBundle(restored); }
+        } catch (failure) { if (alive.current) setError(failure instanceof Error ? failure.message : String(failure)); }
+      });
     } catch (failure) { if (alive.current) setError(failure instanceof Error ? failure.message : String(failure)); }
     finally { if (alive.current) setPending(false); }
   }

@@ -32,7 +32,7 @@ import {
   type InstructionFileWire,
 } from "../lib/sessionApi";
 import { backendDisplay } from "../lib/backend-display";
-import { Button, Card, Pill, confirmAsync, cream, inputStyle, toast } from "./ui";
+import { Button, Card, Pill, cream, inputStyle, toast, undoToast } from "./ui";
 
 type Action = "edit" | "override" | "block" | "restore" | "unblock" | "delete";
 
@@ -76,12 +76,15 @@ export function ProjectInstructionsEditor({
   const name = (section: InstructionSection) =>
     section.title ?? (section.fallback === "id" ? section.id : t(`instructions.fallback.${section.fallback}`));
 
-  const run = async (work: () => Promise<unknown>, done: string) => {
+  const run = async (work: () => Promise<unknown>, done: string, undo?: () => Promise<unknown>) => {
     setBusy(true);
     try {
       await work();
       await onChanged();
-      toast(done, "ok");
+      if (undo) undoToast(done, async () => {
+        try { await undo(); await onChanged(); } catch (failure) { toast(t("instructions.toast.failed", { error: describeFailure(failure) }), "bad"); }
+      });
+      else toast(done, "ok");
       return true;
     } catch (failure) {
       toast(t("instructions.toast.failed", { error: describeFailure(failure) }), "bad");
@@ -109,11 +112,10 @@ export function ProjectInstructionsEditor({
       void run(() => putProjectCapability(projectId, INSTRUCTIONS_TYPE, section.id, { blocked: true }), t("instructions.toast.blocked"));
       return;
     }
-    void (async () => {
-      if (action === "delete" && !await confirmAsync(t("confirm.deleteInstruction", { name: name(section) }),
-        { okLabel: t("instructions.action.delete"), danger: true })) return;
-      await run(() => deleteProjectCapability(projectId, INSTRUCTIONS_TYPE, section.id), t(`instructions.toast.${action}`));
-    })();
+    // A deleted section can be written back as it was: 「撤销」 instead of asking first.
+    void run(() => deleteProjectCapability(projectId, INSTRUCTIONS_TYPE, section.id), t(`instructions.toast.${action}`),
+      action === "delete" ? () => putProjectCapability(projectId, INSTRUCTIONS_TYPE, section.id,
+        { value: sectionValue({ title: section.title ?? "", body: section.body, order: section.order }) }) : undefined);
   };
 
   const add = t("instructions.add");

@@ -106,9 +106,6 @@ it("pages without JSON, closes only nested continuation with Escape, and removes
   await user.click(screen.getByRole("button", { name: "对话菜单" })); expect(screen.getByRole("menuitem", { name: "移出项目" })).toBeVisible();
   await user.keyboard("{Escape}"); expect(screen.queryByRole("menuitem")).toBeNull(); expect(close).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "对话菜单" })); await user.click(screen.getByRole("menuitem", { name: "移出项目" }));
-  expect(await screen.findByText(/原生会话保留/)).toBeVisible(); expect(projectHistoryApi.remove).not.toHaveBeenCalled();
-  await user.click(screen.getAllByRole("button", { name: "移出项目" }).at(-1)!);
-  await waitFor(() => expect(projectHistoryApi.remove).toHaveBeenCalled());
   expect(projectHistoryApi.remove).toHaveBeenCalledWith("h1", "project:one"); await waitFor(() => expect(close).toHaveBeenCalledOnce());
 });
 it("silently closes when a source disappears while loading more", async () => {

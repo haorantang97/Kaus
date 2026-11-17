@@ -7,7 +7,7 @@ import { notifyHistoryChanged, projectHistoryApi } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
 import { ConversationRowMenu, RowMenu, type RowMenuPoint } from "./ConversationRowMenu";
 import { ContinuationDialog } from "./ContinuationDialog";
-import { confirmAsync, toast } from "./ui";
+import { confirmAsync, toast, undoToast } from "./ui";
 
 /* 对话行在各处一致（2026-11-17，product-decisions「入口与用词（续）」之后的第 7 条）：单击打开，
    行 ⋯ 与右键是同一份菜单。侧栏对话行是标准；这里给项目页对话行和原生历史行用。 */
@@ -90,9 +90,14 @@ export function HistoryRow({ item, projectId, className, onOpen, onOpenConversat
   const [busy, setBusy] = useState(false);
   const [continuing, setContinuing] = useState(false);
   const remove = async () => {
-    if (!await confirmAsync(t("confirm.removeHistory", { name: item.title }), { okLabel: t("project.history.remove"), danger: true })) return;
     setBusy(true);
-    try { await projectHistoryApi.remove(item.id, projectId); notifyHistoryChanged(); }
+    try {
+      await projectHistoryApi.remove(item.id, projectId); notifyHistoryChanged();
+      // The archive stays owned; 「撤销」 links it back into the project.
+      undoToast(t("ui.removedFromProject", { name: item.title }), async () => {
+        try { await projectHistoryApi.link(item.id, projectId); notifyHistoryChanged(); } catch { toast(t("project.history.removeFailed"), "bad"); }
+      });
+    }
     catch { toast(t("project.history.removeFailed"), "bad"); }
     finally { setBusy(false); }
   };
