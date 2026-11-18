@@ -101,7 +101,10 @@ export function CtxMenu({
       onDeleted?.(node.name);
       onClose();
       const count = result.cascade?.length ?? 0;
-      undoToast(count ? t("project.delete.done", { name: dname(node), count }) : t("ui.deleted", { name: dname(node) }), async () => {
+      const done = count ? t("project.delete.done", { name: dname(node), count }) : t("ui.deleted", { name: dname(node) });
+      // Confirm or undo, never both (2026-11-18): after confirming 停止并删除 there is only a notice.
+      if (force) { toast(done, "ok"); return; }
+      undoToast(done, async () => {
         try {
           for (const slug of [node.name, ...[...(result.cascade ?? [])].reverse()]) await restoreDeletedAgent(slug);
           await Promise.all(conversations.map(id => archiveConversation(id, false).catch(() => undefined)));
