@@ -73,7 +73,7 @@ export function ProjectUnappliedNotice({ data, time }: { data: unknown; time?: s
     .filter(Boolean)
     .join("\n");
   return (
-    <div className="flex items-center gap-2 px-1 py-0.5 text-[0.65rem]" style={{ color: cream(40) }} data-testid="project-unapplied">
+    <div className="flex items-center gap-2 px-1 py-0.5 text-[0.6875rem]" style={{ color: cream(40) }} data-testid="project-unapplied">
       <span className="h-px flex-1" style={{ background: cream(11) }} />
       <span title={detail || undefined}>{text}</span>
       {typeof projectId === "string" && projectId && (

@@ -138,9 +138,6 @@ export const zh = {
   "skillTree.refresh": "刷新技能",
   "skillTree.dismiss": "关闭",
   "skillTree.cancel": "取消",
-  "skillTree.confirmMove": "移动",
-  "skillTree.moveTitle": "移动「{name}」",
-  "skillTree.impact": "受影响项目：",
   "skillTree.conflict": "配置已更新，请重试",
   "skillTree.openProject": "进入项目",
   "skillTree.openNamed": "进入 {name}",
@@ -1478,4 +1475,8 @@ export const zh = {
   "ui.removedFrom": "已从「{project}」移除「{name}」",
   "ui.removedFromProject": "已将「{name}」移出项目",
   "project.delete.done": "已删除「{name}」及 {count} 个子项目",
+  "settings.theme.system": "跟随系统",
+  "sidebar.search": "搜索对话",
+  "sidebar.noMatch": "无匹配对话",
+  "skillTree.movedMany": "已将「{name}」移至「{target}」，影响 {count} 个项目",
 } as const;

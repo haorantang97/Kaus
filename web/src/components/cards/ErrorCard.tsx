@@ -57,7 +57,7 @@ export function ErrorCard({
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}
-            className="text-[0.65rem] underline-offset-2 hover:underline"
+            className="text-[0.6875rem] underline-offset-2 hover:underline"
             style={{ color: cream(45) }}
           >
             {open ? t("card.error.hideDetail") : t("card.error.showDetail")}

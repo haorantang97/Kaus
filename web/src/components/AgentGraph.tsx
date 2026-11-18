@@ -755,7 +755,7 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
     <>
       {canGovern && drafts.length > 0 && (
         <div className={`flex flex-wrap items-center gap-2 ${embedded ? "ag-embedded-drafts" : "mb-2 pb-2"}`} style={{ borderBottom: `1px dashed ${cream(20)}` }}>
-          <span className="text-[0.7rem]" style={{ color: cream(50) }}>{t("graph.drafts", { count: drafts.length })}</span>
+          <span className="text-[0.6875rem]" style={{ color: cream(50) }}>{t("graph.drafts", { count: drafts.length })}</span>
           {drafts.map((dn) => (
             <div key={dn} className="ag-draft" draggable onDragStart={() => setDrag(dn)} onDragEnd={() => setDrag(null)}>
               {dname({ name: dn })}<span className="ag-bad" style={{ marginLeft: 6 }}>{t("graph.draftBadge")}</span>

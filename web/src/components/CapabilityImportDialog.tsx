@@ -25,7 +25,7 @@ export function CapabilityImportDialog({ onClose, onImported }: { onClose: () =>
       : !agents ? <p className="flex items-center gap-2 py-6 text-xs" style={{ color: cream(50) }}><Spinner />{t("ui.loading")}</p>
       : !agents.length ? <p className="py-6 text-center text-xs" style={{ color: cream(50) }}>{t("import.noAgents")}</p>
       : <ul className="mt-2">{agents.map(row => <li key={row.agentKey}>
-          <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-white/5" onClick={() => setAgent(row)}>
+          <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[var(--control-hover)]" onClick={() => setAgent(row)}>
             <EngineIcon engine={row.agentKey} size={17} />
             <span className="flex-1">{row.agentLabel}</span>
             <span className="text-xs" style={{ color: cream(50) }}>{t("import.availableCount", { count: row.available })}</span>

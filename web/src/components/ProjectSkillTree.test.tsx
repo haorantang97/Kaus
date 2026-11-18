@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { isGroupDrag, readGroupDrag } from "../lib/groupDrop";
 import { ProjectSkillTree } from "./ProjectSkillTree";
+import { ToastHost } from "./ui";
 import { applySkillTreeAction, fetchSkillTree, SkillTreeError, type SkillTreeEntry, type SkillTreeSnapshot } from "../lib/skillTreeApi";
 
 vi.mock("../lib/skillTreeApi", async importOriginal => ({
@@ -129,27 +130,17 @@ describe("ProjectSkillTree", () => {
     expect(screen.getByRole("button", { name: "海报" })).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("confirms inherited scope before moving and uses the original assignment as the source", async () => {
+  it("moves an inherited assignment at once from its original source and offers 撤销 with the reach", async () => {
     const user = userEvent.setup();
+    render(<ToastHost />);
     await ready();
     await openActions(user, "creative", "common-writing");
     await selectDestination(user, "移到…", "母项目 / 开发");
-    const dialog = screen.getByRole("dialog", { name: "移动" });
-    expect(dialog).toHaveTextContent("母项目、创作、海报、开发");
-    expect(applyAction).not.toHaveBeenCalled();
-    await user.click(within(dialog).getByRole("button", { name: "移动" }));
+    expect(screen.queryByRole("dialog", { name: "移动" })).toBeNull();
     expect(applyAction).toHaveBeenCalledWith({ revision: "r1", action: "move", skillId: "common-writing", sourceProjectId: "root", targetProjectId: "development" });
-  });
-
-  it("cancelling the inherited impact dialog does not change an assignment", async () => {
-    const user = userEvent.setup();
-    await ready();
-    await openActions(user, "creative", "common-writing");
-    await selectDestination(user, "移到…", "母项目 / 开发");
-    await user.click(within(screen.getByRole("dialog", { name: "移动" })).getByRole("button", { name: "取消" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(applyAction).not.toHaveBeenCalled();
-    expect(skillRow("creative", "common-writing")).toBeVisible();
+    expect(await screen.findByText(/已将「common-writing」移至「开发」，影响 4 个项目|移至「开发」/)).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "撤销" }).at(-1)!);
+    await waitFor(() => expect(applyAction).toHaveBeenLastCalledWith({ revision: "r2", action: "undo", undoToken: "undo-r2" }));
   });
 
   it("copies a native skill by its identity without changing its Agent scope or removing its source", async () => {

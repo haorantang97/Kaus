@@ -42,7 +42,7 @@ export function ReparentModal({ node, target, onClose, onDone }: { node: string;
               {t("reparent.position")}: {d.from.parent ? lb(d.from.parent) : t("reparent.topLevel")} → <span style={{ color: "var(--accent-text)" }}>{d.to.parent ? lb(d.to.parent) : t("reparent.topLevel")}</span>
               {d.descendants.length > 0 && <span> · {t("reparent.affects", { count: d.descendants.length })}</span>}
             </div>
-            {d.warnings.length > 0 && d.warnings.map((w, i) => <div key={i} className="text-[0.7rem]" style={{ color: "var(--danger)" }}>⚠ {w}</div>)}
+            {d.warnings.length > 0 && d.warnings.map((w, i) => <div key={i} className="text-[0.6875rem]" style={{ color: "var(--danger)" }}>⚠ {w}</div>)}
           </>
         )}
       <div className="mt-4 flex justify-end gap-3">

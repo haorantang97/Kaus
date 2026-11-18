@@ -31,7 +31,6 @@ type HookEvent = "session_start" | "prompt_submit" | "before_tool" | "after_tool
 type Drop = { projectId: string; agentKey?: string | null; beforeSkillId?: string | null; row?: string };
 type Drag = Item & { pointerId: number; x: number; y: number; active: boolean };
 type Menu = Item & { x: number; y: number };
-type Pending = { action: Omit<SkillTreeAction, "revision">; skill: SkillTreeSkill; target: SkillTreeProject; affected: SkillTreeProject[] };
 
 export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, onOpenProject, onBusyChange, onFocusProject, onProjectMenu, onAddProject, onReparentProject, embedded = false }: Props) {
   const { t } = useLocale();
@@ -43,7 +42,6 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<Menu | null>(null);
   const [destination, setDestination] = useState<(Item & { copy: boolean }) | null>(null);
-  const [pending, setPending] = useState<Pending | null>(null);
   const [undoToken, setUndoToken] = useState<string | null>(null);
   const [addingPlugin, setAddingPlugin] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -143,7 +141,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     let written: SkillTreeSnapshot | null = null;
     if (!data || mutation.current) return null;
     mutation.current = true; ++requestId.current;
-    setBusy(true); setError(null); setMenu(null); setDestination(null); setPending(null);
+    setBusy(true); setError(null); setMenu(null); setDestination(null);
     try {
       const next = await applySkillTreeAction({ ...action, revision: data.revision });
       setData(next); setUndoToken(next.undoToken ?? null);
@@ -174,9 +172,13 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     };
     setMenu(null); setDestination(null);
     const affected = affectedProjects(data, item.entry);
+    // 2026-11-18: a move that reaches several projects happens at once; 撤销 names how many (confirm or undo, not both).
     if (action.action === "move" && (item.entry.inherited || affected.length > 1)) {
-      const targetProject = projectMap.get(target.projectId);
-      if (targetProject) setPending({ action, skill: item.skill, target: targetProject, affected });
+      void write(action).then(result => {
+        const token = result?.undoToken;
+        if (token) undoToast(t("skillTree.movedMany", { name: item.skill.name, target: projectName(target.projectId), count: affected.length }),
+          () => writeLatest.current({ action: "undo", undoToken: token }));
+      });
     } else void write(action);
   };
   const beginDrag = (e: ReactPointerEvent, item: Item) => {
@@ -404,12 +406,6 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     {destination && <Modal onClose={() => setDestination(null)} width={420}><div className="skill-tree-dialog" role="dialog" aria-modal="true" aria-label={t(destination.skill.pendingAssignment ? "skillTree.assign" : destination.copy ? "skillTree.copy" : "skillTree.move")}>
       <div className="skill-tree-dialog-head"><strong>{t(destination.skill.pendingAssignment ? "skillTree.assign" : destination.copy ? "skillTree.copy" : "skillTree.move")}</strong><button className="skill-tree-icon" aria-label={t("skillTree.dismiss")} onClick={() => setDestination(null)}><X size={17} /></button></div>
       <div className="skill-tree-destination-list">{data?.projects.filter(p => destination.skill.pendingAssignment || p.id !== destination.entry.projectId).map(p => <button key={p.id} onClick={() => arrange(destination, { projectId: p.id }, destination.copy)}><Folder size={16} /><span>{projectAncestors(data.projects, p.id).reverse().map(projectName).join(" / ")}</span><ChevronRight size={14} /></button>)}</div>
-    </div></Modal>}
-    {pending && <Modal onClose={() => setPending(null)} width={460}><div className="skill-tree-dialog" role="dialog" aria-modal="true" aria-label={t("skillTree.confirmMove")}>
-      <strong>{t("skillTree.moveTitle", { name: pending.skill.name })}</strong>
-      <p>{projectName(pending.action.sourceProjectId!)} <ArrowRight size={14} /> {pending.target.displayName || pending.target.slug}</p>
-      <p className="skill-tree-impact">{t("skillTree.impact")}<br />{pending.affected.map(p => p.displayName || p.slug).join("、")}</p>
-      <div className="skill-tree-dialog-actions"><button onClick={() => setPending(null)}>{t("skillTree.cancel")}</button><button className="is-primary" onClick={() => void write(pending.action)}>{t("skillTree.confirmMove")}</button></div>
     </div></Modal>}
   </div>;
 }

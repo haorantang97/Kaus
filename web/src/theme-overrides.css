@@ -117,6 +117,13 @@ body.dark {
   --border-subtle: color-mix(in srgb, var(--midground-base) 10%, transparent);
   --surface-hover: color-mix(in srgb, var(--midground-base) 5%, transparent);
   --surface-selected: color-mix(in srgb, var(--midground-base) 9%, transparent);
+  /* Success text and tint that stay readable in both themes (2026-11-18). */
+  --success-text: #4d6b44;
+  --success-tint: rgba(122,176,122,.14);
+}
+body.dark {
+  --success-text: #9cc78e;
+  --success-tint: rgba(122,176,122,.16);
 }
 
 html,
@@ -209,7 +216,7 @@ body,
   border-left: 3px solid var(--gold-soft);
   margin: 8px 0;
   padding: 2px 12px;
-  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  color: var(--text-tertiary);
 }
 .md-body a {
   color: var(--accent-text);
@@ -332,10 +339,10 @@ body,
   border: 0;
   border-radius: 7px;
   padding: 5px 7px;
-  cursor: pointer;
+  cursor: default;
   background: transparent;
   color: color-mix(in srgb, var(--midground-base) 72%, transparent);
-  font: 400 10px/1.4 var(--theme-font-sans);
+  font: 400 11px/1.4 var(--theme-font-sans);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -365,7 +372,7 @@ body,
   padding: 8px 9px;
   border-radius: 8px;
   color: var(--midground-base);
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   transition:
     background-color 0.15s,
@@ -468,7 +475,7 @@ body.dark .shell-nav-item.is-active .shell-nav-icon {
 
 .sidebar-context-title {
   margin: 0 4px 8px;
-  color: color-mix(in srgb, var(--midground-base) 58%, transparent);
+  color: var(--text-secondary);
   font: 400 11px/1.5 var(--theme-font-sans);
   letter-spacing: 0;
   text-transform: none;
@@ -527,7 +534,7 @@ body.dark input {
 }
 
 .agent-browser-head > div {
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -553,7 +560,7 @@ body.dark input {
   padding: 7px 12px;
   color: color-mix(in srgb, var(--midground-base) 65%, transparent);
   background: transparent;
-  cursor: pointer;
+  cursor: default;
   font: 500 12px/1.5 var(--theme-font-wheel-sans);
 }
 
@@ -594,9 +601,9 @@ body.dark input {
   border: 1px dashed color-mix(in srgb, var(--midground-base) 22%, transparent);
   border-radius: 8px;
   padding: 7px 12px;
-  font-size: 0.68rem;
+  font-size: 11px;
   text-align: center;
-  color: color-mix(in srgb, var(--midground-base) 50%, transparent);
+  color: var(--text-tertiary);
   margin-bottom: 10px;
 }
 .ag-droptop.ag-drop,
@@ -682,7 +689,7 @@ body.dark input {
   transition: color 0.15s;
 }
 .ag-root {
-  cursor: pointer;
+  cursor: default;
   position: relative;
   padding: 2px;
 }
@@ -713,8 +720,8 @@ body.dark input {
 }
 .ag-rootsub {
   margin-top: 9px;
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
-  font: 700 9px/1 var(--theme-font-wheel-mono);
+  color: var(--text-tertiary);
+  font: 700 11px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
@@ -722,7 +729,7 @@ body.dark input {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  cursor: pointer;
+  cursor: default;
   white-space: nowrap;
   transform-origin: left center;
   /* 轮盘每帧写 transform:提前提层,别让浏览器每帧重新决定(AD-81)。 */
@@ -755,7 +762,7 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
   border: 1px dashed color-mix(in srgb, var(--midground-base) 26%, transparent);
   border-radius: 8px;
   padding: 5px 12px 5px 10px;
-  color: color-mix(in srgb, var(--midground-base) 46%, transparent);
+  color: var(--text-tertiary);
 }
 
 .ag-node-add:hover {
@@ -818,13 +825,13 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
    但把它提到那个档次就得和节点名一样黑，那是另一种坏——名字才是要读的那行。
    只调透明度、不换色（AD-78）。 */
 .ag-rl {
-  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
-  font: 9.5px/1 var(--theme-font-wheel-mono);
+  color: var(--text-tertiary);
+  font: 11px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .ag-bad {
-  font-size: 0.56rem;
+  font-size: 11px;
   color: var(--danger);
   border: 1px solid var(--danger);
   border-radius: 3px;
@@ -832,7 +839,7 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
 }
 .ag-cn {
   color: var(--accent-text);
-  font: 9.5px/1 var(--theme-font-wheel-mono);
+  font: 11px/1 var(--theme-font-wheel-mono);
   opacity: 0.8;
 }
 .ag-dots {
@@ -840,8 +847,8 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
   opacity: 0;
   border: 0;
   background: transparent;
-  color: color-mix(in srgb, var(--midground-base) 36%, transparent);
-  cursor: pointer;
+  color: var(--text-tertiary);
+  cursor: default;
   padding: 2px;
   display: grid;
   place-items: center;
@@ -885,7 +892,7 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
   justify-content: space-between;
   min-height: 24px;
   color: var(--accent-text);
-  font: 700 9px/1 var(--theme-font-wheel-mono);
+  font: 700 11px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
@@ -898,8 +905,8 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
-  cursor: pointer;
+  color: var(--text-tertiary);
+  cursor: default;
 }
 .ag-panel-close:hover {
   background: var(--surface-hover);
@@ -914,8 +921,8 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
-  font: 10px/1 var(--theme-font-wheel-mono);
+  color: var(--text-tertiary);
+  font: 11px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -925,7 +932,7 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
   margin-top: 16px;
 }
 .ag-act {
-  cursor: pointer;
+  cursor: default;
   padding-bottom: 4px;
   border-top: 0;
   border-right: 0;
@@ -941,7 +948,7 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
   border-bottom-color: var(--gold-deep);
 }
 .ag-act.g {
-  color: color-mix(in srgb, var(--midground-base) 50%, transparent);
+  color: var(--text-tertiary);
 }
 .ag-act.g:hover {
   color: var(--midground-base);
@@ -961,8 +968,8 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
 }
 .ag-stat-row span {
   margin-top: 5px;
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
-  font: 8.5px var(--theme-font-wheel-mono);
+  color: var(--text-tertiary);
+  font: 11px var(--theme-font-wheel-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -975,7 +982,7 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
     margin-right: -290px;
   }
   .agent-browser-head > div {
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1 var(--theme-font-wheel-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1089,8 +1096,8 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
   width: 100%;
   padding: 5px 6px;
   border-radius: 6px;
-  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
-  cursor: pointer;
+  color: var(--text-tertiary);
+  cursor: default;
   text-align: left;
   font: 400 11px/1 var(--theme-font-sans);
   letter-spacing: 0;
@@ -1131,8 +1138,8 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
 
 .kaus-conversation-time {
   flex: none;
-  color: color-mix(in srgb, var(--midground-base) 38%, transparent);
-  font: 9.5px/1 var(--theme-font-mono);
+  color: var(--text-tertiary);
+  font: 11px/1 var(--theme-font-mono);
 }
 
 /* 草稿页：整屏居中的空对话窗（≤ 760px）。 */
@@ -1207,7 +1214,7 @@ body .ag-canvas .ag-cols :is(.ag-node, .ag-root):focus-visible {
   padding: 7px 12px;
   background: var(--midground-base);
   color: var(--background-base);
-  cursor: pointer;
+  cursor: default;
   font: 400 12px/1 var(--theme-font-sans);
 }
 
@@ -1323,7 +1330,7 @@ button.kaus-conversation-title:hover {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1 var(--theme-font-mono);
 }
 
@@ -1338,7 +1345,7 @@ button.kaus-conversation-title:hover {
   border-radius: 8px;
   padding: 6px 10px;
   background: color-mix(in srgb, var(--midground-base) 6%, transparent);
-  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  color: var(--text-secondary);
   font-size: 11.5px;
 }
 
@@ -1391,7 +1398,7 @@ button.kaus-conversation-title:hover {
 }
 
 .kaus-prose-empty {
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  color: var(--text-tertiary);
   font-size: 12px;
 }
 
@@ -1402,8 +1409,8 @@ button.kaus-conversation-title:hover {
   opacity: 0;
   text-align: right;
   transition: opacity 120ms ease;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 10px/1 var(--theme-font-mono);
+  color: var(--text-tertiary);
+  font: 11px/1 var(--theme-font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1422,8 +1429,8 @@ button.kaus-conversation-title:hover {
 .kaus-card-time {
   opacity: 0;
   transition: opacity 120ms ease;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 10px/1 var(--theme-font-mono);
+  color: var(--text-tertiary);
+  font: 11px/1 var(--theme-font-mono);
 }
 
 .kaus-card:hover .kaus-card-time,
@@ -1467,7 +1474,7 @@ button.kaus-conversation-title:hover {
   gap: 7px;
   border-radius: 6px;
   padding: 4px 6px;
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   color: var(--midground-base);
   font: 12px/1.5 var(--theme-font-sans);
@@ -1479,7 +1486,7 @@ button.kaus-conversation-title:hover {
 
 .kaus-tool-chevron {
   flex: none;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  color: var(--text-tertiary);
 }
 
 .kaus-tool-name {
@@ -1491,7 +1498,7 @@ button.kaus-conversation-title:hover {
 .kaus-tool-preview {
   min-width: 0;
   overflow: hidden;
-  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  color: var(--text-tertiary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1507,7 +1514,7 @@ button.kaus-conversation-title:hover {
   flex: none;
   align-items: center;
   gap: 5px;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1 var(--theme-font-mono);
 }
 
@@ -1544,8 +1551,8 @@ button.kaus-conversation-title:hover {
 }
 
 .kaus-tool-progress {
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 10.5px/1.4 var(--theme-font-mono);
+  color: var(--text-tertiary);
+  font: 11px/1.4 var(--theme-font-mono);
 }
 
 /* batch17 第 2 件：展开态的入参。等宽键值对，对象再列一层；
@@ -1566,7 +1573,7 @@ button.kaus-conversation-title:hover {
 .kaus-tool-kv-key {
   flex: none;
   min-width: 68px;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  color: var(--text-tertiary);
 }
 
 .kaus-tool-kv-value {
@@ -1605,7 +1612,7 @@ button.kaus-conversation-title:hover {
 /* 页尾的中性解释小字（batch17：`runtime_lost`）。 */
 .kaus-flow-note {
   padding: 2px 2px 6px;
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1.6 var(--theme-font-sans);
 }
 
@@ -1630,19 +1637,19 @@ button.kaus-conversation-title:hover {
 
 .kaus-plan-status {
   margin-right: 7px;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 10.5px/1.4 var(--theme-font-mono);
+  color: var(--text-tertiary);
+  font: 11px/1.4 var(--theme-font-mono);
 }
 
 .kaus-plan-list li[data-status="completed"] {
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  color: var(--text-tertiary);
 }
 
 .kaus-reasoning-summary,
 .kaus-reasoning-text {
   margin: 0;
   white-space: pre-wrap;
-  color: color-mix(in srgb, var(--midground-base) 58%, transparent);
+  color: var(--text-secondary);
   font: 12px/1.6 var(--theme-font-sans);
 }
 
@@ -1652,13 +1659,13 @@ button.kaus-conversation-title:hover {
   align-items: center;
   gap: 7px;
   padding: 4px 6px;
-  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  color: var(--text-secondary);
   font: 12px/1.5 var(--theme-font-sans);
 }
 
 .kaus-permission-mark {
   flex: none;
-  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  color: var(--text-tertiary);
   font-family: var(--theme-font-mono);
 }
 
@@ -1678,7 +1685,7 @@ button.kaus-conversation-title:hover {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: color-mix(in srgb, var(--midground-base) 50%, transparent);
+  color: var(--text-tertiary);
   font: 12px/1.5 var(--theme-font-sans);
 }
 
@@ -1762,7 +1769,7 @@ button.kaus-conversation-title:hover {
 }
 
 .kaus-bar-pill.is-button {
-  cursor: pointer;
+  cursor: default;
 }
 
 .kaus-bar-pill.is-button:hover {
@@ -1823,7 +1830,7 @@ button.kaus-conversation-title:hover {
    它不可点、不该被选中，所以没有 hover 也没有指针。 */
 .kaus-bar-pop-head {
   padding: 8px 8px 4px;
-  color: color-mix(in srgb, var(--midground-base) 60%, transparent);
+  color: var(--text-secondary);
   font: 400 11px/1.4 var(--theme-font-sans);
   letter-spacing: 0;
   text-transform: none;
@@ -1841,13 +1848,13 @@ button.kaus-conversation-title:hover {
   width: 100%;
   border: 0;
   background: none;
-  cursor: pointer;
+  cursor: default;
   text-align: left;
 }
 
 .kaus-bar-pop-count {
-  color: color-mix(in srgb, var(--midground-base) 35%, transparent);
-  font: 9.5px/1.3 var(--theme-font-sans);
+  color: var(--text-tertiary);
+  font: 11px/1.3 var(--theme-font-sans);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -1861,7 +1868,7 @@ button.kaus-conversation-title:hover {
   border-radius: 6px;
   min-height: 32px;
   padding: 6px 8px;
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   white-space: nowrap;
   color: var(--midground-base);
@@ -1882,8 +1889,8 @@ button.kaus-conversation-title:hover {
 .kaus-bar-pop-note {
   padding: 5px 8px 3px;
   border-top: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
-  color: color-mix(in srgb, var(--midground-base) 48%, transparent);
-  font: 10.5px/1.45 var(--theme-font-sans);
+  color: var(--text-tertiary);
+  font: 11px/1.45 var(--theme-font-sans);
   white-space: normal;
 }
 
@@ -1913,7 +1920,7 @@ button.kaus-conversation-title:hover {
   background: var(--surface-raised);
   color: var(--midground-base);
   outline: none;
-  font: 10.5px/1.4 var(--theme-font-mono);
+  font: 11px/1.4 var(--theme-font-mono);
 }
 
 /* G-9：上翻之后固定在输入框上方居中。 */
@@ -1928,7 +1935,7 @@ button.kaus-conversation-title:hover {
   padding: 3px 8px;
   background: var(--surface-raised);
   box-shadow: var(--shadow-lg);
-  cursor: pointer;
+  cursor: default;
   color: color-mix(in srgb, var(--midground-base) 70%, transparent);
   font: 11px/1.4 var(--theme-font-sans);
   letter-spacing: 0;
@@ -1966,7 +1973,7 @@ button.kaus-conversation-title:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1.4 var(--theme-font-sans);
   letter-spacing: 0;
 }
@@ -2009,6 +2016,8 @@ button.kaus-conversation-title:hover {
 
 .kaus-project-conversations {
   display: grid;
+  /* Rows truncate long titles instead of widening the list (narrow windows, 2026-11-18). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   max-height: 320px;
   overflow-y: auto;
@@ -2034,9 +2043,9 @@ button.kaus-conversation-title:hover {
   min-height: 34px;
   padding: 6px 12px;
   border-radius: 7px;
-  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  color: var(--text-secondary);
   font: 400 13px/1.4 var(--theme-font-sans);
-  cursor: pointer;
+  cursor: default;
   transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
 }
 
@@ -2058,7 +2067,7 @@ button.kaus-conversation-title:hover {
 .kaus-cap-value { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 .kaus-cap-summary { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .kaus-cap-summary.is-complete { display: block; overflow: visible; }
-.kaus-cap-icon-button { display: inline-grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; border-radius: 7px; color: color-mix(in srgb, var(--midground-base) 60%, transparent); cursor: pointer; transition: background 150ms ease, color 150ms ease; }
+.kaus-cap-icon-button { display: inline-grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; border-radius: 7px; color: var(--text-secondary); cursor: default; transition: background 150ms ease, color 150ms ease; }
 .kaus-cap-icon-button:hover { color: var(--midground-base); background: color-mix(in srgb, var(--midground-base) 8%, transparent); }
 .kaus-cap-icon-button svg { transition: transform 150ms ease; }
 .kaus-cap-icon-button:hover svg { transform: none; }
@@ -2067,7 +2076,7 @@ button.kaus-conversation-title:hover {
 .kaus-cap-raw { max-height: 60vh; overflow: auto; padding: 14px; border-radius: 8px; background: var(--surface-raised); font: 12px/1.7 var(--theme-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .kaus-cap-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .kaus-cap-name strong { font-weight: 400; }
-.kaus-cap-name small { font-size: 11px; color: color-mix(in srgb, var(--midground-base) 50%, transparent); }
+.kaus-cap-name small { font-size: 11px; color: var(--text-tertiary); }
 .kaus-config-value-scroll { display: block; max-height: 144px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; scrollbar-width: thin; }
 
 .kaus-cap-table {
@@ -2089,7 +2098,7 @@ button.kaus-conversation-title:hover {
 
 .kaus-cap-row.is-head {
   border-top: 0;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  color: var(--text-tertiary);
   font: 400 11px/1.4 var(--theme-font-sans);
 }
 
@@ -2121,7 +2130,7 @@ button.kaus-conversation-title:hover {
   width: 20px;
   height: 20px;
   border-radius: 4px;
-  cursor: pointer;
+  cursor: default;
   color: color-mix(in srgb, var(--midground-base) 70%, transparent);
 }
 
@@ -2165,7 +2174,7 @@ button.kaus-conversation-title:hover {
 .kaus-bar-pop-item.is-static {
   cursor: default;
   font-family: var(--theme-font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .kaus-external-degraded {
@@ -2192,15 +2201,15 @@ button.kaus-conversation-title:hover {
 
 .kaus-external-degraded-reason {
   margin: 0;
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1.5 var(--theme-font-sans);
 }
 
 /* 降级说明的小字：中性，**不**用 --danger。 */
 .kaus-external-gap {
   padding: 2px 0 0 18px;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 10.5px/1.5 var(--theme-font-sans);
+  color: var(--text-tertiary);
+  font: 11px/1.5 var(--theme-font-sans);
 }
 
 .kaus-external-history-body {
@@ -2234,7 +2243,7 @@ body.dark .ag-rl {
 
 /* 能力表的表头小字同步提一档（走查里"capability 小字偏暗"说的就是这行）。 */
 body.dark .kaus-cap-row.is-head {
-  color: color-mix(in srgb, var(--midground-base) 58%, transparent);
+  color: var(--text-secondary);
 }
 
 /* 第 5 件（F11）：长清单的过滤框。沿用 `.kaus-bar-input` 的形态，只是撑满菜单宽。 */
@@ -2282,9 +2291,9 @@ body.dark .kaus-cap-row.is-head {
   border-radius: 6px;
   padding: 2px 6px;
   background: var(--surface-raised);
-  cursor: pointer;
-  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
-  font: 10px/1.4 var(--theme-font-sans);
+  cursor: default;
+  color: var(--text-secondary);
+  font: 11px/1.4 var(--theme-font-sans);
 }
 
 .kaus-msg-action:hover {
@@ -2331,14 +2340,14 @@ body.dark .kaus-cap-row.is-head {
 
 /* 第 1 件：停止未获确认时补在「正在停止…」后面的一句中性小字。 */
 .kaus-replying-note {
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1.5 var(--theme-font-sans);
 }
 
 /* batch30 第 1 件：SSE 到不了、改走轮询时输入区上方那一行小字。中性到底
    （★H：工作区不上强调色）——它是一条事实，不是一个需要用户处理的错误。 */
 .kaus-transport-note {
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1.5 var(--theme-font-sans);
   padding: 0 2px 4px;
 }
@@ -2346,7 +2355,7 @@ body.dark .kaus-cap-row.is-head {
 /* batch39 第 1 件：运行中按 Enter 之后输入框**下面**那一行小字。与上面那条轮询提示
    同一套中性字号色值（★H）——它是一条事实，不是一个需要用户处理的错误。 */
 .kaus-composer-note {
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1.5 var(--theme-font-sans);
   padding: 4px 2px 0;
 }
@@ -2379,8 +2388,8 @@ body.dark .kaus-cap-row.is-head {
   padding: 5px 9px;
   background: var(--panel);
   box-shadow: var(--shadow-lg);
-  cursor: pointer;
-  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  cursor: default;
+  color: var(--text-secondary);
   font: 11px/1.4 var(--theme-font-sans);
   letter-spacing: 0;
 }
@@ -2432,8 +2441,8 @@ body.dark .kaus-cap-row.is-head {
   height: 22px;
   place-items: center;
   border-radius: 6px;
-  cursor: pointer;
-  color: color-mix(in srgb, var(--midground-base) 50%, transparent);
+  cursor: default;
+  color: var(--text-tertiary);
   font: 13px/1 var(--theme-font-sans);
 }
 
@@ -2452,7 +2461,7 @@ body.dark .kaus-cap-row.is-head {
 .kaus-group-empty,
 .kaus-group-error {
   padding: 10px 8px;
-  color: color-mix(in srgb, var(--midground-base) 48%, transparent);
+  color: var(--text-tertiary);
   font: 11.5px/1.6 var(--theme-font-sans);
 }
 
@@ -2467,7 +2476,7 @@ body.dark .kaus-cap-row.is-head {
   gap: 6px;
   border-radius: 6px;
   padding: 6px 7px;
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   color: var(--midground-base);
   font: 12px/1.4 var(--theme-font-sans);
@@ -2519,15 +2528,15 @@ body.dark .kaus-cap-row.is-head {
   border: 1px solid color-mix(in srgb, var(--midground-base) 13%, transparent);
   border-radius: 1px;
   padding: 0 4px;
-  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1.6 var(--theme-font-sans);
   letter-spacing: 0;
 }
 
 .kaus-group-dim {
   flex: none;
-  color: color-mix(in srgb, var(--midground-base) 42%, transparent);
-  font: 10px/1.4 var(--theme-font-sans);
+  color: var(--text-tertiary);
+  font: 11px/1.4 var(--theme-font-sans);
 }
 
 /* 三张小表单（新建组 / 选择已有会话 / 启动新成员）共用一条横排。 */
@@ -2573,7 +2582,7 @@ body.dark .kaus-cap-row.is-head {
   border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent);
   border-radius: 8px;
   padding: 9px 10px;
-  cursor: pointer;
+  cursor: default;
 }
 
 /* 原生 radio 默认是浏览器的蓝：那是一个不在我们色板里的强调色（★H / AD-78）。
@@ -2596,7 +2605,7 @@ body.dark .kaus-cap-row.is-head {
 .kaus-group-choice em {
   display: block;
   margin-top: 2px;
-  color: color-mix(in srgb, var(--midground-base) 52%, transparent);
+  color: var(--text-tertiary);
   font: 11.5px/1.6 var(--theme-font-sans);
   font-style: normal;
 }
@@ -2695,7 +2704,7 @@ body.dark .kaus-cap-row.is-head {
   gap: 6px;
   padding: 8px 0 6px;
   background: var(--panel);
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  color: var(--text-tertiary);
   font: 11px/1.4 var(--theme-font-sans);
   letter-spacing: 0;
 }
@@ -2723,8 +2732,8 @@ body.dark .kaus-cap-row.is-head {
   border: 1px solid transparent;
   border-radius: 1px;
   padding: 3px 8px;
-  cursor: pointer;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  cursor: default;
+  color: var(--text-tertiary);
   font: 11px/1.4 var(--theme-font-sans);
   letter-spacing: 0;
 }
@@ -2788,7 +2797,7 @@ body.dark .kaus-cap-row.is-head {
 /* 成员名是这一行的第一眼，所以它比周围的小字重一档（但仍不上强调色，★H）。 */
 .kaus-group-turn .kaus-group-member-title {
   color: var(--midground-base);
-  font: 400 10.5px/1.4 var(--theme-font-sans);
+  font: 400 11px/1.4 var(--theme-font-sans);
 }
 
 .kaus-group-message-text {
@@ -2801,9 +2810,9 @@ body.dark .kaus-cap-row.is-head {
 
 .kaus-group-summary {
   margin-left: auto;
-  cursor: pointer;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
-  font: 10px/1.4 var(--theme-font-sans);
+  cursor: default;
+  color: var(--text-tertiary);
+  font: 11px/1.4 var(--theme-font-sans);
 }
 
 .kaus-group-summary:hover {
@@ -2829,14 +2838,14 @@ body.dark .kaus-cap-row.is-head {
 .kaus-group-deliveries li {
   display: flex;
   gap: 6px;
-  font: 10.5px/1.5 var(--theme-font-sans);
+  font: 11px/1.5 var(--theme-font-sans);
 }
 
 /* 失败是唯一染色的一档：「跳过」不是错误，不该红（★H）。 */
 .kaus-group-bad {
   flex: none;
   color: var(--danger);
-  font: 10px/1.4 var(--theme-font-sans);
+  font: 11px/1.4 var(--theme-font-sans);
 }
 
 /* batch27：组时间线顶上那条常驻通知（首句没发出去）。它不是 toast——不会自己
@@ -2954,7 +2963,7 @@ body.dark .kaus-cap-row.is-head {
   width: 100%;
   padding: 7px 4px;
   border-top: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent);
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   font-size: 12px;
 }
@@ -2985,7 +2994,7 @@ body.dark .kaus-cap-row.is-head {
 .kaus-overview-meta {
   flex: none;
   min-width: 64px;
-  color: color-mix(in srgb, var(--midground-base) 45%, transparent);
+  color: var(--text-tertiary);
   text-align: right;
   font-size: 11px;
 }
@@ -2993,7 +3002,7 @@ body.dark .kaus-cap-row.is-head {
 .kaus-overview-state {
   flex: none;
   min-width: 72px;
-  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  color: var(--text-tertiary);
   text-align: right;
   font-size: 11px;
 }
@@ -3001,9 +3010,9 @@ body.dark .kaus-cap-row.is-head {
 .kaus-overview-time {
   flex: none;
   min-width: 56px;
-  color: color-mix(in srgb, var(--midground-base) 38%, transparent);
+  color: var(--text-tertiary);
   text-align: right;
-  font: 9.5px/1.6 var(--theme-font-mono);
+  font: 11px/1.6 var(--theme-font-mono);
 }
 
 /* ===== batch42 第 2 件：拖拽入组（DESIGN ★J-4 / §5.9 的拖拽目标规矩）=====
@@ -3027,7 +3036,7 @@ body.dark .kaus-cap-row.is-head {
 .kaus-group-materials .kaus-group-pane-head > span:first-child { flex: 1; }
 .kaus-group-materials .kaus-icon-btn, .kaus-group-message-actions .kaus-icon-btn {
   display: inline-flex; align-items: center; justify-content: center; padding: 5px;
-  border: 0; border-radius: 4px; background: transparent; color: inherit; cursor: pointer;
+  border: 0; border-radius: 4px; background: transparent; color: inherit; cursor: default;
 }
 .kaus-group-materials .kaus-icon-btn:hover, .kaus-group-message-actions .kaus-icon-btn:hover { background: var(--bg-hover, #8882); }
 .kaus-group-materials .kaus-icon-btn:disabled { opacity: .35; cursor: default; }
@@ -3036,11 +3045,11 @@ body.dark .kaus-cap-row.is-head {
 .kaus-material-head strong, .kaus-material-editor-foot small { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .kaus-material:hover .kaus-conversation-menu-trigger, .kaus-material:focus-within .kaus-conversation-menu-trigger { opacity: 1; }
 .kaus-material details { margin-top: 5px; }
-.kaus-material summary { cursor: pointer; overflow-wrap: anywhere; color: var(--text-muted); }
+.kaus-material summary { cursor: default; overflow-wrap: anywhere; color: var(--text-muted); }
 .kaus-material pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 8px 0 0; }
 .kaus-material-editor { display: grid; gap: 7px; margin: 8px 0; }
 .kaus-material-editor input, .kaus-material-editor textarea, .kaus-material-editor select {
-  width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #8884; border-radius: 5px;
+  width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: 5px;
   padding: 7px; font: inherit; font-size: 12px; background: var(--panel); color: inherit;
 }
 .kaus-material-editor textarea { resize: vertical; }
@@ -3056,7 +3065,7 @@ body.dark .kaus-cap-row.is-head {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   min-height: 34px; padding: 7px 13px; border: 1px solid color-mix(in srgb, var(--midground-base) 18%, transparent);
   border-radius: 9px; background: var(--surface-raised); color: var(--midground-base);
-  font: 400 12px/1.4 var(--theme-font-sans); white-space: nowrap; cursor: pointer;
+  font: 400 12px/1.4 var(--theme-font-sans); white-space: nowrap; cursor: default;
 }
 .kaus-button--primary {
   background: var(--midground-base);
@@ -3066,14 +3075,14 @@ body.dark .kaus-cap-row.is-head {
 .kaus-button:focus-visible, .kaus-project-conversation:focus-visible, .ag-node-enter:focus-visible, .ag-node:focus-visible { outline: none; }
 .kaus-button:disabled { cursor: default; opacity: .42; box-shadow: none; }
 .kaus-project-primary, .kaus-project-secondary { min-height: 42px; padding: 10px 16px; font-size: 13px; }
-.ag-node-enter { position: relative; z-index: 1; display: inline-grid; place-items: center; align-self: center; width: 30px; height: 30px; margin-left: 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent-text) 25%, transparent); color: var(--accent-text); background: var(--surface-raised); cursor: pointer; }
+.ag-node-enter { position: relative; z-index: 1; display: inline-grid; place-items: center; align-self: center; width: 30px; height: 30px; margin-left: 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent-text) 25%, transparent); color: var(--accent-text); background: var(--surface-raised); cursor: default; }
 .ag-node-enter:hover { background: var(--gold-soft); }
-.kaus-project-conversation { min-height: 48px; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; font: 400 13px/1.5 var(--theme-font-sans); cursor: pointer; }
+.kaus-project-conversation { min-height: 48px; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; font: 400 13px/1.5 var(--theme-font-sans); cursor: default; }
 .kaus-project-conversation:hover { background: var(--surface-hover); }
 .kaus-project-conversation-icon { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; color: color-mix(in srgb, var(--midground-base) 65%, transparent); background: transparent; }
 body.dark .kaus-project-conversation-icon { color: var(--accent-text); }
 .kaus-engine-transports { margin-top: 14px; font-size: 12px; color: color-mix(in srgb, var(--midground-base) 70%, transparent); }
-.kaus-engine-transports summary { cursor: pointer; }
+.kaus-engine-transports summary { cursor: default; }
 .kaus-engine-transports select { width: 100%; margin-top: 10px; }
 @media (prefers-reduced-motion: reduce) {
   .kaus-button, .kaus-project-conversation { transition: none; }
@@ -3087,7 +3096,7 @@ body.dark .kaus-project-conversation-icon { color: var(--accent-text); }
   margin-left: auto;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  color: var(--text-secondary);
 }
 .shell-nav-item.is-drop-target {
   outline: 2px dashed var(--gold);
@@ -3103,7 +3112,7 @@ body.dark .kaus-project-conversation-icon { color: var(--accent-text); }
 .kaus-instruction-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
 .kaus-instruction-body {
   margin: 4px 0 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-  white-space: pre-wrap; font-size: 12.5px; line-height: 1.6; color: color-mix(in srgb, var(--midground-base) 62%, transparent);
+  white-space: pre-wrap; font-size: 12.5px; line-height: 1.6; color: var(--text-secondary);
 }
 .kaus-instruction-editor { display: flex; flex-direction: column; gap: 8px; }
 
@@ -3136,24 +3145,31 @@ body.dark { --status-unread: #6ea8ff; --status-waiting: #f0a24a; }
 }
 .kaus-suggest-item {
   display: flex; align-items: baseline; gap: 10px; min-width: 0; padding: 6px 8px; border-radius: 6px;
-  text-align: left; cursor: pointer; font-size: 13px;
+  text-align: left; cursor: default; font-size: 13px;
 }
 .kaus-suggest-item.is-active { background: color-mix(in srgb, var(--midground-base) 7%, transparent); }
 .kaus-suggest-label { flex: none; font-family: var(--theme-font-mono); font-size: 12.5px; }
-.kaus-suggest-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: color-mix(in srgb, var(--midground-base) 50%, transparent); font-size: 12px; }
+.kaus-suggest-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: 12px; }
 .kaus-instruction-delivery { margin-top: 10px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--midground-base) 8%, transparent); display: flex; flex-direction: column; gap: 8px; }
-.kaus-instruction-delivery-title { font-size: 11.5px; color: color-mix(in srgb, var(--midground-base) 50%, transparent); }
+.kaus-instruction-delivery-title { font-size: 11.5px; color: var(--text-tertiary); }
 .kaus-instruction-delivery-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .kaus-instruction-delivery-file { flex: none; font-family: var(--theme-font-mono); font-size: 12px; }
-.kaus-instruction-delivery-agents { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: color-mix(in srgb, var(--midground-base) 55%, transparent); }
+.kaus-instruction-delivery-agents { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-tertiary); }
 .kaus-instruction-delivery-pending { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
-.kaus-instruction-delivery-note { margin: 10px 0 0; font-size: 12px; color: color-mix(in srgb, var(--midground-base) 50%, transparent); }
-.kaus-memory-meta { flex: none; font-size: 11.5px; color: color-mix(in srgb, var(--midground-base) 45%, transparent); }
+.kaus-instruction-delivery-note { margin: 10px 0 0; font-size: 12px; color: var(--text-tertiary); }
+.kaus-memory-meta { flex: none; font-size: 11.5px; color: var(--text-tertiary); }
 .kaus-queue { display: flex; flex-direction: column; gap: 2px; margin: 6px 4px 0; }
 .kaus-queue-row { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12.5px; color: color-mix(in srgb, var(--midground-base) 65%, transparent); }
 .kaus-queue-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kaus-plugin-preview { margin-top: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.kaus-plugin-preview p { margin: 0; font-size: 12px; color: color-mix(in srgb, var(--midground-base) 60%, transparent); }
-.kaus-plugin-choice { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.kaus-plugin-preview p { margin: 0; font-size: 12px; color: var(--text-secondary); }
+.kaus-plugin-choice { display: flex; align-items: flex-start; gap: 8px; cursor: default; }
 .kaus-plugin-choice span { display: flex; flex-direction: column; gap: 2px; }
-.kaus-plugin-choice small { font-size: 12px; color: color-mix(in srgb, var(--midground-base) 55%, transparent); }
+.kaus-plugin-choice small { font-size: 12px; color: var(--text-tertiary); }
+
+/* 侧栏搜索（2026-11-18）。 */
+.kaus-sidebar-title-row { display: flex; align-items: center; gap: 4px; }
+.kaus-sidebar-search-button { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--text-tertiary); }
+.kaus-sidebar-search-button:hover { background: var(--control-hover); color: var(--midground-base); }
+.kaus-sidebar-search { flex: 1; min-width: 0; height: 26px; padding: 0 8px; border: 1px solid var(--border-subtle); border-radius: 7px; background: var(--surface-raised); color: var(--midground-base); font: 12px/1.4 var(--theme-font-sans); }
+.kaus-sidebar-search:focus { border-color: var(--control-focus); outline: none; }

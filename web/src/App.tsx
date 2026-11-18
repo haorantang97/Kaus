@@ -37,9 +37,12 @@ interface ShellState {
 }
 const SHELL_STATE_KEY = "kaus-shell-state-v1";
 const THEME_KEY = "kaus-theme";
+/** 2026-11-18: appearance follows the system unless the user picks light or dark (a new key, so it starts at system). */
+const THEME_PREF_KEY = "kaus-theme-pref";
+type ThemePref = "system" | "light" | "dark";
+const systemDark = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches;
 /* 2026-11-03 之前的存储键；只读一次，便于平滑迁移。 */
 const LEGACY_SHELL_STATE_KEY = "hermes-dashboard-shell-state-v1";
-const LEGACY_THEME_KEY = "hermes-dashboard-theme";
 type ModuleId = OverlayId | "agents" | "new-conversation";
 /* 标签走词典（AD-96）：这里只存键，文案在 `src/i18n/`。 */
 type ModuleItem = { id: ModuleId; icon: typeof Plus; labelKey: DictKey };
@@ -98,11 +101,22 @@ export function App() {
   const { t, pref } = useLocale();
   const initialShell = useRef<ShellState | null>(null);
   if (initialShell.current === null) initialShell.current = readShellState();
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    const saved = window.localStorage.getItem(THEME_KEY) ?? window.localStorage.getItem(LEGACY_THEME_KEY);
-    if (saved === "light" || saved === "dark") return saved;
-    return "light";
+  const [themePref, setThemePref] = useState<ThemePref>(() => {
+    try {
+      const saved = window.localStorage.getItem(THEME_PREF_KEY);
+      if (saved === "system" || saved === "light" || saved === "dark") return saved;
+    } catch { /* storage unavailable: follow the system */ }
+    return "system";
   });
+  const [systemIsDark, setSystemIsDark] = useState(systemDark);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const change = () => setSystemIsDark(query.matches);
+    query.addEventListener?.("change", change);
+    return () => query.removeEventListener?.("change", change);
+  }, []);
+  const theme: "light" | "dark" = themePref === "system" ? (systemIsDark ? "dark" : "light") : themePref;
   const [net, setNet] = useState<NetworkResp | null>(null);
   const [graphFocus, setGraphFocus] = useState<string>(() => initialShell.current?.graphFocus ?? "default");
   const [agentMode, setAgentMode] = useState<AgentMode>(() => initialShell.current?.agentMode ?? "chat");
@@ -189,8 +203,8 @@ export function App() {
   useEffect(() => {
     document.body.classList.toggle("dark", theme === "dark");
     document.documentElement.style.colorScheme = theme;
-    window.localStorage.setItem(THEME_KEY, theme);
-  }, [theme]);
+    try { window.localStorage.setItem(THEME_KEY, theme); window.localStorage.setItem(THEME_PREF_KEY, themePref); } catch { /* keep the choice for this window */ }
+  }, [theme, themePref]);
   // `<html lang>` 跟着界面语言走（读屏软件与浏览器翻译都看它）。
   useEffect(applyDocumentLang, [pref]);
 
@@ -437,7 +451,7 @@ export function App() {
         {!showNotFound && !mainIsSessionPage && (
           <div className="absolute inset-0">
             {overlay === "config" ? (
-              <ConfigOverlay onClose={closeOverlay} refreshKey={refreshKey} theme={theme} onThemeChange={setTheme} />
+              <ConfigOverlay onClose={closeOverlay} refreshKey={refreshKey} theme={themePref} onThemeChange={setThemePref} />
             ) : net ? (
               <AgentGraph
                 net={net}

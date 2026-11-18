@@ -141,9 +141,6 @@ export const en: Record<keyof typeof zh, string> = {
   "skillTree.refresh": "Refresh skills",
   "skillTree.dismiss": "Close",
   "skillTree.cancel": "Cancel",
-  "skillTree.confirmMove": "Move",
-  "skillTree.moveTitle": "Move “{name}”",
-  "skillTree.impact": "Inheritance will change for:",
   "skillTree.conflict": "Configuration changed. Please try again.",
   "skillTree.openProject": "Open project",
   "skillTree.openNamed": "Open {name}",
@@ -1362,4 +1359,8 @@ export const en: Record<keyof typeof zh, string> = {
   "ui.removedFrom": "Removed “{name}” from “{project}”",
   "ui.removedFromProject": "Removed “{name}” from the project",
   "project.delete.done": "Deleted “{name}” and {count} sub-projects",
+  "settings.theme.system": "System",
+  "sidebar.search": "Search conversations",
+  "sidebar.noMatch": "No matching conversations",
+  "skillTree.movedMany": "Moved “{name}” to “{target}”, affecting {count} projects",
 };

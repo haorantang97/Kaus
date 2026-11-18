@@ -30,7 +30,7 @@ export function NotFoundPage({ kind = "page", detail }: NotFoundPageProps) {
           <h1>{t(`notFound.${kind}.title` as DictKey)}</h1>
           <p style={{ color: cream(50) }}>{t(`notFound.${kind}.sub` as DictKey)}</p>
           {detail && (
-            <p className="mt-1 text-[0.68rem]" style={{ color: cream(38) }}>
+            <p className="mt-1 text-[0.6875rem]" style={{ color: cream(38) }}>
               <code>{detail}</code>
             </p>
           )}

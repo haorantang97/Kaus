@@ -6,5 +6,5 @@
 .kaus-group-run-content { min-width: 0; font-size: 13px; }
 .kaus-group-live { padding: 14px 12px; }
 .kaus-group-run-details { margin-top: 8px; font-size: 12px; }
-.kaus-group-run-details > summary { cursor: pointer; opacity: .6; }
+.kaus-group-run-details > summary { cursor: default; opacity: .6; }
 .kaus-group-turn .kaus-prose { font-size: 13px; }

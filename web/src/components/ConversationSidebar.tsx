@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readSidebarPins, reorderSidebarPin, saveSidebarPins, SIDEBAR_PINS_EVENT, SIDEBAR_PINS_KEY, type SidebarPins } from "../lib/sidebarPins";
 import { useScrollFade } from "../hooks/useScrollFade";
-import { ChevronDown, ChevronRight, Terminal } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, Terminal } from "lucide-react";
 import { useLocale } from "../i18n";
 import { confirmAsync, cream, toast } from "./ui";
 import { AddExistingConversationsDialog } from "./AddExistingConversationsDialog";
@@ -68,6 +68,26 @@ export function ConversationSidebar({
     }
     return result;
   }, [groups, historyByRow, history.projects, editedTitles, archivedIds]);
+  // 侧栏搜索（2026-11-18）：⌘F 或标题旁的搜索按钮；按对话标题与项目名过滤，Esc 清空收起。
+  const [query, setQuery] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setQuery(current => current ?? "");
+        window.requestAnimationFrame(() => searchRef.current?.focus());
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const needle = (query ?? "").trim().toLocaleLowerCase();
+  const visibleGroups = useMemo(() => !needle ? displayedGroups : displayedGroups.flatMap(group => {
+    if (group.displayName.toLocaleLowerCase().includes(needle)) return [group];
+    const conversations = group.conversations.filter(item => item.title.toLocaleLowerCase().includes(needle));
+    return conversations.length ? [{ ...group, conversations }] : [];
+  }), [displayedGroups, needle]);
   useEffect(() => {
     const open = (event: Event) => {
       const reference = (event as CustomEvent<{ projectRef?: string }>).detail?.projectRef;
@@ -165,7 +185,16 @@ export function ConversationSidebar({
     <div className="sidebar-context kaus-conversation-sidebar" data-testid="conversation-sidebar">
       <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
       {/* 「新会话」入口搬到了导航列表最上面（批次七 d 第 4 条）：一个入口就够。 */}
-      <div className="sidebar-context-title">{t("sidebar.title")}</div>
+      <div className="sidebar-context-title kaus-sidebar-title-row">
+        {query === null ? <>
+          <span className="flex-1">{t("sidebar.title")}</span>
+          <button type="button" className="kaus-sidebar-search-button" aria-label={t("sidebar.search")} title={`${t("sidebar.search")} (⌘F)`}
+            onClick={() => { setQuery(""); window.requestAnimationFrame(() => searchRef.current?.focus()); }}><Search size={13} aria-hidden="true" /></button>
+        </> : <input ref={searchRef} type="search" className="kaus-sidebar-search" value={query} aria-label={t("sidebar.search")} placeholder={t("sidebar.search")}
+            onChange={event => setQuery(event.target.value)}
+            onBlur={() => { if (!query.trim()) setQuery(null); }}
+            onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); setQuery(null); } }} />}
+      </div>
 
       <nav ref={scrollRef} className="kaus-scroll-fade sidebar-agent-tree is-compact flex-1 overflow-y-auto">
         {error && (
@@ -181,8 +210,11 @@ export function ConversationSidebar({
             {t("sidebar.empty")}
           </div>
         )}
-        {displayedGroups.map((group) => {
-          const open = !collapsed.includes(group.projectId);
+        {needle && visibleGroups.length === 0 && (
+          <div className="px-2 py-2 text-xs" style={{ color: cream(45) }}>{t("sidebar.noMatch")}</div>
+        )}
+        {visibleGroups.map((group) => {
+          const open = !!needle || !collapsed.includes(group.projectId);
           const pinned = pins[group.projectId] ?? [];
           const ordered = [...group.conversations].sort((a, b) => {
             const running = Number(isRunning(b.state)) - Number(isRunning(a.state));
@@ -267,7 +299,7 @@ export function ConversationSidebar({
                       }}
                       data-pin-drop={drop?.id === conversation.id ? (drop.after ? "after" : "before") : undefined}
                       aria-keyshortcuts={isPinned ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
-                      className={`sidebar-agent-row kaus-conversation-row flex cursor-pointer items-center gap-1.5 ${selected ? "sel-accent is-current" : ""} ${dragging ? "is-dragging" : ""}`}
+                      className={`sidebar-agent-row kaus-conversation-row flex cursor-default items-center gap-1.5 ${selected ? "sel-accent is-current" : ""} ${dragging ? "is-dragging" : ""}`}
                       /* batch40（★L 第 6 条）：引擎从行上撤了，改挂在这条 title 上
                          ——一行里同时有标题、组名、终端图标、引擎字母和时间时，
                          最先被挤掉的恰恰是标题（真机上就是这样）。 */

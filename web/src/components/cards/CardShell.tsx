@@ -80,7 +80,7 @@ export function CardShell({
       >
         {engine && (
           <span
-            className="inline-flex items-center rounded-[1px] px-1.5 py-0.5 text-[0.7rem] "
+            className="inline-flex items-center rounded-[1px] px-1.5 py-0.5 text-[0.6875rem] "
             style={{ background: cream(7), color: cream(70), border: `1px solid ${cream(14)}` }}
             title={engine.name}
           >
@@ -106,7 +106,7 @@ export function CardShell({
               type="button"
               onClick={() => setCollapsed((value) => !value)}
               aria-expanded={!collapsed}
-              className="grid size-5 place-items-center rounded hover:bg-black/[0.05]"
+              className="grid size-5 place-items-center rounded hover:bg-[var(--control-hover)]"
               style={{ color: cream(45) }}
             >
               <Chevron className="size-3.5" />
@@ -123,7 +123,7 @@ export function CardShell({
 export function RunningTick() {
   const { t } = useLocale();
   return (
-    <span className="flex items-center gap-1.5 text-[0.65rem]" style={{ color: cream(50) }}>
+    <span className="flex items-center gap-1.5 text-[0.6875rem]" style={{ color: cream(50) }}>
       <span
         className="inline-block size-1.5 animate-pulse rounded-full"
         style={{ background: cream(50) }}
@@ -148,7 +148,7 @@ export function StreamCursor() {
 export function MonoBlock({ children, max = 220 }: { children: ReactNode; max?: number }) {
   return (
     <pre
-      className="overflow-auto whitespace-pre-wrap break-words rounded px-2 py-1.5 text-[0.7rem] leading-relaxed"
+      className="overflow-auto whitespace-pre-wrap break-words rounded px-2 py-1.5 text-[0.6875rem] leading-relaxed"
       style={{
         maxHeight: max,
         background: cream(4),
@@ -166,7 +166,7 @@ export function MonoBlock({ children, max = 220 }: { children: ReactNode; max?: 
 export function ColumnLabel({ children }: { children: ReactNode }) {
   return (
     <div
-      className="mb-1 text-[0.7rem] "
+      className="mb-1 text-[0.6875rem] "
       style={{ color: cream(45) }}
     >
       {children}

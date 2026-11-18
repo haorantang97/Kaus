@@ -45,7 +45,7 @@ function CommandRow({ label, command }: { label: string; command: string }) {
           aria-label={t(copied ? "conversation.action.copied" : "conversation.action.copy") + " · " + label}
           title={t(copied ? "conversation.action.copied" : "conversation.action.copy")}
           onClick={() => void copy()}
-          className="shrink-0 rounded p-0.5 hover:bg-white/5"
+          className="shrink-0 rounded p-0.5 hover:bg-[var(--control-hover)]"
           style={{ color: cream(55) }}
         >
           {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -225,7 +225,7 @@ export function ConnectEngineModal({
             title={t("engines.connect.refresh")}
             disabled={loading || busy}
             onClick={() => void refresh()}
-            className="rounded p-2 hover:bg-white/5 disabled:opacity-40"
+            className="rounded p-2 hover:bg-[var(--control-hover)] disabled:opacity-40"
             style={{ color: cream(55) }}
           >
             {loading ? <LoaderCircle size={15} className="animate-spin" /> : <RefreshCw size={15} />}
@@ -274,7 +274,7 @@ export function ConnectEngineModal({
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="inline-flex items-center gap-2 text-sm font-medium" style={{ color: cream(95) }}><EngineIcon engine={preset.productId ?? (preset.id.startsWith("custom:") ? preset.backendId : preset.id)} size={20} />{selectedGroup?.label}</h3>
                   {preset.setupUrl && (
-                    <a href={preset.setupUrl} target="_blank" rel="noreferrer" aria-label={t("engines.connect.docs")} title={t("engines.connect.docs")} className="rounded p-1.5 hover:bg-white/5" style={{ color: cream(55) }}>
+                    <a href={preset.setupUrl} target="_blank" rel="noreferrer" aria-label={t("engines.connect.docs")} title={t("engines.connect.docs")} className="rounded p-1.5 hover:bg-[var(--control-hover)]" style={{ color: cream(55) }}>
                       <ExternalLink size={15} />
                     </a>
                   )}
@@ -284,13 +284,13 @@ export function ConnectEngineModal({
                 {preset.canSelectExecutable && <div className="mt-4">
                   <button type="button" disabled={busy} onClick={() => void choosePath()} className="inline-flex items-center gap-2 text-xs" style={{ color: cream(68) }}><FolderOpen size={14} />{t("engines.connect.manualPath")}</button>
                   {pathChanged && !editing[preset.id] && <span className="ml-3 text-xs" style={{ color: cream(58) }}>{path.split(/[\\/]/).filter(Boolean).at(-1)}</span>}
-                  {editing[preset.id] && <details open className="mt-2 text-xs" style={{ color: cream(58) }}><summary className="cursor-pointer">{t("engines.connect.executable")}</summary><div className="mt-2 flex items-center gap-2">
+                  {editing[preset.id] && <details open className="mt-2 text-xs" style={{ color: cream(58) }}><summary className="cursor-default">{t("engines.connect.executable")}</summary><div className="mt-2 flex items-center gap-2">
                     <input aria-label={t("engines.connect.executable")} value={path} disabled={busy} onChange={event => setPaths(value => ({ ...value, [preset.id]: event.target.value }))} placeholder="/path/to/cli" style={{ ...inputStyle(), width: "100%", minWidth: 0 }} />
                     <button type="button" disabled={busy} aria-label={t("engines.connect.chooseExecutable")} title={t("engines.connect.chooseExecutable")} onClick={() => void choosePath()}><FolderOpen size={15} /></button>
                   </div></details>}
                 </div>}
-                {preset.installCommand && !preset.detected && <details className="mt-4 text-xs" style={{ color: cream(58) }}><summary className="cursor-pointer">{t("engines.connect.install")}</summary><CommandRow key={`${preset.id}:install`} label={t("engines.connect.install")} command={preset.installCommand} /></details>}
-                {preset.loginCommand && <details className="mt-4 text-xs" style={{ color: cream(58) }}><summary className="cursor-pointer">{t("engines.connect.auth")}</summary><CommandRow key={`${preset.id}:login`} label={t("engines.connect.auth")} command={preset.loginCommand} /></details>}
+                {preset.installCommand && !preset.detected && <details className="mt-4 text-xs" style={{ color: cream(58) }}><summary className="cursor-default">{t("engines.connect.install")}</summary><CommandRow key={`${preset.id}:install`} label={t("engines.connect.install")} command={preset.installCommand} /></details>}
+                {preset.loginCommand && <details className="mt-4 text-xs" style={{ color: cream(58) }}><summary className="cursor-default">{t("engines.connect.auth")}</summary><CommandRow key={`${preset.id}:login`} label={t("engines.connect.auth")} command={preset.loginCommand} /></details>}
                 <div className="mt-5 flex items-center gap-2">
                   <Button variant="primary" disabled={busy || (!!onAttach && !engineAcceptsNewWork(preset)) || (attached && !pathChanged) || (!onAttach && preset.registered && !pathChanged)} onClick={() => void connect()}>
                     {busy ? t("engines.connect.connecting") : pathChanged && preset.registered ? t("engines.connect.savePath") : attached ? t("engines.connect.attached") : onAttach ? t("engines.connect.addToProject") : preset.registered ? t("engines.connect.registered") : t("engines.connect.connect")}
@@ -298,7 +298,7 @@ export function ConnectEngineModal({
                   {preset.registered && preset.loginAvailable && <Button disabled={busy || pathChanged} aria-label={t("engines.connect.openLogin")} title={t("engines.connect.openLogin")} onClick={() => void login()}><Terminal size={16} /></Button>}
                 </div>
                 {(showDetails || preset.adapterInstallCommand) && <details className="mt-4 text-xs" style={{ color: cream(58) }} data-testid="connect-advanced">
-                  <summary className="cursor-pointer">{t("engines.connect.advanced")}</summary>
+                  <summary className="cursor-default">{t("engines.connect.advanced")}</summary>
                   {showDetails && <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
                     {preset.nativePath && <><dt>{t("engines.connect.executable")}</dt><dd className="break-all">{preset.nativePath}</dd></>}
                     {preset.runtimeIdentity?.engineVersion && <><dt>{t("engines.connect.engineVersion")}</dt><dd>{preset.runtimeIdentity.engineVersion}</dd></>}

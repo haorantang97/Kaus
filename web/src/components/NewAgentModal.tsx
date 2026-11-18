@@ -64,17 +64,17 @@ export function NewAgentModal({ onClose, onCreated, initialParent = null, initia
   return (
     <Modal onClose={onClose} width={520}>
       <ModalTitle>{t("newAgent.title")}</ModalTitle>
-      <div className="mb-1 text-[0.7rem]" style={{ color: cream(55) }}>{t("newAgent.field.display")}</div>
+      <div className="mb-1 text-[0.6875rem]" style={{ color: cream(55) }}>{t("newAgent.field.display")}</div>
       <input value={display} onChange={(e) => onDisplay(e.target.value)} autoFocus placeholder={t("newAgent.placeholder.display")} style={inputStyle()} />
-      <div className="mb-1 mt-3 text-[0.7rem]" style={{ color: cream(55) }}>{t("newAgent.field.id")}</div>
+      <div className="mb-1 mt-3 text-[0.6875rem]" style={{ color: cream(55) }}>{t("newAgent.field.id")}</div>
       <input value={id} onChange={(e) => { idEdited.current = true; setId(e.target.value); }} spellCheck={false} placeholder={t("newAgent.placeholder.id")} style={inputStyle()} />
-      <div className="mb-1 mt-3 text-[0.7rem]" style={{ color: cream(55) }}>{t("newAgent.field.parent")}</div>
+      <div className="mb-1 mt-3 text-[0.6875rem]" style={{ color: cream(55) }}>{t("newAgent.field.parent")}</div>
       <select value={parent} onChange={(e) => setParent(e.target.value)} style={{ ...inputStyle(), padding: "6px 8px" }}>
         {parents.map((p) => <option key={p.name} value={p.name}>{dname(p)}</option>)}
         <option value="">{t("newAgent.noParent")}</option>
       </select>
-      {parentsErr && <div className="mt-1 text-[0.68rem]" style={{ color: "var(--danger)" }}>{t("newAgent.parentsError", { error: parentsErr })}</div>}
-      <div className="mb-1 mt-3 text-[0.7rem]" style={{ color: cream(55) }}>{t("newAgent.field.desc")}</div>
+      {parentsErr && <div className="mt-1 text-[0.6875rem]" style={{ color: "var(--danger)" }}>{t("newAgent.parentsError", { error: parentsErr })}</div>}
+      <div className="mb-1 mt-3 text-[0.6875rem]" style={{ color: cream(55) }}>{t("newAgent.field.desc")}</div>
       <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("newAgent.placeholder.desc")} style={inputStyle()} />
       {err && <ErrorNotice error={err} className="mt-2 text-xs" />}
       <div className="mt-4 flex justify-end gap-3"><Button onClick={onClose}>{t("common.cancel")}</Button><Button variant="primary" disabled={busy} onClick={create}>{t("common.create")}</Button></div>

@@ -43,11 +43,11 @@
 .kaus-attachment-chip > span { min-width: 0; }
 .kaus-attachment-chip strong { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 400; }
 .kaus-attachment-chip small { display: block; color: var(--chat-muted); margin-top: 2px; }
-.kaus-attachment-chip button { display: inline-flex; border: 0; background: transparent; color: var(--chat-muted); border-radius: 5px; padding: 3px; cursor: pointer; }
+.kaus-attachment-chip button { display: inline-flex; border: 0; background: transparent; color: var(--chat-muted); border-radius: 5px; padding: 3px; cursor: default; }
 .kaus-attachment-chip button:hover { background: color-mix(in srgb, var(--midground-base) 8%, transparent); }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer.is-dragging { border-style: dashed; border-color: var(--midground-base); }
 .kaus-drop-hint { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; color: var(--midground-base); font-size: 13px; }
-.kaus-inline-action { display: inline-flex; align-items: center; padding: 4px 8px; margin-left: 6px; background: transparent; border: 0; color: inherit; cursor: pointer; text-decoration: underline; font: inherit; }
+.kaus-inline-action { display: inline-flex; align-items: center; padding: 4px 8px; margin-left: 6px; background: transparent; border: 0; color: inherit; cursor: default; text-decoration: underline; font: inherit; }
 .kaus-pending-attachments { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin: 7px 0; }
 .kaus-pending-attachments span { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--chat-border); border-radius: 8px; padding: 6px 9px; font-size: 12px; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-draft-error { display: flex; align-items: start; justify-content: space-between; }
@@ -57,7 +57,7 @@
   :is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread-flow { padding-top: 16px; gap: 20px; }
   :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer { padding: 12px 12px 8px; border-radius: 16px; }
   :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-pill { max-width: 140px; padding: 5px 6px; }
-  .kaus-composer-caption { font-size: 10px; }
+  .kaus-composer-caption { font-size: 11px; }
 }
 
 .kaus-draft-page .kaus-draft-window { max-width: 850px; }

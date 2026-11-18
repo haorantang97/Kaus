@@ -89,7 +89,7 @@ export function SelfCheckPanel({ agentKey, agentLabel, onBack, onLeave, onMarked
     </p>}
 
     <div className="mt-4 min-h-32 rounded-md p-3 text-sm" data-testid="self-check-answer"
-      style={{ border: "1px solid var(--line, rgba(255,255,255,.08))" }}>
+      style={{ border: "1px solid var(--border-subtle)" }}>
       {!options && !error && <p className="flex items-center gap-2 text-xs" style={{ color: cream(50) }}><Spinner />{t("ui.loading")}</p>}
       {run?.status === "running" && <p role="status" className="flex items-center gap-2 text-xs" style={{ color: cream(58) }}>
         <Spinner />{t("selfCheck.running")}</p>}

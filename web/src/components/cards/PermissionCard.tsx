@@ -81,7 +81,7 @@ export function PermissionCard({
       strongBorder
       /* 第 9 件：状态 chip 补齐（待回答），槽位与写法同推理行、工具行。 */
       right={
-        <span className="text-[0.65rem]" style={{ color: cream(45) }}>
+        <span className="text-[0.6875rem]" style={{ color: cream(45) }}>
           {t("card.awaiting")}
         </span>
       }

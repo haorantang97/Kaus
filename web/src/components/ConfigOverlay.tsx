@@ -31,7 +31,7 @@ const ABOUT_LINKS = [
   { key: "settings.about.notices", value: null, href: "/THIRD_PARTY_NOTICES.txt" },
 ] as const;
 
-export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThemeChange }: { onClose: () => void; refreshKey?: number; theme?: "light" | "dark"; onThemeChange?: (theme: "light" | "dark") => void }) {
+export function ConfigOverlay({ onClose, refreshKey = 0, theme = "system", onThemeChange }: { onClose: () => void; refreshKey?: number; theme?: "system" | "light" | "dark"; onThemeChange?: (theme: "system" | "light" | "dark") => void }) {
   const { t, pref, setPref } = useLocale();
   const navigate = useNavigate();
   // `/config?section=agents` opens a section directly (e.g. 「去连接」 from a module's settings).
@@ -142,8 +142,8 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "light", onThem
             {onThemeChange && <div className="kaus-settings-preference-row">
               <label htmlFor="settings-theme"><Moon size={16} aria-hidden="true" />{t("settings.appearance")}</label>
               <SelectPopover id="settings-theme" label={t("settings.appearance")} value={theme} searchable={false}
-                options={[{ value: "light", label: t("settings.theme.light") }, { value: "dark", label: t("settings.theme.dark") }]}
-                onChange={value => onThemeChange(value as "light" | "dark")} />
+                options={[{ value: "system", label: t("settings.theme.system") }, { value: "light", label: t("settings.theme.light") }, { value: "dark", label: t("settings.theme.dark") }]}
+                onChange={value => onThemeChange(value as "system" | "light" | "dark")} />
             </div>}
             <div className="kaus-settings-preference-row">
               <label htmlFor="settings-language"><Languages size={16} aria-hidden="true" />{t("settings.language")}</label>

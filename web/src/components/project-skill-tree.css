@@ -1,6 +1,6 @@
 .skill-tree {
   --tree-line: color-mix(in srgb, var(--midground-base) 10%, transparent);
-  --tree-muted: color-mix(in srgb, var(--midground-base) 48%, transparent);
+  --tree-muted: var(--text-tertiary);
   --tree-hover: var(--control-hover);
   --tree-accent: #bc7d89;
   display: flex; flex-direction: column; min-height: 0; flex: 1;
@@ -19,14 +19,14 @@ body:not(.dark) .skill-tree { --tree-accent: var(--accent-text); }
 .skill-tree-row:hover { background: var(--tree-hover); }
 .skill-tree-project { min-height: 42px; margin-top: 5px; font-weight: 400; }
 .skill-tree-project.is-current { background: color-mix(in srgb, var(--midground-base) 9%, transparent); }
-.skill-tree-expand { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; text-align: left; border: 0; background: transparent; color: inherit; font: inherit; padding: 5px 0; cursor: pointer; }
+.skill-tree-expand { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; text-align: left; border: 0; background: transparent; color: inherit; font: inherit; padding: 5px 0; cursor: default; }
 .skill-tree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: left; }
-.skill-tree-group { width: 100%; text-align: left; border: 0; background: transparent; color: var(--tree-muted); cursor: pointer; font: inherit; }
+.skill-tree-group { width: 100%; text-align: left; border: 0; background: transparent; color: var(--tree-muted); cursor: default; font: inherit; }
 .skill-tree-group:hover { color: var(--midground-base); }
 .skill-tree-group > svg:first-child, .skill-tree-expand > svg:first-child { transition: transform 180ms ease; flex: 0 0 auto; }
 .skill-tree-row .is-open { transform: rotate(90deg); }
 .skill-tree-count { color: var(--tree-muted); font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; min-width: 18px; text-align: right; }
-.skill-tree-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 28px; height: 28px; border: 0; background: transparent; border-radius: 6px; color: inherit; cursor: pointer; transition: background-color 140ms ease, color 140ms ease; }
+.skill-tree-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 28px; height: 28px; border: 0; background: transparent; border-radius: 6px; color: inherit; cursor: default; transition: background-color 140ms ease, color 140ms ease; }
 .skill-tree-icon:hover:not(:disabled) { background: color-mix(in srgb, var(--midground-base) 9%, transparent); }
 .skill-tree-icon:disabled { opacity: .28; cursor: default; }
 .skill-tree-icon:focus-visible, .skill-tree-expand:focus-visible, .skill-tree-group:focus-visible, .skill-tree-dialog button:focus-visible { outline: none; }
@@ -52,7 +52,7 @@ body:not(.dark) .skill-tree { --tree-accent: var(--accent-text); }
 .skill-tree-error span { flex: 1; }
 .skill-tree-menu-backdrop { position: fixed; inset: 0; z-index: 75; }
 .skill-tree-menu { position: fixed; width: 210px; border-radius: 10px; padding: 6px; background: var(--panel); color: var(--midground-base); border: 1px solid color-mix(in srgb, var(--midground-base) 8%, transparent); box-shadow: var(--shadow-lg); }
-.skill-tree-menu button { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 9px 10px; border: 0; border-radius: 6px; font: inherit; font-size: 12px; background: transparent; color: inherit; cursor: pointer; }
+.skill-tree-menu button { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 9px 10px; border: 0; border-radius: 6px; font: inherit; font-size: 12px; background: transparent; color: inherit; cursor: default; }
 .skill-tree-menu button:hover:not(:disabled) { background: var(--control-hover); }
 .skill-tree-menu button:focus-visible { background: var(--control-hover); outline: none; }
 .skill-tree-menu button:disabled { opacity: .3; cursor: default; }
@@ -61,13 +61,13 @@ body:not(.dark) .skill-tree { --tree-accent: var(--accent-text); }
 .skill-tree-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .skill-tree-dialog > p { margin: 16px 0; line-height: 1.7; }
 .skill-tree-dialog > p > svg { display: inline; vertical-align: middle; margin: 0 6px; }
-.skill-tree-impact { color: color-mix(in srgb, var(--midground-base) 60%, transparent); }
+.skill-tree-impact { color: var(--text-secondary); }
 .skill-tree-destination-list { display: flex; flex-direction: column; gap: 3px; max-height: 50vh; overflow: auto; }
-.skill-tree-destination-list button { display: flex; align-items: center; gap: 10px; padding: 11px 8px; border: 0; border-radius: 6px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.skill-tree-destination-list button { display: flex; align-items: center; gap: 10px; padding: 11px 8px; border: 0; border-radius: 6px; color: inherit; background: transparent; text-align: left; cursor: default; }
 .skill-tree-destination-list button:hover { background: color-mix(in srgb, var(--midground-base) 6%, transparent); }
 .skill-tree-destination-list span { flex: 1; }
 .skill-tree-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
-.skill-tree-dialog-actions button { min-height: 36px; padding: 8px 16px; border-radius: 7px; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.skill-tree-dialog-actions button { min-height: 36px; padding: 8px 16px; border-radius: 7px; border: 0; background: transparent; color: inherit; cursor: default; }
 .skill-tree-dialog-actions button:hover { background: var(--control-hover); }
 .skill-tree-dialog-actions button.is-primary { background: var(--midground-base); color: var(--panel); }
 .skill-tree-dialog-actions button.is-primary:hover { background: color-mix(in srgb, var(--midground-base) 88%, var(--panel)); }
@@ -83,7 +83,7 @@ body:not(.dark) .skill-tree { --tree-accent: var(--accent-text); }
   .skill-tree *, .skill-tree-icon svg { transition: none !important; }
 }
 
-.skill-tree-pending { font-size: 10px; color: var(--tree-muted); white-space: nowrap; }
+.skill-tree-pending { font-size: 11px; color: var(--tree-muted); white-space: nowrap; }
 
 @media (hover: none) {
   .skill-tree-more { opacity: 1; }

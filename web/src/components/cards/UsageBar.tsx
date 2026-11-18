@@ -83,7 +83,7 @@ export function UsageBar({
   if (parts.length === 0) return null;
   return (
     <div
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 py-1 text-[0.65rem] tabular-nums"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 py-1 text-[0.6875rem] tabular-nums"
       style={{ color: cream(45), font: "0.65rem var(--theme-font-mono, monospace)" }}
     >
       <ContextRing usage={usage} />

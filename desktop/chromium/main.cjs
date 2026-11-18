@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, Menu, shell, clipboard, ClipboardItem, nativeImage } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, Menu, shell, clipboard, ClipboardItem, nativeImage, nativeTheme } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { randomUUID } = require('node:crypto');
@@ -193,7 +193,7 @@ async function browserRequest(data) {
 function fromUi(event) { return event.sender.id === window.webContents.id && event.senderFrame === window.webContents.mainFrame && policy.trusted(event.senderFrame.url); }
 
 app.whenReady().then(() => {
-  window = new BrowserWindow({ width: 1600, height: 1000, minWidth: 1180, minHeight: 760, title: 'Kaus · 开发预览', webPreferences: { ...preferences, preload: path.join(__dirname, 'preload.cjs'), partition: 'kaus-preview-ui' } });
+  window = new BrowserWindow({ width: 1600, height: 1000, minWidth: 720, minHeight: 520, backgroundColor: nativeTheme.shouldUseDarkColors ? '#16180f' : '#fcfcfb', title: 'Kaus · 开发预览', webPreferences: { ...preferences, preload: path.join(__dirname, 'preload.cjs'), partition: 'kaus-preview-ui' } });
   restrict(window.webContents, policy.trusted);
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (policy.remote('chatcut', url)) authorize('chatcut', url, 'persist:chatcut-content-workbench');

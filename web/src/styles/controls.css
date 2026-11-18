@@ -17,6 +17,13 @@
   --ease-out: cubic-bezier(.165, .84, .44, 1);
   --ease-snap: cubic-bezier(.32, .72, 0, 1);
   --ease-overshoot: cubic-bezier(.34, 1.3, .64, 1);
+  /* Secondary text (2026-11-18 HIG review): at least 4.5:1 for small text in both themes. */
+  --text-secondary: color-mix(in srgb, var(--midground-base) 72%, transparent);
+  --text-tertiary: color-mix(in srgb, var(--midground-base) 64%, transparent);
+}
+body.dark {
+  --text-secondary: color-mix(in srgb, var(--midground-base) 66%, transparent);
+  --text-tertiary: color-mix(in srgb, var(--midground-base) 54%, transparent);
 }
 
 @media (min-resolution: 2dppx) { :root, body.dark { --hairline: .5px; } }
@@ -79,7 +86,7 @@ body.dark .kaus-icon-control.kaus-icon-control--accent { color: var(--accent-tex
   place-items: center;
   border-radius: 7px;
   color: color-mix(in srgb, var(--midground-base) 65%, transparent);
-  cursor: pointer;
+  cursor: default;
 }
 
 :is(.kaus-button--primary, .kaus-send, .kaus-workspace-select) {
@@ -113,6 +120,9 @@ body :is(button, [role="button"], summary, a, [tabindex]):not(
   outline: none;
   box-shadow: inset 0 0 0 1.5px var(--control-focus), inset 0 0 0 100vmax var(--control-pressed);
 }
+/* Controls without their own rounding take a small one while focused, so the ring is never square
+   (zero specificity: any radius a component sets wins). */
+:where(button, [role="button"], summary, a, [tabindex]):focus-visible { border-radius: 6px; }
 body :is(input, select, textarea, [contenteditable="true"]):focus {
   outline: none;
   border-color: var(--control-focus);
@@ -223,7 +233,7 @@ body.dark .kaus-section-header::before {
 }
 
 .kaus-section-meta {
-  color: color-mix(in srgb, var(--midground-base) 55%, transparent);
+  color: var(--text-tertiary);
   font-size: 11px;
 }
 

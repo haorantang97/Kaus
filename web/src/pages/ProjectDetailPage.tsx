@@ -285,7 +285,7 @@ export function ProjectDetailPage({
                   onOpen={() => onOpenConversation(conversation.id)} onChanged={() => setConversationsRevision(n => n + 1)}>
                   <span className="kaus-project-conversation-icon"><MessageSquare size={17} /></span>
                   <span className="min-w-0 flex-1 truncate">{conversation.title || conversation.id}</span>
-                  <span className="shrink-0 text-[0.65rem]" style={{ color: cream(45) }}>
+                  <span className="shrink-0 text-[0.6875rem]" style={{ color: cream(45) }}>
                     {tDynamic(`project.conversationStatus.${conversation.status}`, conversation.status)}
                   </span>
                 </ConversationRow>
@@ -586,7 +586,7 @@ export function CapabilitiesSection({
                 )}
                 {entry.overridden && (
                   <span
-                    className="ml-1 text-[0.65rem]"
+                    className="ml-1 text-[0.6875rem]"
                     style={{ color: cream(45) }}
                     title={t("capabilities.overridden.title", {
                       chain: entry.contributingProjectIds.map(label).join(" → "),

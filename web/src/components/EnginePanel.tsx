@@ -232,7 +232,7 @@ const PROBE_TONE: Record<BackendWire["probeState"], "success" | "gold" | "danger
  *  它是**来源**不是能力备注，所以不违反 AD-71 的"不显示备注"。 */
 function SourceNote({ text }: { text: string }) {
   return (
-    <span className="ml-2 text-[0.65rem]" style={{ color: cream(45) }} data-testid="source-note">
+    <span className="ml-2 text-[0.6875rem]" style={{ color: cream(45) }} data-testid="source-note">
       {text}
     </span>
   );
@@ -331,7 +331,7 @@ function EditableSelect({
         </>
       )}
       {error && (
-        <span className="text-[0.65rem]" style={{ color: "var(--danger)" }}>
+        <span className="text-[0.6875rem]" style={{ color: "var(--danger)" }}>
           {failureSummary(error)}
         </span>
       )}
@@ -417,7 +417,7 @@ function ConfigRow({
       <span className="w-28 shrink-0" style={{ color: "var(--midground-base)" }}>
         {name}
       </span>
-      <span className="shrink-0 text-[0.65rem]" style={{ color: danger ? "var(--danger)" : "var(--accent-text)" }}>
+      <span className="shrink-0 text-[0.6875rem]" style={{ color: danger ? "var(--danger)" : "var(--accent-text)" }}>
         {source}
       </span>
       <span className="min-w-0 flex-1">
@@ -483,7 +483,7 @@ export function EngineConfigSection({
           type="button"
           onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
-          className="text-[0.7rem] "
+          className="text-[0.6875rem] "
           style={{ color: cream(45) }}
         >
           {t("engine.config.toggle", { count: rows.length })} {open ? "▾" : "▸"}
@@ -611,12 +611,12 @@ export function CapabilityList({ detail }: { detail: DetailCapabilityTree }) {
               <span className="ml-1" style={{ color: cream(45) }}>
                 {tDynamic(`capValue.${state.value}`, state.value)}
               </span>
-              <span className="ml-1 text-[0.7rem]" style={{ color: cream(38) }}>
+              <span className="ml-1 text-[0.6875rem]" style={{ color: cream(38) }}>
                 · {tDynamic(`capValue.${state.verification}`, state.verification)}
               </span>
               {/* AD-71：note 只出现在这里（和 GET /api/backends/{id} 的输出里）。 */}
               {state.note && (
-                <span className="mt-0.5 block text-[0.65rem] leading-relaxed" style={{ color: cream(50) }}>
+                <span className="mt-0.5 block text-[0.6875rem] leading-relaxed" style={{ color: cream(50) }}>
                   {state.note}
                 </span>
               )}
@@ -777,7 +777,7 @@ export function EngineCard({
     <div style={{ background: cream(2), border: `1px solid ${cream(16)}`, borderRadius: 8 }}>
       <div className="flex flex-wrap items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${cream(16)}` }}>
         <span
-          className="grid size-6 shrink-0 place-items-center rounded-[2px] text-[0.65rem] font-semibold"
+          className="grid size-6 shrink-0 place-items-center rounded-[2px] text-[0.6875rem] font-semibold"
           style={{ background: cream(7), color: cream(70), border: `1px solid ${cream(14)}` }}
           title={backendDisplay(backend.preset?.id ?? backend.id, backend.displayName).displayName}
         >
@@ -788,7 +788,7 @@ export function EngineCard({
         </span>
         {/* batch40（★L 第 3 条）：摘要第一行 = 引擎名 · 版本 · 状态 · 默认。
             引擎名与版本原来只在卡里那一行 FieldRow 上，现在提到卡头，那一行删掉。 */}
-        <span className="inline-flex items-baseline gap-1.5 text-[0.7rem]" style={{ color: cream(45) }} data-testid="engine-name">
+        <span className="inline-flex items-baseline gap-1.5 text-[0.6875rem]" style={{ color: cream(45) }} data-testid="engine-name">
           <span>{backendDisplay(backend.preset?.id ?? backend.id, backend.displayName).displayName}</span>
           {backend.version && <span>{backend.version}</span>}
         </span>
@@ -872,7 +872,7 @@ export function EngineCard({
         )}
         <button
           type="button"
-          className="ml-auto text-[0.7rem] "
+          className="ml-auto text-[0.6875rem] "
           style={{ color: cream(45) }}
           data-testid="engine-details-toggle"
           aria-expanded={showDetails}
@@ -958,7 +958,7 @@ export function EngineCard({
             type="button"
             onClick={() => setShowCapabilities((value) => !value)}
             aria-expanded={showCapabilities}
-            className="mb-2 text-[0.7rem] "
+            className="mb-2 text-[0.6875rem] "
             style={{ color: cream(45) }}
           >
             {t("engine.caps.toggle", { count: capabilityRowCount })} {showCapabilities ? "▾" : "▸"}
@@ -968,7 +968,7 @@ export function EngineCard({
         {/* 能力清单区的一行「预设：<label>」。怪癖表**不摊开**——那七位是 Driver 的
             分支开关，不是能力（AD-71）；缺 `preset` 这个键时整行不渲染。 */}
         {backend.preset?.label && (
-          <div className="mt-2 text-[0.65rem]" style={{ color: cream(50) }} data-testid="engine-preset-line">
+          <div className="mt-2 text-[0.6875rem]" style={{ color: cream(50) }} data-testid="engine-preset-line">
             {t("engine.field.preset")}：{backend.preset.label}
           </div>
         )}

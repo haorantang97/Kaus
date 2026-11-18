@@ -67,11 +67,11 @@ function Row({ title, note, children }: { title: string; note?: string; children
   return (
     <section className="mb-6">
       <div className="mb-2 flex items-baseline gap-2">
-        <h3 className="text-[0.7rem] font-semibold " style={{ color: "var(--midground-base)" }}>
+        <h3 className="text-[0.6875rem] font-semibold " style={{ color: "var(--midground-base)" }}>
           {title}
         </h3>
         {note && (
-          <span className="text-[0.65rem]" style={{ color: cream(45) }}>
+          <span className="text-[0.6875rem]" style={{ color: cream(45) }}>
             {note}
           </span>
         )}
@@ -196,7 +196,7 @@ export function CardsPreview() {
               key={key}
               type="button"
               onClick={() => setPresetKey(key)}
-              className="rounded px-2 py-1 text-[0.65rem]"
+              className="rounded px-2 py-1 text-[0.6875rem]"
               style={{
                 border: `1px solid ${cream(key === presetKey ? 38 : 13)}`,
                 color: key === presetKey ? "var(--accent-text)" : cream(55),
@@ -305,7 +305,7 @@ export function CardsPreview() {
           <EnginePanel rows={[]} />
         </Row>
 
-        <div className="py-6 text-[0.65rem]" style={{ color: cream(38) }}>
+        <div className="py-6 text-[0.6875rem]" style={{ color: cream(38) }}>
           <Pill tone="muted">dev</Pill> 这一页不进生产构建的路由，仅供开发与截图。
         </div>
       </main>

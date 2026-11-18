@@ -8,7 +8,7 @@
 .kaus-browser-tab { display: flex; flex: 0 1 180px; align-items: center; min-width: 72px; border-radius: 7px; color: color-mix(in srgb, var(--midground-base) 70%, transparent); }
 .kaus-browser-tab[data-selected] { background: color-mix(in srgb, var(--midground-base) 8%, transparent); color: var(--midground-base); }
 .kaus-browser-tab:hover:not([data-selected]) { background: color-mix(in srgb, var(--midground-base) 4%, transparent); }
-.kaus-browser-tab > button { display: flex; align-items: center; min-width: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.kaus-browser-tab > button { display: flex; align-items: center; min-width: 0; border: 0; background: transparent; color: inherit; cursor: default; }
 .kaus-browser-tab > button:first-child { flex: 1; gap: 6px; padding: 6px 4px 6px 8px; font-size: 12px; }
 .kaus-browser-tab > button:first-child span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kaus-browser-tab > button:first-child svg { flex: 0 0 auto; opacity: .6; }

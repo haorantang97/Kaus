@@ -94,14 +94,14 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
         <ShieldCheck size={14} />{t("selfCheck.title")}
       </Button>}
     </div>
-    <ul className="max-h-[48vh] overflow-auto rounded-md" style={{ border: "1px solid var(--line, rgba(255,255,255,.08))" }}>
+    <ul className="max-h-[48vh] overflow-auto rounded-md" style={{ border: "1px solid var(--border-subtle)" }}>
       {!items.length && <li className="px-3 py-6 text-center text-xs" style={{ color: cream(50) }}>{t("import.none")}</li>}
       {items.map(item => {
         const fixed = item.state !== "available" || item.available === false;
         const checked = item.kind === "memory" ? item.state === "imported" || chosen.has(item.id)
           : item.state === "bound" || item.state === "inTree" || item.state === "imported" || chosen.has(item.id);
         const expanded = open.has(item.id);
-        return <li key={item.id} className="px-3 py-1.5 text-sm" style={{ borderTop: "1px solid var(--line, rgba(255,255,255,.06))", opacity: fixed && item.state !== "inTree" ? 0.62 : 1 }}>
+        return <li key={item.id} className="px-3 py-1.5 text-sm" style={{ borderTop: "1px solid var(--border-subtle)", opacity: fixed && item.state !== "inTree" ? 0.62 : 1 }}>
           <div className="flex items-center gap-2">
             <input type="checkbox" aria-label={name(item)} checked={checked} disabled={fixed || busy} onChange={() => toggle(item.id)} />
             <span style={{ color: cream(58) }}>{icon(item.kind)}</span>

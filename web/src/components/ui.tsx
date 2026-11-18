@@ -13,7 +13,11 @@ import { useModalLayer } from "../hooks/useModalLayer";
 
 /* Theme helpers (live here, not in the HTTP layer): cream() builds an
    ink-at-opacity color-mix string; dname() picks an agent's display name. */
-export const cream = (pct: number) => `color-mix(in srgb, var(--midground-base) ${pct}%, transparent)`;
+/** Midground at a strength. Text strengths 38–63 map to the two readable grey levels (2026-11-18 HIG
+ *  review: small text at least 4.5:1); lower strengths are lines and fills and stay as given. */
+export const cream = (pct: number) => pct >= 38 && pct <= 55 ? "var(--text-tertiary)"
+  : pct > 55 && pct <= 63 ? "var(--text-secondary)"
+  : `color-mix(in srgb, var(--midground-base) ${pct}%, transparent)`;
 export const dname = (n: { name: string; label?: string }) => n.label || n.name;
 
 export const HAIR = `1px solid ${cream(11)}`;
@@ -36,7 +40,7 @@ export function ErrorNotice({ error, className = "" }: { error: unknown; classNa
   return <div role="alert" className={className} style={{ color: "var(--danger)" }}>
     <span>{summary}</span>
     {diagnostic && diagnostic !== summary && <details className="mt-1">
-      <summary className="cursor-pointer text-xs" style={{ color: cream(55) }}>{t("graph.details")}</summary>
+      <summary className="cursor-default text-xs" style={{ color: cream(55) }}>{t("graph.details")}</summary>
       <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all text-xs" style={{ color: cream(60) }}>{diagnostic}</pre>
     </details>}
   </div>;
@@ -57,7 +61,7 @@ type Tone = "default" | "gold" | "success" | "danger" | "muted";
 const PILL_TONE: Record<Tone, CSSProperties> = {
   default: { background: "transparent", color: cream(70) },
   gold: { background: "var(--gold-soft)", color: "var(--accent-text)" },
-  success: { background: "rgba(122,176,122,.12)", color: "#5c7d52" },
+  success: { background: "var(--success-tint)", color: "var(--success-text)" },
   danger: { background: "color-mix(in srgb, var(--danger) 9%, transparent)", color: "var(--danger)" },
   muted: { background: "transparent", color: cream(50) },
 };

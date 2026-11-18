@@ -44,6 +44,19 @@ describe("会话行菜单", () => {
     expect(readSidebarPins()["project:pronto"]).toEqual([]);
     expect(onOpen).not.toHaveBeenCalled();
   });
+  it("⌘F 打开侧栏搜索，按标题过滤，Esc 收起", async () => {
+    const user = userEvent.setup();
+    render(<ConversationSidebar groups={buildConversationGroups(projects, [conversation("c1", "pronto", { title: "接口层重构" }), conversation("c2", "pronto", { title: "首页改版" })])}
+      loading={false} error={null} activeConversationId={null} onOpenConversation={vi.fn()} onConversationChanged={vi.fn()} />);
+    await user.keyboard("{Meta>}f{/Meta}");
+    const box = await screen.findByRole("searchbox", { name: "搜索对话" });
+    await user.type(box, "首页");
+    expect(screen.getByText("首页改版")).toBeVisible();
+    expect(screen.queryByText("接口层重构")).toBeNull();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.getByText("接口层重构")).toBeVisible();
+  });
   it("右键会话行打开同一份菜单，不打开会话", async () => {
     const user = userEvent.setup(), { onOpen } = setup();
     await user.pointer({ keys: "[MouseRight]", target: screen.getByText("接口层重构") });

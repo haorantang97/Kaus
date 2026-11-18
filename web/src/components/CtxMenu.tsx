@@ -125,7 +125,7 @@ export function CtxMenu({
     color: "var(--midground-base)",
     boxShadow: "var(--shadow-popover)",
   };
-  const item = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-black/[0.05]";
+  const item = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--control-hover)]";
   const inputStyle: React.CSSProperties = {
     background: cream(8),
     border: `1px solid ${cream(16)}`,
@@ -187,7 +187,7 @@ export function CtxMenu({
 
         {mode === "rename" && (
           <Field>
-            <div className="mb-1 text-[0.7rem]" style={{ color: cream(55) }}>
+            <div className="mb-1 text-[0.6875rem]" style={{ color: cream(55) }}>
               {t("ctx.displayName")}
             </div>
             <input
@@ -198,14 +198,14 @@ export function CtxMenu({
               style={inputStyle}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) run(() => renameAgent(node.name, renameVal.trim())); }}
             />
-            {err && <ErrorNotice error={err} className="mt-1 text-[0.7rem]" />}
+            {err && <ErrorNotice error={err} className="mt-1 text-[0.6875rem]" />}
             <Actions onOk={() => run(() => renameAgent(node.name, renameVal.trim()))} okLabel={t("common.save")} />
           </Field>
         )}
 
         {mode === "fork" && (
           <Field>
-            <div className="mb-1 text-[0.7rem]" style={{ color: cream(55) }}>
+            <div className="mb-1 text-[0.6875rem]" style={{ color: cream(55) }}>
               {t("ctx.forkId")}
             </div>
             <input
@@ -217,14 +217,14 @@ export function CtxMenu({
               style={inputStyle}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) runFork(); }}
             />
-            {err && <ErrorNotice error={err} className="mt-1 text-[0.7rem]" />}
+            {err && <ErrorNotice error={err} className="mt-1 text-[0.6875rem]" />}
             <Actions onOk={runFork} okLabel={t("ctx.fork")} />
           </Field>
         )}
 
         {mode === "delete" && (
           <Field>
-            <div className="mb-1 text-[0.72rem] leading-relaxed" style={{ color: cream(72) }}>
+            <div className="mb-1 text-[0.6875rem] leading-relaxed" style={{ color: cream(72) }}>
               {descendants && descendants.length > 0
                 ? t("project.delete.cascadeConfirm", {
                     name: dname(node),
@@ -234,10 +234,10 @@ export function CtxMenu({
                   })
                 : t("project.delete.confirm", { name: dname(node) })}
             </div>
-            {running !== null && <div role="alert" className="mb-1 text-[0.72rem] leading-relaxed" style={{ color: "var(--danger)" }}>
+            {running !== null && <div role="alert" className="mb-1 text-[0.6875rem] leading-relaxed" style={{ color: "var(--danger)" }}>
               {t("project.delete.stopConfirm", { count: running })}
             </div>}
-            {err && <ErrorNotice error={err} className="mt-1 text-[0.7rem]" />}
+            {err && <ErrorNotice error={err} className="mt-1 text-[0.6875rem]" />}
             <Actions onOk={() => void runDelete(true)} okLabel={t("project.delete.stopAndDelete")} disabled={descendants === null} danger />
           </Field>
         )}

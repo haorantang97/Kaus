@@ -68,6 +68,16 @@ def _brand_macos() -> None:
         pass
 
 
+def _system_dark() -> bool:
+    """macOS dark appearance (``AppleInterfaceStyle`` is set only in dark mode)."""
+    import subprocess
+    try:
+        result = subprocess.run(["defaults", "read", "-g", "AppleInterfaceStyle"], capture_output=True, text=True, timeout=2)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and result.stdout.strip().lower() == "dark"
+
+
 def main() -> None:
     _brand_macos()
     install_webview_compat()
@@ -87,7 +97,10 @@ def main() -> None:
         target,
         width=1500,
         height=940,
-        min_size=(1080, 700),
+        # 2026-11-18: small enough for side-by-side halves on a 13-inch screen; the page adapts.
+        min_size=(720, 520),
+        # Match the page's first paint to the system appearance (no white flash in dark mode).
+        background_color="#16180f" if _system_dark() else "#fcfcfb",
         js_api=bridge,
     )
     bridge._bind(window)
