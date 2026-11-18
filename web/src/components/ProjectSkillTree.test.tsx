@@ -53,8 +53,14 @@ function skillRow(project: string, skill: string): HTMLElement {
   if (!row) throw new Error(`Missing skill row: ${project}/${skill}`);
   return row;
 }
+/** Inherited capabilities sit in a 「继承」 fold (2026-11-18); open every visible fold. */
+function openInherited() {
+  for (const fold of screen.queryAllByRole("button", { name: /^继承\d*$/ })) if (fold.getAttribute("aria-expanded") === "false") fireEvent.click(fold);
+}
 async function ready() {
   render(<ProjectSkillTree focusProject="creative" />);
+  await waitFor(() => expect(skillRow("creative", "common-design")).toBeVisible());
+  openInherited();
   await waitFor(() => expect(skillRow("creative", "common-writing")).toBeVisible());
 }
 async function openActions(user: ReturnType<typeof userEvent.setup>, project: string, skill: string) {
@@ -91,6 +97,16 @@ beforeEach(() => {
 });
 
 describe("ProjectSkillTree", () => {
+  it("folds inherited capabilities into one 继承 row until opened (2026-11-18)", async () => {
+    render(<ProjectSkillTree focusProject="creative" />);
+    await waitFor(() => expect(skillRow("creative", "common-design")).toBeVisible());
+    expect(document.querySelector('[data-project-id="creative"][data-skill-id="common-writing"]')).toBeNull();
+    const fold = screen.getByRole("button", { name: "继承1" });
+    expect(fold).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(fold);
+    expect(skillRow("creative", "common-writing")).toBeVisible();
+  });
+
   it("opens the connected Agent group during onboarding and retains the same drag and menu controls", async () => {
     render(<ProjectSkillTree focusProject="creative" initialAgent="codex" />);
     await waitFor(() => expect(skillRow("creative", "codex-review")).toBeVisible());
@@ -251,7 +267,7 @@ describe("ProjectSkillTree", () => {
 
   it("keeps project drags compatible with collaboration groups and project reparenting", async () => {
     render(<ProjectSkillTree focusProject="creative" onReparentProject={vi.fn()} />);
-    await waitFor(() => expect(skillRow("creative", "common-writing")).toBeVisible());
+    await waitFor(() => expect(skillRow("creative", "common-design")).toBeVisible());
     const values: Record<string, string> = {};
     const transfer = {
       setData: (type: string, value: string) => { values[type] = value; },

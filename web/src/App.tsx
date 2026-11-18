@@ -492,7 +492,6 @@ export function App() {
           /* 项目页上的 ⋯ 只针对当前项目：删掉之后回轮盘，不停在已删除的页面。 */
           onDeleted={() => { if (route.name === "project") goView("agents"); }}
           nodes={net?.nodes}
-          onAddChild={parent => { setNewAgentParent(parent); setNewOpen(true); }}
         />
       )}
 

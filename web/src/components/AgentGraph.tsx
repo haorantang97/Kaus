@@ -211,6 +211,11 @@ export function AgentGraph({ net, onClose, onChanged, onDetail, onOpenMenu, onAd
   // 列:col0=[default];colK = 当前 path 上一层的"域子级"(分身已排除)
   const columns: string[][] = [["default"]];
   for (let k = 1; k <= path.length; k++) { const par = path[k - 1]; const kids = domainKids(par); if (kids.length) columns.push(kids); else break; }
+  /* 2026-11-18：只有一个「添加项目」虚线节点，跟着当前选中的那一列走，在这一列（当前组）里新建。
+     选中根项目时放在它的下一列；根项目还没有子项目时补一列只放这个节点。 */
+  const addColumn = sel === "default" ? 1 : path.length - 1;
+  const addParent = sel === "default" ? "default" : path[path.length - 2];
+  if (onAddChild && addColumn === columns.length) columns.push([]);
 
   const askReparent = (node: string, target: string | null) => {
     if (!canGovern) return;
@@ -763,6 +768,24 @@ export function AgentGraph({ net, onClose, onChanged, onDetail, onOpenMenu, onAd
                 ) : (
                   <>
                     {ids.map((id) => renderNode(id, ci))}
+                    {onAddChild && ci === addColumn && addParent && (
+                      <div
+                        className="ag-node ag-node-add"
+                        data-id={ADD_NODE_ID}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={t("graph.addProject")}
+                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onAddChild(addParent); } }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (suppressNodeClick.current) return;
+                          onAddChild(addParent);
+                        }}
+                      >
+                        <Plus className="size-3.5" />
+                        <span className="ag-nm">{t("graph.addProject")}</span>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -809,10 +832,11 @@ export function AgentGraph({ net, onClose, onChanged, onDetail, onOpenMenu, onAd
           </div>
           {/* 第 6 件：虚节点保留，但它跟着轮盘滚、离屏时找不着。这里再放一个固定入口，
               父级 = 当前选中的节点，与虚节点同一语义。样式用现有 <Button>。 */}
-          {onAddChild && (
+          {/* 2026-11-18：页头按钮只在配置视图，在选中的项目下新建子项目；轮盘用跟着当前列走的虚线节点。 */}
+          {onAddChild && canGovern && (
             <Button onClick={() => onAddChild(sel)}>
               <span className="inline-flex items-center gap-1">
-                <Plus className="size-3" /> {t("graph.addProject")}
+                <Plus className="size-3" /> {t("graph.addSubProject")}
               </span>
             </Button>
           )}

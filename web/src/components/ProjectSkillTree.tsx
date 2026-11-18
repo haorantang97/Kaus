@@ -327,7 +327,20 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
         {onProjectMenu && <button className="skill-tree-icon skill-tree-more" title={t("common.more")} aria-label={t("skillTree.projectActions", { name: project.displayName || project.slug })} onClick={e => onProjectMenu(project.slug, e.currentTarget.getBoundingClientRect())}><MoreHorizontal size={16} /></button>}
       </div>
       {open && <div className="skill-tree-children">
-        {common.map(e => renderSkill(e, depth + 1))}
+        {common.filter(e => !e.inherited).map(e => renderSkill(e, depth + 1))}
+        {(() => {
+          /* 2026-11-18：继承来的能力默认收进一行「继承 · N」，点开才列出（搜索时展开）。 */
+          const inherited = common.filter(e => e.inherited);
+          if (!inherited.length) return null;
+          const foldId = `i:${project.id}`, foldOpen = !!q || expanded.has(foldId);
+          return <div>
+            <button className="skill-tree-row skill-tree-group skill-tree-inherited" style={{ "--tree-depth": depth + 1 } as CSSProperties} aria-expanded={foldOpen}
+              onClick={() => toggle(foldId)}>
+              <ChevronRight size={14} className={foldOpen ? "is-open" : ""} /><CornerUpLeft size={15} aria-hidden="true" /><span className="skill-tree-name">{t("skillTree.inheritedFold")}</span><span className="skill-tree-count">{inherited.length}</span>
+            </button>
+            {foldOpen && inherited.map(e => renderSkill(e, depth + 2))}
+          </div>;
+        })()}
         {groups.map(key => {
           const entries = filtered([...orderedEntries(data, project.id, key), ...localPending.filter(e => skillMap.get(e.skillId)?.agentKey === key)]);
           if (!entries.length) return null;

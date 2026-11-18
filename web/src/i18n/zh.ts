@@ -128,6 +128,7 @@ export const zh = {
   "skillTree.noResults": "没有匹配项",
   "skillTree.move": "移到",
   "skillTree.copy": "添加到",
+  "skillTree.inheritedFold": "继承",
   "skillTree.up": "上移",
   "skillTree.down": "下移",
   "skillTree.block": "在此子树停用",
@@ -563,6 +564,7 @@ export const zh = {
   "engine.field.save": "保存",
   "engine.field.cancel": "取消",
   "graph.addProject": "添加项目",
+  "graph.addSubProject": "添加子项目",
   "card.awaiting": "待回答",
   /* ---- batch11 merge ---- */
 
@@ -1447,7 +1449,6 @@ export const zh = {
   "ctx.unpin": "取消置顶",
   "ctx.rename": "重命名",
   "ctx.fork": "复制",
-  "ctx.addChild": "新建子项目",
   "ctx.move": "移到",
   "project.moved": "已将「{name}」移至「{target}」",
   "ctx.delete": "删除",

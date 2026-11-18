@@ -131,6 +131,7 @@ export const en: Record<keyof typeof zh, string> = {
   "skillTree.noResults": "No matches",
   "skillTree.move": "Move to",
   "skillTree.copy": "Also add to",
+  "skillTree.inheritedFold": "Inherited",
   "skillTree.up": "Move up",
   "skillTree.down": "Move down",
   "skillTree.block": "Disable in this subtree",
@@ -541,6 +542,7 @@ export const en: Record<keyof typeof zh, string> = {
   "engine.field.save": "Save",
   "engine.field.cancel": "Cancel",
   "graph.addProject": "Add project",
+  "graph.addSubProject": "Add sub-project",
   "card.awaiting": "Awaiting answer",
   /* ---- batch11 merge ---- */
 
@@ -1330,7 +1332,6 @@ export const en: Record<keyof typeof zh, string> = {
   "ctx.unpin": "Unpin",
   "ctx.rename": "Rename",
   "ctx.fork": "Duplicate",
-  "ctx.addChild": "New sub-project",
   "ctx.move": "Move to",
   "project.moved": "Moved “{name}” to “{target}”",
   "ctx.delete": "Delete",

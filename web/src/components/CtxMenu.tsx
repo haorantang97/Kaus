@@ -1,6 +1,6 @@
 import { ErrorNotice, toast, undoToast } from "./ui";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Copy, FolderInput, MessageSquarePlus, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, FolderInput, MessageSquarePlus, Pencil, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import { ADD_EXISTING_CONVERSATIONS } from "../lib/projectHistory";
 import { deleteAgent, deletePreview, forkAgent, renameAgent, restoreDeletedAgent, runningConversationsOf, type OrgNode } from "../lib/api";
@@ -25,7 +25,6 @@ export function CtxMenu({
   onChanged,
   onDeleted,
   nodes,
-  onAddChild,
 }: {
   node: OrgNode;
   x: number;
@@ -36,8 +35,6 @@ export function CtxMenu({
   onDeleted?: (name: string) => void;
   /** All projects, for 「移到」 (2026-11-18). */
   nodes?: Record<string, OrgNode>;
-  /** 「新建子项目」 under this project. */
-  onAddChild?: (parent: string) => void;
 }) {
   const { t } = useLocale();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -178,9 +175,6 @@ export function CtxMenu({
               window.dispatchEvent(new CustomEvent(ADD_EXISTING_CONVERSATIONS, { detail: { projectRef: node.name } }));
               onClose();
             }}><MessageSquarePlus className="size-3.5" />{t("project.history.add")}</button>
-            {onAddChild && <button role="menuitem" disabled={busy} className={item} onClick={() => { onAddChild(node.name); onClose(); }}>
-              <Plus className="size-3.5" />{t("ctx.addChild")}
-            </button>}
             <button role="menuitem" disabled={busy} className={item} onClick={() => setMode("rename")}>
               <Pencil className="size-3.5" />
               {t("ctx.rename")}

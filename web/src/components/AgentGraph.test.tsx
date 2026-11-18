@@ -159,6 +159,33 @@ function renderChatWheel() {
   return { panel, canvas, blank, heading: () => panel.querySelector(".ag-card-name strong")?.textContent };
 }
 
+describe("轮盘的添加项目（2026-11-18）", () => {
+  it("只有一个虚线节点，跟着选中的那一列走，在这一列里新建", () => {
+    const onAddChild = vi.fn();
+    render(<AgentGraph net={treeNet} embedded mode="chat" onClose={() => {}} onChanged={() => {}}
+      onDetail={() => {}} onOpenMenu={() => {}} onAddChild={onAddChild} />);
+    // Root selected: the node sits in the next column and adds under X.
+    expect(document.querySelectorAll(".ag-node-add")).toHaveLength(1);
+    fireEvent.click(document.querySelector(".ag-node-add")!);
+    expect(onAddChild).toHaveBeenLastCalledWith("default");
+    // A project in the first column selected: still one node, in that column, same group.
+    fireEvent.click(screen.getByRole("button", { name: "Pronto" }));
+    expect(document.querySelectorAll(".ag-node-add")).toHaveLength(1);
+    expect(document.querySelector('[data-column="1"] .ag-node-add')).not.toBeNull();
+    fireEvent.click(document.querySelector(".ag-node-add")!);
+    expect(onAddChild).toHaveBeenLastCalledWith("default");
+    // A sub-project selected: the node follows into its column and adds beside it.
+    fireEvent.click(screen.getByRole("button", { name: "Web" }));
+    expect(document.querySelectorAll(".ag-node-add")).toHaveLength(1);
+    expect(document.querySelector('[data-column="2"] .ag-node-add')).not.toBeNull();
+    fireEvent.click(document.querySelector(".ag-node-add")!);
+    expect(onAddChild).toHaveBeenLastCalledWith("pronto");
+    // The header button belongs to Configuration only.
+    expect(screen.queryByRole("button", { name: /添加子项目/ })).toBeNull();
+  });
+});
+
+
 describe("轮盘详情面板的开合", () => {
   it("再点已选中的节点收起面板，再点一次重新打开", () => {
     const { panel } = renderChatWheel();
