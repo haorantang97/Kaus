@@ -46,6 +46,8 @@ export interface WorkbenchExample { id: string; name: string; description: strin
 export const fetchWorkbenchExamples = (signal?: AbortSignal) => sessionRequest<{examples: WorkbenchExample[]}>(`${root}/examples`, {signal});
 export const installWorkbenchExample = (id: string) => sessionRequest<WorkbenchModule>(`${root}/examples/${encodeURIComponent(id)}/install`, {method:"POST"});
 export const removeWorkbenchModule = (id: string) => sessionRequest<void>(modulePath(id), {method:"DELETE"});
+/** Undo of remove: the module's record, files and data were kept. */
+export const restoreWorkbenchModule = (id: string, state: { enabled: boolean; pinned: boolean }) => sessionRequest<WorkbenchModule>(`${modulePath(id)}/restore`, {method:"POST",body:state});
 export interface ModuleFrameGrant { url: string; token: string; expiresIn: number }
 /** Module code is served only under a per-open capability path; relative assets inherit it. */
 export const openModuleFrame = (id: string) => sessionRequest<ModuleFrameGrant>(`${modulePath(id)}/frames`, {method:"POST"});

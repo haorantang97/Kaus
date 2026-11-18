@@ -335,6 +335,6 @@ describe("轮盘详情面板的开合", () => {
         new_parent: null,
       }),
     );
-    expect(await screen.findByRole("button", { name: "确认移动" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "移动" })).toBeInTheDocument();
   });
 });

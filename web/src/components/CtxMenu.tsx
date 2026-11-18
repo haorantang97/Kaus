@@ -1,9 +1,10 @@
-import { ErrorNotice } from "./ui";
+import { ErrorNotice, toast, undoToast } from "./ui";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Copy, MessageSquarePlus, Pencil, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import { ADD_EXISTING_CONVERSATIONS } from "../lib/projectHistory";
-import { deleteAgent, deletePreview, forkAgent, renameAgent, runningConversationsOf, type OrgNode } from "../lib/api";
+import { deleteAgent, deletePreview, forkAgent, renameAgent, restoreDeletedAgent, runningConversationsOf, type OrgNode } from "../lib/api";
+import { archiveConversation, describeFailure, fetchRecentConversations } from "../lib/sessionApi";
 import { cream, dname } from "./ui";
 
 const Field = ({ children }: { children: React.ReactNode }) => <div className="p-2.5">{children}</div>;
@@ -84,18 +85,33 @@ export function CtxMenu({
       setBusy(false);
     }
   };
-  const runDelete = async () => {
-    const force = running !== null;
+  /* 删除项目（2026-11-18「删除与撤销」）：项目、子项目可原位恢复，对话只是归档，所以直接删除并给「撤销」；
+     只有要先停止运行中的对话时才确认（停止无法撤回）。撤销按由上到下恢复项目，再把这次归档的对话放回。 */
+  const runDelete = async (force = false) => {
     setBusy(true);
     setErr(null);
     try {
-      await deleteAgent(node.name, { force });
+      const preview = await deletePreview(node.name);
+      const subtree = [node.name, ...preview.descendants.map(item => item.name)];
+      const lists = await Promise.all(subtree.map(slug => fetchRecentConversations(undefined, { project: `project:${slug}`, limit: 200 })
+        .then(result => result.conversations.map(item => item.id)).catch(() => [] as string[])));
+      const conversations = lists.flat();
+      const result = await deleteAgent(node.name, { force });
       onChanged();
       onDeleted?.(node.name);
       onClose();
+      const count = result.cascade?.length ?? 0;
+      undoToast(count ? t("project.delete.done", { name: dname(node), count }) : t("ui.deleted", { name: dname(node) }), async () => {
+        try {
+          for (const slug of [node.name, ...[...(result.cascade ?? [])].reverse()]) await restoreDeletedAgent(slug);
+          await Promise.all(conversations.map(id => archiveConversation(id, false).catch(() => undefined)));
+          onChanged();
+          window.dispatchEvent(new Event("kaus:conversations-changed"));
+        } catch (failure) { toast(describeFailure(failure), "bad"); }
+      });
     } catch (e) {
       const ids = runningConversationsOf(e);
-      if (ids && !force) setRunning(ids.length);
+      if (ids && !force) { setRunning(ids.length); setMode("delete"); }
       else setErr(e instanceof Error ? e.message : String(e));
       setBusy(false);
     }
@@ -161,7 +177,7 @@ export function CtxMenu({
               {t("ctx.fork")}
             </button>
             {!isDefault && (
-              <button role="menuitem" disabled={busy} className={item} style={{ color: "var(--danger)" }} onClick={() => setMode("delete")}>
+              <button role="menuitem" disabled={busy} className={item} style={{ color: "var(--danger)" }} onClick={() => void runDelete()}>
                 <Trash2 className="size-3.5" />
                 {t("ctx.delete")}
               </button>
@@ -222,7 +238,7 @@ export function CtxMenu({
               {t("project.delete.stopConfirm", { count: running })}
             </div>}
             {err && <ErrorNotice error={err} className="mt-1 text-[0.7rem]" />}
-            <Actions onOk={() => void runDelete()} okLabel={running !== null ? t("project.delete.stopAndDelete") : t("ctx.delete")} disabled={descendants === null} danger />
+            <Actions onOk={() => void runDelete(true)} okLabel={t("project.delete.stopAndDelete")} disabled={descendants === null} danger />
           </Field>
         )}
       </div>

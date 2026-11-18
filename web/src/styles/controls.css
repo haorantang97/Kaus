@@ -103,13 +103,15 @@ body :is(button, [role="button"], summary, .kaus-preview-actions > a) {
   }
 }
 
-/* Keyboard focus uses the existing surface, never a second rectangular frame. */
+/* Keyboard focus (product-decisions「焦点反馈」, tightened 2026-11-18 after the HIG review): never a
+   second rectangular frame outside the control. The control's own surface takes a fill plus a thin
+   ring drawn inside its own rounded edge, so focus reads apart from hover, pressed and selected. */
 body :focus-visible { outline: none; }
 body :is(button, [role="button"], summary, a, [tabindex]):not(
   :disabled, [aria-disabled="true"], input, textarea, select, .kaus-project-enter, .kaus-jump-marker, .kaus-jump-preview-link
 ):focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 100vmax var(--control-pressed);
+  box-shadow: inset 0 0 0 1.5px var(--control-focus), inset 0 0 0 100vmax var(--control-pressed);
 }
 body :is(input, select, textarea, [contenteditable="true"]):focus {
   outline: none;

@@ -86,7 +86,7 @@ describe("connect-flow capability step", () => {
     await screen.findByRole("checkbox", { name: "fs" });
     await user.click(screen.getByRole("button", { name: "跳过" }));
     expect(await screen.findByText(/以空白配置接入/)).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "确定跳过" }));
+    await user.click(screen.getByRole("button", { name: "跳过" }));
     await waitFor(() => expect(skipCapabilityImport).toHaveBeenCalledWith("codex"));
     expect(finishSkillOnboarding).toHaveBeenCalledWith("invite", "skipped");
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());

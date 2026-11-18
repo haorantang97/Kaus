@@ -30,7 +30,6 @@ body:not(.dark) .skill-tree { --tree-accent: var(--accent-text); }
 .skill-tree-icon:hover:not(:disabled) { background: color-mix(in srgb, var(--midground-base) 9%, transparent); }
 .skill-tree-icon:disabled { opacity: .28; cursor: default; }
 .skill-tree-icon:focus-visible, .skill-tree-expand:focus-visible, .skill-tree-group:focus-visible, .skill-tree-dialog button:focus-visible { outline: none; }
-body:not(.dark) :is(.skill-tree-icon, .skill-tree-expand, .skill-tree-group, .skill-tree-dialog button):focus-visible { outline-color: var(--control-focus, var(--tree-accent)); }
 .skill-tree-more { opacity: 0; }
 .skill-tree-row:hover .skill-tree-more, .skill-tree-row:focus-within .skill-tree-more, .skill-tree-more:focus-visible { opacity: 1; }
 .skill-tree-grip { color: var(--tree-muted); cursor: grab; width: 20px; touch-action: none; }

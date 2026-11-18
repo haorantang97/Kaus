@@ -535,7 +535,7 @@ export const en: Record<keyof typeof zh, string> = {
   "reparent.previewing": "Previewing changes\u2026",
   "reparent.position": "Position",
   "reparent.affects": "affects {count} descendants",
-  "reparent.confirm": "Confirm move",
+  "reparent.confirm": "Move",
   "reparent.moved": "Moved \u201c{name}\u201d to {target}",
   "reparent.moveFailed": "Move failed: {error}",
 
@@ -674,7 +674,7 @@ export const en: Record<keyof typeof zh, string> = {
   "ui.refresh": "Refresh",
   "ui.refreshing": "Refreshing…",
   "ui.cancel": "Cancel",
-  "ui.ok": "OK",
+  "ui.ok": "Confirm",
 
   /* ---- batch17 ---- */
   "conversation.runtimeLost": "The previous turn ended because the engine went away",
@@ -1361,4 +1361,5 @@ export const en: Record<keyof typeof zh, string> = {
   "ui.deleted": "Deleted “{name}”",
   "ui.removedFrom": "Removed “{name}” from “{project}”",
   "ui.removedFromProject": "Removed “{name}” from the project",
+  "project.delete.done": "Deleted “{name}” and {count} sub-projects",
 };

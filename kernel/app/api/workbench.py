@@ -63,6 +63,11 @@ def build_workbench_router(*, service, auth_policy, prefix="/api/workbench"):
     async def uninstall(module_id: str):
         return await service.uninstall(module_id)
 
+    @router.post("/modules/{module_id}/restore")
+    @endpoint
+    async def restore(module_id: str, body: dict = Body(default={})):
+        return await service.restore(module_id, enabled=body.get("enabled", True), pinned=body.get("pinned", False))
+
     @router.put("/pins")
     @endpoint
     async def pins(body: PinsBody):

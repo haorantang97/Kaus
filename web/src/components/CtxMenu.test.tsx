@@ -1,7 +1,8 @@
 import { expect, it, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CtxMenu } from "./CtxMenu";
+import { ToastHost } from "./ui";
 import type { OrgNode } from "../lib/api";
 
 const node: OrgNode = { name:"sample", label:"Sample", is_pinned:false, parent:null, killed:false, effective_killed:false, is_draft:false, children:[] };
@@ -26,18 +27,16 @@ it("keeps the rename input mounted while typing several characters", async () =>
   await user.tab(); expect(screen.getByRole("button", {name:"取消"})).toHaveFocus();
   await user.tab(); expect(screen.getByRole("button", {name:"保存"})).toHaveFocus();
 });
-it("confirms stopping running conversations before deleting a Project", async () => {
+it("deletes at once; only stopping running conversations asks first", async () => {
   const api = await import("../lib/api");
   const remove = vi.spyOn(api, "deleteAgent")
     .mockRejectedValueOnce(new api.LegacyApiError("busy", 409, "project_has_active_runtime", { activeConversationIds: ["conversation:a", "conversation:b"] }))
-    .mockResolvedValueOnce({ ok: true });
+    .mockResolvedValueOnce({ ok: true, deleted: "sample", cascade: [], batchId: "b1" });
   const preview = vi.spyOn(api, "deletePreview").mockResolvedValue({ name: "sample", descendants: [] });
   const changed = vi.fn();
   const user = userEvent.setup();
   render(<CtxMenu node={node} x={0} y={0} onClose={() => {}} onChanged={changed} />);
   await user.click(screen.getByRole("menuitem", { name: "删除" }));
-  expect(screen.getByText("删除「Sample」？其对话将移入“已归档”。")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "删除" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("2 个对话运行中，删除前将停止");
   expect(remove).toHaveBeenLastCalledWith("sample", { force: false });
   expect(changed).not.toHaveBeenCalled();
@@ -47,41 +46,42 @@ it("confirms stopping running conversations before deleting a Project", async ()
   remove.mockRestore();
   preview.mockRestore();
 });
-it("names the sub-projects a delete removes together, truncating a long list", async () => {
+it("names the sub-projects when stopping running conversations is needed", async () => {
   const api = await import("../lib/api");
-  let loaded: (value: Awaited<ReturnType<typeof api.deletePreview>>) => void = () => {};
-  const preview = vi.spyOn(api, "deletePreview").mockReturnValue(new Promise(resolve => { loaded = resolve; }));
+  const preview = vi.spyOn(api, "deletePreview").mockResolvedValue({ name: "sample", descendants: [
+    { name: "a", label: "Alpha" }, { name: "b", label: "Beta" }, { name: "c", label: "" },
+    { name: "d", label: "Delta" }, { name: "e", label: "Echo" },
+  ] });
   const remove = vi.spyOn(api, "deleteAgent")
     .mockRejectedValueOnce(new api.LegacyApiError("busy", 409, "project_has_active_runtime", { activeConversationIds: ["conversation:a", "conversation:b", "conversation:c"] }))
-    .mockResolvedValueOnce({ ok: true });
+    .mockResolvedValueOnce({ ok: true, deleted: "sample", cascade: ["e", "d", "c", "b", "a"], batchId: "b1" });
   const user = userEvent.setup();
   render(<CtxMenu node={node} x={0} y={0} onClose={() => {}} onChanged={() => {}} />);
   await user.click(screen.getByRole("menuitem", { name: "删除" }));
-  expect(screen.getByRole("button", { name: "删除" })).toBeDisabled();
-  await act(async () => loaded({ name: "sample", descendants: [
-    { name: "a", label: "Alpha" }, { name: "b", label: "Beta" }, { name: "c", label: "" },
-    { name: "d", label: "Delta" }, { name: "e", label: "Echo" },
-  ] }));
   expect(await screen.findByText("删除「Sample」及其 5 个子项目（Alpha、Beta、c…）？所有对话将移入“已归档”。")).toBeInTheDocument();
-  expect(preview).toHaveBeenCalledWith("sample");
-  await user.click(screen.getByRole("button", { name: "删除" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("3 个对话运行中，删除前将停止");
+  expect(screen.getByRole("alert")).toHaveTextContent("3 个对话运行中，删除前将停止");
   await user.click(screen.getByRole("button", { name: "停止并删除" }));
   expect(remove).toHaveBeenLastCalledWith("sample", { force: true });
   remove.mockRestore();
   preview.mockRestore();
 });
-it("reports a completed delete so the caller can leave the deleted Project", async () => {
+it("offers 撤销 that restores the projects top-down and puts their conversations back", async () => {
   const api = await import("../lib/api");
-  const remove = vi.spyOn(api, "deleteAgent").mockResolvedValueOnce({ ok: true });
-  const preview = vi.spyOn(api, "deletePreview").mockResolvedValue({ name: "sample", descendants: [] });
+  const session = await import("../lib/sessionApi");
+  const remove = vi.spyOn(api, "deleteAgent").mockResolvedValueOnce({ ok: true, deleted: "sample", cascade: ["child"], batchId: "b1" });
+  const preview = vi.spyOn(api, "deletePreview").mockResolvedValue({ name: "sample", descendants: [{ name: "child", label: "Child" }] });
+  const restore = vi.spyOn(api, "restoreDeletedAgent").mockResolvedValue({ ok: true, restored: "x", label: "x", parent: null });
+  const list = vi.spyOn(session, "fetchRecentConversations").mockImplementation(async (_signal, options) =>
+    ({ conversations: options?.project === "project:sample" ? [{ id: "conversation:1" } as never] : [], count: 0, nextUpdatedAfter: null }));
+  const unarchive = vi.spyOn(session, "archiveConversation").mockResolvedValue({} as never);
   const deleted = vi.fn();
   const user = userEvent.setup();
-  render(<CtxMenu node={node} x={0} y={0} onClose={() => {}} onChanged={() => {}} onDeleted={deleted} />);
+  render(<><CtxMenu node={node} x={0} y={0} onClose={() => {}} onChanged={() => {}} onDeleted={deleted} /><ToastHost /></>);
   await user.click(screen.getByRole("menuitem", { name: "删除" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "删除" })).toBeEnabled());
-  await user.click(screen.getByRole("button", { name: "删除" }));
   await waitFor(() => expect(deleted).toHaveBeenCalledWith("sample"));
-  remove.mockRestore();
-  preview.mockRestore();
+  expect(screen.getByText("已删除「Sample」及 1 个子项目")).toBeInTheDocument();
+  await user.click(screen.getAllByRole("button", { name: "撤销" }).at(-1)!);
+  await waitFor(() => expect(unarchive).toHaveBeenCalledWith("conversation:1", false));
+  expect(restore.mock.calls.map(call => call[0])).toEqual(["sample", "child"]);
+  [remove, preview, restore, list, unarchive].forEach(spy => spy.mockRestore());
 });

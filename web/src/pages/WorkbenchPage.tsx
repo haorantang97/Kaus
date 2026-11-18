@@ -2,7 +2,7 @@ import { WorkbenchModuleIcon } from "../components/WorkbenchModuleIcon";
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, EyeOff, LoaderCircle, MoreHorizontal, Pin, PinOff, Plus, Power, RefreshCw, Settings2, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
-import { confirmAsync } from "../components/ui";
+import { undoToast } from "../components/ui";
 import { WorkspacePicker } from "../components/WorkspacePicker";
 import { WorkbenchConfig } from "../components/WorkbenchConfig";
 import { WorkbenchIntake } from "../components/WorkbenchIntake";
@@ -11,7 +11,7 @@ import { ModuleFrame } from "../components/ModuleFrame";
 import { RowMenu, type RowMenuPoint } from "../components/ConversationRowMenu";
 import { writeModuleDrag } from "../components/WorkbenchNav";
 import { chooseNativeWorkspace } from "../lib/workspaceApi";
-import { activeWorkbenchIntake, dismissWorkbenchIntake, fetchWorkbenchIntake, fetchWorkbenchIntakes, inspectWorkbenchProject, notifyWorkbenchChanged, patchWorkbenchModule, removeWorkbenchModule, workbenchFailure, type WorkbenchModule, type WorkbenchIntake as Intake } from "../lib/workbenchApi";
+import { activeWorkbenchIntake, dismissWorkbenchIntake, fetchWorkbenchIntake, fetchWorkbenchIntakes, inspectWorkbenchProject, notifyWorkbenchChanged, patchWorkbenchModule, removeWorkbenchModule, restoreWorkbenchModule, workbenchFailure, type WorkbenchModule, type WorkbenchIntake as Intake } from "../lib/workbenchApi";
 import { shellViewPath, workbenchPath } from "../lib/routes";
 import "../components/workbench.css";
 export function WorkbenchPage({moduleId,modules,loading,failed,onRefresh,navigate,onConversation,intakeId=null,onIntakeConversation}: {moduleId:string|null; modules:WorkbenchModule[];loading:boolean;failed:boolean;onRefresh:()=>void;navigate:(path:string)=>void;onConversation:(id:string,moduleId:string)=>void;intakeId?:string|null;onIntakeConversation?:(id:string,intakeId:string)=>void}) {
@@ -46,13 +46,14 @@ export function WorkbenchPage({moduleId,modules,loading,failed,onRefresh,navigat
     return ()=>{document.removeEventListener("pointerdown",outside);document.removeEventListener("keydown",escape);};
   },[menu]);
   const module=modules.find(item=>item.id===moduleId)??(installed?.id===moduleId?installed:undefined), configure=modules.find(item=>item.id===config)??(installed?.id===config?installed:undefined);
-  async function mutate(action:()=>Promise<unknown>) {setBusy(true);setActionError(null);try{await action();notifyWorkbenchChanged();}catch(error){setActionError(workbenchFailure(error,locale==="en"));}finally{setBusy(false);}}
+  async function mutate(action:()=>Promise<unknown>):Promise<boolean> {setBusy(true);setActionError(null);try{await action();notifyWorkbenchChanged();return true;}catch(error){setActionError(workbenchFailure(error,locale==="en"));return false;}finally{setBusy(false);}}
   function updateIntake(item:Intake){dismissedIntakes.current.delete(item.id);setIntakes(previous=>[item,...previous.filter(value=>value.id!==item.id)]);}
   async function dismiss(item:Intake) {await mutate(async()=>{await dismissWorkbenchIntake(item.id);dismissedIntakes.current.add(item.id);setIntakes(previous=>previous.filter(value=>value.id!==item.id));});}
   async function inspect(path:string) {setBusy(true);setActionError(null);setPicker(false);try{const result=await inspectWorkbenchProject(path);updateIntake(result);setSelectedIntake(result);}catch{setActionError(t("workbench.intake.inspectFailed"));}finally{setBusy(false);}}
   async function pick() {setBusy(true);setActionError(null);try{const path=await chooseNativeWorkspace(null);if(path===undefined)setPicker(true);else if(path)await inspect(path);}catch{setActionError(t("workbench.intake.inspectFailed"));}finally{setBusy(false);}}
   function closeIntake(){setSelectedIntake(null);if(intakeId)navigate(workbenchPath());}
-  async function remove(item:WorkbenchModule) {setMenu(null);if(!await confirmAsync(t("workbench.removeConfirm"),{okLabel:t("workbench.remove"),danger:true}))return;await mutate(()=>removeWorkbenchModule(item.id));}
+  // 移除只把模块从工作台拿掉，记录、程序文件和数据都留在本机：直接移除并给「撤销」（2026-11-18）。
+  async function remove(item:WorkbenchModule) {setMenu(null);if(!await mutate(()=>removeWorkbenchModule(item.id)))return;undoToast(t("ui.deleted",{name:item.name}),()=>mutate(()=>restoreWorkbenchModule(item.id,{enabled:item.enabled,pinned:item.pinned})));}
   const actions=(item:WorkbenchModule)=><div className="workbench-menu" role="menu" onKeyDown={event=>{if(event.key==="Escape")setMenu(null);}}>
     <button role="menuitem" onClick={()=>{setMenu(null);setConfig(item.id);}}><Settings2 size={15}/>{t("workbench.config")}</button>
     <button role="menuitem" disabled={busy||!item.enabled} onClick={()=>{setMenu(null);void mutate(()=>patchWorkbenchModule(item.id,{pinned:!item.pinned}));}}>{item.pinned?<PinOff size={15}/>:<Pin size={15}/>} {t(item.pinned?"workbench.unpin":"workbench.pin")}</button>

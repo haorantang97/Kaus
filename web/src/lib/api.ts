@@ -93,7 +93,8 @@ export function forkAgent(name: string, newName: string, newDisplay?: string) {
 
 /** `force` stops the Project's running conversations first (the user confirmed it). */
 export function deleteAgent(name: string, options?: { force?: boolean }) {
-  return writeJSON(`/api/agent/${encodeURIComponent(name)}${options?.force ? "?force=1" : ""}`, "DELETE");
+  return writeJSON<{ ok: true; deleted: string; cascade: string[]; batchId: string }>(
+    `/api/agent/${encodeURIComponent(name)}${options?.force ? "?force=1" : ""}`, "DELETE");
 }
 
 /** Sub-projects a delete removes with the Project, top-down. */

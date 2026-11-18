@@ -421,6 +421,10 @@ async def test_backend_package_boundary_lifecycle_and_reconsent(tmp_path):
         assert len(changes) == 4
         assert changes[-1][1]["installed"] is False
         assert all(identity == "custom-service" for identity, _ in changes)
+        # 「撤销」: the kept record comes back with its grants and pin state.
+        restored = (await client.post("/api/workbench/modules/custom-service/restore", json={"enabled": True, "pinned": True})).json()
+        assert restored["id"] == "custom-service" and restored["enabled"] and restored["pinned"] and restored["grants"] == ["data:read"]
+        assert (await client.post("/api/workbench/modules/missing/restore", json={})).status_code == 404
 
 
 @pytest.mark.parametrize("backend,permissions,create_file", [

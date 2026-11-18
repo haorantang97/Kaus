@@ -555,7 +555,7 @@ export const zh = {
   "reparent.previewing": "正在预览改动…",
   "reparent.position": "位置",
   "reparent.affects": "连带 {count} 个下级",
-  "reparent.confirm": "确认移动",
+  "reparent.confirm": "移动",
   "reparent.moved": "已将「{name}」移至 {target}",
   "reparent.moveFailed": "移动失败：{error}",
 
@@ -706,7 +706,7 @@ export const zh = {
   "ui.refresh": "重新载入",
   "ui.refreshing": "正在重新载入…",
   "ui.cancel": "取消",
-  "ui.ok": "确定",
+  "ui.ok": "确认",
 
   /* ---- batch17 ---- */
   /* 第 1 件：引擎中途没了（后端合成的 `run.failed{code:"runtime_lost"}`）。
@@ -1154,7 +1154,7 @@ export const zh = {
   "import.submit": "导入 {count} 项",
   "import.continue": "继续",
   "import.skip": "跳过",
-  "import.skipOk": "确定跳过",
+  "import.skipOk": "跳过",
   "import.skipConfirm": "跳过导入？该 Agent 将以空白配置接入。",
   "import.none": "暂无可导入能力",
   "import.details": "查看简介",
@@ -1477,4 +1477,5 @@ export const zh = {
   "ui.deleted": "已删除「{name}」",
   "ui.removedFrom": "已从「{project}」移除「{name}」",
   "ui.removedFromProject": "已将「{name}」移出项目",
+  "project.delete.done": "已删除「{name}」及 {count} 个子项目",
 } as const;

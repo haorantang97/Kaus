@@ -263,6 +263,18 @@ class WorkbenchService:
         await self._module_changed(module_id)
         return {"removed": True}
 
+    async def restore(self, module_id, *, enabled=True, pinned=False):
+        """Undo of :meth:`uninstall` (2026-11-18「删除与撤销」): the record, package and data were kept."""
+        async with self._lock:
+            module = self.store.get("modules", module_id)
+            if module is None:
+                raise ApiError(404, "module_not_found", "模块不存在。")
+            module["installed"] = True
+            module.update(enabled=bool(enabled), pinned=bool(pinned) and bool(enabled))
+            self.store.put("modules", module_id, module)
+        await self._module_changed(module_id)
+        return self.module(module_id)
+
     def _example_dirs(self):
         from app.workbench.models import Manifest
         root = self.examples_root
