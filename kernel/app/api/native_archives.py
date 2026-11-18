@@ -86,6 +86,16 @@ def build_native_archive_router(service, *, auth_policy):
         return Response(raw,media_type=info['mime'],headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(info['name']),
             'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"})
 
+    @router.post('/{archive_id}/adopt',dependencies=[auth])
+    @endpoint
+    async def adopt(archive_id: str,body: ProjectBody):
+        # 2026-11-18: opening an added record turns it into an ordinary conversation when its engine is connected.
+        await project(body.projectId)
+        try: conversation=await service.adopt(archive_id,body.projectId)
+        except ArchiveError as exc: raise ApiError(404,exc.code,'归档不存在') from None
+        if conversation is None: raise ApiError(409,'archive_adopt_unavailable','该 Agent 未接入，仅可阅读')
+        return {'conversationId':conversation.id}
+
     @router.post('/{archive_id}/link',dependencies=[auth])
     @endpoint
     async def link(archive_id: str,body: ProjectBody):

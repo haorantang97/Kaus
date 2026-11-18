@@ -643,6 +643,8 @@ export const en: Record<keyof typeof zh, string> = {
   "surface.owner.unknown": "another surface",
   "surface.reason.unknown": "no reason given",
   "surface.history.group": "{count} records from the external terminal",
+  "surface.history.earlier": "Show {count} earlier",
+  "surface.history.partial": "Some content could not be read",
   "surface.preview.label": "In terminal · {count} new",
 
   /* ---- batch15 ---- */

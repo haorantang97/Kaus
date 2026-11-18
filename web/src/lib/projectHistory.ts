@@ -18,7 +18,19 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 export const projectHistoryApi = {
   choices: () => request<{ sources: HistorySource[] }>("choices"),
   candidates: (source: string, projectId: string) => request<{ sessions: HistoryCandidate[] }>(`candidates?source=${encodeURIComponent(source)}&projectId=${encodeURIComponent(projectId)}`),
-  add: (sourceIds: string[], projectId: string) => request<{ archiveIds: string[]; count: number }>("add", { sourceIds, projectId }),
+  /** Connected engines come back as ordinary conversations; the rest stay read-only records (2026-11-18). */
+  add: (sourceIds: string[], projectId: string) => request<{ archiveIds: string[]; conversationIds?: string[]; count: number }>("add", { sourceIds, projectId }),
+  /** Opening an earlier record: an ordinary conversation when its engine is connected, else null (read-only). */
+  adopt: async (id: string, projectId: string): Promise<string | null> => {
+    const response = await authorizedFetch(`/api/native-archives/${encodeURIComponent(id)}/adopt`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId }),
+    });
+    if (response.status === 409) return null;
+    if (!response.ok) throw new Error("history_request_failed");
+    const value = await response.json() as { conversationId?: unknown };
+    if (typeof value.conversationId !== "string") throw new Error("history_response_invalid");
+    return value.conversationId;
+  },
   remove: (id: string, projectId: string) => request<{ removed: boolean }>(`${encodeURIComponent(id)}/unlink`, { projectId }),
   /** Undo of remove: the archive goes back into the project. */
   link: (id: string, projectId: string) => request<{ linked: boolean }>(`${encodeURIComponent(id)}/link`, { projectId }),

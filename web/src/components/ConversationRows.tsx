@@ -101,8 +101,21 @@ export function HistoryRow({ item, projectId, className, onOpen, onOpenConversat
     catch { toast(t("project.history.removeFailed"), "bad"); }
     finally { setBusy(false); }
   };
+  // 2026-11-18「原生历史导入侧栏」: opening a record makes it an ordinary conversation when its engine is
+  // connected; otherwise it stays read-only.
+  const open = async () => {
+    setBusy(true);
+    try {
+      const conversationId = await projectHistoryApi.adopt(item.id, projectId);
+      if (conversationId === null) { onOpen(); return; }
+      notifyHistoryChanged(); window.dispatchEvent(new Event("kaus:conversations-changed"));
+      onOpenConversation(conversationId);
+    }
+    catch { onOpen(); }
+    finally { setBusy(false); }
+  };
   return <div className={`${className} kaus-row-with-menu`} onContextMenu={onContextMenu}>
-    <button type="button" className="kaus-row-open" title={item.title} onClick={onOpen}>{children}</button>
+    <button type="button" className="kaus-row-open" title={item.title} disabled={busy} onClick={() => void open()}>{children}</button>
     <RowMenu busy={busy} point={point} triggerLabel={t("conversation.menuFor", { title: item.title })} menuLabel={t("conversation.menu")} items={[
       { id: "continue", icon: <ArrowRightLeft size={16} aria-hidden />, label: t("project.move.continue"), onSelect: () => setContinuing(true) },
       { id: "remove", icon: <Unlink size={16} aria-hidden />, label: t("project.history.remove"), separated: true, onSelect: () => void remove() },

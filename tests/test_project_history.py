@@ -101,3 +101,91 @@ def test_remove_only_unlinks_one_project_and_can_be_added_again(tmp_path):
     assert [item['id'] for item in client.get('/api/native-archives/project-items',params={'projectId':project.id}).json()['items']]==[identity]
     assert client.post('/api/native-archives/add',json=request).status_code==200
     assert len(client.get('/api/native-archives/project-items',params={'projectId':project.id}).json()['items'])==1
+
+
+class _Storage:
+    async def begin(self, conversation_id, native_id): self.begun=(conversation_id,native_id)
+
+
+class _Host:
+    """Records what the importer writes; no runtime, no model calls."""
+    def __init__(self):
+        from types import SimpleNamespace
+        self.event_store=SimpleNamespace(native_storage=_Storage());self.events=[]
+    async def normalize_native_history(self, conversation_id, history): return history
+    async def emit_conversation_event(self, conversation, event): self.events.append((conversation.id,event))
+    async def compact_native_text(self, conversation): return 0
+
+
+class _Driver:
+    driver_kind='native'
+    def __init__(self): self.reads=[]
+    async def load_native_history(self, binding, native_id):
+        from drivers.base import NativeHistory, NativeHistoryEntry
+        self.reads.append(native_id)
+        return NativeHistory(native_session_id=native_id,entries=(
+            NativeHistoryEntry(entry_id='e1',role='user',text='question'),
+            NativeHistoryEntry(entry_id='e2',role='assistant',text='answer')))
+
+
+class _Registry:
+    def __init__(self, driver): self.driver=driver
+    def try_get(self, backend_id): return self.driver if backend_id=='backend:codex' else None
+    def get(self, backend_id): return self.driver
+
+
+def importing_fixture(tmp_path, connected=True):
+    from app.conversations.native_import import NativeConversationImporter
+    repos,project,other,file,store,service,client=fixture(tmp_path)
+    driver=_Driver();host=_Host()
+    if connected: asyncio.run(repos.backends.save(Backend.create(key='codex',display_name='Codex',driver_kind='native')))
+    service.importer=NativeConversationImporter(repos,host,_Registry(driver))
+    return repos,project,store,client,host,driver
+
+
+def test_add_imports_a_connected_engine_conversation_as_an_ordinary_conversation(tmp_path):
+    repos,project,store,client,host,driver=importing_fixture(tmp_path)
+    source=client.get('/api/native-archives/candidates',params={'source':'codex','projectId':project.id}).json()['sessions'][0]
+    result=client.post('/api/native-archives/add',json={'sourceIds':[source['sourceId']],'projectId':project.id}).json()
+    assert result['archiveIds']==[] and result['count']==1 and len(result['conversationIds'])==1
+    conversation=asyncio.run(repos.conversations.get(result['conversationIds'][0]))
+    binding=asyncio.run(repos.bindings.get(conversation.agent_binding_id))
+    # Bound to the original native session in this project, titled like the native one.
+    assert conversation.native_session_id=='session-native' and binding.backend_id=='backend:codex' and binding.project_id==project.id
+    # No title index: the first question stands in for the file name.
+    assert conversation.title=='question'
+    (owner,event),=host.events
+    assert owner==conversation.id and event.name=='history.reconciled'
+    assert event.data['imported'] is True and event.data['lastEntryId']=='e2' and event.data['nativeSessionId']=='session-native'
+    assert [entry['text'] for entry in event.data['entries']]==['question','answer']
+    assert host.event_store.native_storage.begun==(conversation.id,'session-native')
+    # No read-only record is left, and adding again does not duplicate.
+    assert client.get('/api/native-archives/project-items',params={'projectId':project.id}).json()['items']==[]
+    assert client.get('/api/native-archives/candidates',params={'source':'codex','projectId':project.id}).json()['sessions'][0]['added']
+    again=client.post('/api/native-archives/add',json={'sourceIds':[source['sourceId']],'projectId':project.id}).json()
+    assert again=={'archiveIds':[],'count':0}
+    assert len(asyncio.run(repos.conversations.list_for_project(project.id)))==1
+
+
+def test_unconnected_engine_keeps_the_read_only_record_and_adopt_reports_it(tmp_path):
+    repos,project,store,client,host,driver=importing_fixture(tmp_path,connected=False)
+    source=client.get('/api/native-archives/candidates',params={'source':'codex','projectId':project.id}).json()['sessions'][0]
+    result=client.post('/api/native-archives/add',json={'sourceIds':[source['sourceId']],'projectId':project.id}).json()
+    assert result['conversationIds']==[] and len(result['archiveIds'])==1
+    identity=client.get('/api/native-archives/project-items',params={'projectId':project.id}).json()['items'][0]['id']
+    refused=client.post(f'/api/native-archives/{identity}/adopt',json={'projectId':project.id})
+    assert refused.status_code==409 and refused.json()['error']['code']=='archive_adopt_unavailable'
+    assert asyncio.run(repos.conversations.list_for_project(project.id))==()
+
+
+def test_adopt_turns_an_earlier_record_into_a_conversation_once(tmp_path):
+    repos,project,store,client,host,driver=importing_fixture(tmp_path,connected=False)
+    source=client.get('/api/native-archives/candidates',params={'source':'codex','projectId':project.id}).json()['sessions'][0]
+    client.post('/api/native-archives/add',json={'sourceIds':[source['sourceId']],'projectId':project.id})
+    identity=client.get('/api/native-archives/project-items',params={'projectId':project.id}).json()['items'][0]['id']
+    asyncio.run(repos.backends.save(Backend.create(key='codex',display_name='Codex',driver_kind='native')))
+    first=client.post(f'/api/native-archives/{identity}/adopt',json={'projectId':project.id}).json()
+    second=client.post(f'/api/native-archives/{identity}/adopt',json={'projectId':project.id}).json()
+    assert first==second and first['conversationId']
+    assert len(host.events)==1 and driver.reads==['session-native']
+    assert client.get('/api/native-archives/project-items',params={'projectId':project.id}).json()['items']==[]

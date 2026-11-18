@@ -12,6 +12,7 @@ import {
   DegradedLaunchPanel,
   ExternalBanner,
   ExternalHistoryGroup,
+  ImportedHistory,
   NoticeBanner,
   ReturnToAppDialog,
   TerminalPreview,
@@ -787,6 +788,7 @@ export function ConversationPage({
   });
   const nativeSourceUnavailable = detail?.conversation?.id === conversationId && detail.historyStorage?.status === "source_unavailable";
   const loading = historyView === "skeleton" && !nativeSourceUnavailable;
+  const surfaceReady = detailLoaded && detail?.conversation?.id === conversationId && !nativeSourceUnavailable;
 
   const renderCard = (item: TimelineItem) => {
     const context = {
@@ -905,7 +907,11 @@ export function ConversationPage({
               <div className="kaus-skeleton-line" />
             </div>
           )}
-          {historyView === "empty" && !nativeSourceUnavailable && (
+          {/* 2026-11-18：导入的原生对话，原有记录作为对话开头。 */}
+          {surfaceReady && history.groups.filter(group => group.imported).map(group => (
+            <ImportedHistory key={group.id} group={group} conversationId={conversationId} />
+          ))}
+          {historyView === "empty" && !nativeSourceUnavailable && !history.groups.some(group => group.imported) && (
             <div className="px-1 py-3 text-xs" style={{ color: cream(45) }}>
               {t("conversation.empty")}
             </div>
@@ -945,7 +951,7 @@ export function ConversationPage({
             onCheckDelivery={clientRef => void checkDelivery(clientRef)}
           />
           {/* 第 3 件：回站后折叠的历史组，接在消息流末尾。 */}
-          {detailLoaded && detail?.conversation?.id === conversationId && !nativeSourceUnavailable && history.groups.map((group) => (
+          {surfaceReady && history.groups.filter(group => !group.imported).map((group) => (
             <ExternalHistoryGroup key={group.id} group={group} />
           ))}
           {external && <TerminalPreview entries={terminalPreview.entries} />}

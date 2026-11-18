@@ -3,6 +3,15 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 18 日（四续）：原生旧对话导入为普通对话
+
+依据 `product-decisions.md`「原生历史导入侧栏」。
+- 后端：`app/conversations/native_import.py`（`NativeConversationImporter`）：找到或建立项目里来源引擎的 Binding（`binding_router.ensure_project_binding`，与 `/bindings/ensure` 共用），用驱动的 `load_native_history` 读全量历史，建 `native_session_id` 指向原会话的 Conversation，按回站校准的顺序写水位与 `history.reconciled{imported:true, lastEntryId}`，再做原生文字压缩。`NativeArchiveService.add` 对可导入的直接建对话，其余照旧保存只读记录；新接口 `POST /api/native-archives/{id}/adopt`。来源与引擎的对应由各驱动的 `archive_source.py` 声明（Hermes 的 `BACKEND_KEYS` 含 ACP 变体），公共层不出现引擎名。
+- 前端：历史行点开先 `adopt`，成功即打开对话，未接入（409）打开原阅读窗口；添加后刷新侧栏；对话页把导入的历史作为开头按普通消息显示（Markdown 渲染），先显示最近 100 条，「显示更早的 N 条」逐段展开；导入对话不再显示「暂无消息」。
+- 测试：`tests/test_project_history.py` 新增 3 项（导入为对话且不重复、未接入保留只读与 409、旧记录 adopt 只转一次），根目录 369 项通过；kernel 4,220 项 + Hermes 隔离 5 项通过；前端 129 个文件 1,098 项通过（新增 `ImportedHistory.test.tsx`、历史行 adopt 两项），构建成功。
+- 实机：两个隔离实例（改前 1c83d0f、改后当前代码），同一份合成 Codex 旧对话（130 条）。改后：项目页与侧栏显示第一句提问为标题，点开为对话页、100 条 +「显示更早的 30 条」，清空 sessionStorage 刷新后由事件重放恢复。截图在本机 `output/visual-20261118/import-*`。
+- 未验证：在原生会话里实际续接发送（测试环境未装 Codex，且普通测试不发真实模型请求）；续接依赖既有 `native_session_id` 收养路径。导入的对话在侧栏先带未读点，打开后消失。
+
 ## 11 月 18 日（三续）：项目标题、新建对话按钮、确认框标题、桌面菜单栏
 
 依据 `product-decisions.md`「项目标题、新建按钮、确认框与菜单栏」。前后对比用同一份合成数据、两个隔离实例（改前为 a030dba、改后为当前代码）拍摄，截图不进 Git。

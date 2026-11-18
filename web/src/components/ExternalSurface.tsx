@@ -17,6 +17,8 @@ import { ChevronDown, ChevronRight, RotateCw, Settings2, SquareArrowOutUpRight, 
 import { useLocale } from "../i18n";
 import { Button, ErrorNotice, Modal } from "./ui";
 import { failureDiagnostic } from "../lib/userFacingErrors";
+import { MarkdownContent } from "./cards/MarkdownContent";
+import { MarkdownBoundary } from "./cards/TextCard";
 import type { ExternalHistoryGroup as HistoryGroup, ReconciledEntry } from "../lib/externalSurface";
 import type { TerminalStatusWire } from "../lib/sessionApi";
 
@@ -188,6 +190,32 @@ export function TerminalPreview({ entries }: { entries: ReconciledEntry[] }) {
     <div className="kaus-terminal-preview" data-testid="terminal-preview" aria-live="polite">
       <div className="kaus-tool-name">{t("surface.preview.label", { count: entries.length })}</div>
       {entries.map((entry) => <HistoryEntry key={entry.entryId} entry={entry} />)}
+    </div>
+  );
+}
+
+/** How many imported messages show at first; earlier ones load on request. */
+export const IMPORTED_HISTORY_PAGE = 100;
+
+/** An imported native conversation's own history, shown as ordinary messages at its start (2026-11-18). */
+export function ImportedHistory({ group, conversationId }: { group: HistoryGroup; conversationId: string }) {
+  const { t } = useLocale();
+  const [shown, setShown] = useState(IMPORTED_HISTORY_PAGE);
+  const entries = group.entries.filter(entry => entry.text.trim());
+  const hidden = Math.max(0, entries.length - shown);
+  return (
+    <div data-testid="imported-history">
+      {hidden > 0 && <button type="button" className="kaus-inline-action" onClick={() => setShown(value => value + IMPORTED_HISTORY_PAGE)}>
+        {t("surface.history.earlier", { count: hidden })}
+      </button>}
+      {entries.slice(hidden).map(entry => entry.role === "user"
+        ? <div key={entry.entryId} className="kaus-msg kaus-content-message is-user"><div className="kaus-msg-body">{entry.text}</div></div>
+        : <div key={entry.entryId} className="kaus-msg kaus-content-message is-assistant"><div className="kaus-prose">
+            <MarkdownBoundary text={entry.text}><MarkdownContent text={entry.text} conversationId={conversationId} /></MarkdownBoundary></div></div>)}
+      {!group.complete && group.gaps.length > 0 && <details className="text-xs opacity-60" data-testid="imported-history-details">
+        <summary>{t("surface.history.partial")}</summary>
+        <pre className="mt-2 whitespace-pre-wrap">{failureDiagnostic(group.gaps.join("\n"))}</pre>
+      </details>}
     </div>
   );
 }

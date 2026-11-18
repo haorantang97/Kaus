@@ -88,6 +88,46 @@ from app.projects.models import AgentBinding
 from app.projects.binding_snapshot import register_binding_snapshot
 from drivers.base import APPROVAL_MODES
 
+
+async def ensure_project_binding(repositories: RepositorySet, registry: Any, project_id: str, backend_id: str) -> AgentBinding:
+    """The project's ordinary Binding for a connected engine, created or re-enabled on first use.
+
+    Shared by ``POST /projects/{id}/bindings/ensure`` and the import of existing
+    native conversations (2026-11-18). Reuses the project's own configuration.
+    """
+    project = await repositories.projects.get(project_id)
+    if project is None:
+        raise ApiError(404, "project_not_found", f"未知 Project：{project_id}")
+    backend = await repositories.backends.get(backend_id)
+    driver = registry.try_get(backend_id) if registry is not None else None
+    if backend is None or driver is None or driver.driver_kind == "mock":
+        raise ApiError(409, "engine_not_connected", "引擎未接入")
+    require_new_work(driver, backend_id=backend_id)
+    ordinary = [
+        item for item in await repositories.bindings.list_for_backend(project_id, backend_id)
+        if not item.runtime_config.get("group_execution")
+    ]
+    enabled = [item for item in ordinary if item.enabled]
+    if enabled:
+        chosen = next((item for item in enabled if item.is_default), None)
+        return chosen or next((item for item in enabled if item.discriminator is None), enabled[0])
+    if ordinary:
+        # Explicitly choosing a globally connected Agent restores its
+        # old association. There is no longer a per-project enable UI.
+        chosen = next((item for item in ordinary if item.discriminator is None), ordinary[0])
+        return await repositories.bindings.save(chosen.evolve(enabled=True))
+    new_id = make_binding_id(project.slug, backend.key)
+    if await repositories.bindings.get(new_id) is not None:
+        raise ApiError(409, "binding_id_conflict", "关联标识已被占用")
+    binding = AgentBinding.create(
+        project=project, backend=backend, display_name=backend.display_name,
+        is_default=False, origin="domain",
+    )
+    prepare = getattr(driver, "prepare_project_binding", None)
+    if prepare is not None:
+        binding = prepare(binding)
+    return await repositories.bindings.save(binding)
+
 #: ``runtime_config`` 里允许通过 ``PATCH`` 写的**通用**键。
 #:
 #: 白名单而不是黑名单：``runtime_config`` 是 backend 私有配置的存放处
@@ -465,39 +505,7 @@ def build_binding_write_router(
         normalized = normalize_project_id(project_id)
         backend_id = normalize_backend_key_id(body.backend_id)
         async with ensure_lock:
-            project = await repositories.projects.get(normalized)
-            if project is None:
-                raise ApiError(404, "project_not_found", f"未知 Project：{project_id}")
-            backend = await repositories.backends.get(backend_id)
-            driver = registry.try_get(backend_id) if registry is not None else None
-            if backend is None or driver is None or driver.driver_kind == "mock":
-                raise ApiError(409, "engine_not_connected", "引擎未接入")
-            require_new_work(driver, backend_id=backend_id)
-            ordinary = [
-                item for item in await repositories.bindings.list_for_backend(normalized, backend_id)
-                if not item.runtime_config.get("group_execution")
-            ]
-            enabled = [item for item in ordinary if item.enabled]
-            if enabled:
-                chosen = next((item for item in enabled if item.is_default), None)
-                chosen = chosen or next((item for item in enabled if item.discriminator is None), enabled[0])
-                return binding_to_wire(chosen)
-            if ordinary:
-                # Explicitly choosing a globally connected Agent restores its
-                # old association. There is no longer a per-project enable UI.
-                chosen = next((item for item in ordinary if item.discriminator is None), ordinary[0])
-                return binding_to_wire(await repositories.bindings.save(chosen.evolve(enabled=True)))
-            new_id = make_binding_id(project.slug, backend.key)
-            if await repositories.bindings.get(new_id) is not None:
-                raise ApiError(409, "binding_id_conflict", "关联标识已被占用")
-            binding = AgentBinding.create(
-                project=project, backend=backend, display_name=backend.display_name,
-                is_default=False, origin="domain",
-            )
-            prepare = getattr(driver, "prepare_project_binding", None)
-            if prepare is not None:
-                binding = prepare(binding)
-            return binding_to_wire(await repositories.bindings.save(binding))
+            return binding_to_wire(await ensure_project_binding(repositories, registry, normalized, backend_id))
 
     # --- 项目工作目录 -------------------------------------------------------- #
 

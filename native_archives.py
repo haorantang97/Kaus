@@ -861,8 +861,10 @@ def plain_content(content):
 
 
 class NativeArchiveService:
-    def __init__(self, store, repositories, source_roots=None):
+    def __init__(self, store, repositories, source_roots=None, importer=None):
         self.store=store;self.repositories=repositories;self.source_roots=source_roots
+        # 2026-11-18「原生历史导入侧栏」: imports become ordinary conversations when the engine is connected.
+        self.importer=importer
 
     async def project(self, project_id):
         project=await self.repositories.projects.get(project_id)
@@ -937,12 +939,32 @@ class NativeArchiveService:
         managed=set()
         for project in await self.repositories.projects.list_all(): managed.update(await self.managed_native_ids(project.id))
         rows=await asyncio.to_thread(self.store.sources,source_ids)
-        selected=[row['sourceId'] for row in rows if (row['source'],row['nativeId']) not in managed]
-        if not selected: return {'archiveIds':[],'count':0}
-        def commit():
-            preview=self.store.preview(selected,project_id,target.workspace_root,storage='reference')
-            return self.store.import_preview(preview['previewToken'],project_id)
-        return await asyncio.to_thread(commit)
+        pending=[row for row in rows if (row['source'],row['nativeId']) not in managed]
+        if not pending: return {'archiveIds':[],'count':0}
+        conversation_ids=[];selected=[]
+        for row in pending:
+            from app.conversations.native_import import native_title
+            conversation=await self.importer.adopt(project_id,row['source'],row['nativeId'],native_title(row.get('title'),row.get('path'))) if self.importer else None
+            if conversation is not None: conversation_ids.append(conversation.id)
+            else: selected.append(row['sourceId'])
+        result={'archiveIds':[],'count':0}
+        if selected:
+            def commit():
+                preview=self.store.preview(selected,project_id,target.workspace_root,storage='reference')
+                return self.store.import_preview(preview['previewToken'],project_id)
+            result=await asyncio.to_thread(commit)
+        # Engines not connected to Kaus keep the read-only record.
+        return result|{'conversationIds':conversation_ids,'count':result.get('count',0)+len(conversation_ids)}
+
+    async def adopt(self, archive_id, project_id):
+        """Turn an added archive record into a conversation; ``None`` keeps it read-only."""
+        import asyncio
+        await self.project(project_id)
+        await asyncio.to_thread(self.store.authorize,archive_id,project_id)
+        item=next((row for row in await asyncio.to_thread(self.store.list,project_id) if row['id']==archive_id),None)
+        if item is None or self.importer is None: return None
+        from app.conversations.native_import import native_title
+        return await self.importer.adopt(project_id,item['source'],item['nativeId'],native_title(item['title'],item.get('sourcePath')))
 
     def scan(self, source, path=None):
         known=next((item for item in self.sources() if item['id']==source),None)

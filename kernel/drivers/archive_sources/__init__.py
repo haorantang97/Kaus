@@ -14,6 +14,11 @@ def adapter(source):
     for module in MODULES:
         if source in module.SOURCES: return module
     raise ValueError('archive_source_unsupported')
+def backend_keys(source):
+    """Engine keys whose sessions this source records; a module may declare more via BACKEND_KEYS."""
+    try: module=adapter(source)
+    except ValueError: return ()
+    return tuple(getattr(module,'BACKEND_KEYS',{}).get(source,(source,)))
 def defaults():
     return [source for module in MODULES for source in module.defaults()]
 def scan(source,root):

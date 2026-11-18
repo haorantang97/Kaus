@@ -1496,7 +1496,9 @@ def open_session_runtime(
     router.routes.extend(build_hook_library_router(hook_library, auth_policy=auth_policy).routes)
     from native_archives import NativeArchiveStore, NativeArchiveService
     from app.api.native_archives import build_native_archive_router
-    native_archives = NativeArchiveService(NativeArchiveStore(resolved_token_path.parent / 'native-archives'), repositories)
+    from app.conversations.native_import import NativeConversationImporter
+    native_archives = NativeArchiveService(NativeArchiveStore(resolved_token_path.parent / 'native-archives'), repositories,
+                                           importer=NativeConversationImporter(repositories, session_host, registry))
     router.routes.extend(build_native_archive_router(native_archives, auth_policy=auth_policy).routes)
     from app.conversations.continuation import ContinuationService
     from app.api.continuations import build_continuation_router

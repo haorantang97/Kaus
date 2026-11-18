@@ -17,7 +17,7 @@ vi.mock("../lib/sessionApi", async importOriginal => ({
 }));
 vi.mock("../lib/projectHistory", async importOriginal => ({
   ...await importOriginal<typeof import("../lib/projectHistory")>(),
-  projectHistoryApi: { remove: vi.fn(), link: vi.fn() },
+  projectHistoryApi: { remove: vi.fn(), link: vi.fn(), adopt: vi.fn() },
 }));
 
 const conversation = { id: "c1", projectId: "project:site", bindingId: "b1", backendId: "backend:codex", title: "接口层重构",
@@ -34,6 +34,7 @@ beforeEach(() => {
   vi.mocked(fetchBackendUiCapabilities).mockReset().mockResolvedValue({ externalCli: { supported: false } } as never);
   vi.mocked(projectHistoryApi.remove).mockReset().mockResolvedValue(undefined as never);
   vi.mocked(projectHistoryApi.link).mockReset().mockResolvedValue(undefined as never);
+  vi.mocked(projectHistoryApi.adopt).mockReset().mockResolvedValue(null);
 });
 
 describe("对话行在各处一致", () => {
@@ -59,14 +60,25 @@ describe("对话行在各处一致", () => {
   it("原生历史行：⋯ 与右键里移出项目，撤销放回项目", async () => {
     const user = userEvent.setup(); const onOpen = vi.fn();
     render(<><HistoryRow item={archive} projectId="project:site" className="row" onOpen={onOpen} onOpenConversation={vi.fn()}>旧的 Codex 记录</HistoryRow><ToastHost /></>);
+    // Engine not connected: the record stays read-only.
     await user.click(screen.getByRole("button", { name: "旧的 Codex 记录" }));
-    expect(onOpen).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onOpen).toHaveBeenCalledOnce());
+    expect(projectHistoryApi.adopt).toHaveBeenCalledWith("h1", "project:site");
     await user.pointer({ keys: "[MouseRight]", target: screen.getByRole("button", { name: "旧的 Codex 记录" }) });
     expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["用其他 Agent 继续", "移出项目"]);
     await user.click(screen.getByRole("menuitem", { name: "移出项目" }));
     await waitFor(() => expect(projectHistoryApi.remove).toHaveBeenCalledWith("h1", "project:site"));
     await user.click(await screen.findByRole("button", { name: "撤销" }));
     await waitFor(() => expect(projectHistoryApi.link).toHaveBeenCalledWith("h1", "project:site"));
+  });
+
+  it("原生历史行：引擎已接入时，打开即成为普通对话", async () => {
+    const user = userEvent.setup(); const onOpen = vi.fn(), onOpenConversation = vi.fn();
+    vi.mocked(projectHistoryApi.adopt).mockResolvedValue("conversation:c7");
+    render(<HistoryRow item={archive} projectId="project:site" className="row" onOpen={onOpen} onOpenConversation={onOpenConversation}>旧的 Codex 记录</HistoryRow>);
+    await user.click(screen.getByRole("button", { name: "旧的 Codex 记录" }));
+    await waitFor(() => expect(onOpenConversation).toHaveBeenCalledWith("conversation:c7"));
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
   it("协作组成员行：单击打开这位成员的对话，右键打开同一份菜单", async () => {

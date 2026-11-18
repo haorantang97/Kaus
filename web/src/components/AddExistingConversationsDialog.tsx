@@ -45,6 +45,7 @@ export function AddExistingConversationsDialog({ projectId, projectName, onClose
         setSelected(current => current.filter(id => !completed.has(id)));
         setProgress({ completed: offset + batch.length, total: pending.length });
         notifyHistoryChanged();
+        window.dispatchEvent(new Event("kaus:conversations-changed"));
       }
       onAdded?.(); onClose();
     }

@@ -8,6 +8,8 @@ from urllib.parse import quote
 import json
 from drivers.archive_sources.io import stamp,validate_native_file
 SOURCES={'hermes': {'label':'Hermes','format':'state-db-v1'}}
+# Both Hermes engines write sessions this source reads.
+BACKEND_KEYS={'hermes':('hermes','hermes-acp')}
 def defaults():
     return [{'id':'hermes',**SOURCES['hermes'],'path':str(Path(os.environ.get('HERMES_HOME',Path.home()/'.hermes')))}]
 @contextmanager

@@ -36,7 +36,7 @@ export interface ReconciledEntry {
 
 export type SurfaceEvent =
   | { kind: "surface.changed"; surface: SurfaceKind; launchId: string | null }
-  | { kind: "history.reconciled"; entries: ReconciledEntry[]; complete: boolean; gaps: string[] }
+  | { kind: "history.reconciled"; entries: ReconciledEntry[]; complete: boolean; gaps: string[]; imported: boolean }
   | { kind: "lease.taken_over"; previousOwner: string | null; previousOwnerLabel: string | null; stale: boolean; reason: string | null };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -91,6 +91,8 @@ export function parseSurfaceEvent(envelope: AgentEventEnvelope): SurfaceEvent | 
       // 后端没给 `complete` 时按"完整"处理：降级提示只在**明说**不完整时出现。
       complete: data.complete !== false,
       gaps: asStringList(data.gaps),
+      // 2026-11-18: an imported native conversation's own history, shown as the conversation's start.
+      imported: data.imported === true,
     };
   }
   if (event.name === LEASE_TAKEN_OVER_NAME) {
@@ -115,6 +117,8 @@ export interface ExternalHistoryGroup {
   entries: ReconciledEntry[];
   complete: boolean;
   gaps: string[];
+  /** The history of an imported native conversation (rendered first, not folded). */
+  imported?: boolean;
 }
 
 /** 每条会话最多留这么多组，超了丢最旧的（存储配额不该被一条抽风的会话吃光）。 */
@@ -139,6 +143,7 @@ export function readExternalHistory(conversationId: string): ExternalHistoryGrou
           entries: asEntries(item.entries),
           complete: item.complete !== false,
           gaps: asStringList(item.gaps),
+          imported: item.imported === true,
         },
       ];
     });

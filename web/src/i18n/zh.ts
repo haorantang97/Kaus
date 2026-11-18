@@ -667,6 +667,8 @@ export const zh = {
   "surface.owner.unknown": "另一处",
   "surface.reason.unknown": "原因未知",
   "surface.history.group": "外部终端期间的 {count} 条记录",
+  "surface.history.earlier": "显示更早的 {count} 条",
+  "surface.history.partial": "部分内容未能读取",
   "surface.preview.label": "终端中 · {count} 条新消息",
 
   /* ---- batch15 ---- */
