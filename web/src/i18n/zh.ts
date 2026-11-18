@@ -451,11 +451,11 @@ export const zh = {
 
   /* ---- 能力清单的题名（与内核 FEATURE_PATHS 一一对应） ---- */
   "feature.structuredEvents": "结构化事件",
-  "feature.sessions.list": "会话列举",
-  "feature.sessions.create": "新建会话",
-  "feature.sessions.resume": "会话续接",
+  "feature.sessions.list": "对话列举",
+  "feature.sessions.create": "新建对话",
+  "feature.sessions.resume": "对话续接",
   "feature.sessions.history": "原生历史",
-  "feature.sessions.branch": "会话分支",
+  "feature.sessions.branch": "对话分支",
   "feature.card.streaming": "流式输出",
   "feature.card.tools.calls": "工具调用",
   "feature.card.tools.output": "工具输出",

@@ -344,9 +344,9 @@ describe("能力清单去墙（第 4 件，AD-111）", () => {
     await userEvent.click(screen.getByRole("button", { name: /能力清单|Capabilities/ }));
     expect(screen.getByText("结构化事件")).toBeInTheDocument();
     expect(screen.getByText("流式输出")).toBeInTheDocument();
-    expect(screen.queryByText("会话列举")).toBeNull();
+    expect(screen.queryByText("对话列举")).toBeNull();
     expect(screen.queryByText("新建会话")).toBeNull();
-    expect(screen.queryByText("会话分支")).toBeNull();
+    expect(screen.queryByText("对话分支")).toBeNull();
   });
 
   it("默认折起来，数在折叠头上（batch37 第 4 件 / 产品判断 #6）", async () => {
