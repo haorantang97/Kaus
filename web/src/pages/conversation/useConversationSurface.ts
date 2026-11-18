@@ -209,7 +209,7 @@ export function useConversationSurface({ conversationId, archived, archiveBusy, 
                 owner: String(held.owner ?? t("surface.owner.unknown")),
                 acquiredAt: String(held.acquiredAt ?? t("surface.reason.unknown")),
               }),
-              { okLabel: t("surface.confirm.takeover"), danger: true },
+              { title: t("surface.confirm.leaseHeldTitle"), okLabel: t("surface.confirm.takeover"), danger: true },
             );
             if (!ok) return;
             continue;
@@ -241,6 +241,7 @@ export function useConversationSurface({ conversationId, archived, archiveBusy, 
           const active = conflictDetail(failure, "external_active");
           if (active && !force) {
             const ok = await confirmAsync(t("surface.confirm.externalActive"), {
+              title: t("surface.confirm.externalActiveTitle"),
               okLabel: t("surface.confirm.reclaim"),
               danger: true,
             });

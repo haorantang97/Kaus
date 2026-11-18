@@ -58,7 +58,7 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
     finally { setBusy(false); }
   };
   const skip = async () => {
-    if (!await confirmAsync(t("import.skipConfirm"), { okLabel: t("import.skipOk") })) return;
+    if (!await confirmAsync(t("import.skipConfirm"), { title: t("import.skipTitle"), okLabel: t("import.skipOk") })) return;
     setBusy(true); setError(null);
     try { await skipCapabilityImport(agentKey); onSkipped?.(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : t("import.failed")); }

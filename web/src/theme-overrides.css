@@ -1997,7 +1997,8 @@ button.kaus-conversation-title:hover {
 }
 
 .kaus-project-title h1 {
-  font: 500 24px/1.3 var(--theme-font-serif);
+  /* 2026-11-18: back to the earlier sans-serif title (replaces the 11-03 serif). */
+  font: 600 20px/1.2 var(--theme-font-sans);
 }
 
 .kaus-project-conversation {
@@ -3173,3 +3174,12 @@ body.dark { --status-unread: #6ea8ff; --status-waiting: #f0a24a; }
 .kaus-sidebar-search-button:hover { background: var(--control-hover); color: var(--midground-base); }
 .kaus-sidebar-search { flex: 1; min-width: 0; height: 26px; padding: 0 8px; border: 1px solid var(--border-subtle); border-radius: 7px; background: var(--surface-raised); color: var(--midground-base); font: 12px/1.4 var(--theme-font-sans); }
 .kaus-sidebar-search:focus { border-color: var(--control-focus); outline: none; }
+
+/* 项目页「新建对话」（2026-11-18）：橄榄绿底、尺寸与旁边的图标按钮协调。 */
+.kaus-project-title-actions .kaus-project-primary, .kaus-button--primary.kaus-project-primary {
+  min-height: 32px; height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px;
+  background: var(--accent-text); border-color: transparent; color: #fff;
+}
+.kaus-button--primary.kaus-project-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-text) 88%, #000); }
+body.dark .kaus-button--primary.kaus-project-primary { color: var(--surface-1); }
+body.dark .kaus-button--primary.kaus-project-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-text) 88%, #fff); }

@@ -102,7 +102,7 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "system", onThe
     catch (e) { setError(describeFailure(e)); }
   };
   const remove = async (item: ArchivedConversationWire) => {
-    if (!await confirmAsync(t("conversation.row.deleteConfirm", { title: item.title }), { okLabel: t("conversation.row.delete"), danger: true })) return;
+    if (!await confirmAsync(t("conversation.row.deleteConfirm"), { title: t("conversation.row.deleteTitle", { title: item.title }), okLabel: t("conversation.row.delete"), danger: true })) return;
     setBusyId(item.id); setError(null);
     try {
       await deleteConversation(item.id);

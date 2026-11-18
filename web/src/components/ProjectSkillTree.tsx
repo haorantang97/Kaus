@@ -59,7 +59,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
   // 整个插件从能力库删除：已启用它的项目一起停用（后端删目录记录、能力行与文件）。
   const uninstallPlugin = async (skill: SkillTreeSkill) => {
     setMenu(null);
-    if (!skill.pluginId || !await confirmAsync(t("library.removeConfirm", { name: skill.name }), { okLabel: t("library.remove"), danger: true })) return;
+    if (!skill.pluginId || !await confirmAsync(t("library.removeConfirm"), { title: t("library.removeTitle", { name: skill.name }), okLabel: t("library.remove"), danger: true })) return;
     try { await removePlugin(skill.pluginId); toast(t("library.removed"), "ok"); await load(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
   };

@@ -48,6 +48,9 @@ describe("对话行在各处一致", () => {
     expect(readSidebarPins()["project:site"]).toEqual(["c1"]);
     await user.click(screen.getByRole("button", { name: "接口层重构 对话菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    // Confirm title states the question, the body the consequence (2026-11-18).
+    expect(screen.getByRole("heading", { name: "删除「接口层重构」？" })).toBeInTheDocument();
+    expect(screen.getByText("仅删除 Kaus 记录，原生会话保留，不可恢复。")).toBeInTheDocument();
     await user.click(screen.getAllByRole("button", { name: "删除" }).at(-1)!);
     await waitFor(() => expect(deleteConversation).toHaveBeenCalledWith("c1"));
     expect(onChanged).toHaveBeenCalled();

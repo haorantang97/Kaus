@@ -60,7 +60,7 @@ export function SelfCheckPanel({ agentKey, agentLabel, onBack, onLeave, onMarked
     finally { setBusy(false); }
   };
   const mark = async (id: string) => {
-    if (!await confirmAsync(t("mcp.bindConfirm", { agent: agentLabel }), { okLabel: t("selfCheck.markBound") })) return;
+    if (!await confirmAsync(t("mcp.bindConfirm", { agent: agentLabel }), { title: t("mcp.bindTitle", { agent: agentLabel }), okLabel: t("selfCheck.markBound") })) return;
     setBusy(true); setError(null);
     try { await markCapabilitiesBound(agentKey, [id]); setMarked(old => new Set(old).add(id)); onMarked(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }

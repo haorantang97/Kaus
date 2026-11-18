@@ -236,6 +236,17 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [goView, sessionOn]);
+  // Desktop menu bar commands (desktop/app_menu.py, 2026-11-18): 新对话 ⌘N · 新建项目 ⇧⌘N · 设置 ⌘,
+  useEffect(() => {
+    if (!sessionOn) return;
+    const host = window as Window & { kausCommand?: (name: string) => void };
+    host.kausCommand = (name: string) => {
+      if (name === "newConversation") navigate(newConversationPath(null));
+      else if (name === "newProject") { setNewAgentParent(null); setNewOpen(true); }
+      else if (name === "settings") goView("config");
+    };
+    return () => { delete host.kausCommand; };
+  }, [goView, navigate, sessionOn]);
   const openMenu = (name: string, rect: DOMRect) =>
     setMenu({ name, x: Math.max(8, rect.right - 192), y: rect.bottom + 4 });
 

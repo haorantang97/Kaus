@@ -324,14 +324,15 @@ export function ToastHost() {
 }
 
 /* ---------------- imperative confirm ---------------- */
-type ConfirmState = { msg: string; okLabel: string; danger: boolean; resolve: (v: boolean) => void } | null;
+type ConfirmState = { title?: string; msg: string; okLabel: string; danger: boolean; resolve: (v: boolean) => void } | null;
 let _confirm: ConfirmState = null;
 const _confirmSubs = new Set<() => void>();
 function _emitConfirm() { for (const f of _confirmSubs) f(); }
-export function confirmAsync(msg: string, opts: { okLabel?: string; danger?: boolean } = {}): Promise<boolean> {
+/** Title states the question, `msg` the consequence (2026-11-18). Without a title, `msg` is the whole question. */
+export function confirmAsync(msg: string, opts: { title?: string; okLabel?: string; danger?: boolean } = {}): Promise<boolean> {
   return new Promise((resolve) => {
     if (_confirm) _confirm.resolve(false);   // 单槽:新确认顶掉旧的时,旧 promise 以"取消"结算,调用方不会永久挂起
-    _confirm = { msg, okLabel: opts.okLabel ?? t("ui.ok"), danger: !!opts.danger, resolve };
+    _confirm = { title: opts.title, msg, okLabel: opts.okLabel ?? t("ui.ok"), danger: !!opts.danger, resolve };
     _emitConfirm();
   });
 }
@@ -345,7 +346,10 @@ export function ConfirmHost() {
   const done = (v: boolean) => { s.resolve(v); _confirm = null; _emitConfirm(); };
   return (
     <Modal onClose={() => done(false)} width={420}>
-      <p data-modal-title className="mb-4 text-sm leading-relaxed" style={{ color: "var(--midground-base)" }}>{s.msg}</p>
+      {s.title
+        ? <><h3 data-modal-title className="mb-1.5 text-sm font-semibold leading-snug" style={{ color: "var(--midground-base)" }}>{s.title}</h3>
+            <p className="mb-4 text-[13px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>{s.msg}</p></>
+        : <p data-modal-title className="mb-4 text-sm leading-relaxed" style={{ color: "var(--midground-base)" }}>{s.msg}</p>}
       <div className="flex justify-end gap-3">
         <Button onClick={() => done(false)}>{t("ui.cancel")}</Button>
         <Button variant={s.danger ? "danger" : "primary"} onClick={() => done(true)}>{s.okLabel}</Button>

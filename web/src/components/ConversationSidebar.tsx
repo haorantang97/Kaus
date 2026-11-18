@@ -160,7 +160,7 @@ export function ConversationSidebar({
 
   const remove = async (conversationId: string, projectId: string, title: string) => {
     if (busyId) return;
-    if (!await confirmAsync(t("conversation.row.deleteConfirm", { title }), { okLabel: t("conversation.row.delete"), danger: true })) return;
+    if (!await confirmAsync(t("conversation.row.deleteConfirm"), { title: t("conversation.row.deleteTitle", { title }), okLabel: t("conversation.row.delete"), danger: true })) return;
     setBusyId(conversationId);
     try {
       await deleteConversation(conversationId);

@@ -149,7 +149,7 @@ function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onC
   const definition = detail.definition;
   const keys = definition?.transport === "stdio" ? definition.env ?? [] : definition?.headers ?? [];
   const bind = async () => {
-    if (!await confirmAsync(t("mcp.bindConfirm", { agent: detail.agentLabel }), { okLabel: t("mcp.bind") })) return;
+    if (!await confirmAsync(t("mcp.bindConfirm", { agent: detail.agentLabel }), { title: t("mcp.bindTitle", { agent: detail.agentLabel }), okLabel: t("mcp.bind") })) return;
     await act(() => bindMcp(id));
   };
   const remove = async () => {
@@ -160,7 +160,7 @@ function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onC
       undoToast(t("ui.deleted", { name: detail.name }), async () => { try { await importMcp(id); onChanged(); } catch { /* list shows the state */ } });
       return;
     }
-    if (!await confirmAsync(t("mcp.removeConfirm"), { okLabel: t("mcp.remove"), danger: true })) return;
+    if (!await confirmAsync(t("mcp.removeConfirm"), { title: t("mcp.removeTitle"), okLabel: t("mcp.remove"), danger: true })) return;
     await act(() => removeMcp(id), true);
   };
 

@@ -39,7 +39,7 @@ export function ModuleFrame({module, onConversation, onConfigure}: {module: Work
     const disconnect=connectModuleFrame({frame,moduleId:module.id,onReady:()=>setFailure(previous=>previous==="load"?null:previous),onRevoked:()=>{editor?.dispose();setFailure("revoked");},onConversation:id=>callback.current(id),ui:{
       surface:editor ? {sites:editor.sites,request:editor.request} : undefined,
       configure: ()=>configure.current?.(),
-      confirm: message=>confirmAsync(`${module.name} · ${message}`),
+      confirm: message=>confirmAsync(message, { title: module.name }),
       copy: content=>copyText(content),
       external: async url=>{
         const host=new URL(url).hostname;

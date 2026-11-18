@@ -60,7 +60,7 @@ export function CapabilityOnboardingStep({ invitation, footerStart, onFinish }: 
 
   // 还在读取时跳过：同样确认「以空白状态接入」，并记为不导入任何能力。
   const skipWhileReading = async () => {
-    if (!await confirmAsync(t("import.skipConfirm"), { okLabel: t("import.skipOk") })) return;
+    if (!await confirmAsync(t("import.skipConfirm"), { title: t("import.skipTitle"), okLabel: t("import.skipOk") })) return;
     try { await skipCapabilityImport(invitation.agentKey); } catch { setFailed(true); return; }
     await finish("skipped");
   };

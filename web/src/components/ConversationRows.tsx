@@ -70,7 +70,7 @@ export function ConversationRow({ conversation, className, onOpen, onChanged, ch
       onRename={() => setRenaming(conversation.title)}
       onArchive={() => { void work(() => archiveConversation(conversation.id), "sidebar.archiveFailed").then(ok => { if (ok) unpin(); }); }}
       onDelete={() => { void (async () => {
-        if (!await confirmAsync(t("conversation.row.deleteConfirm", { title: conversation.title }), { okLabel: t("conversation.row.delete"), danger: true })) return;
+        if (!await confirmAsync(t("conversation.row.deleteConfirm"), { title: t("conversation.row.deleteTitle", { title: conversation.title }), okLabel: t("conversation.row.delete"), danger: true })) return;
         if (await work(() => deleteConversation(conversation.id), "sidebar.deleteFailed")) unpin();
       })(); }} />
   </div>;

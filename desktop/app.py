@@ -14,6 +14,7 @@ import urllib.request
 import webview
 from workspace_bridge import WorkspaceBridge
 from webview_compat import install_webview_compat
+import app_menu
 
 URL = "http://127.0.0.1:8877/"
 HEALTH = "http://127.0.0.1:8877/api/health"
@@ -104,7 +105,7 @@ def main() -> None:
         js_api=bridge,
     )
     bridge._bind(window)
-    webview.start()
+    webview.start(app_menu.install, (window,), localization=app_menu.LOCALIZATION)
 
 
 if __name__ == "__main__":
