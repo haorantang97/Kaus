@@ -1,20 +1,18 @@
 import "./project-polish.css";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { CornerDownLeft, MoreHorizontal, Plus, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { CornerDownLeft, Plus } from "lucide-react";
 import { type NetworkResp } from "../lib/api";
 import { useLocale } from "../i18n";
-import { Button, cream, dname, Overlay } from "./ui";
-import { ReparentModal } from "./ReparentModal";
+import { Button, dname, Overlay } from "./ui";
+import { moveProjectWithUndo } from "../lib/projectMove";
 import { ProjectSkillTree } from "./ProjectSkillTree";
 import { CAPABILITY_CHANGES_EVENT, fetchCapabilityChanges } from "../lib/skillTreeApi";
 import "./project-skill-tree.css";
 import { wheelAnchor, wheelFling, wheelNodeTransform, wheelSnapDuration, wheelSnapEase, wheelTransformCss } from "../lib/wheelGeometry";
-import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
 
 /** 每列末尾那个「+ 添加项目」虚节点的 id（不是真 profile，`nodes[]` 里查不到）。 */
 export const ADD_NODE_ID = "__add-child__";
 // A plain rounded card since the new-conversation button left the panel (2026-11-17).
-const PROJECT_ENTER_SHAPE = "M .03 .01 H .97 Q .997 .01 .997 .13 V .87 Q .997 .99 .97 .99 H .03 Q .003 .99 .003 .87 V .13 Q .003 .01 .03 .01 Z";
 type AgentGraphMode = "chat" | "governance";
 /** `snap`：吸附 / 点击定位时的定时缓动段；滚动中为空，节点只跟一阶弹簧走。 */
 type WheelSnap = { from: number; to: number; start: number; duration: number };
@@ -26,11 +24,10 @@ type WheelGeometry = { columns: ColumnGeometry[]; statics: Record<string, { l: {
    保留旧版全部能力:拖拽改父级(+ReparentModal 影响预览)/ 顶层拖放区 / 草稿暂存 /
    ⋯菜单(置顶·改名·fork·删除,经 onOpenMenu→CtxMenu)/ 停用标记 /
    默认是对话浏览;治理模式才启用组织维护动作。 */
-export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onOpenMenu, onAddChild, embedded = false, focusName = null, mode = "governance", onModeChange }: {
+export function AgentGraph({ net, onClose, onChanged, onDetail, onOpenMenu, onAddChild, embedded = false, focusName = null, mode = "governance", onModeChange }: {
   net: NetworkResp;
   onClose: () => void;
   onChanged: () => void;
-  onGoProfile: (n: string) => void;
   onDetail: (n: string) => void;
   onOpenMenu: (name: string, rect: DOMRect) => void;
   /** 「+ 添加项目」：父级 = 该列的父节点（批次七 d 第 5 条）。不传则不显示虚节点。 */
@@ -41,7 +38,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
   onModeChange?: (mode: AgentGraphMode) => void;
 }) {
   const { t } = useLocale();
-  const enterShapeId = useId();
   const nodes = net.nodes;
   const canGovern = !embedded || mode === "governance";
   const displayName = (id: string) => dname(nodes[id] ?? { name: id });
@@ -78,8 +74,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
   const pathRef = useRef<string[]>(path);
   const selRef = useRef<string>(sel);
   const pendingDomFocus = useRef<string | null>(null);
-  const [drag, setDrag] = useState<string | null>(null);
-  const [reparent, setReparent] = useState<{ node: string; target: string | null } | null>(null);
   const colsRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -223,14 +217,11 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
     if (!node || node === target) return;
     if (node === "default") return;                       // X 不可移
     if (target && isDesc(node, target)) return;           // 防环:不能移到自己的后代下
-    setReparent({ node, target });
+    // 2026-11-18：改上级可撤销，直接移动并给撤销提示，不再先确认。
+    void moveProjectWithUndo({ node, from: nodes[node]?.parent ?? null, to: target, onChanged,
+      message: t("project.moved", { name: displayName(node), target: target ? displayName(target) : t("reparent.topLevel") }) });
   };
 
-  const dropProps = (target: string | null) => canGovern ? ({
-    onDragOver: (e: React.DragEvent) => { if (drag && drag !== target) { e.preventDefault(); (e.currentTarget as HTMLElement).classList.add("ag-drop"); } },
-    onDragLeave: (e: React.DragEvent) => (e.currentTarget as HTMLElement).classList.remove("ag-drop"),
-    onDrop: (e: React.DragEvent) => { e.preventDefault(); (e.currentTarget as HTMLElement).classList.remove("ag-drop"); if (drag) askReparent(drag, target); },
-  }) : {};
 
   /* ---- edges ----
      连线端点**不再每帧量 DOM**（批次七 d 第 2 条）：静止时量一次几何底稿
@@ -660,7 +651,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
   }, [canGovern]);
 
   const node = nodes[sel];
-  const drafts = net.drafts || [];
   /* 画布上的一次点击（没拖动过）：落在某个节点的矩形里就当点了那个节点——
      节点本体只有 20px 高，列空白处按矩形再判一次；哪个节点都没碰到就是点空白，收起面板。 */
   const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -716,27 +706,12 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
           if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activateNode(id, ci); return; }
           if (handleNodeArrow(event.key, id, ci)) event.preventDefault();
         }}
-        draggable={canGovern && id !== "default"}
-        /* batch43 第 2 件（★J-4 追加）：同一次拖拽现在有两个去处，互不打架——
-           拖到**别的项目节点**上仍是改父级（那条路只看下面的 `drag` state，
-           一个字没动）；拖到**组浮窗的胶囊/成员栏**上则是「从这个项目启动一名
-           新成员」，靠 `dataTransfer` 上这个新 MIME 认出来。
-           不设 `effectAllowed`：设了会连带改掉改父级那头的落点光标。 */
-        onDragStart={(e) => {
-          if (!canGovern) { e.preventDefault(); return; }
-          e.dataTransfer.setData(PROJECT_DRAG_MIME, id);
-          // 顺手带一份显示名：组那头的回执要说「已从 <项目名> 启动一名成员」。
-          e.dataTransfer.setData(GROUP_DRAG_LABEL_MIME, dname(n));
-          setDrag(id);
-        }}
-        onDragEnd={() => setDrag(null)}
-        {...dropProps(id)}
-        onClick={(e) => {
+        /* 2026-11-18：轮盘只做启动器——点选节点，从右上角卡片「打开」；不再双击打开、
+           不在轮盘上拖动改上级（改上级在「配置」）。 */
+        onClick={() => {
           if (suppressNodeClick.current) return;
-          if ((e.target as HTMLElement).closest(".ag-dots")) return;
           activateNode(id, ci);
         }}
-        onDoubleClick={() => onGoProfile(id)}
         style={{ opacity: dead ? 0.5 : 1 }}
       >
         {/* 命中区：至少 32×32 的透明面，点它冒泡到节点自己的 onClick（第 6 件）。 */}
@@ -744,26 +719,12 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
         <span className="ag-nm">{dname(n)}</span>
         {dead && <span className="ag-bad">{t("graph.value.disabled")}</span>}
         {kids.length > 0 && <span className="ag-cn">▸{kids.length}</span>}
-        {id === sel && <button type="button" className="ag-node-enter" title={t("graph.openProject")} aria-label={t("graph.openProject")}
-          onClick={(event) => { event.stopPropagation(); onGoProfile(id); }}><CornerDownLeft size={16} aria-hidden="true" /></button>}
-        {canGovern && <button className="ag-dots" title={t("common.more")} onClick={(e) => { e.stopPropagation(); onOpenMenu(id, (e.currentTarget as HTMLElement).getBoundingClientRect()); }}><MoreHorizontal className="size-3.5" /></button>}
       </div>
     );
   };
 
   const graph = (
     <>
-      {canGovern && drafts.length > 0 && (
-        <div className={`flex flex-wrap items-center gap-2 ${embedded ? "ag-embedded-drafts" : "mb-2 pb-2"}`} style={{ borderBottom: `1px dashed ${cream(20)}` }}>
-          <span className="text-[0.6875rem]" style={{ color: cream(50) }}>{t("graph.drafts", { count: drafts.length })}</span>
-          {drafts.map((dn) => (
-            <div key={dn} className="ag-draft" draggable onDragStart={() => setDrag(dn)} onDragEnd={() => setDrag(null)}>
-              {dname({ name: dn })}<span className="ag-bad" style={{ marginLeft: 6 }}>{t("graph.draftBadge")}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {canGovern && <div className="ag-droptop" {...dropProps(null)}>{t("graph.dropTop")}</div>}
 
         <div
           className={embedded ? "agent-browser-body" : "flex"}
@@ -793,7 +754,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
                         if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activateNode("default"); return; }
                         if (handleNodeArrow(event.key, "default", 0)) event.preventDefault();
                       }}
-                      {...dropProps("default")}
                     >
                       <div className="ag-rootline" />
                       <div className="ag-rootnm">{displayName("default")}</div>
@@ -803,23 +763,6 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
                 ) : (
                   <>
                     {ids.map((id) => renderNode(id, ci))}
-                    {onAddChild && path[ci - 1] && (
-                      /* 每列子级末尾的虚节点：样式沿用 .ag-node（所以它跟着轮盘一起滚），
-                         虚线框 + 淡色区分。根列（X 那一列）不加。 */
-                      <div
-                        className="ag-node ag-node-add"
-                        data-id={ADD_NODE_ID}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (suppressNodeClick.current) return;
-                          onAddChild(path[ci - 1]);
-                        }}
-                      >
-                        <Plus className="size-3.5" />
-                        <span className="ag-nm">{t("graph.addProject")}</span>
-                        <span className="ag-rl">{t("graph.addProject.under", { name: displayName(path[ci - 1]) })}</span>
-                      </div>
-                    )}
                   </>
                 )}
               </div>
@@ -827,43 +770,27 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
           </div>
         </div>
 
-        {/* 项目摘要和稳定可见的主操作。收起时留在 DOM 里只做位移，inert 挡住焦点。 */}
+        {/* 2026-11-18：选中项目后右上角一张小卡片，只有项目名与「打开」（唯一的打开入口）。
+           收起时留在 DOM 里，inert 挡住焦点。 */}
         <aside
-          className={`ag-panel ${panelOpen ? "" : "is-hidden"}`}
+          className={`ag-panel ag-card ${panelOpen ? "" : "is-hidden"}`}
           ref={panelRef}
           data-open={panelOpen ? "true" : "false"}
           inert={!panelOpen}
-          onTransitionEnd={(event) => { if (event.target === event.currentTarget) redraw(); }}
+          aria-label={node ? dname(node) : undefined}
         >
-          {node && (
-            <>
-              <div className="ag-panel-head">
-                <div className="ag-ptag">
-                  <span>{t("graph.head.title")}</span>
-                  <button type="button" className="ag-panel-close" title={t("common.close")} aria-label={t("common.close")} onClick={() => closePanel()}>
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                </div>
-                <h2 className="ag-ph2">{dname(node)}</h2>
-                <div className="ag-prole">{sel === "default" ? t("graph.value.mainAgent") : t("graph.value.project")}{(node.killed || node.effective_killed) ? ` · ${t("graph.value.disabled")}` : ""}</div>
-                <div className="ag-pactions">
-                  {/* 新对话入口在侧栏与项目页（2026-11-17：去掉轮盘面板的主按钮）。 */}
-                  <button type="button" className="kaus-button kaus-project-secondary kaus-project-enter" style={{ clipPath: `url("#${enterShapeId}")` }} title={t("graph.openProject")} onClick={() => onDetail(sel)}>
-                    <svg className="kaus-project-enter-shape" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-                      <defs><clipPath id={enterShapeId} clipPathUnits="objectBoundingBox"><path d={PROJECT_ENTER_SHAPE} /></clipPath></defs>
-                      <path d={PROJECT_ENTER_SHAPE} vectorEffect="non-scaling-stroke" />
-                    </svg>
-                    <CornerDownLeft className="kaus-project-enter-icon" size={22} aria-hidden="true" />
-                    <span className="kaus-project-enter-label">{t("graph.openProject")}</span>
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+          {node && <>
+            <div className="ag-card-name">
+              <span className="ag-ptag">{t("graph.head.title")}</span>
+              <strong title={dname(node)}>{dname(node)}</strong>
+            </div>
+            <Button variant="primary" className="kaus-project-primary ag-card-open" onClick={() => onDetail(sel)}>
+              <CornerDownLeft size={15} aria-hidden="true" /><span>{t("graph.openProject")}</span>
+            </Button>
+          </>}
         </aside>
       </div>
 
-      {canGovern && reparent && <ReparentModal node={reparent.node} target={reparent.target} onClose={() => setReparent(null)} onDone={() => { setReparent(null); onChanged(); }} />}
     </>
   );
 
@@ -891,9 +818,8 @@ export function AgentGraph({ net, onClose, onChanged, onGoProfile, onDetail, onO
           )}
         </header>
         {canGovern ? <>
-          <ProjectSkillTree focusProject={sel} refreshKey={net} onFocusProject={slug => focusNode(slug, undefined, false)} onOpenProject={onDetail}
-            onProjectMenu={onOpenMenu} onAddProject={onAddChild} onReparentProject={askReparent} />
-          {reparent && <ReparentModal node={reparent.node} target={reparent.target} onClose={() => setReparent(null)} onDone={() => { setReparent(null); onChanged(); }} />}
+          <ProjectSkillTree focusProject={sel} refreshKey={net} onFocusProject={slug => focusNode(slug, undefined, false)}
+            onProjectMenu={onOpenMenu} onReparentProject={askReparent} />
         </> : graph}
       </section>
     );

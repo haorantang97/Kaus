@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Anchor, ArrowDown, ArrowRight, ArrowUp, Ban, Bell, Check, ChevronRight, Copy, CornerDownLeft, CornerUpLeft, Download, FileText, Folder, GripVertical, Lock, MoreHorizontal, MoveRight, Plug, Plus, Puzzle, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
+import { Anchor, ArrowDown, ArrowRight, ArrowUp, Ban, Bell, Check, ChevronRight, Copy, CornerUpLeft, Download, FileText, Folder, GripVertical, Lock, MoreHorizontal, MoveRight, Plug, Puzzle, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { useLocale } from "../i18n";
 import { affectedProjects, matchesSkill, orderedEntries, projectAncestors } from "../lib/skillTree";
 import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
@@ -17,11 +17,9 @@ interface Props {
   focusProject?: string | null;
   initialAgent?: string;
   refreshKey?: unknown;
-  onOpenProject?: (slug: string) => void;
   onBusyChange?: (busy: boolean) => void;
   onFocusProject?: (slug: string) => void;
   onProjectMenu?: (slug: string, rect: DOMRect) => void;
-  onAddProject?: (slug: string) => void;
   onReparentProject?: (slug: string, parent: string) => void;
   /** Inside the connect flow: only arranging; no import, plugin or change-report entries, no links out. */
   embedded?: boolean;
@@ -32,7 +30,7 @@ type Drop = { projectId: string; agentKey?: string | null; beforeSkillId?: strin
 type Drag = Item & { pointerId: number; x: number; y: number; active: boolean };
 type Menu = Item & { x: number; y: number };
 
-export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, onOpenProject, onBusyChange, onFocusProject, onProjectMenu, onAddProject, onReparentProject, embedded = false }: Props) {
+export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, onBusyChange, onFocusProject, onProjectMenu, onReparentProject, embedded = false }: Props) {
   const { t } = useLocale();
   const treeId = useId();
   const [data, setData] = useState<SkillTreeSnapshot | null>(null);
@@ -325,8 +323,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
           <ChevronRight size={15} className={open ? "is-open" : ""} /><Folder size={17} /><span className="skill-tree-name">{project.displayName || project.slug}</span>
         </button>
         <span className="skill-tree-count">{allEntries.filter(e => !e.blocked && !skillMap.get(e.skillId)?.pendingAssignment).length}</span>
-        {onAddProject && <button className="skill-tree-icon skill-tree-more" title={t("graph.addProject")} aria-label={t("skillTree.addChild", { name: project.displayName || project.slug })} onClick={() => onAddProject(project.slug)}><Plus size={16} /></button>}
-        {onOpenProject && <button className="skill-tree-icon" title={t("skillTree.openProject")} aria-label={t("skillTree.openNamed", { name: project.displayName || project.slug })} onClick={() => onOpenProject(project.slug)}><CornerDownLeft size={17} /></button>}
+        {/* 2026-11-18：配置视图不负责打开项目；建子项目在行 ⋯ 里。 */}
         {onProjectMenu && <button className="skill-tree-icon skill-tree-more" title={t("common.more")} aria-label={t("skillTree.projectActions", { name: project.displayName || project.slug })} onClick={e => onProjectMenu(project.slug, e.currentTarget.getBoundingClientRect())}><MoreHorizontal size={16} /></button>}
       </div>
       {open && <div className="skill-tree-children">

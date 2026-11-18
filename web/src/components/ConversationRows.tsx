@@ -24,10 +24,12 @@ function usePoint() {
 }
 
 /** A Kaus conversation row outside the sidebar: same menu as the sidebar (pin, rename, archive, delete). */
-export function ConversationRow({ conversation, className, onOpen, onChanged, children }: {
+export function ConversationRow({ conversation, className, onOpen, onOpenConversation, onChanged, children }: {
   conversation: ConversationIndexEntryWire;
   className: string;
   onOpen: () => void;
+  /** Opens the new conversation that 「用其他 Agent 接续」 creates. */
+  onOpenConversation?: (conversationId: string) => void;
   /** After rename, archive or delete, so the list reloads. */
   onChanged: () => void;
   children: ReactNode;
@@ -37,6 +39,7 @@ export function ConversationRow({ conversation, className, onOpen, onChanged, ch
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [pins, setPins] = useState(readSidebarPins);
+  const [continuing, setContinuing] = useState(false);
   const project = conversation.projectId;
   const pinned = (pins[project] ?? []).includes(conversation.id);
   const running = conversation.status === "running";
@@ -68,11 +71,14 @@ export function ConversationRow({ conversation, className, onOpen, onChanged, ch
     <ConversationRowMenu title={conversation.title} pinned={pinned} canArchive={!running} busy={busy} point={point}
       onPin={() => { const next = { ...pins, [project]: pinned ? (pins[project] ?? []).filter(id => id !== conversation.id) : [...(pins[project] ?? []), conversation.id] }; setPins(next); saveSidebarPins(next); }}
       onRename={() => setRenaming(conversation.title)}
+      onContinue={onOpenConversation ? () => setContinuing(true) : undefined}
       onArchive={() => { void work(() => archiveConversation(conversation.id), "sidebar.archiveFailed").then(ok => { if (ok) unpin(); }); }}
       onDelete={() => { void (async () => {
         if (!await confirmAsync(t("conversation.row.deleteConfirm"), { title: t("conversation.row.deleteTitle", { title: conversation.title }), okLabel: t("conversation.row.delete"), danger: true })) return;
         if (await work(() => deleteConversation(conversation.id), "sidebar.deleteFailed")) unpin();
       })(); }} />
+    {continuing && onOpenConversation && <ContinuationDialog source={{ kind: "conversation", id: conversation.id, projectId: conversation.projectId }}
+      onClose={() => setContinuing(false)} onCreated={id => { setContinuing(false); onOpenConversation(id); }} />}
   </div>;
 }
 

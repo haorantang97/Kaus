@@ -54,13 +54,13 @@ function skillRow(project: string, skill: string): HTMLElement {
   return row;
 }
 async function ready() {
-  render(<ProjectSkillTree focusProject="creative" onOpenProject={vi.fn()} />);
+  render(<ProjectSkillTree focusProject="creative" />);
   await waitFor(() => expect(skillRow("creative", "common-writing")).toBeVisible());
 }
 async function openActions(user: ReturnType<typeof userEvent.setup>, project: string, skill: string) {
   await user.click(within(skillRow(project, skill)).getByRole("button", { name: /的操作$/ }));
 }
-async function selectDestination(user: ReturnType<typeof userEvent.setup>, action: "移到…" | "添加到…", target: string) {
+async function selectDestination(user: ReturnType<typeof userEvent.setup>, action: "移到" | "添加到", target: string) {
   await user.click(screen.getByRole("menuitem", { name: action }));
   await user.click(within(screen.getByRole("dialog", { name: action })).getByRole("button", { name: target }));
 }
@@ -135,7 +135,7 @@ describe("ProjectSkillTree", () => {
     render(<ToastHost />);
     await ready();
     await openActions(user, "creative", "common-writing");
-    await selectDestination(user, "移到…", "母项目 / 开发");
+    await selectDestination(user, "移到", "母项目 / 开发");
     expect(screen.queryByRole("dialog", { name: "移动" })).toBeNull();
     expect(applyAction).toHaveBeenCalledWith({ revision: "r1", action: "move", skillId: "common-writing", sourceProjectId: "root", targetProjectId: "development" });
     expect(await screen.findByText(/已将「common-writing」移至「开发」，影响 4 个项目|移至「开发」/)).toBeInTheDocument();
@@ -152,7 +152,7 @@ describe("ProjectSkillTree", () => {
     await ready();
     await user.click(screen.getByRole("button", { name: /Hermes\s*1/ }));
     await openActions(user, "creative", "hermes-review");
-    await selectDestination(user, "添加到…", "母项目 / 开发");
+    await selectDestination(user, "添加到", "母项目 / 开发");
     expect(applyAction).toHaveBeenCalledWith({ revision: "r1", action: "copy", skillId: "hermes-review", sourceProjectId: "creative", targetProjectId: "development" });
     expect(screen.queryByRole("dialog", { name: "移动" })).not.toBeInTheDocument();
     expect(skillRow("creative", "hermes-review")).toBeVisible();
@@ -211,7 +211,7 @@ describe("ProjectSkillTree", () => {
     fetchTree.mockResolvedValue({ ...snapshot(), revision: "r9" });
     applyAction.mockRejectedValueOnce(new SkillTreeError(409, "skill_tree_stale", "stale revision"));
     await openActions(user, "creative", "hermes-review");
-    await selectDestination(user, "添加到…", "母项目 / 开发");
+    await selectDestination(user, "添加到", "母项目 / 开发");
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("配置已更新，请重试"));
     expect(fetchTree).toHaveBeenCalledTimes(2);
     expect(search).toHaveValue("Hermes");
@@ -219,7 +219,7 @@ describe("ProjectSkillTree", () => {
     expect(screen.getByRole("button", { name: /Hermes\s*1/ })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: /Codex\s*1/ })).toHaveAttribute("aria-expanded", "false");
     await openActions(user, "creative", "hermes-review");
-    await selectDestination(user, "添加到…", "母项目 / 开发");
+    await selectDestination(user, "添加到", "母项目 / 开发");
     expect(applyAction).toHaveBeenLastCalledWith({ revision: "r9", action: "copy", skillId: "hermes-review", sourceProjectId: "creative", targetProjectId: "development" });
   });
 
@@ -243,14 +243,14 @@ describe("ProjectSkillTree", () => {
     await ready();
     applyAction.mockRejectedValueOnce(new SkillTreeError(409, "skill_already_assigned", "目标项目已分配此技能"));
     await openActions(user, "creative", "common-design");
-    await selectDestination(user, "添加到…", "母项目 / 开发");
+    await selectDestination(user, "添加到", "母项目 / 开发");
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("目标项目已分配此技能"));
     expect(fetchTree).toHaveBeenCalledTimes(1);
     expect(skillRow("creative", "common-design")).toBeVisible();
   });
 
   it("keeps project drags compatible with collaboration groups and project reparenting", async () => {
-    render(<ProjectSkillTree focusProject="creative" onOpenProject={vi.fn()} onReparentProject={vi.fn()} />);
+    render(<ProjectSkillTree focusProject="creative" onReparentProject={vi.fn()} />);
     await waitFor(() => expect(skillRow("creative", "common-writing")).toBeVisible());
     const values: Record<string, string> = {};
     const transfer = {
@@ -284,8 +284,8 @@ it("shows generated skills within the existing collapsed Agent group and assigns
   expect(skillRow("creative", "generated-review")).toHaveTextContent("待分配");
   await openActions(user, "creative", "generated-review");
   expect(screen.queryByRole("menuitem", { name: "停用" })).toBeNull();
-  await user.click(screen.getByRole("menuitem", { name: "分配到…" }));
-  await user.click(within(screen.getByRole("dialog", { name: "分配到…" })).getByRole("button", { name: "母项目 / 创作" }));
+  await user.click(screen.getByRole("menuitem", { name: "分配到" }));
+  await user.click(within(screen.getByRole("dialog", { name: "分配到" })).getByRole("button", { name: "母项目 / 创作" }));
   await waitFor(() => expect(applyAction).toHaveBeenCalledWith({ revision: "r1", action: "assign", skillId: "generated-review", targetProjectId: "creative" }));
 });
 it("pending skills are searchable, pointer assign across projects keeps scope, and conflicts leave the item pending", async () => {

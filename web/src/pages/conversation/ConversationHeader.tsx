@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, MoreHorizontal, GitBranch, Globe, Terminal } from "lucide-react";
+import { useState } from "react";
+import { ArchiveRestore, Globe, Terminal } from "lucide-react";
 
 import { useLocale } from "../../i18n";
 import { UsagePill } from "../../components/cards/UsageBar";
@@ -25,15 +25,8 @@ export interface ConversationHeaderProps {
   handoffBusy: boolean;
   onOpenExternal: () => void;
   archiveBusy: boolean;
-  /** 返回 false = 这一下被忽略了（正在归档 / 发送 / 运行中），菜单不收。 */
+  /** Restore of an archived conversation; archive, 接续 and delete live in the sidebar row menu (2026-11-18). */
   onChangeArchive: (next: boolean) => boolean;
-  /** 「继续到新会话」入口：没有回调就不渲染这一项。 */
-  onOpenContinuation: (() => void) | undefined;
-  /** 归档项的禁用条件由页面算好传进来。 */
-  archiveDisabled: boolean;
-  /** 归档项的提示：运行中 / 外部态时说「先停止」。 */
-  archiveTitle: string | undefined;
-  continuationDisabled: boolean;
   /** 侧边浏览器开关：只在带浏览器桥的 Chromium 壳里渲染（没有就不传）。 */
   browser?: { open: boolean; onToggle: () => void };
 }
@@ -52,28 +45,11 @@ export function ConversationHeader({
   onOpenExternal,
   archiveBusy,
   onChangeArchive,
-  onOpenContinuation,
-  archiveDisabled,
-  archiveTitle,
-  continuationDisabled,
   browser,
 }: ConversationHeaderProps) {
   const { t } = useLocale();
-  const [actionsOpen, setActionsOpen] = useState(false);
-  const actionsRef = useRef<HTMLSpanElement | null>(null);
   /** batch52 第 5 件：正在就地改会话标题（null = 没在改）。 */
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!actionsOpen) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!actionsRef.current?.contains(event.target as Node)) setActionsOpen(false);
-    };
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setActionsOpen(false); };
-    document.addEventListener("mousedown", dismiss);
-    document.addEventListener("keydown", escape);
-    return () => { document.removeEventListener("mousedown", dismiss); document.removeEventListener("keydown", escape); };
-  }, [actionsOpen]);
 
   return (
     <header className="kaus-conversation-header">
@@ -149,22 +125,9 @@ export function ConversationHeader({
               <Terminal size={16} aria-hidden />
             </button>
           )}
-          {archived ? (
+          {archived && (
             <button type="button" className="kaus-chat-icon-action" title={t("conversation.restore")} aria-label={t("conversation.restore")}
               disabled={archiveBusy} onClick={() => onChangeArchive(false)}><ArchiveRestore size={16} aria-hidden /></button>
-          ) : (
-            <span className="kaus-conversation-actions" ref={actionsRef}>
-              <button type="button" className="kaus-chat-icon-action" title={t("conversation.actions")} aria-label={t("conversation.actions")}
-                aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen(value => !value)}><MoreHorizontal size={16} aria-hidden /></button>
-              {actionsOpen && <span className="kaus-bar-pop" role="menu" aria-label={t("conversation.actions")}>
-                {onOpenContinuation && <button type="button" role="menuitem" className="kaus-bar-pop-item" disabled={continuationDisabled}
-                  onClick={() => { setActionsOpen(false); onOpenContinuation(); }}><GitBranch size={14} aria-hidden />{t("continuation.title")}</button>}
-                <button type="button" role="menuitem" className="kaus-bar-pop-item" disabled={archiveDisabled}
-                  title={archiveTitle} onClick={() => { if (onChangeArchive(true)) setActionsOpen(false); }}>
-                  <Archive size={14} aria-hidden />{t("conversation.archive")}
-                </button>
-              </span>}
-            </span>
           )}
         </div>
       </div>

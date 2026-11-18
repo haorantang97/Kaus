@@ -549,20 +549,11 @@ describe("可恢复归档", () => {
     expect(mocked.sendConversationMessage).not.toHaveBeenCalled();
   });
 
-  it("更多菜单归档成功后通知索引与导航，归档期间保留历史", async () => {
-    const user = userEvent.setup();
-    const archived = { ...detail.conversation, archivedAt: "2026-09-27T00:00:00Z" };
-    mocked.archiveConversation.mockResolvedValue({ conversation: archived });
-    const onArchived = vi.fn();
-    renderPage(onArchived);
+  it("页头不再有 ⋯：归档、接续、删除都在侧栏对话行菜单里（2026-11-18）", async () => {
+    renderPage();
     await findOpenButton();
-    await user.click(screen.getByRole("button", { name: "更多" }));
-    await user.click(screen.getByRole("menuitem", { name: "归档对话" }));
-    await waitFor(() => expect(mocked.archiveConversation).toHaveBeenCalledWith("conversation:1", true));
-    expect(onArchived).toHaveBeenCalledWith("project:x");
-    expect(screen.getByRole("textbox", { name: "消息" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "恢复对话" })).toBeInTheDocument();
-    expect(screen.getByTestId("conversation-title")).toHaveTextContent("测试会话");
+    expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "归档对话" })).toBeNull();
   });
 
   it("归档对话只能恢复后继续输入，恢复不创建新会话", async () => {
@@ -577,16 +568,6 @@ describe("可恢复归档", () => {
     await waitFor(() => expect(screen.getByRole("textbox", { name: "消息" })).toBeEnabled());
     expect(mocked.archiveConversation).toHaveBeenCalledWith("conversation:1", false);
     expect(mocked.sendConversationMessage).not.toHaveBeenCalled();
-  });
-
-  it("运行中的会话不可从菜单归档", async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await findOpenButton();
-    push({ ...kausEvent(1, "run.started", {}), event: { type: "run.started", runId: "run:1" } });
-    await user.click(screen.getByRole("button", { name: "更多" }));
-    expect(screen.getByRole("menuitem", { name: "归档对话" })).toBeDisabled();
-    expect(mocked.archiveConversation).not.toHaveBeenCalled();
   });
 });
 

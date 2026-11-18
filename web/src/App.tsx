@@ -472,7 +472,6 @@ export function App() {
                 onModeChange={(nextMode) => setAgentMode(nextMode)}
                 onClose={closeOverlay}
                 onChanged={reload}
-                onGoProfile={goProfile}
                 onDetail={goProfile}
                 onOpenMenu={openMenu}
                 onAddChild={(parentId) => { setNewAgentParent(parentId); setNewOpen(true); }}
@@ -492,6 +491,8 @@ export function App() {
           onChanged={() => { void reload(); bumpRefreshKey(); }}
           /* 项目页上的 ⋯ 只针对当前项目：删掉之后回轮盘，不停在已删除的页面。 */
           onDeleted={() => { if (route.name === "project") goView("agents"); }}
+          nodes={net?.nodes}
+          onAddChild={parent => { setNewAgentParent(parent); setNewOpen(true); }}
         />
       )}
 

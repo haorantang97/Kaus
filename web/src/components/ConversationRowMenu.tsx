@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Archive, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Archive, GitBranch, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import "./conversation-row-menu.css";
 
@@ -95,7 +95,7 @@ export function RowMenu({ triggerLabel, menuLabel, busy = false, items, point, t
   </span>;
 }
 
-export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, onRename, onArchive, onDelete, point }: {
+export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, onRename, onContinue, onArchive, onDelete, point }: {
   title: string;
   /** Row right-click opens the same menu at the pointer. */
   point?: RowMenuPoint | null;
@@ -104,6 +104,8 @@ export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, on
   busy: boolean;
   onPin: () => void;
   onRename: () => void;
+  /** 「用其他 Agent 接续」(2026-11-18: moved here from the conversation page header). */
+  onContinue?: () => void;
   onArchive: () => void;
   /** 删除与归档同样要求不在运行、不在外部终端里。 */
   onDelete?: () => void;
@@ -115,6 +117,8 @@ export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, on
     items={[
       { id: "pin", icon: pinned ? <PinOff size={16} aria-hidden /> : <Pin size={16} aria-hidden />, label: pinned ? t("conversation.row.unpin") : t("conversation.row.pin"), onSelect: onPin, restoreFocus: true },
       { id: "rename", icon: <Pencil size={16} aria-hidden />, label: t("conversation.title.rename"), onSelect: onRename },
+      ...(onContinue ? [{ id: "continue", icon: <GitBranch size={16} aria-hidden />, label: t("continuation.title"), onSelect: onContinue,
+        disabled: !canArchive, title: !canArchive ? t("surface.action.stopFirst") : undefined }] : []),
       { id: "archive", icon: <Archive size={16} aria-hidden />, label: t("conversation.row.archive"), onSelect: onArchive, separated: true,
         disabled: !canArchive, title: !canArchive ? t("conversation.row.archiveBlocked") : undefined },
       ...(onDelete ? [{ id: "delete", icon: <Trash2 size={16} aria-hidden />, label: t("conversation.row.delete"), onSelect: onDelete,

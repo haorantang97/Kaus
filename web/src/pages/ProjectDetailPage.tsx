@@ -282,6 +282,7 @@ export function ProjectDetailPage({
             <div className="kaus-project-conversations">
               {conversations.map((conversation) => (
                 <ConversationRow key={conversation.id} conversation={conversation} className="kaus-project-conversation"
+                  onOpenConversation={onOpenConversation}
                   onOpen={() => onOpenConversation(conversation.id)} onChanged={() => setConversationsRevision(n => n + 1)}>
                   <span className="kaus-project-conversation-icon"><MessageSquare size={17} /></span>
                   <span className="min-w-0 flex-1 truncate">{conversation.title || conversation.id}</span>

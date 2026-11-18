@@ -1,5 +1,4 @@
 import { ConversationJumpRail } from "../components/ConversationJumpRail";
-import { ContinuationDialog } from "../components/ContinuationDialog";
 import { readableContinuationDraft } from "../lib/continuations";
 import { FileReference } from "../components/cards/ArtifactPreview";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -157,7 +156,6 @@ export function ConversationPage({
   }, [conversationId, metadataRefreshToken]);
   const archived = Boolean(detail?.conversation?.archivedAt);
   const [archiveBusy, setArchiveBusy] = useState(false);
-  const [continuationOpen, setContinuationOpen] = useState(false);
   const [binding, setBinding] = useState<BindingWire | null>(null);
   /* 第 6 件：引擎的探测态。页头状态多一档「引擎离线」（中性），发送按钮照旧可用——
      真发出去会拿到后端的人话错误，比在这里先把人拦住有用。 */
@@ -856,15 +854,8 @@ export function ConversationPage({
         onOpenExternal={() => void toExternal()}
         archiveBusy={archiveBusy}
         onChangeArchive={changeArchive}
-        onOpenContinuation={onContinue ? () => setContinuationOpen(true) : undefined}
-        continuationDisabled={running || sending || handoffBusy}
-        archiveDisabled={running || stopping || sending || handoffBusy || archiveBusy || external}
-        archiveTitle={running || external ? t("surface.action.stopFirst") : undefined}
         browser={browser.available ? { open: browser.open, onToggle: () => browser.setOpen(!browser.open) } : undefined}
       />
-      {continuationOpen && detail && onContinue && <ContinuationDialog
-        source={{ kind: "conversation", id: conversationId, projectId: detail.conversation.projectId }}
-        onClose={() => setContinuationOpen(false)} onCreated={onContinue} />}
       {detail?.continuation && <div className="kaus-thread flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 text-xs">
         {detail.continuation.source?.kind === "conversation" && detail.continuation.sourceAvailable !== false && onContinue
           ? <button className="flex min-w-0 items-center gap-1.5 opacity-60 transition-opacity hover:opacity-100" title={detail.continuation.sourceTitle}

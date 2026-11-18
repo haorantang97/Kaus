@@ -48,18 +48,6 @@ const net: NetworkResp = {
   drafts: [],
 };
 
-function renderGraph() {
-  return render(
-    <AgentGraph
-      net={net}
-      onClose={() => {}}
-      onChanged={() => {}}
-      onGoProfile={() => {}}
-      onDetail={() => {}}
-      onOpenMenu={() => {}}
-    />,
-  );
-}
 
 async function waitForGovernanceTree() {
   const tree = screen.getByTestId("project-skill-tree");
@@ -73,21 +61,6 @@ async function waitForGovernanceTree() {
 }
 
 /** jsdom 不造 `dataTransfer`，手工给一个能记下写了什么的最小件。 */
-function recorder() {
-  const written: Record<string, string> = {};
-  return {
-    written,
-    transfer: {
-      setData: (type: string, value: string) => {
-        written[type] = value;
-      },
-      getData: (type: string) => written[type] ?? "",
-      types: [] as string[],
-      effectAllowed: "all",
-      dropEffect: "none",
-    } as unknown as DataTransfer,
-  };
-}
 
 beforeEach(() => {
   api.apiPost.mockReset();
@@ -105,7 +78,7 @@ beforeEach(() => {
 
 describe("轮盘项目节点的两种拖拽（★J-4，batch43）", () => {
   it("治理树切回对话后重新绑定滚轮和画布拖拽，往返后仍可操作", async () => {
-    const props = { net, embedded: true, onClose: vi.fn(), onChanged: vi.fn(), onGoProfile: vi.fn(), onDetail: vi.fn(), onOpenMenu: vi.fn() };
+    const props = { net, embedded: true, onClose: vi.fn(), onChanged: vi.fn(), onDetail: vi.fn(), onOpenMenu: vi.fn() };
     const { rerender } = render(<AgentGraph {...props} mode="governance" />);
     await waitForGovernanceTree();
     expect(document.querySelector(".ag-canvas")).toBeNull();
@@ -134,7 +107,7 @@ describe("轮盘项目节点的两种拖拽（★J-4，batch43）", () => {
       pronto: node("pronto", { label: "Pronto", parent: "default", children: ["poster"] }),
       poster: node("poster", { label: "Poster", parent: "pronto" }),
     } };
-    const props = { net: nestedNet, embedded: true, onClose: vi.fn(), onChanged: vi.fn(), onGoProfile: vi.fn(), onDetail: vi.fn(), onOpenMenu: vi.fn() };
+    const props = { net: nestedNet, embedded: true, onClose: vi.fn(), onChanged: vi.fn(), onDetail: vi.fn(), onOpenMenu: vi.fn() };
     const { rerender } = render(<AgentGraph {...props} mode="governance" />);
     fireEvent.click(await waitForGovernanceTree());
     rerender(<AgentGraph {...props} mode="chat" />);
@@ -142,24 +115,22 @@ describe("轮盘项目节点的两种拖拽（★J-4，batch43）", () => {
     expect(screen.getByRole("button", { name: "Poster" })).toBeVisible();
   }, 10000);
 
-  it("选中项目只更新面板；面板只有进入项目，新对话不在轮盘上", () => {
-    const onGoProfile = vi.fn();
+  it("选中项目只更新右上角卡片；卡片的「打开」是唯一的打开入口（2026-11-18）", () => {
     const onDetail = vi.fn();
-    render(<AgentGraph net={net} embedded mode="chat" onClose={() => {}} onChanged={() => {}}
-      onGoProfile={onGoProfile} onDetail={onDetail} onOpenMenu={() => {}} />);
+    render(<AgentGraph net={net} embedded mode="chat" onClose={() => {}} onChanged={() => {}} onDetail={onDetail} onOpenMenu={() => {}} />);
     const projectNode = screen.getByRole("button", { name: "Pronto" });
     projectNode.focus();
     fireEvent.keyDown(projectNode, { key: "Enter" });
     fireEvent.click(projectNode);
+    fireEvent.doubleClick(projectNode);
     expect(projectNode).toHaveFocus();
     expect(projectNode).toHaveAttribute("aria-pressed", "true");
-    expect(onGoProfile).not.toHaveBeenCalled();
-    const panel = screen.getByRole("complementary");
-    expect(within(panel).queryByRole("button", { name: "新建对话" })).toBeNull();
-    fireEvent.click(within(panel).getByRole("button", { name: "进入项目" }));
+    expect(within(projectNode).queryByRole("button")).toBeNull();
+    expect(document.querySelector(".ag-node-add")).toBeNull();
+    const card = screen.getByRole("complementary");
+    expect(within(card).getAllByRole("button").map(button => button.textContent)).toEqual(["打开"]);
+    fireEvent.click(within(card).getByRole("button", { name: "打开" }));
     expect(onDetail).toHaveBeenCalledWith("pronto");
-    fireEvent.click(within(projectNode).getByRole("button", { name: "进入项目" }));
-    expect(onGoProfile).toHaveBeenCalledWith("pronto");
   });
 });
 
@@ -181,13 +152,11 @@ const treeNet: NetworkResp = {
 };
 
 function renderChatWheel() {
-  const onGoProfile = vi.fn();
-  render(<AgentGraph net={treeNet} embedded mode="chat" onClose={() => {}} onChanged={() => {}}
-    onGoProfile={onGoProfile} onDetail={() => {}} onOpenMenu={() => {}} />);
+  render(<AgentGraph net={treeNet} embedded mode="chat" onClose={() => {}} onChanged={() => {}} onDetail={() => {}} onOpenMenu={() => {}} />);
   const panel = screen.getByRole("complementary");
   const canvas = document.querySelector<HTMLElement>(".ag-canvas")!;
   const blank = { clientX: 900, clientY: 700 };
-  return { panel, canvas, blank, onGoProfile, heading: () => panel.querySelector(".ag-ph2")?.textContent };
+  return { panel, canvas, blank, heading: () => panel.querySelector(".ag-card-name strong")?.textContent };
 }
 
 describe("轮盘详情面板的开合", () => {
@@ -243,17 +212,6 @@ describe("轮盘详情面板的开合", () => {
     input.remove();
   });
 
-  it("面板的关闭钮有可读名字，关掉后焦点回到选中的节点", () => {
-    const { panel } = renderChatWheel();
-    const pronto = screen.getByRole("button", { name: "Pronto" });
-    fireEvent.click(pronto);
-    const close = within(panel).getByRole("button", { name: "关闭" });
-    close.focus();
-    fireEvent.click(close);
-    expect(panel).toHaveAttribute("data-open", "false");
-    expect(pronto).toHaveFocus();
-  });
-
   it("收起后选中另一个节点会重新打开，并显示新节点", () => {
     const { panel, heading } = renderChatWheel();
     const pronto = screen.getByRole("button", { name: "Pronto" });
@@ -297,44 +255,4 @@ describe("轮盘详情面板的开合", () => {
     expect(panel).toHaveAttribute("data-open", "true");
   });
 
-  it("dragStart 往 dataTransfer 里写项目 MIME（值 = 节点 id）+ 显示名", () => {
-    renderGraph();
-    const projectNode = document.querySelector('.ag-node[data-id="pronto"]') as HTMLElement;
-    expect(projectNode).not.toBeNull();
-    expect(projectNode.getAttribute("draggable")).toBe("true");
-
-    const { written, transfer } = recorder();
-    fireEvent.dragStart(projectNode, { dataTransfer: transfer });
-
-    expect(written["application/x-kaus-project"]).toBe("pronto");
-    expect(written["application/x-kaus-label"]).toBe("Pronto");
-    expect(written["text/plain"]).toBeUndefined();
-    // 会话那个 MIME 一个字都不写：组那头据此分流，写了就成了"加入已有会话"。
-    expect(written["application/x-kaus-conversation"]).toBeUndefined();
-  });
-
-  it("改父级照旧：拖到顶层放置区上松手，弹的还是改父级预览", async () => {
-    api.apiPost.mockResolvedValue({
-      from: { parent: "default" },
-      to: { parent: null },
-      descendants: [],
-      warnings: [],
-    });
-    renderGraph();
-    const projectNode = document.querySelector('.ag-node[data-id="pronto"]') as HTMLElement;
-    const top = document.querySelector(".ag-droptop") as HTMLElement;
-
-    const { transfer } = recorder();
-    fireEvent.dragStart(projectNode, { dataTransfer: transfer });
-    fireEvent.dragOver(top, { dataTransfer: transfer });
-    fireEvent.drop(top, { dataTransfer: transfer });
-
-    await waitFor(() =>
-      expect(api.apiPost).toHaveBeenCalledWith("/api/reparent-preview", {
-        node: "pronto",
-        new_parent: null,
-      }),
-    );
-    expect(await screen.findByRole("button", { name: "移动" })).toBeInTheDocument();
-  });
 });

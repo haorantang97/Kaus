@@ -126,8 +126,8 @@ export const zh = {
   "skillTree.native": "{name}",
   "skillTree.empty": "暂无技能",
   "skillTree.noResults": "没有匹配项",
-  "skillTree.move": "移到…",
-  "skillTree.copy": "添加到…",
+  "skillTree.move": "移到",
+  "skillTree.copy": "添加到",
   "skillTree.up": "上移",
   "skillTree.down": "下移",
   "skillTree.block": "在此子树停用",
@@ -140,11 +140,8 @@ export const zh = {
   "skillTree.dismiss": "关闭",
   "skillTree.cancel": "取消",
   "skillTree.conflict": "配置已更新，请重试",
-  "skillTree.openProject": "进入项目",
-  "skillTree.openNamed": "进入 {name}",
   "skillTree.projectActions": "{name} 的项目操作",
-  "skillTree.addChild": "在 {name} 下新建项目",
-  "skillTree.arrange": "整理技能",
+  "skillTree.arrange": "配置",
   "workspace.home": "个人目录",
   "workspace.parent": "上一级",
   "workspace.hidden": "显示隐藏文件夹",
@@ -164,7 +161,6 @@ export const zh = {
 
   "bar.model.unverifiedHint": "账号可用性未确认",
   "bar.model.unapplied": "默认模型 {model} 未生效",
-  "conversation.actions": "更多",
   "conversation.archive": "归档对话",
   "conversation.restore": "恢复对话",
   "browser.title": "浏览器",
@@ -547,15 +543,8 @@ export const zh = {
   "newAgent.overviewFailed": "项目已创建，项目概述未写入记忆",
 
   /* ---- 移动项目弹窗 ---- */
-  "reparent.title": "移动「{name}」",
   "reparent.topLevel": "顶层",
-  "reparent.previewFailed": "预览失败：{error}",
   "reparent.previewing": "正在预览改动…",
-  "reparent.position": "位置",
-  "reparent.affects": "连带 {count} 个下级",
-  "reparent.confirm": "移动",
-  "reparent.moved": "已将「{name}」移至 {target}",
-  "reparent.moveFailed": "移动失败：{error}",
 
   /* ---- 项目轮盘 ---- */
   "graph.head.title": "项目",
@@ -565,21 +554,15 @@ export const zh = {
   "graph.mode.chat": "对话",
   "graph.mode.governance": "配置",
   "graph.overlay.title": "项目 · 治理",
-  "graph.drafts": "草稿（{count}）",
-  "graph.draftBadge": "草稿",
-  "graph.dropTop": "移至顶层",
   "graph.rootSub": "根项目",
-  "graph.openProject": "进入项目",
+  "graph.openProject": "打开",
   "graph.details": "详情",
-  "graph.value.mainAgent": "主项目",
-  "graph.value.project": "项目",
   "graph.value.disabled": "已停用",
 
   /* ---- batch11-pages ---- */
   "engine.field.save": "保存",
   "engine.field.cancel": "取消",
   "graph.addProject": "添加项目",
-  "graph.addProject.under": "在 {name} 下新建",
   "card.awaiting": "待回答",
   /* ---- batch11 merge ---- */
 
@@ -1151,7 +1134,7 @@ export const zh = {
   "import.selectAll": "全选",
   "import.chosen": "已选 {count} 项",
   "import.bound": "Agent 绑定能力",
-  "import.inTree": "已在技能树中",
+  "import.inTree": "已在配置中",
   "import.imported": "已导入",
   "import.submit": "导入 {count} 项",
   "import.continue": "继续",
@@ -1219,7 +1202,7 @@ export const zh = {
   "changes.sync": "同步",
   "changes.ack": "确认",
   "skillTree.pendingAssignment": "待分配",
-  "skillTree.assign": "分配到…",
+  "skillTree.assign": "分配到",
 
   /* ---- 通用：列表分隔符（删除确认里的子项目名用它连接）。 ---- */
   "common.listSeparator": "、",
@@ -1464,6 +1447,9 @@ export const zh = {
   "ctx.unpin": "取消置顶",
   "ctx.rename": "重命名",
   "ctx.fork": "复制",
+  "ctx.addChild": "新建子项目",
+  "ctx.move": "移到",
+  "project.moved": "已将「{name}」移至「{target}」",
   "ctx.delete": "删除",
   "ctx.displayName": "显示名",
   "ctx.forkId": "新项目标识",

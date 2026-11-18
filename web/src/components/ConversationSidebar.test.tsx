@@ -34,7 +34,7 @@ describe("会话行菜单", () => {
     const user = userEvent.setup(), { onOpen } = setup();
     expect(screen.queryByRole("button", { name: /置顶/ })).toBeNull();
     await user.click(screen.getByRole("button", { name: "接口层重构 对话菜单" }));
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["置顶", "重命名", "归档", "删除"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["置顶", "重命名", "用其他 Agent 接续", "归档", "删除"]);
     expect(screen.getByRole("menu").parentElement).toBe(document.body);
     await user.click(screen.getByRole("menuitem", { name: "置顶" }));
     expect(readSidebarPins()["project:pronto"]).toEqual(["c1"]);
@@ -60,7 +60,7 @@ describe("会话行菜单", () => {
   it("右键会话行打开同一份菜单，不打开会话", async () => {
     const user = userEvent.setup(), { onOpen } = setup();
     await user.pointer({ keys: "[MouseRight]", target: screen.getByText("接口层重构") });
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["置顶", "重命名", "归档", "删除"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["置顶", "重命名", "用其他 Agent 接续", "归档", "删除"]);
     expect(onOpen).not.toHaveBeenCalled();
   });
   it("支持键盘菜单导航、Escape回焦及点击外部关闭", async () => {

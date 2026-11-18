@@ -1,15 +1,16 @@
 import { ErrorNotice, toast, undoToast } from "./ui";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Copy, MessageSquarePlus, Pencil, Trash2 } from "lucide-react";
+import { Copy, FolderInput, MessageSquarePlus, Pencil, Plus, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import { ADD_EXISTING_CONVERSATIONS } from "../lib/projectHistory";
 import { deleteAgent, deletePreview, forkAgent, renameAgent, restoreDeletedAgent, runningConversationsOf, type OrgNode } from "../lib/api";
 import { archiveConversation, describeFailure, fetchRecentConversations } from "../lib/sessionApi";
 import { cream, dname } from "./ui";
+import { moveProjectWithUndo } from "../lib/projectMove";
 
 const Field = ({ children }: { children: React.ReactNode }) => <div className="p-2.5">{children}</div>;
 
-type Mode = "menu" | "rename" | "fork" | "delete";
+type Mode = "menu" | "rename" | "fork" | "move" | "delete";
 
 /** Sub-project names shown in the delete confirm before truncating. */
 const NAMED_DESCENDANTS = 3;
@@ -23,6 +24,8 @@ export function CtxMenu({
   onClose,
   onChanged,
   onDeleted,
+  nodes,
+  onAddChild,
 }: {
   node: OrgNode;
   x: number;
@@ -31,6 +34,10 @@ export function CtxMenu({
   onChanged: () => void;
   /** Called after a confirmed delete, e.g. to leave the deleted Project's page. */
   onDeleted?: (name: string) => void;
+  /** All projects, for 「移到」 (2026-11-18). */
+  nodes?: Record<string, OrgNode>;
+  /** 「新建子项目」 under this project. */
+  onAddChild?: (parent: string) => void;
 }) {
   const { t } = useLocale();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -171,6 +178,9 @@ export function CtxMenu({
               window.dispatchEvent(new CustomEvent(ADD_EXISTING_CONVERSATIONS, { detail: { projectRef: node.name } }));
               onClose();
             }}><MessageSquarePlus className="size-3.5" />{t("project.history.add")}</button>
+            {onAddChild && <button role="menuitem" disabled={busy} className={item} onClick={() => { onAddChild(node.name); onClose(); }}>
+              <Plus className="size-3.5" />{t("ctx.addChild")}
+            </button>}
             <button role="menuitem" disabled={busy} className={item} onClick={() => setMode("rename")}>
               <Pencil className="size-3.5" />
               {t("ctx.rename")}
@@ -179,6 +189,9 @@ export function CtxMenu({
               <Copy className="size-3.5" />
               {t("ctx.fork")}
             </button>
+            {!isDefault && nodes && <button role="menuitem" disabled={busy} className={item} onClick={() => setMode("move")}>
+              <FolderInput className="size-3.5" />{t("ctx.move")}
+            </button>}
             {!isDefault && (
               <button role="menuitem" disabled={busy} className={item} style={{ color: "var(--danger)" }} onClick={() => void runDelete()}>
                 <Trash2 className="size-3.5" />
@@ -186,6 +199,19 @@ export function CtxMenu({
               </button>
             )}
           </>
+        )}
+
+        {mode === "move" && nodes && (
+          <div role="group" aria-label={t("ctx.move")} className="max-h-72 overflow-auto py-1">
+            {moveTargets(nodes, node.name).map(({ id, depth }) => (
+              <button key={id} className={item} style={{ paddingLeft: 12 + depth * 12 }} disabled={busy} onClick={() => {
+                const target = nodes[id];
+                onClose();
+                void moveProjectWithUndo({ node: node.name, from: node.parent ?? null, to: id, onChanged,
+                  message: t("project.moved", { name: dname(node), target: dname(target) }) });
+              }}>{dname(nodes[id])}</button>
+            ))}
+          </div>
         )}
 
         {mode === "rename" && (
@@ -247,4 +273,18 @@ export function CtxMenu({
       </div>
     </>
   );
+}
+
+/** Projects a node can move under: not itself, not its descendants, not its current parent. Tree order with depth. */
+export function moveTargets(nodes: Record<string, OrgNode>, name: string): { id: string; depth: number }[] {
+  const out: { id: string; depth: number }[] = [];
+  const parent = nodes[name]?.parent ?? null;
+  const walk = (id: string, depth: number) => {
+    if (id === name || !nodes[id]) return;
+    if (id !== parent) out.push({ id, depth });
+    for (const child of [...(nodes[id].children || [])].sort((a, b) => dname(nodes[a] ?? { name: a }).localeCompare(dname(nodes[b] ?? { name: b })))) walk(child, depth + 1);
+  };
+  const roots = Object.keys(nodes).filter(id => !nodes[id].parent || !nodes[nodes[id].parent!]);
+  for (const root of roots.sort()) walk(root, 0);
+  return out;
 }

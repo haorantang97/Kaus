@@ -85,3 +85,31 @@ it("offers 撤销 that restores the projects top-down and puts their conversatio
   expect(restore.mock.calls.map(call => call[0])).toEqual(["sample", "child"]);
   [remove, preview, restore, list, unarchive].forEach(spy => spy.mockRestore());
 });
+it("新建子项目 and 移到 (2026-11-18): moves at once, lists only valid targets, and 撤销 moves back", async () => {
+  const api = await import("../lib/api");
+  const post = vi.spyOn(api, "apiPost").mockResolvedValue({ ok: true });
+  const base = { is_pinned:false, killed:false, effective_killed:false, is_draft:false };
+  const nodes: Record<string, OrgNode> = {
+    default: { ...base, name:"default", label:"X", parent:null, children:["site","api"] },
+    site: { ...base, name:"site", label:"官网改版", parent:"default", children:["copy"] },
+    api: { ...base, name:"api", label:"接口服务", parent:"default", children:[] },
+    copy: { ...base, name:"copy", label:"文案", parent:"site", children:[] },
+  };
+  const user = userEvent.setup();
+  const addChild = vi.fn(), changed = vi.fn(), close = vi.fn();
+  const view = render(<><CtxMenu node={nodes.site} x={0} y={0} onClose={close} onChanged={changed} nodes={nodes} onAddChild={addChild} /><ToastHost /></>);
+  await user.click(screen.getByRole("menuitem", { name: "新建子项目" }));
+  expect(addChild).toHaveBeenCalledWith("site");
+  view.unmount();
+  render(<><CtxMenu node={nodes.site} x={0} y={0} onClose={close} onChanged={changed} nodes={nodes} onAddChild={addChild} /><ToastHost /></>);
+  await user.click(screen.getByRole("menuitem", { name: "移到" }));
+  // Not itself, not its own sub-project, not its current parent.
+  expect(screen.getAllByRole("button").map(button => button.textContent)).toEqual(["接口服务"]);
+  await user.click(screen.getByRole("button", { name: "接口服务" }));
+  await waitFor(() => expect(post).toHaveBeenCalledWith("/api/move", { node: "site", new_parent: "api" }));
+  expect(changed).toHaveBeenCalledOnce();
+  expect(screen.getByText("已将「官网改版」移至「接口服务」")).toBeInTheDocument();
+  await user.click(screen.getAllByRole("button", { name: "撤销" }).at(-1)!);
+  await waitFor(() => expect(post).toHaveBeenLastCalledWith("/api/move", { node: "site", new_parent: "default" }));
+  post.mockRestore();
+});

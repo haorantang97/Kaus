@@ -6,6 +6,7 @@ import { useLocale } from "../i18n";
 import { confirmAsync, cream, toast } from "./ui";
 import { AddExistingConversationsDialog } from "./AddExistingConversationsDialog";
 import { ProjectHistoryViewer } from "./ProjectHistoryViewer";
+import { ContinuationDialog } from "./ContinuationDialog";
 import { ADD_EXISTING_CONVERSATIONS, projectHistoryApi, useProjectHistory, type HistoryProject } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
 import { useExternalSurfaceIds } from "../lib/externalSurface";
@@ -50,6 +51,7 @@ export function ConversationSidebar({
   const { t, locale } = useLocale();
   const history = useProjectHistory();
   const [addingHistory, setAddingHistory] = useState<HistoryProject | null>(null);
+  const [continuing, setContinuing] = useState<{ id: string; projectId: string } | null>(null);
   const [viewHistory, setViewHistory] = useState<{ item: ArchiveItem; projectId: string } | null>(null);
   const [editedTitles, setEditedTitles] = useState<Record<string, string>>({});
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
@@ -326,6 +328,7 @@ export function ConversationSidebar({
                       <ConversationRowMenu title={conversation.title} pinned={isPinned} canArchive={!running && !externalIds.includes(conversation.id)} busy={busyId === conversation.id}
                         onPin={() => savePins({ ...pins, [group.projectId]: isPinned ? pinned.filter(id => id !== conversation.id) : [...pinned, conversation.id] })}
                         onRename={() => setRenaming({ id: conversation.id, title: conversation.title })}
+                        onContinue={() => setContinuing({ id: conversation.id, projectId: group.projectId })}
                         onArchive={() => { void archive(conversation.id, group.projectId); }}
                         onDelete={() => { void remove(conversation.id, group.projectId, conversation.title); }}
                         point={menuPoint?.id === conversation.id ? menuPoint.point : null} />
@@ -337,6 +340,8 @@ export function ConversationSidebar({
         })}
       </nav>
       {addingHistory && <AddExistingConversationsDialog projectId={addingHistory.id} projectName={addingHistory.displayName} onClose={() => setAddingHistory(null)} />}
+      {continuing && <ContinuationDialog source={{ kind: "conversation", id: continuing.id, projectId: continuing.projectId }}
+        onClose={() => setContinuing(null)} onCreated={id => { setContinuing(null); onOpenConversation(id); }} />}
       {viewHistory && <ProjectHistoryViewer item={viewHistory.item} projectId={viewHistory.projectId} onClose={() => setViewHistory(null)} onOpenConversation={onOpenConversation} />}
     </div>
   );
