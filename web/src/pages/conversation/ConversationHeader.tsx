@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArchiveRestore, Globe, Terminal } from "lucide-react";
+import { ArchiveRestore, GitBranch, Globe, Terminal } from "lucide-react";
 
 import { useLocale } from "../../i18n";
 import { UsagePill } from "../../components/cards/UsageBar";
@@ -25,8 +25,11 @@ export interface ConversationHeaderProps {
   handoffBusy: boolean;
   onOpenExternal: () => void;
   archiveBusy: boolean;
-  /** Restore of an archived conversation; archive, 接续 and delete live in the sidebar row menu (2026-11-18). */
+  /** Restore of an archived conversation; archive and delete live in the sidebar row menu (2026-11-18). */
   onChangeArchive: (next: boolean) => boolean;
+  /** 「用其他 Agent 接续」 as a header icon (2026-11-18); also in the sidebar row menu. */
+  onOpenContinuation?: () => void;
+  continuationDisabled?: boolean;
   /** 侧边浏览器开关：只在带浏览器桥的 Chromium 壳里渲染（没有就不传）。 */
   browser?: { open: boolean; onToggle: () => void };
 }
@@ -45,6 +48,8 @@ export function ConversationHeader({
   onOpenExternal,
   archiveBusy,
   onChangeArchive,
+  onOpenContinuation,
+  continuationDisabled,
   browser,
 }: ConversationHeaderProps) {
   const { t } = useLocale();
@@ -95,7 +100,8 @@ export function ConversationHeader({
           />
         )}
         <div className="kaus-conversation-meta">
-          <span
+          {/* 2026-11-18：「空闲」不显示，页面传空串；其余状态照常。 */}
+          {(archived || statusText) && <span
             className={`kaus-status ${running ? "is-running" : ""}`}
             data-testid="conversation-status"
             title={statusTitle}
@@ -103,7 +109,7 @@ export function ConversationHeader({
             {/* H-1：强调色在会话页只剩两处，这是其一（运行状态点）。 */}
             {running && <span className="kaus-run-dot kaus-accent" data-accent="run" />}
             {archived ? t("conversation.archived") : statusText}
-          </span>
+          </span>}
           {/* G-8：用量折成一枚 Pill，挂在页头右侧；没有 usage 能力就不渲染。 */}
           {showUsage && <UsagePill usage={usage} />}
           {browser && (
@@ -124,6 +130,11 @@ export function ConversationHeader({
             >
               <Terminal size={16} aria-hidden />
             </button>
+          )}
+          {onOpenContinuation && !archived && (
+            <button type="button" className="kaus-chat-icon-action" disabled={continuationDisabled}
+              title={continuationDisabled ? t("surface.action.stopFirst") : t("continuation.title")} aria-label={t("continuation.title")}
+              onClick={onOpenContinuation}><GitBranch size={16} aria-hidden /></button>
           )}
           {archived && (
             <button type="button" className="kaus-chat-icon-action" title={t("conversation.restore")} aria-label={t("conversation.restore")}

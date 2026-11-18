@@ -154,10 +154,10 @@ const launch = {
   exitedAt: null,
 };
 
-function renderPage(onArchived?: (projectId: string) => void) {
+function renderPage(onArchived?: (projectId: string) => void, onContinue?: (conversationId: string) => void) {
   return render(
     <>
-      <ConversationPage conversationId="conversation:1" onArchived={onArchived} />
+      <ConversationPage conversationId="conversation:1" onArchived={onArchived} onContinue={onContinue} />
       <ConfirmHost />
     </>,
   );
@@ -582,5 +582,15 @@ describe("同页终端入口", () => {
     });
     await waitFor(() => expect(mocked.openExternalSurface).toHaveBeenCalledTimes(1));
     expect(mocked.openExternalSurface).toHaveBeenCalledWith("conversation:1", {});
+  });
+});
+
+describe("对话页页头图标（2026-11-18）", () => {
+  it("接续是页头右上角的单独图标，空闲不显示文字", async () => {
+    const onContinue = vi.fn();
+    renderPage(undefined, onContinue);
+    await findOpenButton();
+    expect(screen.queryByTestId("conversation-status")).toBeNull();
+    expect(screen.getByRole("button", { name: "用其他 Agent 接续" })).toBeEnabled();
   });
 });

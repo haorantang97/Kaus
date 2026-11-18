@@ -1,3 +1,4 @@
+import { ContinuationDialog } from "../components/ContinuationDialog";
 import { ConversationJumpRail } from "../components/ConversationJumpRail";
 import { readableContinuationDraft } from "../lib/continuations";
 import { FileReference } from "../components/cards/ArtifactPreview";
@@ -156,6 +157,7 @@ export function ConversationPage({
   }, [conversationId, metadataRefreshToken]);
   const archived = Boolean(detail?.conversation?.archivedAt);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [continuationOpen, setContinuationOpen] = useState(false);
   const [binding, setBinding] = useState<BindingWire | null>(null);
   /* 第 6 件：引擎的探测态。页头状态多一档「引擎离线」（中性），发送按钮照旧可用——
      真发出去会拿到后端的人话错误，比在这里先把人拦住有用。 */
@@ -614,7 +616,9 @@ export function ConversationPage({
     ? t("conversation.runState.external")
     : engineOffline
       ? t("conversation.runState.engineOffline")
-      : tDynamic(`conversation.runState.${resolved.runState}`, resolved.runState);
+      : resolved.runState === "idle" || resolved.runState === "completed"
+        ? "" // 2026-11-18：「空闲」不显示。
+        : tDynamic(`conversation.runState.${resolved.runState}`, resolved.runState);
   /* 第 1 件：合成的 `run.failed{code:"runtime_lost"}`（引擎中途没了，后端补的那一条）
      在页尾留一句中性小字。它是解释不是错误——不进错误横幅，也不染色。 */
   const runtimeLost = !running && timeline.error?.code === "runtime_lost";
@@ -854,8 +858,13 @@ export function ConversationPage({
         onOpenExternal={() => void toExternal()}
         archiveBusy={archiveBusy}
         onChangeArchive={changeArchive}
+        onOpenContinuation={onContinue ? () => setContinuationOpen(true) : undefined}
+        continuationDisabled={running || sending || handoffBusy}
         browser={browser.available ? { open: browser.open, onToggle: () => browser.setOpen(!browser.open) } : undefined}
       />
+      {continuationOpen && detail && onContinue && <ContinuationDialog
+        source={{ kind: "conversation", id: conversationId, projectId: detail.conversation.projectId }}
+        onClose={() => setContinuationOpen(false)} onCreated={onContinue} />}
       {detail?.continuation && <div className="kaus-thread flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 text-xs">
         {detail.continuation.source?.kind === "conversation" && detail.continuation.sourceAvailable !== false && onContinue
           ? <button className="flex min-w-0 items-center gap-1.5 opacity-60 transition-opacity hover:opacity-100" title={detail.continuation.sourceTitle}

@@ -541,11 +541,11 @@ describe("页头的「引擎离线」（第 6 件）", () => {
     expect(screen.getByRole("button", { name: "发送" })).not.toBeDisabled();
   });
 
-  it("probeState=available → 页头还是原来的「空闲」", async () => {
+  it("probeState=available → 页头不显示状态（2026-11-18：「空闲」不显示）", async () => {
     mocked.fetchBindingStatus.mockResolvedValue({ bindingId: "binding:1", probeState: "available", probeMessage: null });
     render(<ConversationPage conversationId="conversation:1" />);
-    const status = await screen.findByTestId("conversation-status");
-    expect(status).toHaveTextContent("空闲");
+    await waitFor(() => expect(mocked.fetchBindingStatus).toHaveBeenCalled());
+    expect(screen.queryByTestId("conversation-status")).toBeNull();
   });
 
   it("status 带登录态时同样只读它一次", async () => {

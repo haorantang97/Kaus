@@ -223,7 +223,7 @@ describe("batch18 第 1 件：刷新后重放出全部消息", () => {
     replayWholeRun({ completed: true });
 
     await expectWholeRunRendered();
-    await waitFor(() => expect(screen.getByTestId("conversation-status")).toHaveTextContent("空闲"));
+    await waitFor(() => expect(screen.queryByTestId("conversation-status")).toBeNull()); // 空闲不显示（2026-11-18）
   });
 
   it("快照的 lastSequence 远大于重放里所有事件时，事件也不许被当成'旧的'丢掉", async () => {

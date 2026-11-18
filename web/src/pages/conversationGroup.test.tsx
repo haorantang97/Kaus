@@ -151,7 +151,7 @@ describe("会话页与协作组显示分离", () => {
       await refreshGroups();
     });
     render(<ConversationPage conversationId="conversation:1" />);
-    await screen.findByTestId("conversation-status");
+    await screen.findByTestId("conversation-title");
     expect(screen.queryByTestId("conversation-group-chip")).toBeNull();
   });
 

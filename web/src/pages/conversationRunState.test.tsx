@@ -188,7 +188,7 @@ describe("第 1 件：运行态以后端为准", () => {
     push(envelope(3, { type: "run.started", runId: "run:0" }));
     assistantReply(4);
 
-    await waitFor(() => expect(screen.getByTestId("conversation-status")).toHaveTextContent("空闲"));
+    await waitFor(() => expect(screen.queryByTestId("conversation-status")).toBeNull()); // 2026-11-18：空闲不显示
     expect(screen.queryByTestId("replying")).toBeNull();
     expect(screen.queryByTestId("stop-button")).toBeNull();
     // 第 3 件：假运行态一去，消息动作就回来了（走查 ④ 找不到「复制」的那一半）。
@@ -247,7 +247,7 @@ describe("第 1 件：运行态以后端为准", () => {
     await user.click(await screen.findByTestId("stop-button"));
 
     await waitFor(() => expect(screen.queryByTestId("stop-button")).toBeNull());
-    expect(screen.getByTestId("conversation-status")).toHaveTextContent("空闲");
+    expect(screen.queryByTestId("conversation-status")).toBeNull();
     expect(screen.queryByTestId("replying")).toBeNull();
     expect(screen.queryByTestId("stop-unconfirmed")).toBeNull();
   });
