@@ -187,6 +187,16 @@ const conversation = (
 describe("会话侧栏", () => {
   const projects = [project("default", "X"), project("pronto", "Pronto")];
 
+  it("待处理是橙色圆点，放在标题后面（2026-11-19）", () => {
+    const groups = buildConversationGroups(projects, [conversation("等批准", "pronto", { awaitingInput: true } as Partial<SidebarConversation>)]);
+    render(<ConversationSidebar groups={groups} loading={false} error={null} activeConversationId={null} onOpenConversation={() => {}} />);
+    const row = screen.getAllByRole("button").find((el) => el.getAttribute("data-conversation-id") === "等批准")!;
+    const mark = row.querySelector('[data-status="awaiting"]')!;
+    const title = [...row.querySelectorAll("span")].find((span) => span.textContent === "等批准")!;
+    expect(mark.querySelector(".kaus-status-dot.is-awaiting")).not.toBeNull();
+    expect(title.compareDocumentPosition(mark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("按项目分组，运行中的会话置顶且标题流光；没有会话的项目不出现", () => {
     const groups = buildConversationGroups(projects, [
       conversation("旧会话", "pronto", { updatedAt: "2026-09-01T10:00:00Z" }),

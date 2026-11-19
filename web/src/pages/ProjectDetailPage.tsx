@@ -286,9 +286,10 @@ export function ProjectDetailPage({
                   onOpen={() => onOpenConversation(conversation.id)} onChanged={() => setConversationsRevision(n => n + 1)}>
                   <span className="kaus-project-conversation-icon"><MessageSquare size={17} /></span>
                   <span className="min-w-0 flex-1 truncate">{conversation.title || conversation.id}</span>
-                  <span className="shrink-0 text-[0.6875rem]" style={{ color: cream(45) }}>
+                  {/* 2026-11-18：「空闲」不显示，与对话页页头一致。 */}
+                  {conversation.status !== "idle" && conversation.status !== "completed" && <span className="shrink-0 text-[0.6875rem]" style={{ color: cream(45) }}>
                     {tDynamic(`project.conversationStatus.${conversation.status}`, conversation.status)}
-                  </span>
+                  </span>}
                 </ConversationRow>
               ))}
               {historyItems.map(item => <HistoryRow key={item.id} item={item} projectId={projectId} className="kaus-project-conversation"

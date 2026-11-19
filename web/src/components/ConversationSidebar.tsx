@@ -321,7 +321,8 @@ export function ConversationSidebar({
                       title={engineName ? `${conversation.title} · ${engineName}` : conversation.title}
                       onContextMenu={event => { event.preventDefault(); menuSeq.current += 1; setMenuPoint({ id: conversation.id, point: { x: event.clientX, y: event.clientY, seq: menuSeq.current } }); }}
                     >
-                      <ConversationStatusMark status={status} />
+                      {/* 2026-11-19：「待处理」的橙点放在标题后面，其余标记在前。 */}
+                      <ConversationStatusMark status={status === "awaiting" ? null : status} />
                       {renaming?.id === conversation.id ? <input className="kaus-sidebar-title-input" autoFocus aria-label={t("sidebar.renameField")}
                         value={renaming.title} disabled={busyId === conversation.id} onChange={event => setRenaming({ id: conversation.id, title: event.target.value })}
                         onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()} onFocus={event => event.currentTarget.select()}
@@ -331,6 +332,7 @@ export function ConversationSidebar({
                           if (draftEscape(event, renaming.title !== conversation.title, () => setRenaming(null))) return;
                           if (event.key === "Enter") { event.preventDefault(); void rename(conversation.id, group.projectId, conversation.title); }
                         }} /> : <span className={`flex-1 truncate${status === "running" ? " kaus-title-running" : ""}`}>{conversation.title}</span>}
+                      {status === "awaiting" && <ConversationStatusMark status="awaiting" />}
                       {externalIds.includes(conversation.id) && (
                         <Terminal
                           className="size-3 shrink-0"

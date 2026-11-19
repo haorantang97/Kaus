@@ -3182,7 +3182,7 @@ body.dark { --status-unread: #6ea8ff; --status-waiting: #f0a24a; }
 .kaus-status-slot { display: inline-grid; place-items: center; flex: none; width: 10px; height: 10px; }
 .kaus-status-dot { width: 6px; height: 6px; border-radius: 50%; }
 .kaus-status-dot.is-unread { background: var(--status-unread); }
-.kaus-status-dot.is-awaiting { background: var(--status-waiting); border-radius: 1px; transform: rotate(45deg); }
+.kaus-status-dot.is-awaiting { background: var(--status-waiting); }
 /* Running shows as the title shimmer; with reduced motion the shimmer stops, so a ring marks it instead. */
 .kaus-status-dot.is-running { display: none; box-sizing: border-box; width: 7px; height: 7px; border: 1.5px solid currentColor; background: transparent; }
 .kaus-status-alert { width: 11px; height: 11px; color: var(--danger); }

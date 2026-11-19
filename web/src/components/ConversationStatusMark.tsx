@@ -12,8 +12,8 @@ export function ConversationStatusMark({ status }: { status: ConversationStatus 
   const label = t(status === "running" ? "sidebar.running" : `sidebar.status.${status}`);
   return (
     <span className="kaus-status-slot" role="img" title={label} aria-label={label} data-status={status}>
-      {/* Shapes differ, not only colours (2026-11-19): unread a dot, awaiting a diamond, running a ring
-          that shows only when reduced motion turns off the title shimmer. */}
+      {/* Unread is a blue dot before the title; awaiting is an orange dot after it (2026-11-19).
+          Running shows a ring only when reduced motion turns off the title shimmer. */}
       {status === "failed" ? <AlertCircle className="kaus-status-alert" aria-hidden="true" />
         : <span className={`kaus-status-dot is-${status}`} />}
     </span>
