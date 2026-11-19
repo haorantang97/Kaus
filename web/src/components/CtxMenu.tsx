@@ -7,6 +7,7 @@ import { deleteAgent, deletePreview, forkAgent, renameAgent, restoreDeletedAgent
 import { archiveConversation, describeFailure, fetchRecentConversations } from "../lib/sessionApi";
 import { cream, dname } from "./ui";
 import { moveProjectWithUndo } from "../lib/projectMove";
+import { useDraftEscape } from "../hooks/useDraftEscape";
 
 const Field = ({ children }: { children: React.ReactNode }) => <div className="p-2.5">{children}</div>;
 
@@ -42,6 +43,7 @@ export function CtxMenu({
   closeRef.current = onClose;
   const [mode, setMode] = useState<Mode>("menu");
   const [renameVal, setRenameVal] = useState(dname(node));
+  const draftEscape = useDraftEscape();
   const [forkId, setForkId] = useState("");
   const [busy, setBusy] = useState(false);
   /** The failure itself, so the notice keeps its code (2026-11-19). */
@@ -221,7 +223,11 @@ export function CtxMenu({
               onChange={(e) => setRenameVal(e.target.value)}
               className="w-full rounded px-2 py-1 text-xs outline-none"
               style={inputStyle}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) run(() => renameAgent(node.name, renameVal.trim())); }}
+              onKeyDown={(e) => {
+                // A changed name survives the first Esc; the menu-level Esc closes it otherwise.
+                if (draftEscape(e, renameVal !== dname(node), () => closeRef.current())) { e.stopPropagation(); return; }
+                if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) run(() => renameAgent(node.name, renameVal.trim()));
+              }}
             />
             {err !== null && <ErrorNotice error={err} className="mt-1 text-[0.6875rem]" />}
             <Actions onOk={() => run(() => renameAgent(node.name, renameVal.trim()))} okLabel={t("common.save")} />

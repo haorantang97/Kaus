@@ -8,6 +8,7 @@ import type { ArchiveItem } from "../lib/nativeArchivesApi";
 import { ConversationRowMenu, RowMenu, type RowMenuPoint } from "./ConversationRowMenu";
 import { ContinuationDialog } from "./ContinuationDialog";
 import { confirmAsync, toast, undoToast } from "./ui";
+import { useDraftEscape } from "../hooks/useDraftEscape";
 
 /* 对话行在各处一致（2026-11-17，product-decisions「入口与用词（续）」之后的第 7 条）：单击打开，
    行 ⋯ 与右键是同一份菜单。侧栏对话行是标准；这里给项目页对话行和原生历史行用。 */
@@ -38,6 +39,7 @@ export function ConversationRow({ conversation, className, onOpen, onOpenConvers
   const { point, onContextMenu } = usePoint();
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const draftEscape = useDraftEscape();
   const [pins, setPins] = useState(readSidebarPins);
   const [continuing, setContinuing] = useState(false);
   const project = conversation.projectId;
@@ -64,7 +66,7 @@ export function ConversationRow({ conversation, className, onOpen, onOpenConvers
           onBlur={() => { if (!busy) setRenaming(null); }}
           onKeyDown={event => {
             if (event.nativeEvent.isComposing) return;
-            if (event.key === "Escape") { event.preventDefault(); setRenaming(null); }
+            if (draftEscape(event, renaming !== conversation.title, () => setRenaming(null))) return;
             if (event.key === "Enter") { event.preventDefault(); void rename(); }
           }} />
       : <button type="button" className="kaus-row-open" onClick={onOpen}>{children}</button>}

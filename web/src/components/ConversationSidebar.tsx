@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readSidebarPins, reorderSidebarPin, saveSidebarPins, SIDEBAR_PINS_EVENT, SIDEBAR_PINS_KEY, type SidebarPins } from "../lib/sidebarPins";
 import { useScrollFade } from "../hooks/useScrollFade";
+import { useDraftEscape } from "../hooks/useDraftEscape";
 import { ChevronDown, ChevronRight, Search, Terminal } from "lucide-react";
 import { useLocale } from "../i18n";
 import { confirmAsync, cream, toast, undoToast } from "./ui";
@@ -56,6 +57,7 @@ export function ConversationSidebar({
   const [editedTitles, setEditedTitles] = useState<Record<string, string>>({});
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
+  const draftEscape = useDraftEscape();
   const [busyId, setBusyId] = useState<string | null>(null);
   const historyByRow = useMemo(() => new Map<string, { item: ArchiveItem; projectId: string }>(history.items.flatMap(item => item.projectIds.map(projectId => [`history:${projectId}:${item.id}`, { item, projectId }] as const))), [history.items]);
   const displayedGroups = useMemo(() => {
@@ -325,7 +327,7 @@ export function ConversationSidebar({
                         onBlur={() => { if (busyId !== conversation.id) setRenaming(null); }} onKeyDown={event => {
                           event.stopPropagation();
                           if (event.nativeEvent.isComposing) return;
-                          if (event.key === "Escape") { event.preventDefault(); setRenaming(null); }
+                          if (draftEscape(event, renaming.title !== conversation.title, () => setRenaming(null))) return;
                           if (event.key === "Enter") { event.preventDefault(); void rename(conversation.id, group.projectId, conversation.title); }
                         }} /> : <span className={`flex-1 truncate${status === "running" ? " kaus-title-running" : ""}`}>{conversation.title}</span>}
                       {externalIds.includes(conversation.id) && (

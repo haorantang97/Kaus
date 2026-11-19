@@ -25,6 +25,7 @@ import { ArrowLeft, Minus, Pencil, Plus, Trash2, UserPlus, Users } from "lucide-
 import "../styles/conversation-polish.css";
 
 import { useLocale, type DictKey } from "../i18n";
+import { useDraftEscape } from "../hooks/useDraftEscape";
 import {
   GroupWorkspace,
   memberDisplayName,
@@ -133,6 +134,7 @@ export function GroupDock() {
   const [renaming, setRenaming] = useState<GroupMemberWire | null>(null);
   /** 组列表里正在改名的那一行。 */
   const [renamingGroup, setRenamingGroup] = useState<{ id: string; title: string } | null>(null);
+  const draftEscape = useDraftEscape();
   /** 组列表行的右键菜单：落在哪一行、开在哪个位置。 */
   const [menuPoint, setMenuPoint] = useState<{ groupId: string; point: RowMenuPoint } | null>(null);
   const menuSeq = useRef(0);
@@ -656,7 +658,7 @@ export function GroupDock() {
                             onKeyDown={(event) => {
                               event.stopPropagation();
                               if (event.nativeEvent.isComposing) return;
-                              if (event.key === "Escape") { event.preventDefault(); setRenamingGroup(null); }
+                              if (draftEscape(event, editing.title !== group.title, () => setRenamingGroup(null))) return;
                               if (event.key === "Enter") { event.preventDefault(); saveGroupTitle(group, editing.title); }
                             }}
                           />

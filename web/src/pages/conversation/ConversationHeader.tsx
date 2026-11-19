@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArchiveRestore, GitBranch, Globe, Terminal } from "lucide-react";
 
 import { useLocale } from "../../i18n";
+import { useDraftEscape } from "../../hooks/useDraftEscape";
 import { UsagePill } from "../../components/cards/UsageBar";
 import type { TimelineState } from "../../lib/timeline/reducer";
 
@@ -55,6 +56,7 @@ export function ConversationHeader({
   const { t } = useLocale();
   /** batch52 第 5 件：正在就地改会话标题（null = 没在改）。 */
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const draftEscape = useDraftEscape();
 
   return (
     <header className="kaus-conversation-header">
@@ -84,10 +86,7 @@ export function ConversationHeader({
             onBlur={() => setTitleDraft(null)}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing) return;
-              if (event.key === "Escape") {
-                setTitleDraft(null);
-                return;
-              }
+              if (draftEscape(event, titleDraft !== (title ?? ""), () => setTitleDraft(null))) return;
               if (event.key !== "Enter") return;
               event.preventDefault();
               const next = titleDraft.trim();

@@ -88,6 +88,18 @@ describe("会话行菜单", () => {
     expect(onChanged).toHaveBeenCalledWith({ conversationId: "c1", projectId: "project:pronto" });
     expect(onOpen).not.toHaveBeenCalled();
   });
+  it("改过的名称第一次 Esc 保留草稿，再按一次才放弃", async () => {
+    const user = userEvent.setup(); setup();
+    await user.click(screen.getByRole("button", { name: "接口层重构 对话菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "重命名" }));
+    const input = screen.getByRole("textbox", { name: "对话名称" });
+    await user.type(input, "二");
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("textbox", { name: "对话名称" })).toHaveValue("接口层重构二");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "对话名称" })).toBeNull();
+    expect(actions.patchConversation).not.toHaveBeenCalled();
+  });
   it("取消或留空重命名不提交，提交失败保留原标题", async () => {
     actions.patchConversation.mockRejectedValue(new Error("offline"));
     const user = userEvent.setup(), { onChanged } = setup();
