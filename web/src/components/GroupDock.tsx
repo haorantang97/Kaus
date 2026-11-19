@@ -672,7 +672,7 @@ export function GroupDock() {
                         >
                           {/* 组的状态点：有人在跑就亮，其余中性（★H）。 */}
                           <span className={`kaus-run-dot ${active > 0 ? "kaus-accent" : "is-idle"}`} aria-hidden="true" />
-                          <span className="kaus-group-member-title">{group.title}</span>
+                          <span className="kaus-group-member-title" title={group.title}>{group.title}</span>
                           <span className="kaus-group-dim">{t(count === 1 ? "group.memberCount.one" : "group.memberCount", { count })}</span>
                         </button>
                       )}

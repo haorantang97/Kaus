@@ -197,8 +197,11 @@ export function ToolCard({
      ——没有出错标记、没有耗时，本来就说明它跑完了。所以：耗时照显（那是信息），
      运行中 / 失败照显（那是状态），**只有"完成"这一档在折叠态里不出现**，展开后
      仍然有。 */
+  /* A failure always says so in text, not only with the red dot (2026-11-19 HIG §5). */
   const tail =
-    seconds !== undefined
+    failed && seconds !== undefined
+      ? `${t("card.tool.failed")} · ${t("card.tool.seconds", { seconds: seconds.toFixed(1) })}`
+      : seconds !== undefined
       ? t("card.tool.seconds", { seconds: seconds.toFixed(1) })
       : running
         ? t("card.tool.running")

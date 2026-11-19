@@ -281,6 +281,7 @@ export function ConversationSidebar({
                       key={conversation.id}
                       role="button"
                       tabIndex={0}
+                      aria-current={selected ? "page" : undefined}
                       data-conversation-id={conversation.id}
                       /* The gesture hook excludes child controls and delays
                          dragging until movement exceeds the click threshold. */

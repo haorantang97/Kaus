@@ -156,7 +156,7 @@ export function ProjectInstructionsEditor({
             <li key={section.id} className={`kaus-instruction${section.state === "blocked" ? " is-blocked" : ""}`}>
               {draft?.id === section.id ? editor : <>
                 <div className="kaus-instruction-head">
-                  <span className="kaus-instruction-title">{name(section)}</span>
+                  <span className="kaus-instruction-title" title={name(section)}>{name(section)}</span>
                   {section.state === "inherited" && <Pill tone="muted">{t("instructions.state.inherited", { name: projectLabel(section.sourceProjectId) })}</Pill>}
                   {section.state === "overridden" && <Pill tone="gold">{t("instructions.state.overridden")}</Pill>}
                   {section.state === "blocked" && <Pill tone="muted">{t("instructions.state.blocked")}</Pill>}

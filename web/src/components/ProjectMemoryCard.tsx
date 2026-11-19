@@ -116,7 +116,7 @@ export function ProjectMemoryCard({ projectId, projectLabel }: {
     return (
       <li key={item.id} className="kaus-instruction">
         <div className="kaus-instruction-head">
-          <span className="kaus-instruction-title">{item.topic}</span>
+          <span className="kaus-instruction-title" title={item.topic}>{item.topic}</span>
           {!own && <Pill tone="muted">{t("instructions.state.inherited", { name: projectLabel(item.projectId) })}</Pill>}
           {until(item) && <Pill tone="muted">{until(item)}</Pill>}
           <span className="kaus-memory-meta">{[source(item.source), relativeTime(item.updatedAt, locale)].filter(Boolean).join(" · ")}</span>

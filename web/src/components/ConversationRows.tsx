@@ -69,7 +69,7 @@ export function ConversationRow({ conversation, className, onOpen, onOpenConvers
             if (draftEscape(event, renaming !== conversation.title, () => setRenaming(null))) return;
             if (event.key === "Enter") { event.preventDefault(); void rename(); }
           }} />
-      : <button type="button" className="kaus-row-open" onClick={onOpen}>{children}</button>}
+      : <button type="button" className="kaus-row-open" title={conversation.title} onClick={onOpen}>{children}</button>}
     <ConversationRowMenu title={conversation.title} pinned={pinned} canArchive={!running} busy={busy} point={point}
       onPin={() => { const next = { ...pins, [project]: pinned ? (pins[project] ?? []).filter(id => id !== conversation.id) : [...(pins[project] ?? []), conversation.id] }; setPins(next); saveSidebarPins(next); }}
       onRename={() => setRenaming(conversation.title)}

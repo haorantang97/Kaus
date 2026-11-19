@@ -30,6 +30,10 @@ describe("会话行菜单", () => {
       loading={false} error={null} activeConversationId="c1" onOpenConversation={onOpen} onConversationChanged={onChanged} />);
     return { onOpen, onChanged };
   };
+  it("当前会话行带 aria-current", () => {
+    setup();
+    expect(document.querySelector('[data-conversation-id="c1"]')).toHaveAttribute("aria-current", "page");
+  });
   it("通过省略号展示真实会话操作，置顶不再独占常驻图标", async () => {
     const user = userEvent.setup(), { onOpen } = setup();
     expect(screen.queryByRole("button", { name: /置顶/ })).toBeNull();
@@ -208,6 +212,8 @@ describe("会话侧栏", () => {
     // 运行中：标题流光，读屏读到「运行中」；看过的空闲会话不显示状态。
     expect(rows[0].querySelector(".kaus-title-running")).not.toBeNull();
     expect(rows[0].querySelector('[data-status="running"]')).toHaveAttribute("aria-label", "运行中");
+    // With reduced motion the shimmer stops; the slot carries a ring the stylesheet shows then.
+    expect(rows[0].querySelector(".kaus-status-dot.is-running")).not.toBeNull();
     expect(rows[1].querySelector("[data-status]")).toBeNull();
     // 引擎信息保留在整行的悬停提示中。
     expect(rows[0].querySelector(".kaus-engine-tag")).toBeNull();

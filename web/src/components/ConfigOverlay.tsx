@@ -169,7 +169,7 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "system", onThe
                 menuSeq.current += 1;
                 setMenuPoint({ id: item.id, point: { x: event.clientX, y: event.clientY, seq: menuSeq.current } });
               }}>
-              <button type="button" className="kaus-archive-row-open" onClick={() => navigate(conversationPath(item.id))}>
+              <button type="button" className="kaus-archive-row-open" title={item.title} onClick={() => navigate(conversationPath(item.id))}>
                 <span><strong>{item.backendId && <EngineIcon engine={item.backendId} size={13} />}{item.title}</strong><small>{owner.label}{item.backendId ? ` · ${backendDisplay(item.backendId).displayName}` : ""}</small></span>
               </button>
               <RowMenu busy={busyId !== null} triggerLabel={t("conversation.menuFor", { title: item.title })} menuLabel={t("conversation.menu")}

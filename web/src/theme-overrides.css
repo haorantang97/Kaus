@@ -2002,7 +2002,9 @@ button.kaus-conversation-title:hover {
   min-height: 100%;
   align-items: flex-start;
   gap: 24px;
-  padding: 28px 28px 60px;
+  /* Bottom room for the floating 协作组 pill (20px offset + its height + a margin), so the last
+     card's controls can always scroll clear of it at any width (2026-11-19). */
+  padding: 28px 28px 96px;
 }
 
 .kaus-project-main {
@@ -3180,7 +3182,9 @@ body.dark { --status-unread: #6ea8ff; --status-waiting: #f0a24a; }
 .kaus-status-slot { display: inline-grid; place-items: center; flex: none; width: 10px; height: 10px; }
 .kaus-status-dot { width: 6px; height: 6px; border-radius: 50%; }
 .kaus-status-dot.is-unread { background: var(--status-unread); }
-.kaus-status-dot.is-awaiting { background: var(--status-waiting); }
+.kaus-status-dot.is-awaiting { background: var(--status-waiting); border-radius: 1px; transform: rotate(45deg); }
+/* Running shows as the title shimmer; with reduced motion the shimmer stops, so a ring marks it instead. */
+.kaus-status-dot.is-running { display: none; box-sizing: border-box; width: 7px; height: 7px; border: 1.5px solid currentColor; background: transparent; }
 .kaus-status-alert { width: 11px; height: 11px; color: var(--danger); }
 /* 运行中：标题上一道流光。 */
 .kaus-title-running {
@@ -3194,6 +3198,7 @@ body.dark { --status-unread: #6ea8ff; --status-waiting: #f0a24a; }
 @keyframes kaus-title-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
 @media (prefers-reduced-motion: reduce) {
   .kaus-title-running { animation: none; -webkit-text-fill-color: currentColor; }
+  .kaus-status-dot.is-running { display: block; }
 }
 
 /* 输入框候选（`/` 命令、`@` 文件）：贴在输入行上方，沿用弹出菜单的边、圆角与阴影。 */
@@ -3240,3 +3245,12 @@ body.dark { --status-unread: #6ea8ff; --status-waiting: #f0a24a; }
 .kaus-button--primary.kaus-project-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-text) 88%, #000); }
 body.dark .kaus-button--primary.kaus-project-primary { color: var(--surface-1); }
 body.dark .kaus-button--primary.kaus-project-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-text) 88%, #fff); }
+
+/* Small frequent icon buttons keep their glyph and visible size but get at least a 28px hit area
+   (2026-11-19 HIG §5): an invisible pseudo-element extends the target around the button. */
+.kaus-cap-menu-button, .kaus-sidebar-search-button, .kaus-conversation-menu-trigger, .kaus-browser-tab-close,
+.skill-tree-grip, .kaus-group-materials .kaus-icon-btn, .kaus-group-message-actions .kaus-icon-btn { position: relative; }
+.kaus-cap-menu-button::before, .kaus-sidebar-search-button::before, .kaus-conversation-menu-trigger::before, .kaus-browser-tab-close::before,
+.skill-tree-grip::before, .kaus-group-materials .kaus-icon-btn::before, .kaus-group-message-actions .kaus-icon-btn::before {
+  content: ""; position: absolute; top: 50%; left: 50%; width: max(100%, 28px); height: max(100%, 28px); transform: translate(-50%, -50%);
+}

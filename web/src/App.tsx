@@ -288,6 +288,7 @@ export function App() {
         key={m.id}
         onClick={() => selectModule(m.id)}
         className={`shell-nav-item ${activeNav === m.id ? "is-active" : ""} ${m.id === "new-conversation" ? "is-new" : ""}`}
+        aria-current={activeNav === m.id ? "page" : undefined}
         title={label}
       >
         <span className="shell-nav-icon"><m.icon /></span>
@@ -325,6 +326,7 @@ export function App() {
                 type="button"
                 onClick={() => selectModule(m.id)}
                 className={`shell-nav-item ${activeNav === m.id ? "is-active" : ""}`}
+                aria-current={activeNav === m.id ? "page" : undefined}
                 title={label}
                 aria-label={label}
               >

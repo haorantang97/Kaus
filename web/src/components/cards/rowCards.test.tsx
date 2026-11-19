@@ -185,6 +185,12 @@ describe("折叠态里的状态词（★L 第 5 条）", () => {
     expect(screen.getByTestId("tool-row")).toHaveTextContent("1.2s");
   });
 
+  it("工具行：失败时有耗时也写出「失败」，不只靠红点", async () => {
+    const { ToolCard } = await import("./ToolCard");
+    render(<ToolCard item={{ kind: "tool", id: "tool:3", name: "terminal", input: null, output: "", status: "failed", progress: null, ...base } as never} seconds={0.8} />);
+    expect(screen.getByTestId("tool-row")).toHaveTextContent("失败 · 0.8s");
+  });
+
   it("推理行：折着时行尾不写 `thinking`，展开后才写", async () => {
     const user = userEvent.setup();
     const { ReasoningCard } = await import("./ReasoningCard");
