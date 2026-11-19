@@ -107,11 +107,17 @@ class _Storage:
     async def begin(self, conversation_id, native_id): self.begun=(conversation_id,native_id)
 
 
+class _EventStore:
+    def __init__(self, host): self.native_storage=_Storage();self._host=host
+    async def latest_sequence(self, conversation_id):
+        count=sum(1 for owner,_ in self._host.events if owner==conversation_id)
+        return count or None
+
+
 class _Host:
     """Records what the importer writes; no runtime, no model calls."""
     def __init__(self):
-        from types import SimpleNamespace
-        self.event_store=SimpleNamespace(native_storage=_Storage());self.events=[]
+        self.events=[];self.event_store=_EventStore(self)
     async def normalize_native_history(self, conversation_id, history): return history
     async def emit_conversation_event(self, conversation, event): self.events.append((conversation.id,event))
     async def compact_native_text(self, conversation): return 0
@@ -159,6 +165,8 @@ def test_add_imports_a_connected_engine_conversation_as_an_ordinary_conversation
     assert event.data['imported'] is True and event.data['lastEntryId']=='e2' and event.data['nativeSessionId']=='session-native'
     assert [entry['text'] for entry in event.data['entries']]==['question','answer']
     assert host.event_store.native_storage.begun==(conversation.id,'session-native')
+    # Imported history is not unread: the sidebar index reports it viewed up to its last event.
+    assert asyncio.run(repos.conversations.viewed_sequences([conversation.id]))=={conversation.id:1}
     # No read-only record is left, and adding again does not duplicate.
     assert client.get('/api/native-archives/project-items',params={'projectId':project.id}).json()['items']==[]
     assert client.get('/api/native-archives/candidates',params={'source':'codex','projectId':project.id}).json()['sessions'][0]['added']

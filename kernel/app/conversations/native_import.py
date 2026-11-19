@@ -118,4 +118,9 @@ class NativeConversationImporter:
             },
         ))
         await self._host.compact_native_text(conversation)
+        # The user picked this history to bring in: it is not news, so the sidebar shows no unread
+        # dot for it (2026-11-19). Later turns raise the sequence past this mark as usual.
+        latest = await self._host.event_store.latest_sequence(conversation.id)
+        if latest is not None:
+            await self._repositories.conversations.mark_viewed(conversation.id, latest)
         return await self._repositories.conversations.get(conversation.id) or conversation
