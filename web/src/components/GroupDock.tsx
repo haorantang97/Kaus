@@ -29,7 +29,7 @@ import {
   GroupWorkspace,
   memberDisplayName,
 } from "./GroupWorkspace";
-import { Button, toast } from "./ui";
+import { Button, toast, undoToast } from "./ui";
 import { RowMenu, type RowMenuPoint } from "./ConversationRowMenu";
 import {
   addGroupMember,
@@ -69,7 +69,7 @@ import {
 import { MemberRow, useDismiss, type MemberAction } from "./groupDock/MemberRow";
 import { GroupDropItem, MembersPane } from "./groupDock/MembersPane";
 import { ExistingPicker, SpawnForm } from "./groupDock/AddMemberForms";
-import { CloseGroupDialog, RenameMemberDialog } from "./groupDock/GroupDialogs";
+import { CloseGroupDialog } from "./groupDock/GroupDialogs";
 
 /** 失败 → 一句人话。**按 code 分支**；表里没有的 code 用后端原文（它已经是人话）。 */
 export function describeGroupFailure(
@@ -295,9 +295,25 @@ export function GroupDock() {
     openGroups.length === 0 || (dock.open && expandedGroup !== null && !isGroupOpen(expandedGroup)),
   );
 
+  /* batch52 第 5 件（AD-173）：在本组叫什么，成员行原位编辑（2026-11-19）。回执点名的是**后端重算之后**的
+     那个名字——用户敲「写手」而组里已经有一位写手时，他接下来真的会被告知的
+     名字是「写手#2」，回执说的必须是后者。 */
+  const renameMember = useCallback(async (member: GroupMemberWire, roleLabel: string) => {
+    setRenaming(null);
+    if ((member.roleLabel ?? "") === roleLabel) return;
+    try {
+      const result = await renameGroupMember(member.groupId, member.id, roleLabel);
+      toast(t("group.member.renameDone", { name: result.member.displayName || result.member.conversation?.title || memberDisplayName(members[member.groupId] ?? [], member.id) }), "ok");
+    } catch (failure) {
+      toast(t("group.member.renameFailed", { error: describeGroupFailure(failure, t) }), "bad");
+    } finally {
+      await refreshGroups();
+    }
+  }, [members, t]);
+
   const onMemberAction = useCallback(
     (action: MemberAction, member: GroupMemberWire) => {
-      // batch52 第 5 件：改名要先问叫什么，所以它开一个小弹窗而不是直接调端点。
+      // batch52 第 5 件：组内名称在成员行原位编辑。
       if (action === "rename") {
         setRenaming(member);
         return;
@@ -313,14 +329,28 @@ export function GroupDock() {
         return;
       }
       // 「重新加入」走的是后端的 resume（left → active，重新过一遍唯一性）。
-      const map = {
-        rejoin: [resumeGroupMember, "group.toast.rejoined"],
-        remove: [removeGroupMember, "group.toast.removed"],
-      } as const;
-      const [call, okKey] = map[action];
-      void run(() => call(member.groupId, member.id), okKey);
+      if (action === "rejoin") {
+        void run(() => resumeGroupMember(member.groupId, member.id), "group.toast.rejoined");
+        return;
+      }
+      // 移出只标 left，会话不动：直接移出，「撤销」即重新加入（2026-11-19）。
+      const name = memberDisplayName(members[member.groupId] ?? [], member.id);
+      void (async () => {
+        try {
+          await removeGroupMember(member.groupId, member.id);
+          undoToast(t("group.toast.removedName", { name }), async () => {
+            try { await resumeGroupMember(member.groupId, member.id); }
+            catch (failure) { toast(describeGroupFailure(failure, t), "bad"); }
+            finally { await refreshGroups(); }
+          });
+        } catch (failure) {
+          toast(describeGroupFailure(failure, t), "bad");
+        } finally {
+          await refreshGroups();
+        }
+      })();
     },
-    [members, run],
+    [members, run, t],
   );
 
   const awaitingGroup = openGroups.find((group) => (group.awaitingConversationIds ?? []).length > 0) ?? null;
@@ -579,6 +609,9 @@ export function GroupDock() {
                               onAction={onMemberAction}
                               firstMessageFailed={notices.some((notice) => notice.memberId === member.id)}
                               threadRunning={group.thread?.status === "running" || group.thread?.status === "closing"}
+                              renaming={renaming?.id === member.id}
+                              onRenameCancel={() => setRenaming(null)}
+                              onRenameSubmit={(roleLabel) => void renameMember(member, roleLabel)}
                             />
                           ))}
                         </MembersPane>
@@ -691,33 +724,6 @@ export function GroupDock() {
       {/* batch52 第 5 件（AD-173）：在本组叫什么。回执点名的是**后端重算之后**的
           那个名字——用户敲「写手」而组里已经有一位写手时，他接下来真的会被告知的
           名字是「写手#2」，回执说的必须是后者。 */}
-      {renaming && (
-        <RenameMemberDialog
-          name={memberDisplayName(members[renaming.groupId] ?? [], renaming.id)}
-          current={renaming.roleLabel ?? ""}
-          onCancel={() => setRenaming(null)}
-          onSubmit={async (roleLabel) => {
-            const member = renaming;
-            setRenaming(null);
-            try {
-              const result = await renameGroupMember(member.groupId, member.id, roleLabel);
-              toast(
-                t("group.member.renameDone", {
-                  name: result.member.displayName || result.member.conversation?.title || member.id,
-                }),
-                "ok",
-              );
-            } catch (failure) {
-              toast(
-                t("group.member.renameFailed", { error: describeGroupFailure(failure, t) }),
-                "bad",
-              );
-            } finally {
-              await refreshGroups();
-            }
-          }}
-        />
-      )}
     </div>
   );
 }

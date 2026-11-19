@@ -190,6 +190,51 @@ describe("ProjectSkillTree", () => {
     expect(applyAction).toHaveBeenNthCalledWith(2, { revision: "r2", action: "undo", undoToken: "undo-r2" });
   });
 
+  it("停用 happens at once and its toast undoes exactly that change (its own token)", async () => {
+    const user = userEvent.setup();
+    render(<ToastHost />);
+    await ready();
+    await openActions(user, "creative", "common-design");
+    // Destructive items come last, after a separator.
+    const items = screen.getAllByRole("menuitem").map(item => item.textContent);
+    expect(items.slice(-1)).toEqual(["在此子树停用"]);
+    expect(screen.getByRole("menuitem", { name: "在此子树停用" }).previousElementSibling?.tagName).toBe("HR");
+    await user.click(screen.getByRole("menuitem", { name: "在此子树停用" }));
+    expect(applyAction).toHaveBeenCalledWith({ revision: "r1", action: "block", skillId: "common-design", targetProjectId: "creative" });
+    expect((await screen.findAllByText("已在「创作」停用「视觉规范」")).length).toBeGreaterThan(0);
+    await user.click(screen.getAllByRole("button", { name: "撤销" }).at(-1)!);
+    await waitFor(() => expect(applyAction).toHaveBeenLastCalledWith({ revision: "r2", action: "undo", undoToken: "undo-r2" }));
+  });
+
+  it("reorder offers a 撤销 toast bound to its token", async () => {
+    const user = userEvent.setup();
+    render(<ToastHost />);
+    await ready();
+    await openActions(user, "creative", "common-design");
+    await user.click(screen.getByRole("menuitem", { name: "下移" }));
+    expect((await screen.findAllByText("已调整「视觉规范」的顺序")).length).toBeGreaterThan(0);
+  });
+
+  it("shows a + cue on the drag ghost while Option/Alt is held over another project", async () => {
+    await ready();
+    const target = screen.getByRole("button", { name: "开发" }).closest('[data-skill-drop="project"]')!;
+    const original = Object.getOwnPropertyDescriptor(document, "elementFromPoint");
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => target });
+    try {
+      pointer(within(skillRow("creative", "common-design")).getByRole("button", { name: /^拖动/ }), "pointerdown", 10, 10);
+      pointer(screen.getByTestId("project-skill-tree"), "pointermove", 80, 80, false);
+      expect(document.querySelector(".skill-tree-ghost-copy")).toBeNull();
+      pointer(screen.getByTestId("project-skill-tree"), "pointermove", 82, 82, true);
+      expect(document.querySelector(".skill-tree-ghost-copy")).not.toBeNull();
+      fireEvent.keyUp(window, { key: "Alt" });
+      expect(document.querySelector(".skill-tree-ghost-copy")).toBeNull();
+      fireEvent.keyDown(window, { key: "Escape" });
+    } finally {
+      if (original) Object.defineProperty(document, "elementFromPoint", original);
+      else Reflect.deleteProperty(document, "elementFromPoint");
+    }
+  });
+
   it("uses the same move command for pointer dragging as for the destination menu", async () => {
     await ready();
     const target = screen.getByRole("button", { name: "开发" }).closest('[data-skill-drop="project"]')!;

@@ -13,6 +13,7 @@ import { fetchBackendUiCapabilities } from "../../lib/sessionApi";
 import type { GroupMemberWire } from "../../lib/groupsApi";
 import { memberDisplayName } from "../GroupWorkspace";
 import { RowMenu, type RowMenuItem, type RowMenuPoint } from "../ConversationRowMenu";
+import { useDraftEscape } from "../../hooks/useDraftEscape";
 
 /* 协作组浮窗（`../GroupDock.tsx`）里的成员行：运行点、显示名、⋯ 菜单与第二行元信息。 */
 
@@ -100,8 +101,15 @@ export function MemberRow({
   onAction,
   firstMessageFailed = false,
   threadRunning = false,
+  renaming = false,
+  onRenameSubmit,
+  onRenameCancel,
 }: {
   member: GroupMemberWire;
+  /** 组内名称原位编辑（2026-11-19，取代弹窗）：Enter 保存，Esc / 失焦取消；留空则回到对话标题。 */
+  renaming?: boolean;
+  onRenameSubmit?: (roleLabel: string) => void;
+  onRenameCancel?: () => void;
   /** 整组的成员行——显示名要看得见组里有没有第二个同名的（`#2` 后缀）。 */
   members: GroupMemberWire[];
   projectName: string | null;
@@ -119,6 +127,10 @@ export function MemberRow({
   const navigate = useNavigate();
   const [point, setPoint] = useState<RowMenuPoint | null>(null);
   const menuSeq = useRef(0);
+  const [draft, setDraft] = useState<string | null>(null);
+  const draftEscape = useDraftEscape();
+  useEffect(() => { setDraft(renaming ? member.roleLabel ?? "" : null); }, [renaming, member.roleLabel]);
+  const displayName = memberDisplayName(members, member.id);
 
   return (
     <div className="kaus-group-member kaus-row-with-menu" data-testid={`group-member-${member.id}`}
@@ -133,10 +145,20 @@ export function MemberRow({
           此前这里直接用会话标题，于是两个都叫 media 的成员在这一栏长得一模一样，
           而它们自己知道谁是 media#2。`title=` 仍给会话标题（悬停看得到原始标题）。 */}
       {/* 单击打开这位成员的对话（与对话行一致，2026-11-17）。 */}
-      {conversation
-        ? <button type="button" className="kaus-group-member-title kaus-row-open" title={conversation.title ?? undefined}
+      {renaming && draft !== null
+        ? <input className="kaus-sidebar-title-input kaus-group-member-title" autoFocus data-testid="group-rename-input"
+            aria-label={t("group.member.renameField")} placeholder={conversation?.title ?? undefined} value={draft}
+            onChange={event => setDraft(event.target.value)} onFocus={event => event.currentTarget.select()}
+            onBlur={() => onRenameCancel?.()}
+            onKeyDown={event => {
+              if (event.nativeEvent.isComposing) return;
+              if (draftEscape(event, draft !== (member.roleLabel ?? ""), () => onRenameCancel?.())) return;
+              if (event.key === "Enter") { event.preventDefault(); onRenameSubmit?.(draft.trim()); }
+            }} />
+        : conversation
+        ? <button type="button" className="kaus-group-member-title kaus-row-open" title={conversation.title ? `${displayName} · ${conversation.title}` : displayName}
             onClick={() => { navigate(conversationPath(member.conversationId)); minimizeGroupDock(); }}>
-            {memberDisplayName(members, member.id)}
+            {displayName}
           </button>
         : <span className="kaus-group-member-title">{t("group.member.conversationGone")}</span>}
       <MemberActions

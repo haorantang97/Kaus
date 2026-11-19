@@ -57,6 +57,18 @@ describe("对话行在各处一致", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  it("项目页对话行：归档立即生效，撤销取消归档", async () => {
+    const user = userEvent.setup(); const onChanged = vi.fn();
+    render(<><ConversationRow conversation={conversation} className="row" onOpen={vi.fn()} onChanged={onChanged}>接口层重构</ConversationRow><ToastHost /></>);
+    await user.click(screen.getByRole("button", { name: "接口层重构 对话菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "归档" }));
+    await waitFor(() => expect(archiveConversation).toHaveBeenCalledWith("c1"));
+    expect(await screen.findByText("已归档「接口层重构」")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "撤销" }));
+    await waitFor(() => expect(archiveConversation).toHaveBeenLastCalledWith("c1", false));
+    expect(onChanged).toHaveBeenCalledTimes(2);
+  });
+
   it("原生历史行：⋯ 与右键里移出项目，撤销放回项目", async () => {
     const user = userEvent.setup(); const onOpen = vi.fn();
     render(<><HistoryRow item={archive} projectId="project:site" className="row" onOpen={onOpen} onOpenConversation={vi.fn()}>旧的 Codex 记录</HistoryRow><ToastHost /></>);

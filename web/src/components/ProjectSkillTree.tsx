@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Anchor, ArrowDown, ArrowRight, ArrowUp, Ban, Bell, Check, ChevronRight, Copy, CornerUpLeft, Download, FileText, Folder, GripVertical, Lock, MoreHorizontal, MoveRight, Plug, Puzzle, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
+import { Anchor, ArrowDown, ArrowRight, ArrowUp, Ban, Bell, Check, ChevronRight, Copy, CornerUpLeft, Download, FileText, Folder, GripVertical, Lock, MoreHorizontal, MoveRight, Plug, Plus, Puzzle, RefreshCw, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { useLocale } from "../i18n";
 import { affectedProjects, matchesSkill, orderedEntries, projectAncestors } from "../lib/skillTree";
 import { GROUP_DRAG_LABEL_MIME, PROJECT_DRAG_MIME } from "../lib/groupDrop";
@@ -10,7 +10,7 @@ import { CapabilityChangesPanel } from "./CapabilityChangesPanel";
 import { EngineIcon } from "./EngineIcon";
 import { AddPluginDialog } from "./AddPluginDialog";
 import { removePlugin } from "../lib/libraryApi";
-import { confirmAsync, Modal, Spinner, toast, undoToast } from "./ui";
+import { confirmAsync, ErrorNotice, Modal, Spinner, toast, undoToast } from "./ui";
 import "./project-skill-tree.css";
 
 interface Props {
@@ -34,7 +34,8 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
   const { t } = useLocale();
   const treeId = useId();
   const [data, setData] = useState<SkillTreeSnapshot | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  /** The failure itself (not its message), so the notice keeps its code and details. */
+  const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -59,10 +60,10 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     setMenu(null);
     if (!skill.pluginId || !await confirmAsync(t("library.removeConfirm"), { title: t("library.removeTitle", { name: skill.name }), okLabel: t("library.remove"), danger: true })) return;
     try { await removePlugin(skill.pluginId); toast(t("library.removed"), "ok"); await load(); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
+    catch (failure) { setError(failure); }
   };
   const [status, setStatus] = useState("");
-  const [ghost, setGhost] = useState<{ x: number; y: number; name: string; mcp?: boolean; plugin?: boolean } | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number; name: string; mcp?: boolean; plugin?: boolean; copy?: boolean; from?: string } | null>(null);
   const [drop, setDrop] = useState<Drop | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
@@ -93,7 +94,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
       const next = await fetchSkillTree(signal);
       if (!signal?.aborted && id === requestId.current) { setData(next); setError(null); }
     } catch (failure) {
-      if (!signal?.aborted && id === requestId.current) setError(failure instanceof Error ? failure.message : String(failure));
+      if (!signal?.aborted && id === requestId.current) setError(failure);
     }
   }, []);
   useEffect(() => {
@@ -127,6 +128,14 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     window.addEventListener("keydown", cancel);
     return () => { window.removeEventListener("keydown", cancel); if (hoverTimer.current) clearTimeout(hoverTimer.current); };
   }, [cancelDrag]);
+  // Option/Alt held mid-drag (pointer still) toggles the copy cue too.
+  const dragging = ghost !== null;
+  useEffect(() => {
+    if (!dragging) return;
+    const sync = (e: KeyboardEvent) => { if (e.key === "Alt") setGhost(g => g && { ...g, copy: e.type === "keydown" && !!drag.current && !drag.current.skill.pendingAssignment }); };
+    window.addEventListener("keydown", sync); window.addEventListener("keyup", sync);
+    return () => { window.removeEventListener("keydown", sync); window.removeEventListener("keyup", sync); };
+  }, [dragging]);
   useEffect(() => {
     if (!menu) return;
     const previous = document.activeElement;
@@ -149,7 +158,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
       if (failure instanceof SkillTreeError && failure.status === 409 && failure.code === "skill_tree_stale") {
         await load();
         setError(t("skillTree.conflict"));
-      } else setError(failure instanceof Error ? failure.message : String(failure));
+      } else setError(failure);
     } finally { mutation.current = false; setBusy(false); }
     return written;
   };
@@ -172,11 +181,9 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     const affected = affectedProjects(data, item.entry);
     // 2026-11-18: a move that reaches several projects happens at once; 撤销 names how many (confirm or undo, not both).
     if (action.action === "move" && (item.entry.inherited || affected.length > 1)) {
-      void write(action).then(result => {
-        const token = result?.undoToken;
-        if (token) undoToast(t("skillTree.movedMany", { name: item.skill.name, target: projectName(target.projectId), count: affected.length }),
-          () => writeLatest.current({ action: "undo", undoToken: token }));
-      });
+      void writeUndoable(action, t("skillTree.movedMany", { name: item.skill.name, target: projectName(target.projectId), count: affected.length }));
+    } else if (action.action === "reorder") {
+      void writeUndoable(action, t("skillTree.reordered", { name: item.skill.name }));
     } else void write(action);
   };
   const beginDrag = (e: ReactPointerEvent, item: Item) => {
@@ -190,7 +197,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     if (!current || !data) return;
     if (!current.active && Math.hypot(e.clientX - current.x, e.clientY - current.y) < 5) return;
     current.active = true;
-    setGhost({ x: e.clientX, y: e.clientY, name: current.skill.name, mcp: current.skill.kind === "mcp", plugin: current.skill.kind === "plugin" });
+    setGhost({ x: e.clientX, y: e.clientY, name: current.skill.name, mcp: current.skill.kind === "mcp", plugin: current.skill.kind === "plugin", copy: e.altKey && !current.skill.pendingAssignment, from: current.entry.projectId });
     const element = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-skill-drop]");
     let target: Drop | null = null;
     if (element && root.current?.contains(element)) {
@@ -255,12 +262,21 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
   // the old token stale and the tree reports it instead of undoing something else.
   const writeLatest = useRef(write);
   writeLatest.current = write;
-  const removeHere = async (item: Item) => {
-    setMenu(null);
-    const result = await write({ action: "remove", skillId: item.skill.id, targetProjectId: item.entry.projectId });
+  /** A write that offers 「撤销」 bound to the undo token this very write returned. */
+  async function writeUndoable(action: Omit<SkillTreeAction, "revision">, message: string) {
+    const result = await write(action);
     const token = result?.undoToken;
-    if (token) undoToast(t("ui.removedFrom", { name: item.skill.name, project: projectName(item.entry.projectId) }),
-      () => writeLatest.current({ action: "undo", undoToken: token }));
+    if (token) undoToast(message, () => writeLatest.current({ action: "undo", undoToken: token }));
+  }
+  const removeHere = (item: Item) => {
+    setMenu(null);
+    void writeUndoable({ action: "remove", skillId: item.skill.id, targetProjectId: item.entry.projectId },
+      t("ui.removedFrom", { name: item.skill.name, project: projectName(item.entry.projectId) }));
+  };
+  const blockHere = (item: Item) => {
+    setMenu(null);
+    void writeUndoable({ action: "block", skillId: item.skill.id, targetProjectId: item.entry.projectId },
+      t("skillTree.blockedIn", { name: item.skill.name, project: projectName(item.entry.projectId) }));
   };
   const openMcp = (id: string) => {
     // The router listens to popstate, so this opens Settings → MCP on that item without a reload.
@@ -371,7 +387,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
       <label className="skill-tree-search"><Search size={16} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t("skillTree.search")} aria-label={t("skillTree.search")} /></label>
       <span className="skill-tree-status" role="status">{busy ? <Spinner /> : status && <Check size={14} aria-label={status} />}</span>
       <button className="skill-tree-icon" disabled={!undoToken || busy} title={t("skillTree.undo")} aria-label={t("skillTree.undo")} onClick={() => undoToken && void write({ action: "undo", undoToken })}><Undo2 size={18} /></button>
-      <button className="skill-tree-icon" disabled={busy} title={t("skillTree.refresh")} aria-label={t("skillTree.refresh")} onClick={() => void load()}><RotateCcw size={16} /></button>
+      <button className="skill-tree-icon" disabled={busy} title={t("skillTree.refresh")} aria-label={t("skillTree.refresh")} onClick={() => void load()}><RefreshCw size={16} /></button>
       {!embedded && <>
       <button className="skill-tree-icon" disabled={busy} title={t("library.addButton")} aria-label={t("library.addButton")} onClick={() => setAddingPlugin(true)}><Puzzle size={16} /></button>
       <button className="skill-tree-icon" disabled={busy} title={t("skillTree.importButton")} aria-label={t("skillTree.importButton")} onClick={() => setImporting(true)}><Download size={16} /></button>
@@ -384,33 +400,36 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     {changesOpen && <CapabilityChangesPanel onClose={() => setChangesOpen(false)} onChanged={() => void load()} />}
     {addingPlugin && <AddPluginDialog onClose={() => setAddingPlugin(false)}
       onInstalled={() => { setAddingPlugin(false); toast(t("library.installed"), "ok"); void load(); }} />}
-    {error && <div className="skill-tree-error" role="alert"><span>{error}</span><button className="skill-tree-icon" aria-label={t("skillTree.dismiss")} onClick={() => setError(null)}><X size={14} /></button></div>}
+    {error !== null && <div className="skill-tree-error"><ErrorNotice error={error} /><button className="skill-tree-icon" aria-label={t("skillTree.dismiss")} onClick={() => setError(null)}><X size={14} /></button></div>}
     <div className="skill-tree-scroll" ref={scroll}>
       {!data ? <div className="skill-tree-loading"><Spinner />{t("ui.loading")}</div> : roots.map(p => renderProject(p, 0, new Set()))}
       {visibleProjects?.size === 0 && <div className="skill-tree-empty">{t("skillTree.noResults")}</div>}
     </div>
-    {ghost && createPortal(<div className="skill-tree-ghost" style={{ left: ghost.x + 16, top: ghost.y + 12 }}>{ghost.mcp ? <Plug size={15} /> : ghost.plugin ? <Puzzle size={15} /> : <FileText size={15} />}<span>{ghost.name}</span>{drop && <><ArrowRight size={13} /><span>{projectName(drop.projectId)}</span></>}</div>, document.body)}
+    {ghost && createPortal(<div className="skill-tree-ghost" style={{ left: ghost.x + 16, top: ghost.y + 12 }}>{ghost.mcp ? <Plug size={15} /> : ghost.plugin ? <Puzzle size={15} /> : <FileText size={15} />}<span>{ghost.name}</span>{drop && <><ArrowRight size={13} /><span>{projectName(drop.projectId)}</span></>}{ghost.copy && (!drop || drop.projectId !== ghost.from) && <Plus size={13} className="skill-tree-ghost-copy" role="img" aria-label={t("skillTree.copy")} />}</div>, document.body)}
     {menu && createPortal(<div className="skill-tree-menu-backdrop" onPointerDown={() => setMenu(null)}>
       <div className="skill-tree-menu" ref={menuRef} role="menu" data-skill-tree-owner={treeId} style={{ left: Math.max(12, menu.x), top: Math.max(12, menu.y) }} onPointerDown={e => e.stopPropagation()} onKeyDown={e => {
         if (!["ArrowDown", "ArrowUp"].includes(e.key)) return;
         e.preventDefault(); const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
         const i = buttons.indexOf(document.activeElement as HTMLButtonElement); buttons[(i + (e.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
       }}>
+        {/* Destructive items (停用, 移除本层分配, 从能力库删除) come last, after a separator (2026-11-19). */}
         {menu.skill.pendingAssignment ? <button role="menuitem" onClick={() => { setDestination({ ...menu, copy: false }); setMenu(null); }}><MoveRight size={16} />{t("skillTree.assign")}</button> : !menu.entry.blocked ? <>
           <button role="menuitem" onClick={() => { setDestination({ ...menu, copy: false }); setMenu(null); }}><MoveRight size={16} />{t("skillTree.move")}</button>
           <button role="menuitem" onClick={() => { setDestination({ ...menu, copy: true }); setMenu(null); }}><Copy size={15} />{t("skillTree.copy")}</button>
           <hr />
           <button role="menuitem" disabled={menuIndex <= 0} onClick={() => reorder(menu, -1)}><ArrowUp size={15} />{t("skillTree.up")}</button>
           <button role="menuitem" disabled={menuIndex === menuRows.length - 1} onClick={() => reorder(menu, 1)}><ArrowDown size={15} />{t("skillTree.down")}</button>
-          <hr />
-          <button role="menuitem" onClick={() => void write({ action: "block", skillId: menu.skill.id, targetProjectId: menu.entry.projectId })}><Ban size={15} />{t("skillTree.block")}</button>
-          {canClearOverride && <button role="menuitem" onClick={() => void removeHere(menu)}><Trash2 size={15} />{t("skillTree.remove")}</button>}
         </> : <button role="menuitem" disabled={menu.entry.inherited} onClick={() => void write({ action: "restore", skillId: menu.skill.id, targetProjectId: menu.entry.projectId })}><RotateCcw size={15} />{t("skillTree.restore")}</button>}
         {/* MCP 本身的设置（状态、工具开关、绑定）只在设置 → MCP（2026-11-12：一个功能一处入口）。 */}
         {menu.skill.kind === "mcp" && !embedded && <><hr />
           <button role="menuitem" onClick={() => { setMenu(null); openMcp(menu.skill.id); }}><Plug size={15} />{t("skillTree.mcpSettings")}</button></>}
-        {menu.skill.kind === "plugin" && menu.skill.pluginId && <><hr />
-          <button role="menuitem" onClick={() => void uninstallPlugin(menu.skill)}><Trash2 size={15} />{t("library.remove")}</button></>}
+        {((!menu.skill.pendingAssignment && !menu.entry.blocked) || (menu.skill.kind === "plugin" && menu.skill.pluginId)) && <hr />}
+        {!menu.skill.pendingAssignment && !menu.entry.blocked && <>
+          <button role="menuitem" onClick={() => blockHere(menu)}><Ban size={15} />{t("skillTree.block")}</button>
+          {canClearOverride && <button role="menuitem" onClick={() => removeHere(menu)}><Trash2 size={15} />{t("skillTree.remove")}</button>}
+        </>}
+        {menu.skill.kind === "plugin" && menu.skill.pluginId &&
+          <button role="menuitem" onClick={() => void uninstallPlugin(menu.skill)}><Trash2 size={15} />{t("library.remove")}</button>}
       </div>
     </div>, root.current?.closest<HTMLElement>('[role="dialog"], [data-kaus-modal]') ?? document.body)}
     {destination && <Modal onClose={() => setDestination(null)} width={420}><div className="skill-tree-dialog" role="dialog" aria-modal="true" aria-label={t(destination.skill.pendingAssignment ? "skillTree.assign" : destination.copy ? "skillTree.copy" : "skillTree.move")}>

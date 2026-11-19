@@ -186,12 +186,12 @@ describe("引擎配置展开区（AD-97）", () => {
     expect(screen.getByText(/引擎配置 · 6 组/)).toBeInTheDocument();
   });
 
-  it("来源三态：本项目 / 继承自 X / 在 X 禁止", async () => {
+  it("来源三态：本项目 / 继承自 X / 在 X 停用", async () => {
     renderPanel();
     const section = await openConfig();
     expect(within(section).getAllByText("继承自「X」").length).toBe(2);
     expect(within(section).getAllByText("本项目").length).toBe(3);
-    expect(within(section).getByText("在「X」禁止")).toBeInTheDocument();
+    expect(within(section).getByText("在「X」停用")).toBeInTheDocument();
   });
 
   it("值摘要：对象只列键名，标量原样（凭据占位串不被展开）", async () => {
@@ -272,7 +272,7 @@ describe("语言开关（AD-96）", () => {
     const section = await openConfig();
     expect(within(section).getByText("Model providers")).toBeInTheDocument();
     expect(within(section).getAllByText("Inherited from “X”").length).toBe(2);
-    expect(within(section).getByText("Blocked at “X”")).toBeInTheDocument();
+    expect(within(section).getByText("Disabled at “X”")).toBeInTheDocument();
   });
 });
 

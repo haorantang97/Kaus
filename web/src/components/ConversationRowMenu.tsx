@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Archive, GitBranch, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Archive, ArrowDownFromLine, ArrowUpToLine, GitBranch, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import "./conversation-row-menu.css";
 
@@ -115,7 +115,7 @@ export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, on
     triggerLabel={t("conversation.menuFor", { title })}
     menuLabel={t("conversation.menu")}
     items={[
-      { id: "pin", icon: pinned ? <PinOff size={16} aria-hidden /> : <Pin size={16} aria-hidden />, label: pinned ? t("conversation.row.unpin") : t("conversation.row.pin"), onSelect: onPin, restoreFocus: true },
+      { id: "pin", icon: pinned ? <ArrowDownFromLine size={16} aria-hidden /> : <ArrowUpToLine size={16} aria-hidden />, label: pinned ? t("conversation.row.unpin") : t("conversation.row.pin"), onSelect: onPin, restoreFocus: true },
       { id: "rename", icon: <Pencil size={16} aria-hidden />, label: t("conversation.title.rename"), onSelect: onRename },
       ...(onContinue ? [{ id: "continue", icon: <GitBranch size={16} aria-hidden />, label: t("continuation.title"), onSelect: onContinue,
         disabled: !canArchive, title: !canArchive ? t("surface.action.stopFirst") : undefined }] : []),

@@ -45,6 +45,7 @@ body:not(.dark) .skill-tree { --tree-accent: var(--accent-text); }
 .skill-tree-row.is-drop-target { background: color-mix(in srgb, var(--tree-accent) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tree-accent) 55%, transparent); }
 .skill-tree.is-dragging { user-select: none; cursor: grabbing; }
 .skill-tree-ghost { position: fixed; z-index: 110; display: flex; align-items: center; gap: 8px; max-width: 360px; pointer-events: none; padding: 10px 14px; border-radius: 10px; background: var(--panel); color: var(--midground-base); border: 1px solid color-mix(in srgb, var(--midground-base) 15%, transparent); box-shadow: 0 6px 24px #0002; font-size: 12px; }
+.skill-tree-ghost-copy { flex: 0 0 auto; width: 16px; height: 16px; padding: 1px; border-radius: 999px; background: var(--accent-text); color: var(--panel); }
 .skill-tree-ghost span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skill-tree-empty { padding: 12px 8px 12px calc(8px + var(--tree-depth, 0) * 22px); color: var(--tree-muted); font-size: 12px; }
 .skill-tree-loading { display: flex; align-items: center; gap: 8px; padding: 24px; color: var(--tree-muted); }

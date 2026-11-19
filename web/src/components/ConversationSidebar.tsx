@@ -3,7 +3,7 @@ import { readSidebarPins, reorderSidebarPin, saveSidebarPins, SIDEBAR_PINS_EVENT
 import { useScrollFade } from "../hooks/useScrollFade";
 import { ChevronDown, ChevronRight, Search, Terminal } from "lucide-react";
 import { useLocale } from "../i18n";
-import { confirmAsync, cream, toast } from "./ui";
+import { confirmAsync, cream, toast, undoToast } from "./ui";
 import { AddExistingConversationsDialog } from "./AddExistingConversationsDialog";
 import { ProjectHistoryViewer } from "./ProjectHistoryViewer";
 import { ContinuationDialog } from "./ContinuationDialog";
@@ -148,14 +148,24 @@ export function ConversationSidebar({
     } catch { toast(t("sidebar.renameFailed"), "bad"); }
     finally { setBusyId(null); }
   };
-  const archive = async (conversationId: string, projectId: string) => {
+  const archive = async (conversationId: string, projectId: string, title: string) => {
     if (busyId) return;
     setBusyId(conversationId);
     try {
       await archiveConversation(conversationId);
+      const wasPinned = (pins[projectId] ?? []).includes(conversationId);
       setArchivedIds(current => [...current, conversationId]);
       savePins({ ...pins, [projectId]: (pins[projectId] ?? []).filter(id => id !== conversationId) });
       onConversationChanged?.({ conversationId, projectId, archived: true });
+      // Archiving keeps everything: 「撤销」 brings the row (and its pin) back.
+      undoToast(t("ui.archived", { name: title }), async () => {
+        try {
+          await archiveConversation(conversationId, false);
+          setArchivedIds(current => current.filter(id => id !== conversationId));
+          if (wasPinned) { const current = readSidebarPins(); savePins({ ...current, [projectId]: [...(current[projectId] ?? []).filter(id => id !== conversationId), conversationId] }); }
+          onConversationChanged?.({ conversationId, projectId, archived: false });
+        } catch { toast(t("ui.undoFailed"), "bad"); }
+      });
     } catch { toast(t("sidebar.archiveFailed"), "bad"); }
     finally { setBusyId(null); }
   };
@@ -329,7 +339,7 @@ export function ConversationSidebar({
                         onPin={() => savePins({ ...pins, [group.projectId]: isPinned ? pinned.filter(id => id !== conversation.id) : [...pinned, conversation.id] })}
                         onRename={() => setRenaming({ id: conversation.id, title: conversation.title })}
                         onContinue={() => setContinuing({ id: conversation.id, projectId: group.projectId })}
-                        onArchive={() => { void archive(conversation.id, group.projectId); }}
+                        onArchive={() => { void archive(conversation.id, group.projectId, conversation.title); }}
                         onDelete={() => { void remove(conversation.id, group.projectId, conversation.title); }}
                         point={menuPoint?.id === conversation.id ? menuPoint.point : null} />
                     </div>

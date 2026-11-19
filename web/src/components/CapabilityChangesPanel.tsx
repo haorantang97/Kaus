@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Anchor, FileText, Plug, Puzzle, RotateCcw } from "lucide-react";
+import { Anchor, FileText, Plug, Puzzle, RefreshCw } from "lucide-react";
 import { useLocale } from "../i18n";
 import { fetchCapabilityChanges, ignoreCapabilityChanges, importCapabilities, markCapabilityChangesSeen, syncCapability,
   type AgentChanges, type ChangeItem } from "../lib/skillTreeApi";
@@ -44,7 +44,7 @@ export function CapabilityChangesPanel({ onClose, onChanged }: { onClose: () => 
     <div className="flex items-center gap-2">
       <ModalTitle>{t("changes.title")}</ModalTitle>
       <span className="flex-1" />
-      <button className="skill-tree-icon" disabled={busy} title={t("changes.check")} aria-label={t("changes.check")} onClick={() => void load()}><RotateCcw size={15} /></button>
+      <button className="skill-tree-icon" disabled={busy} title={t("changes.check")} aria-label={t("changes.check")} onClick={() => void load()}><RefreshCw size={15} /></button>
     </div>
     {error && <p role="alert" className="mt-2 text-xs" style={{ color: "var(--danger)" }}>{error}</p>}
     {!agents ? <p className="flex items-center gap-2 py-6 text-xs" style={{ color: cream(50) }}><Spinner />{t("ui.loading")}</p>

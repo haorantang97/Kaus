@@ -1,4 +1,3 @@
-import { failureSummary } from "../lib/userFacingErrors";
 /* 项目详情页（IA §2.3 / §3，替代 ProfileDrawer 的借位）。
  *
  * 分区顺序：
@@ -23,16 +22,19 @@ import { useProjectHistory } from "../lib/projectHistory";
 import type { ArchiveItem } from "../lib/nativeArchivesApi";
 import { ProjectInstructionsEditor } from "../components/ProjectInstructionsEditor";
 import { ProjectMemoryCard } from "../components/ProjectMemoryCard";
-import { Button, Card, Modal, Pill, cream, toast, undoToast } from "../components/ui";
+import { Button, Card, ErrorNotice, Modal, Pill, cream, toast, undoToast } from "../components/ui";
 import { type NetworkResp } from "../lib/api";
 import { openProjectTerminal } from "../lib/terminalApi";
 import {
   capabilityActions,
+  capabilityDisplayName,
   capabilityRawValue,
   capabilitySummary,
+  isLibraryMcp,
   visibleCapabilityRows,
   type CapabilityAction,
 } from "../lib/capabilityRows";
+import { fetchMcpList, type McpItem } from "../lib/mcpApi";
 import { findProject, matchProjectId } from "../lib/projectRef";
 import {
   deleteProjectCapability,
@@ -90,7 +92,8 @@ export function ProjectDetailPage({
   /** Bumped after a row's rename, archive or delete, to reload the list. */
   const [conversationsRevision, setConversationsRevision] = useState(0);
   const [viewHistory, setViewHistory] = useState<ArchiveItem | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  /** The failure itself, so the notice keeps its code (2026-11-19). */
+  const [error, setError] = useState<unknown>(null);
   const [openingTerminal, setOpeningTerminal] = useState(false);
 
   const projectId = useMemo(() => matchProjectId(projects, projectRef), [projects, projectRef]);
@@ -106,7 +109,7 @@ export function ProjectDetailPage({
         if (!cancelled) setProjects(list);
       })
       .catch((failure) => {
-        if (!cancelled) setError(String((failure as Error)?.message ?? failure));
+        if (!cancelled) setError(failure);
       });
     return () => {
       cancelled = true;
@@ -257,11 +260,7 @@ export function ProjectDetailPage({
               </button>
             </span>
           </div>
-          {error && (
-            <div className="text-xs" style={{ color: "var(--danger)" }}>
-              {failureSummary(error)}
-            </div>
-          )}
+          {error !== null && <ErrorNotice error={error} className="text-xs" />}
         </header>
 
         {/* 对话入口优先于配置表，已有记录整行可打开。 */}
@@ -329,10 +328,13 @@ function CapabilityContent({
   config,
   localize,
   name,
+  summary: givenSummary,
 }: {
   config: Record<string, unknown>;
   localize: (value: string) => string;
   name: string;
+  /** Replaces the value summary when the value is only a reference (a library MCP). */
+  summary?: string;
 }) {
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
@@ -340,7 +342,7 @@ function CapabilityContent({
   const close = useRef<HTMLButtonElement>(null);
   const value = useRef<HTMLPreElement>(null);
   const titleId = useId();
-  const summary = capabilitySummary(config, localize, t("common.dash"));
+  const summary = givenSummary ?? capabilitySummary(config, localize, t("common.dash"));
   const raw = capabilityRawValue(config);
   const inspectable = raw !== "" && (raw !== summary || raw.length > 80);
   let content = raw;
@@ -478,11 +480,30 @@ export function CapabilitiesSection({
   const { t, tDynamic } = useLocale();
   const label = projectLabel;
   const [busy, setBusy] = useState<string | null>(null);
+  // MCP added in Kaus is stored as `lib-mcp-…`; show its name (2026-11-19).
+  const needsMcpNames = Boolean(capabilities && [...(capabilities.entries ?? []), ...(capabilities.blocked ?? [])].some(isLibraryMcp));
+  const [mcpItems, setMcpItems] = useState<ReadonlyMap<string, McpItem>>(new Map());
+  useEffect(() => {
+    if (!needsMcpNames) return;
+    const controller = new AbortController();
+    fetchMcpList(controller.signal).then(result => setMcpItems(new Map(result.items.map(item => [item.id, item])))).catch(() => {});
+    return () => controller.abort();
+  }, [needsMcpNames]);
+  const mcpNames = useMemo(() => new Map([...mcpItems].map(([id, item]) => [id, item.name])), [mcpItems]);
+  /** A library MCP's value is a reference (`libraryRef`, `oauthKey`); its summary is what it connects to. */
+  const mcpSummary = (row: { capabilityType: string; capabilityId: string }) => {
+    if (!isLibraryMcp(row)) return undefined;
+    const item = mcpItems.get(row.capabilityId);
+    return item ? item.description || item.target || t("common.dash") : t("common.dash");
+  };
+  const nameOf = useCallback((row: { capabilityType: string; capabilityId: string; config?: Record<string, unknown> | null }) =>
+    capabilityDisplayName(row, mcpNames), [mcpNames]);
 
   const run = useCallback(
     async (row: { capabilityType: string; capabilityId: string; config?: Record<string, unknown> }, action: CapabilityAction) => {
       if (!projectId) return;
       const key = `${row.capabilityType}/${row.capabilityId}`;
+      const name = nameOf(row);
       setBusy(key);
       try {
         if (action === "block" || action === "blockHere") {
@@ -495,18 +516,18 @@ export function CapabilitiesSection({
         const previous = row.config && "value" in row.config ? row.config.value : row.config;
         if (action === "clear" && previous !== undefined) {
           // This level's value can be written back: 「撤销」 instead of asking first.
-          undoToast(t(`capabilities.toast.${action}`, { name: key }), async () => {
+          undoToast(t(`capabilities.toast.${action}`, { name }), async () => {
             try { await putProjectCapability(projectId, row.capabilityType, row.capabilityId, { value: previous }); await onChanged?.(); }
             catch (failure) { toast(t("capabilities.toast.failed", { error: describeFailure(failure) }), "bad"); }
           });
-        } else toast(t(`capabilities.toast.${action}`, { name: key }), "ok");
+        } else toast(t(`capabilities.toast.${action}`, { name }), "ok");
       } catch (failure) {
         toast(t("capabilities.toast.failed", { error: describeFailure(failure) }), "bad");
       } finally {
         setBusy(null);
       }
     },
-    [onChanged, projectId, t],
+    [nameOf, onChanged, projectId, t],
   );
 
   const showActions = Boolean(projectId && onChanged);
@@ -571,11 +592,11 @@ export function CapabilitiesSection({
           {entries.map((entry) => (
             <div className="kaus-cap-row" role="row" key={`${entry.capabilityType}/${entry.capabilityId}`}>
               <span role="cell" className="kaus-cap-name">
-                <strong>{entry.capabilityId}</strong>
+                <strong title={nameOf(entry)}>{nameOf(entry)}</strong>
                 {entry.capabilityType !== entry.capabilityId && <small>{entry.capabilityType}</small>}
               </span>
               <span role="cell" style={{ color: cream(62) }}>
-                <CapabilityContent config={entry.config} localize={localize} name={entry.capabilityId} />
+                <CapabilityContent config={entry.config} localize={localize} name={nameOf(entry)} summary={mcpSummary(entry)} />
               </span>
               <span role="cell">
                 {entry.inherited ? (
@@ -616,7 +637,7 @@ export function CapabilitiesSection({
               key={`blocked:${blocked.capabilityType}/${blocked.capabilityId}`}
             >
               <span role="cell" className="kaus-cap-name">
-                <strong>{blocked.capabilityId}</strong>
+                <strong title={nameOf(blocked)}>{nameOf(blocked)}</strong>
                 {blocked.capabilityType !== blocked.capabilityId && <small>{blocked.capabilityType}</small>}
               </span>
               <span role="cell" style={{ color: cream(45) }}>

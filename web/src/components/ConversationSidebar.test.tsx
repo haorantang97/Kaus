@@ -7,7 +7,7 @@ import { SIDEBAR_GROUPS_KEY, readCollapsedGroups } from "../lib/shellPrefs";
 import type { ProjectWire } from "../lib/sessionApi";
 import { readSidebarPins, SIDEBAR_PINS_KEY } from "../lib/sidebarPins";
 import { useGroupDrop, type GroupDropPayload } from "../lib/groupDrop";
-import { ConfirmHost } from "./ui";
+import { ConfirmHost, ToastHost } from "./ui";
 
 const actions = vi.hoisted(() => ({ patchConversation: vi.fn(), archiveConversation: vi.fn(), deleteConversation: vi.fn() }));
 vi.mock("../lib/sessionApi", async importOriginal => ({ ...(await importOriginal<typeof import("../lib/sessionApi")>()), ...actions }));
@@ -112,6 +112,20 @@ describe("会话行菜单", () => {
     await user.click(screen.getByRole("menuitem", { name: "归档" }));
     await waitFor(() => expect(onChanged).toHaveBeenCalledWith({ conversationId: "c1", projectId: "project:pronto", archived: true }));
     expect(screen.queryByText("接口层重构")).toBeNull(); expect(readSidebarPins()["project:pronto"]).toEqual([]);
+  });
+  it("归档后提示「已归档」并可撤销：取消归档、恢复置顶", async () => {
+    localStorage.setItem(SIDEBAR_PINS_KEY, JSON.stringify({ "project:pronto": ["c1"] }));
+    actions.archiveConversation.mockResolvedValue({ conversation: { id: "c1" } });
+    const user = userEvent.setup(), { onChanged } = setup();
+    render(<ToastHost />);
+    await user.click(screen.getByRole("button", { name: "接口层重构 对话菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "归档" }));
+    expect((await screen.findAllByText("已归档「接口层重构」")).length).toBeGreaterThan(0);
+    await user.click(screen.getAllByRole("button", { name: "撤销" }).at(-1)!);
+    await waitFor(() => expect(actions.archiveConversation).toHaveBeenLastCalledWith("c1", false));
+    await waitFor(() => expect(onChanged).toHaveBeenLastCalledWith({ conversationId: "c1", projectId: "project:pronto", archived: false }));
+    expect(readSidebarPins()["project:pronto"]).toEqual(["c1"]);
+    expect(screen.getByText("接口层重构")).toBeInTheDocument();
   });
   it("删除先确认；取消不删，确认后收起该行", async () => {
     const user = userEvent.setup(), { onChanged } = setup();

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ProjectInstructionsEditor } from "./ProjectInstructionsEditor";
+import { ToastHost } from "./ui";
 import type { EffectiveCapabilitiesWire } from "../lib/sessionApi";
 
 const api = vi.hoisted(() => ({ fetchInstructionFiles: vi.fn(), importInstructionFile: vi.fn(), putProjectCapability: vi.fn(), deleteProjectCapability: vi.fn(), fetchEffectiveCapabilities: vi.fn() }));
@@ -40,5 +41,44 @@ describe("指令送达", () => {
     expect(await screen.findByText(/未设置工作目录/)).toBeInTheDocument();
     rerender(<ProjectInstructionsEditor projectId="project:site" effective={effective(false)} projectLabel={id => id} onChanged={() => {}} />);
     await waitFor(() => expect(screen.queryByText(/未设置工作目录/)).toBeNull());
+  });
+});
+
+describe("指令编辑", () => {
+  const overridden: EffectiveCapabilitiesWire = {
+    projectId: "project:site", backendKey: null, ancestry: ["project:root", "project:site"], blocked: [], counts: { entries: 1, blocked: 0 },
+    entries: [{ capabilityType: "instructions", capabilityId: "section-a", config: { body: "本级正文", title: "沟通", order: 3 }, version: "1",
+      sourceProjectId: "project:site", inherited: false, overridden: true, contributingProjectIds: ["project:site"], blocked: false }],
+  };
+
+  it("恢复继承立即生效，撤销写回原来的本级正文", async () => {
+    api.fetchInstructionFiles.mockResolvedValue({ workspaceRoot: "/w", workspaceDenied: null, files: [] });
+    api.deleteProjectCapability.mockResolvedValue({});
+    api.putProjectCapability.mockResolvedValue({});
+    const user = userEvent.setup();
+    render(<><ProjectInstructionsEditor projectId="project:site" effective={overridden} projectLabel={id => id} onChanged={() => {}} /><ToastHost /></>);
+    await user.click(screen.getByRole("button", { name: "指令操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "恢复继承" }));
+    await waitFor(() => expect(api.deleteProjectCapability).toHaveBeenCalledWith("project:site", "instructions", "section-a"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(await screen.findByRole("button", { name: "撤销" }));
+    await waitFor(() => expect(api.putProjectCapability).toHaveBeenCalledWith("project:site", "instructions", "section-a",
+      { value: { body: "本级正文", order: 3, title: "沟通" } }));
+  });
+
+  it("改过的草稿第一次 Esc 保留，再按一次才放弃", async () => {
+    api.fetchInstructionFiles.mockResolvedValue({ workspaceRoot: "/w", workspaceDenied: null, files: [] });
+    const user = userEvent.setup();
+    render(<ProjectInstructionsEditor projectId="project:site" effective={overridden} projectLabel={id => id} onChanged={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "新建指令" }));
+    const body = screen.getByRole("textbox", { name: "指令内容" });
+    await user.type(body, "草稿");
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("textbox", { name: "指令内容" })).toHaveValue("草稿");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "指令内容" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "新建指令" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "指令内容" })).toBeNull();
   });
 });

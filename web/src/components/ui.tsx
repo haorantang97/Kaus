@@ -36,7 +36,10 @@ export const Loading = () => <div className="flex items-center gap-2 py-1 text-x
 export function ErrorNotice({ error, className = "" }: { error: unknown; className?: string }) {
   useLocale(); // re-render on locale switch; `t` is the module-level lookup
   const summary = failureSummary(error);
-  const diagnostic = failureDiagnostic(error);
+  // Keep the error code with the details (2026-11-19 HIG §5): it is what a report or a search needs.
+  const code = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : "";
+  const message = failureDiagnostic(error);
+  const diagnostic = code && !message.includes(code) ? [code, message].filter(Boolean).join("\n") : message;
   return <div role="alert" className={className} style={{ color: "var(--danger)" }}>
     <span>{summary}</span>
     {diagnostic && diagnostic !== summary && <details className="mt-1">
@@ -88,6 +91,7 @@ export function Button({
   className = "",
   "aria-pressed": ariaPressed,
   "aria-label": ariaLabel,
+  autoFocus,
 }: {
   variant?: BtnVariant;
   children: ReactNode;
@@ -98,12 +102,14 @@ export function Button({
   "aria-pressed"?: boolean;
   /** The button's name when its title is a longer hint (icon + accessible name + tooltip). */
   "aria-label"?: string;
+  autoFocus?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      autoFocus={autoFocus}
       title={title}
       aria-pressed={ariaPressed}
       aria-label={ariaLabel}
@@ -278,17 +284,68 @@ type ToastAction = { label: string; run: () => void };
 type ToastItem = { id: number; msg: string; tone: "ok" | "bad" | ""; action?: ToastAction };
 let _toasts: ToastItem[] = [];
 const _toastSubs = new Set<() => void>();
+/** Per-toast countdown; paused while the pointer or focus is on the toast (2026-11-19 HIG §5). */
+const _toastTimers = new Map<number, { handle?: ReturnType<typeof setTimeout>; remaining: number; started: number }>();
 function _emitToast() { for (const f of _toastSubs) f(); }
+function _dismissToast(id: number) {
+  const timer = _toastTimers.get(id);
+  if (timer?.handle !== undefined) clearTimeout(timer.handle);
+  _toastTimers.delete(id);
+  _toasts = _toasts.filter((t) => t.id !== id);
+  _emitToast();
+}
+function _resumeToast(id: number) {
+  const timer = _toastTimers.get(id);
+  if (!timer || timer.handle !== undefined) return;
+  timer.started = Date.now();
+  timer.handle = setTimeout(() => _dismissToast(id), Math.max(0, timer.remaining));
+}
+function _pauseToast(id: number) {
+  const timer = _toastTimers.get(id);
+  if (!timer || timer.handle === undefined) return;
+  clearTimeout(timer.handle);
+  timer.handle = undefined;
+  timer.remaining -= Date.now() - timer.started;
+}
 export function toast(msg: string, tone: "ok" | "bad" | "" = "", action?: ToastAction) {
   const id = Date.now() + Math.random();
   _toasts = [..._toasts, { id, msg, tone, action }];
-  _emitToast();
   // A toast with an action (撤销) stays long enough to reach it.
-  setTimeout(() => { _toasts = _toasts.filter((t) => t.id !== id); _emitToast(); }, action ? 8000 : 3600);
+  _toastTimers.set(id, { remaining: action ? 8000 : 3600, started: Date.now() });
+  _resumeToast(id);
+  _emitToast();
 }
 /** After a delete that can be put back: say so, with 「撤销」 (2026-11-18, product-decisions「删除与撤销」). */
 export function undoToast(msg: string, undo: () => void | Promise<unknown>) {
   toast(msg, "", { label: t("ui.undo"), run: () => { void undo(); } });
+}
+function ToastRow({ item }: { item: ToastItem }) {
+  const hold = useRef({ hover: false, focus: false });
+  const sync = () => { if (hold.current.hover || hold.current.focus) _pauseToast(item.id); else _resumeToast(item.id); };
+  const interactive = item.tone === "bad" || !!item.action;
+  return (
+    <div
+      role={item.tone === "bad" ? undefined : "status"}
+      aria-live={item.tone === "bad" ? undefined : "polite"}
+      aria-atomic="true"
+      data-toast-id={item.id}
+      className={`flex items-center gap-3 rounded-lg px-3.5 py-2 text-xs shadow-lg${interactive ? " pointer-events-auto" : ""}`}
+      style={{
+        background: "var(--panel)",
+        border: `1px solid ${item.tone === "bad" ? "color-mix(in srgb, var(--danger) 40%, transparent)" : cream(16)}`,
+        color: item.tone === "bad" ? "var(--danger)" : "var(--midground-base)",
+        boxShadow: "var(--shadow-popover)",
+      }}
+      onMouseEnter={() => { hold.current.hover = true; sync(); }}
+      onMouseLeave={() => { hold.current.hover = false; sync(); }}
+      onFocus={() => { hold.current.focus = true; sync(); }}
+      onBlur={(event) => { if (event.currentTarget.contains(event.relatedTarget as Node | null)) return; hold.current.focus = false; sync(); }}
+    >
+      {item.tone === "bad" ? <ErrorNotice error={item.msg} /> : item.msg}
+      {item.action && <button type="button" className="kaus-toast-action" style={{ color: "var(--accent-text)" }}
+        onClick={() => { const run = item.action!.run; _dismissToast(item.id); run(); }}>{item.action.label}</button>}
+    </div>
+  );
 }
 export function ToastHost() {
   const items = useSyncExternalStore(
@@ -299,25 +356,7 @@ export function ToastHost() {
   return createPortal(
     /* z-[80]:toast 是最高层反馈,必须压过一切抽屉/弹窗(抽屉 z-61、Modal z-70),否则操作提示被盖住看不见 */
     <div className="pointer-events-none fixed bottom-5 right-5 z-[80] flex flex-col gap-2">
-      {items.map((t) => (
-        <div
-          key={t.id}
-          role={t.tone === "bad" ? undefined : "status"}
-          aria-live={t.tone === "bad" ? undefined : "polite"}
-          aria-atomic="true"
-          className={`flex items-center gap-3 rounded-lg px-3.5 py-2 text-xs shadow-lg${t.tone === "bad" || t.action ? " pointer-events-auto" : ""}`}
-          style={{
-            background: "var(--panel)",
-            border: `1px solid ${t.tone === "bad" ? "color-mix(in srgb, var(--danger) 40%, transparent)" : cream(16)}`,
-            color: t.tone === "bad" ? "var(--danger)" : "var(--midground-base)",
-            boxShadow: "var(--shadow-popover)",
-          }}
-        >
-          {t.tone === "bad" ? <ErrorNotice error={t.msg} /> : t.msg}
-          {t.action && <button type="button" className="kaus-toast-action" style={{ color: "var(--accent-text)" }}
-            onClick={() => { const run = t.action!.run; _toasts = _toasts.filter(item => item.id !== t.id); _emitToast(); run(); }}>{t.action.label}</button>}
-        </div>
-      ))}
+      {items.map((item) => <ToastRow key={item.id} item={item} />)}
     </div>,
     document.body,
   );
@@ -352,7 +391,8 @@ export function ConfirmHost() {
         : <p data-modal-title className="mb-4 text-sm leading-relaxed" style={{ color: "var(--midground-base)" }}>{s.msg}</p>}
       <div className="flex justify-end gap-3">
         <Button onClick={() => done(false)}>{t("ui.cancel")}</Button>
-        <Button variant={s.danger ? "danger" : "primary"} onClick={() => done(true)}>{s.okLabel}</Button>
+        {/* Non-destructive: the confirm button is the default, so Enter confirms. Destructive keeps focus on 取消. */}
+        <Button variant={s.danger ? "danger" : "primary"} autoFocus={!s.danger} onClick={() => done(true)}>{s.okLabel}</Button>
       </div>
     </Modal>
   );

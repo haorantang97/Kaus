@@ -53,8 +53,13 @@ function conflictDetail(failure: unknown, code: string): Record<string, unknown>
     : {};
 }
 
+/** Lease owners arrive as machine words (`card`, `external-cli`); show names (2026-11-19). */
+function ownerName(t: ReturnType<typeof useLocale>["t"], owner: unknown, label?: string | null): string {
+  return owner === "external-cli" ? t("surface.owner.external") : owner === "card" ? t("surface.owner.card") : label || t("surface.owner.unknown");
+}
+
 export function useConversationSurface({ conversationId, archived, archiveBusy, draftText, caps, onActivity, setError, setDetail }: ConversationSurfaceOptions) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [surface, setSurface] = useState<SurfaceKind>("card");
   const [launch, setLaunch] = useState<TerminalLaunchWire | null>(null);
   /* A terminal lease remains authoritative until verified handoff completes. */
@@ -155,7 +160,7 @@ export function useConversationSurface({ conversationId, archived, archiveBusy, 
       }
       setNotice(
         t("surface.notice.takenOver", {
-          owner: event.previousOwnerLabel ?? event.previousOwner ?? t("surface.owner.unknown"),
+          owner: ownerName(t, event.previousOwner, event.previousOwnerLabel),
           reason: event.reason ?? t("surface.reason.unknown"),
         }),
       );
@@ -207,8 +212,10 @@ export function useConversationSurface({ conversationId, archived, archiveBusy, 
           if (held && !force) {
             const ok = await confirmAsync(
               t("surface.confirm.leaseHeld", {
-                owner: String(held.owner ?? t("surface.owner.unknown")),
-                acquiredAt: String(held.acquiredAt ?? t("surface.reason.unknown")),
+                owner: ownerName(t, held.owner),
+                acquiredAt: typeof held.acquiredAt === "string" && !Number.isNaN(Date.parse(held.acquiredAt))
+                  ? new Date(held.acquiredAt).toLocaleString(locale, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                  : t("surface.reason.unknown"),
               }),
               { title: t("surface.confirm.leaseHeldTitle"), okLabel: t("surface.confirm.takeover"), danger: true },
             );
@@ -223,7 +230,7 @@ export function useConversationSurface({ conversationId, archived, archiveBusy, 
     } finally {
       setHandoffBusy(false);
     }
-  }, [applySurface, archived, archiveBusy, conversationId, onActivity, t, draftText]);
+  }, [applySurface, archived, archiveBusy, conversationId, onActivity, t, locale, draftText]);
 
   /** 回到站内（第 3 件）。`external_active` → 确认后 `force=1`。
    *  折叠历史组由 SSE 的 `history.reconciled` 送来，这里只负责切态。 */

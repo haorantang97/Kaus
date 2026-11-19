@@ -27,7 +27,7 @@ export function WorkspacePicker({ initialPath, onSelect, onClose, title }: {
   const [data, setData] = useState<WorkspaceDirectories | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const generation = useRef(0);
   const pathRef = useRef<HTMLInputElement>(null);
 
@@ -52,7 +52,7 @@ export function WorkspacePicker({ initialPath, onSelect, onClose, title }: {
     setSaving(true);
     setError(null);
     try { await onSelect(data.path); onClose(); }
-    catch (failure) { setError(String((failure as Error)?.message ?? failure)); }
+    catch (failure) { setError(failure); }
     finally { setSaving(false); }
   }
   function browse(path: string) { setEditingPath(false); setDraft(path); setLocation(path); setRevision(value => value + 1); }
@@ -82,7 +82,7 @@ export function WorkspacePicker({ initialPath, onSelect, onClose, title }: {
           <button key={directory.path} disabled={saving} onClick={() => browse(directory.path)}><Folder size={17} /><span>{directory.name}</span></button>)}
         {!loading && data?.directories.length === 0 && <span className="kaus-workspace-empty">{t("workspace.empty")}</span>}
       </div>
-      {error && <ErrorNotice error={error} />}
+      {error !== null && <ErrorNotice error={error} />}
       {data?.truncated && <p role="status">{t("workspace.truncated")}</p>}
       <footer><button className="kaus-workspace-cancel" disabled={saving} onClick={onClose}>{t("common.cancel")}</button>
         <button className="kaus-workspace-select" disabled={!data || loading || saving || draft.trim() !== data.path} onClick={() => void save()}>{saving ? <LoaderCircle size={15} className="kaus-ui-spin" /> : <Check size={15} />}{t("workspace.select")}</button>

@@ -294,6 +294,9 @@ describe("第 1 件：「到终端打开」入口", () => {
     await user.click(await findOpenButton());
 
     expect(await screen.findByText(/将结束原终端并重新打开/)).toBeInTheDocument();
+    // Owner shows as a name, never the machine word (2026-11-19).
+    expect(screen.getByText(/^外部终端 占用中/)).toBeInTheDocument();
+    expect(screen.queryByText(/external-cli/)).toBeNull();
     await user.click(screen.getByRole("button", { name: "结束并重新打开" }));
 
     await waitFor(() => expect(mocked.openExternalSurface).toHaveBeenCalledTimes(2));
@@ -489,7 +492,7 @@ describe("第 4 件：接管与状态一致", () => {
       push(kausEvent(9, "lease.taken_over", { previousOwner: "card", stale: true, reason: "租约过期" }));
 
       const banner = screen.getByTestId("takeover-banner");
-      expect(banner).toHaveTextContent("card 的写权已被接管（租约过期）");
+      expect(banner).toHaveTextContent("Kaus 对话窗口 的写权已被接管（租约过期）");
       expect(banner).toHaveClass("kaus-stream-bar");
 
       await act(async () => {

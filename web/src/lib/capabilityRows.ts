@@ -149,3 +149,21 @@ export function visibleCapabilityRows(capabilities: EffectiveCapabilitiesWire | 
   const blocked = (capabilities?.blocked ?? []).filter(row => row.capabilityType !== "instructions" && row.capabilityType.split(":").at(-1) !== "skills" && !isNativeMcpType(row.capabilityType));
   return { entries, blocked, total: entries.length + blocked.length };
 }
+
+/* ------------------------------------------------------------------ *
+ * 显示名（2026-11-19 HIG §5「提示里不显示内部 ID」）
+ * ------------------------------------------------------------------ *
+ * 在 Kaus 里添加的 MCP 以 `lib-mcp-<12 位>` 存成 `mcp` 类型的一行；表格与提示要写它的名字。
+ * 名字先看这一行的值（`{libraryRef, name}`），再查 MCP 列表；都没有才退回原 id。 */
+export const isLibraryMcp = (row: { capabilityType: string; capabilityId: string }) =>
+  row.capabilityType === "mcp" && row.capabilityId.startsWith("lib-mcp-");
+
+export function capabilityDisplayName(
+  row: { capabilityType: string; capabilityId: string; config?: Record<string, unknown> | null },
+  mcpNames: ReadonlyMap<string, string> = new Map(),
+): string {
+  if (!isLibraryMcp(row)) return row.capabilityId;
+  const value = capabilityValue(row.config ?? null);
+  const own = value && typeof value === "object" && !Array.isArray(value) ? (value as { name?: unknown }).name : undefined;
+  return (typeof own === "string" && own.trim()) || mcpNames.get(row.capabilityId) || row.capabilityId;
+}

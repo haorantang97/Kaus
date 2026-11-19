@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Anchor, Brain, ChevronRight, FileText, Plug, Puzzle, ShieldCheck } from "lucide-react";
 import { useLocale } from "../i18n";
 import { fetchImportCandidates, importCapabilities, skipCapabilityImport, type ImportCandidate } from "../lib/skillTreeApi";
-import { Button, Spinner, confirmAsync, cream } from "./ui";
+import { Button, ErrorNotice, Spinner, confirmAsync, cream } from "./ui";
 import { SelfCheckPanel } from "./SelfCheckDialog";
 
 /* 导入 Agent 原有能力的勾选名单（设计稿 capability-import 第 4 节）。
@@ -28,7 +28,7 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -37,7 +37,7 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
       setAgentLabel(result.agentLabel);
       // 接入时默认全选可导入的；之后找回时只预选已经在树上的（旧规则下安排过的），其余让用户挑。
       setChosen(new Set(result.items.filter(i => i.state === "available" && (variant === "connect" || i.assigned)).map(i => i.id)));
-    }).catch(failure => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : String(failure)); });
+    }).catch(failure => { if (!controller.signal.aborted) setError(failure); });
     return () => controller.abort();
   }, [agentKey, variant, reload]);
 
@@ -54,14 +54,14 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
     if (variant === "connect" && !chosen.size && !merging.length) return skip();
     setBusy(true); setError(null);
     try { await importCapabilities(agentKey, [...chosen, ...merging.map(i => i.id)]); onImported(); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : t("import.failed")); }
+    catch (failure) { setError(failure instanceof Error ? failure : t("import.failed")); }
     finally { setBusy(false); }
   };
   const skip = async () => {
     if (!await confirmAsync(t("import.skipConfirm"), { title: t("import.skipTitle"), okLabel: t("import.skipOk") })) return;
     setBusy(true); setError(null);
     try { await skipCapabilityImport(agentKey); onSkipped?.(); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : t("import.failed")); }
+    catch (failure) { setError(failure instanceof Error ? failure : t("import.failed")); }
     finally { setBusy(false); }
   };
 
@@ -79,7 +79,7 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
   if (checking) return <SelfCheckPanel agentKey={agentKey} agentLabel={agentLabel} onBack={() => setChecking(false)}
     onLeave={onLeave} onMarked={() => setReload(n => n + 1)} />;
   if (!items) return <p role="status" className="flex min-h-40 items-center justify-center gap-2 text-xs" style={{ color: cream(50) }}>
-    {error ?? <><Spinner />{t("ui.loading")}</>}</p>;
+    {error !== null ? <ErrorNotice error={error} /> : <><Spinner />{t("ui.loading")}</>}</p>;
 
   return <div data-testid="capability-import-list">
     <div className="mb-2 flex items-center gap-2 text-xs" style={{ color: cream(62) }}>
@@ -118,7 +118,7 @@ export function CapabilityImportList({ agentKey, variant, onImported, onSkipped,
         </li>;
       })}
     </ul>
-    {error && <p role="alert" className="mt-2 text-xs" style={{ color: "var(--danger)" }}>{error}</p>}
+    {error !== null && <ErrorNotice error={error} className="mt-2 text-xs" />}
     <div className="mt-4 flex items-center gap-2">
       {footerStart}
       <span className="flex-1" />

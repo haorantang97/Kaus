@@ -20,11 +20,11 @@ export function GroupRunContent({ conversationId, after = 0, runId, live = false
 }) {
   const [timeline, setTimeline] = useState(() => initialTimelineState(conversationId));
   const { t } = useLocale();
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
   /* 轮询失败是一种状态，文案在渲染时按当前语言取。 */
   const [reconnecting, setReconnecting] = useState(false);
   useEffect(() => {
-    setTimeline(initialTimelineState(conversationId)); setError("");
+    setTimeline(initialTimelineState(conversationId)); setError(null);
     let disposed = false;
     const consume = (event: AgentEventEnvelope) => {
       if (!disposed && event.sequence > after) setTimeline(state => reduceEvent(state, event));
@@ -40,7 +40,7 @@ export function GroupRunContent({ conversationId, after = 0, runId, live = false
           since = page.lastSequence;
         } while (!disposed);
       };
-      void replay().catch(failure => { if (!disposed) setError((failure as Error).message); });
+      void replay().catch(failure => { if (!disposed) setError(failure); });
       return () => { disposed = true; };
     }
     const transport = new EventTransport<AgentEventEnvelope>({
@@ -67,13 +67,13 @@ export function GroupRunContent({ conversationId, after = 0, runId, live = false
     return () => { disposed = true; transport.stop(); };
   }, [conversationId, after, live]);
   const respond = async (item: InteractionItem, answer: { optionId?: string; optionIds?: string[]; text?: string; cancelled?: boolean }) => {
-    setError("");
+    setError(null);
     try {
       await resolveInteraction(conversationId, item.itemId.slice("interaction:".length), {
         kind: item.interactionKind, optionId: answer.optionId ?? null, text: answer.text ?? null,
         optionIds: answer.optionIds, cancelled: answer.cancelled,
       });
-    } catch (failure) { setError((failure as Error).message); }
+    } catch (failure) { setError(failure); }
   };
   const items = timeline.items.filter(item => (!runId || item.runId === runId) &&
     (item.kind !== "message" || (item.role === "assistant" && (live || Boolean(messageReasoningText(item))))) &&
@@ -89,7 +89,7 @@ export function GroupRunContent({ conversationId, after = 0, runId, live = false
           onQuestionRespond: (interaction, answer) => void respond(interaction, answer),
         } : {}} />;
     })}
-    {error && <ErrorNotice error={error} className="kaus-group-error" />}
-    {!error && reconnecting && <div className="kaus-group-dim" role="status">{t("group.run.reconnecting")}</div>}
+    {error !== null && <ErrorNotice error={error} className="kaus-group-error" />}
+    {error === null && reconnecting && <div className="kaus-group-dim" role="status">{t("group.run.reconnecting")}</div>}
   </div>;
 }

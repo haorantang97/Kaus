@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronRight, Info, LogIn, LogOut, Lock, Network, Pencil, Plug, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { ChevronRight, Info, LogIn, LogOut, Lock, Network, Pencil, Plug, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import { bindMcp, checkMcp, fetchMcp, fetchMcpList, importMcp, loginMcp, removeMcp, signOutMcp, unbindMcp,
   type McpDetail, type McpGroup, type McpItem, type McpStatus } from "../lib/mcpApi";
@@ -191,7 +191,7 @@ function McpDetailDialog({ id, onClose, onChanged, onEdited }: { id: string; onC
         <Pill tone={STATUS_TONE[detail.status]}>{t(`mcp.status.${detail.status}`)}</Pill>
         <span className="flex-1" />
         {detail.status !== "missing" && <button type="button" className="skill-tree-icon" disabled={busy} title={t("mcp.recheck")} aria-label={t("mcp.recheck")}
-          onClick={() => void recheck()}><RotateCcw size={14} /></button>}
+          onClick={() => void recheck()}><RefreshCw size={14} /></button>}
       </div>
       {detail.error && <details className="mt-1.5 text-xs" style={{ color: cream(55) }}>
         <summary>{t("mcp.diagnostics")}</summary><pre className="kaus-mcp-diagnostics">{detail.error}</pre></details>}

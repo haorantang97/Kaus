@@ -7,7 +7,7 @@ import { fetchModelCatalog, type ModelDescriptorWire } from "../lib/sessionApi";
 import {
   fetchSelfCheck, fetchSelfCheckOptions, markCapabilitiesBound, startSelfCheck, type SelfCheckOptions, type SelfCheckRun,
 } from "../lib/skillTreeApi";
-import { Button, Pill, Spinner, confirmAsync, cream, inputStyle } from "./ui";
+import { Button, ErrorNotice, Pill, Spinner, confirmAsync, cream, inputStyle } from "./ui";
 
 const POLL_MS = 2000;
 
@@ -30,7 +30,7 @@ export function SelfCheckPanel({ agentKey, agentLabel, onBack, onLeave, onMarked
   const [run, setRun] = useState<SelfCheckRun | null>(null);
   const [marked, setMarked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -40,7 +40,7 @@ export function SelfCheckPanel({ agentKey, agentLabel, onBack, onLeave, onMarked
       return fetchModelCatalog(result.backendId, result.bindingId, controller.signal)
         .then(catalog => setModels(catalog.models.filter(m => m.availability !== "unavailable")))
         .catch(() => setModels([]));
-    }).catch(failure => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : String(failure)); });
+    }).catch(failure => { if (!controller.signal.aborted) setError(failure); });
     return () => controller.abort();
   }, [agentKey]);
 
@@ -48,7 +48,7 @@ export function SelfCheckPanel({ agentKey, agentLabel, onBack, onLeave, onMarked
   useEffect(() => {
     if (!run || !running) return;
     const timer = window.setTimeout(() => {
-      fetchSelfCheck(run.conversationId).then(setRun).catch(failure => setError(failure instanceof Error ? failure.message : String(failure)));
+      fetchSelfCheck(run.conversationId).then(setRun).catch(failure => setError(failure));
     }, POLL_MS);
     return () => window.clearTimeout(timer);
   }, [run, running]);
@@ -56,14 +56,14 @@ export function SelfCheckPanel({ agentKey, agentLabel, onBack, onLeave, onMarked
   const start = async () => {
     setBusy(true); setError(null);
     try { setRun(await startSelfCheck(agentKey, model || undefined)); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
+    catch (failure) { setError(failure); }
     finally { setBusy(false); }
   };
   const mark = async (id: string) => {
     if (!await confirmAsync(t("mcp.bindConfirm", { agent: agentLabel }), { title: t("mcp.bindTitle", { agent: agentLabel }), okLabel: t("selfCheck.markBound") })) return;
     setBusy(true); setError(null);
     try { await markCapabilitiesBound(agentKey, [id]); setMarked(old => new Set(old).add(id)); onMarked(); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
+    catch (failure) { setError(failure); }
     finally { setBusy(false); }
   };
   const openConversation = () => { if (run) { onLeave?.(); navigate(conversationPath(run.conversationId)); } };
@@ -90,7 +90,7 @@ export function SelfCheckPanel({ agentKey, agentLabel, onBack, onLeave, onMarked
 
     <div className="mt-4 min-h-32 rounded-md p-3 text-sm" data-testid="self-check-answer"
       style={{ border: "1px solid var(--border-subtle)" }}>
-      {!options && !error && <p className="flex items-center gap-2 text-xs" style={{ color: cream(50) }}><Spinner />{t("ui.loading")}</p>}
+      {!options && error === null && <p className="flex items-center gap-2 text-xs" style={{ color: cream(50) }}><Spinner />{t("ui.loading")}</p>}
       {run?.status === "running" && <p role="status" className="flex items-center gap-2 text-xs" style={{ color: cream(58) }}>
         <Spinner />{t("selfCheck.running")}</p>}
       {run?.status === "failed" && <p role="alert" className="text-xs" style={{ color: "var(--danger)" }}>{t("selfCheck.failed")} · {run.error}</p>}
@@ -112,7 +112,7 @@ export function SelfCheckPanel({ agentKey, agentLabel, onBack, onLeave, onMarked
           </li>)}
         </ul>
       </>}
-      {error && <p role="alert" className="text-xs" style={{ color: "var(--danger)" }}>{error}</p>}
+      {error !== null && <ErrorNotice error={error} className="text-xs" />}
     </div>
     {run && onLeave && <div className="mt-4 flex items-center gap-2">
       <Button onClick={openConversation}><ArrowUpRight size={14} />{t("selfCheck.openConversation")}</Button>

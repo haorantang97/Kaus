@@ -330,21 +330,21 @@ describe("Group 浮窗：成员操作", () => {
     }
   });
 
-  it.each([
-    ["移出组", "removeGroupMember"],
-  ] as const)("「%s」调 %s，并回执一句人话", async (label, fn) => {
+  it("「移出组」直接移出，撤销即重新加入（走 resume）", async () => {
     const user = userEvent.setup();
     seed([g], { "collaboration:1": [member("m1")] });
-    api[fn].mockResolvedValue({ member: member("m1") });
+    api.removeGroupMember.mockResolvedValue({ member: member("m1"), left: true });
+    api.resumeGroupMember.mockResolvedValue({ member: member("m1") });
     renderDock();
 
     await openAndExpand(user, "重构评审组");
     await user.click(await screen.findByTestId("member-actions-m1"));
-    await user.click(screen.getByRole("menuitem", { name: label }));
+    await user.click(screen.getByRole("menuitem", { name: "移出组" }));
 
-    expect(api[fn]).toHaveBeenCalledWith("collaboration:1", "m1");
-    // 每一次写都有回执（不是静默成功）。
-    await waitFor(() => expect(document.body.textContent).toMatch(/已/));
+    expect(api.removeGroupMember).toHaveBeenCalledWith("collaboration:1", "m1");
+    expect(await screen.findByText(/^已将「.+」移出组$/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "撤销" }));
+    await waitFor(() => expect(api.resumeGroupMember).toHaveBeenCalledWith("collaboration:1", "m1"));
   });
 
   it("已被移出的成员：只给「重新加入」（走 resume）", async () => {
@@ -860,10 +860,10 @@ describe("batch52 第 5 件：在本组叫什么（AD-173）", () => {
     await openAndExpand(user, "改名组");
     await user.click(await screen.findByTestId("member-actions-m1"));
     await user.click(screen.getByRole("menuitem", { name: "组内名称" }));
-    // 改的是**组内**名字，弹窗那句话得把这件事说清楚。
-    expect(await screen.findByText(/留空则使用对话标题/)).toBeInTheDocument();
-    await user.type(screen.getByTestId("group-rename-input"), "写手");
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    // 原位编辑（2026-11-19）：成员行里直接出现输入框，不弹窗。
+    const input = screen.getByRole("textbox", { name: "组内名称" });
+    expect(within(screen.getByTestId("group-member-m1")).getByRole("textbox")).toBe(input);
+    await user.type(input, "写手{Enter}");
 
     await waitFor(() =>
       expect(api.renameGroupMember).toHaveBeenCalledWith("collaboration:1", "m1", "写手"),
@@ -874,7 +874,7 @@ describe("batch52 第 5 件：在本组叫什么（AD-173）", () => {
     );
   });
 
-  it("留空 = 恢复成会话标题（不是「叫空名字」，所以保存照样点得动）", async () => {
+  it("留空 = 恢复成会话标题（不是「叫空名字」，所以回车照样保存）", async () => {
     const user = userEvent.setup();
     seed([group("collaboration:1", "改名组", 1)], {
       "collaboration:1": [member("m1", { roleLabel: "写手", displayName: "写手" })],
@@ -887,11 +887,11 @@ describe("batch52 第 5 件：在本组叫什么（AD-173）", () => {
     await openAndExpand(user, "改名组");
     await user.click(await screen.findByTestId("member-actions-m1"));
     await user.click(screen.getByRole("menuitem", { name: "组内名称" }));
-    // 弹窗里先带着现在的组内名字。
+    // 输入框先带着现在的组内名字。
     const input = screen.getByTestId("group-rename-input") as HTMLInputElement;
     expect(input.value).toBe("写手");
     await user.clear(input);
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.keyboard("{Enter}");
 
     await waitFor(() =>
       expect(api.renameGroupMember).toHaveBeenCalledWith("collaboration:1", "m1", ""),

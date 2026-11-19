@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useLocale } from "../i18n";
 import { fetchMcpTools, setMcpToolSwitches, type McpToolList, type SkillTreeSnapshot } from "../lib/skillTreeApi";
 import { Spinner, cream } from "./ui";
@@ -41,7 +41,7 @@ export function McpToolSwitches({ skillId, disabled, onSnapshot }: {
     <div className="flex items-center gap-2 text-xs" style={{ color: cream(50) }}>
       <span className="flex-1">{list?.status === "ok" ? t("mcpTools.count", { count: list.tools.length }) : t("mcpTools.title")}</span>
       <button type="button" className="skill-tree-icon" disabled={busy || !list} title={t("mcpTools.refresh")} aria-label={t("mcpTools.refresh")}
-        onClick={() => void refresh()}><RotateCcw size={13} /></button>
+        onClick={() => void refresh()}><RefreshCw size={13} /></button>
     </div>
     {!list && !error && <p className="flex items-center gap-2 text-xs" style={{ color: cream(50) }}><Spinner />{t("ui.loading")}</p>}
     {list?.status === "auth_required" && <p className="text-xs" style={{ color: cream(55) }}>{t("mcpTools.authRequired")}</p>}

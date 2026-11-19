@@ -22,6 +22,7 @@ import {
 } from "../lib/sessionApi";
 import { relativeTime } from "../lib/shellPrefs";
 import { CardRowMenu } from "./CardRowMenu";
+import { useDraftEscape } from "../hooks/useDraftEscape";
 import { Button, Card, Pill, cream, inputStyle, toast, undoToast } from "./ui";
 
 interface Draft { id: string | null; kind: "note" | "overview"; topic: string; body: string }
@@ -34,6 +35,9 @@ export function ProjectMemoryCard({ projectId, projectLabel }: {
   const [memories, setMemories] = useState<MemoryWire[] | null>(null);
   const [history, setHistory] = useState<MemoryHistoryWire[] | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [initial, setInitial] = useState<Draft | null>(null);
+  const draftEscape = useDraftEscape();
+  const startDraft = (next: Draft) => { setInitial(next); setDraft(next); };
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const reload = useCallback(() => setRevision(value => value + 1), []);
@@ -89,14 +93,16 @@ export function ProjectMemoryCard({ projectId, projectLabel }: {
   const notes = (memories ?? []).filter(item => item !== overview);
   const historyLabel = t("memory.history");
 
+  const changed = !!draft && (draft.topic !== initial?.topic || draft.body !== initial?.body);
   const editor = draft && (
     <div className="kaus-instruction-editor">
       {draft.kind !== "overview" && <input value={draft.topic} onChange={e => setDraft({ ...draft, topic: e.target.value })}
-        placeholder={t("memory.field.topic")} aria-label={t("memory.field.topic")} style={inputStyle()} />}
+        placeholder={t("memory.field.topic")} aria-label={t("memory.field.topic")} style={inputStyle()}
+        onKeyDown={e => { draftEscape(e, changed, () => setDraft(null)); }} />}
       <textarea value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} rows={4} autoFocus
         aria-label={draft.kind === "overview" ? t("memory.overview") : t("memory.field.body")}
         style={{ ...inputStyle(), resize: "vertical", lineHeight: 1.6 }}
-        onKeyDown={e => { if (e.key === "Escape") setDraft(null); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save(); }} />
+        onKeyDown={e => { if (draftEscape(e, changed, () => setDraft(null))) return; if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save(); }} />
       <div className="flex justify-end gap-2">
         <Button onClick={() => setDraft(null)} disabled={busy}>{t("common.cancel")}</Button>
         <Button variant="primary" onClick={() => void save()} disabled={busy || !draft.body.trim()}>{t("common.save")}</Button>
@@ -117,7 +123,7 @@ export function ProjectMemoryCard({ projectId, projectLabel }: {
           <CardRowMenu label={t("memory.menu")} actions={own ? (["edit", "delete"] as const) : ([] as const)} busy={busy || draft !== null}
             actionLabel={action => t(`memory.action.${action}`)}
             onPick={action => action === "edit"
-              ? setDraft({ id: item.id, kind: item.kind, topic: item.topic, body: item.body })
+              ? startDraft({ id: item.id, kind: item.kind, topic: item.topic, body: item.body })
               : void run(() => deleteProjectMemory(projectId, item.id), t("memory.toast.deleted"), async () => {
                 // The memory history records the delete; undoing that entry restores the memory as it was.
                 const change = (await fetchMemoryHistory(projectId)).history.find(entry => entry.memoryId === item.id && entry.action === "delete");
@@ -141,7 +147,7 @@ export function ProjectMemoryCard({ projectId, projectLabel }: {
                 <span className="kaus-instruction-title">{t("memory.overview")}</span>
                 <CardRowMenu label={t("memory.menu")} actions={["edit"] as const} busy={busy || draft !== null}
                   actionLabel={() => t("memory.action.edit")}
-                  onPick={() => setDraft({ id: null, kind: "overview", topic: t("memory.overview"), body: "" })} />
+                  onPick={() => startDraft({ id: null, kind: "overview", topic: t("memory.overview"), body: "" })} />
               </div>
               <p className="kaus-instruction-body">{t("memory.overviewEmpty")}</p>
             </li>

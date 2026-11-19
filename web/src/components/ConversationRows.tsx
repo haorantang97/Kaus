@@ -72,7 +72,19 @@ export function ConversationRow({ conversation, className, onOpen, onOpenConvers
       onPin={() => { const next = { ...pins, [project]: pinned ? (pins[project] ?? []).filter(id => id !== conversation.id) : [...(pins[project] ?? []), conversation.id] }; setPins(next); saveSidebarPins(next); }}
       onRename={() => setRenaming(conversation.title)}
       onContinue={onOpenConversation ? () => setContinuing(true) : undefined}
-      onArchive={() => { void work(() => archiveConversation(conversation.id), "sidebar.archiveFailed").then(ok => { if (ok) unpin(); }); }}
+      onArchive={() => { void work(() => archiveConversation(conversation.id), "sidebar.archiveFailed").then(ok => {
+        if (!ok) return;
+        const wasPinned = pinned;
+        unpin();
+        // Archiving keeps everything: 「撤销」 brings the conversation (and its pin) back.
+        undoToast(t("ui.archived", { name: conversation.title }), async () => {
+          try {
+            await archiveConversation(conversation.id, false);
+            if (wasPinned) { const current = readSidebarPins(); saveSidebarPins({ ...current, [project]: [...(current[project] ?? []).filter(id => id !== conversation.id), conversation.id] }); }
+            onChanged();
+          } catch { toast(t("ui.undoFailed"), "bad"); }
+        });
+      }); }}
       onDelete={() => { void (async () => {
         if (!await confirmAsync(t("conversation.row.deleteConfirm"), { title: t("conversation.row.deleteTitle", { title: conversation.title }), okLabel: t("conversation.row.delete"), danger: true })) return;
         if (await work(() => deleteConversation(conversation.id), "sidebar.deleteFailed")) unpin();

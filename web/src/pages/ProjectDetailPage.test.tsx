@@ -6,6 +6,8 @@ import { ConfirmHost, ToastHost } from "../components/ui";
 import * as api from "../lib/sessionApi";
 import { openProjectTerminal } from "../lib/terminalApi";
 vi.mock("../lib/terminalApi", () => ({ openProjectTerminal: vi.fn().mockResolvedValue({ launched: true, cwd: "/code/pronto", launcher: "cmux" }) }));
+vi.mock("../lib/mcpApi", async importOriginal => ({ ...(await importOriginal<typeof import("../lib/mcpApi")>()),
+  fetchMcpList: vi.fn().mockResolvedValue({ items: [{ id: "lib-mcp-aaaaaaaaaaaa", name: "notes", description: "笔记检索", target: "npx notes" }] }) }));
 import type { NetworkResp } from "../lib/api";
 
 /* 项目详情页（批次九第 4 件）：四个分区渲染 + 四条写端点 + 次级导航。
@@ -206,7 +208,7 @@ describe("项目详情页", () => {
     // ③ 能力表的四列与 AD-45 的「禁止」文案
     expect(screen.getByText("继承自「X」")).toBeInTheDocument();
     expect(screen.getByText("本项目")).toBeInTheDocument();
-    expect(screen.getByText("在「X」禁止")).toBeInTheDocument();
+    expect(screen.getByText("在「X」停用")).toBeInTheDocument();
     // 面包屑给出上级链
     expect(within(head).getByRole("button", { name: "X" })).toBeInTheDocument();
   });
@@ -357,24 +359,39 @@ describe("项目详情页", () => {
         await userEvent.click(buttons[index]);
       }
 
-      it("本项目行：禁止（子树）+ 删除本层赋值", async () => {
+      it("本项目行：停用（子树）+ 移除本层分配", async () => {
         mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([localEntry]));
         renderPage();
         await openMenu(0);
-        expect(screen.getByTestId("cap-action-block")).toHaveTextContent("禁止（子树）");
-        expect(screen.getByTestId("cap-action-clear")).toHaveTextContent("删除本层赋值");
+        expect(screen.getByTestId("cap-action-block")).toHaveTextContent("停用（子树）");
+        expect(screen.getByTestId("cap-action-clear")).toHaveTextContent("移除本层分配");
         expect(screen.queryByTestId("cap-action-unblock")).toBeNull();
       });
 
-      it("继承行：只有「在本项目禁止」（本层还没有记录，删不动）", async () => {
+      it("Kaus 添加的 MCP 显示名称而不是 lib-mcp-…，提示也用名称", async () => {
+        const libraryMcp = entry("lib-mcp-aaaaaaaaaaaa", { capabilityType: "mcp",
+          config: { value: { libraryRef: { path: "/library/mcp/lib-mcp-aaaaaaaaaaaa.json" }, oauthKey: "lib-mcp-aaaaaaaaaaaa" } } });
+        mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([libraryMcp]));
+        mocked.deleteProjectCapability.mockResolvedValue({});
+        render(<ToastHost />);
+        renderPage();
+        expect(await screen.findByText("notes")).toBeInTheDocument();
+        expect(screen.getByText("笔记检索")).toBeInTheDocument();
+        expect(screen.queryByText(/lib-mcp-/)).toBeNull();
+        await openMenu(0);
+        await userEvent.click(screen.getByTestId("cap-action-clear"));
+        expect((await screen.findAllByText("已移除「notes」的本层分配")).length).toBeGreaterThan(0);
+      });
+
+      it("继承行：只有「在本项目停用」（本层还没有记录，删不动）", async () => {
         mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([inheritedEntry]));
         renderPage();
         await openMenu(0);
-        expect(screen.getByTestId("cap-action-blockHere")).toHaveTextContent("在本项目禁止");
+        expect(screen.getByTestId("cap-action-blockHere")).toHaveTextContent("在本项目停用");
         expect(screen.queryByTestId("cap-action-clear")).toBeNull();
       });
 
-      it("已禁止行：只有「解除禁止」，走 DELETE 并重取 effective-capabilities", async () => {
+      it("已停用行：只有「解除停用」，走 DELETE 并重取 effective-capabilities", async () => {
         mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([], [blockedRow]));
         renderPage();
         await openMenu(0);
@@ -385,7 +402,7 @@ describe("项目详情页", () => {
         await waitFor(() => expect(mocked.fetchEffectiveCapabilities.mock.calls.length).toBeGreaterThan(1));
       });
 
-      it("「禁止（子树）」打 PUT {blocked:true} 到**当前**项目那一层（AD-45）", async () => {
+      it("「停用（子树）」打 PUT {blocked:true} 到**当前**项目那一层（AD-45）", async () => {
         mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([inheritedEntry]));
         renderPage();
         await openMenu(0);

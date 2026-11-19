@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { useLocale } from "../i18n";
 import { clearAgentApiKey, describeFailure, saveAgentApiKey } from "../lib/sessionApi";
-import { Button, Modal, ModalTitle, inputStyle, toast } from "./ui";
+import { Button, Modal, ModalTitle, confirmAsync, inputStyle, toast } from "./ui";
 
 /* 给一台 Agent 填 API key：保存后 Kaus 启动它时不走订阅登录，按 API 计费；清除后回到订阅。
    key 只写不读：这里永远看不到已保存的值。 */
@@ -22,6 +22,11 @@ export function AgentApiKeyDialog({ backendId, name, envName, configured, onClos
     catch (failure) { toast(describeFailure(failure), "bad"); }
     finally { setBusy(false); }
   };
+  /** The saved key is never read back, so clearing it cannot be undone: confirm first (2026-11-19). */
+  const clear = async () => {
+    if (!await confirmAsync(t("engines.apiKey.clearBody"), { title: t("engines.apiKey.clearTitle", { name }), okLabel: t("engines.apiKey.clear"), danger: true })) return;
+    await act(() => clearAgentApiKey(backendId), t("engines.apiKey.cleared"));
+  };
   return (
     <Modal onClose={() => onClose(false)} width={440}>
       <ModalTitle>{t("engines.apiKey.title", { name })}</ModalTitle>
@@ -32,7 +37,7 @@ export function AgentApiKeyDialog({ backendId, name, envName, configured, onClos
         placeholder={configured ? t("engines.apiKey.replace") : t("engines.apiKey.placeholder")} aria-label={t("engines.apiKey.field")}
         style={inputStyle()} onKeyDown={e => { if (e.key === "Enter" && value.trim()) void act(() => saveAgentApiKey(backendId, value), t("engines.apiKey.saved")); }} />
       <div className="mt-4 flex justify-between gap-2">
-        {configured ? <Button disabled={busy} onClick={() => void act(() => clearAgentApiKey(backendId), t("engines.apiKey.cleared"))}>{t("engines.apiKey.clear")}</Button> : <span />}
+        {configured ? <Button disabled={busy} onClick={() => void clear()}>{t("engines.apiKey.clear")}</Button> : <span />}
         <div className="flex gap-2">
           <Button disabled={busy} onClick={() => onClose(false)}>{t("common.cancel")}</Button>
           <Button variant="primary" disabled={busy || !value.trim()} onClick={() => void act(() => saveAgentApiKey(backendId, value), t("engines.apiKey.saved"))}>{t("common.save")}</Button>

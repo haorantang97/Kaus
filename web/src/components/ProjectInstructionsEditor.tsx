@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { FileText, Plus } from "lucide-react";
 
 import { CardRowMenu } from "./CardRowMenu";
+import { useDraftEscape } from "../hooks/useDraftEscape";
 
 import { useLocale } from "../i18n";
 import {
@@ -43,7 +44,7 @@ const ACTIONS: Record<InstructionSection["state"], Action[]> = {
   blocked: ["unblock"],
 };
 
-interface Draft { id: string; title: string; body: string; order?: number }
+interface Draft { id: string; title: string; body: string; order?: number; initial: { title: string; body: string } }
 
 export function ProjectInstructionsEditor({
   projectId,
@@ -60,6 +61,7 @@ export function ProjectInstructionsEditor({
   const [parent, setParent] = useState<EffectiveCapabilitiesWire | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
+  const draftEscape = useDraftEscape();
 
   // 本级屏蔽的节要从上级找回标题和正文。
   const ancestry = effective?.ancestry ?? [];
@@ -105,29 +107,33 @@ export function ProjectInstructionsEditor({
 
   const pick = (section: InstructionSection, action: Action) => {
     if (action === "edit" || action === "override") {
-      setDraft({ id: section.id, title: section.title ?? "", body: section.body, order: section.order });
+      const title = section.title ?? "";
+      setDraft({ id: section.id, title, body: section.body, order: section.order, initial: { title, body: section.body } });
       return;
     }
     if (action === "block") {
       void run(() => putProjectCapability(projectId, INSTRUCTIONS_TYPE, section.id, { blocked: true }), t("instructions.toast.blocked"));
       return;
     }
-    // A deleted section can be written back as it was: 「撤销」 instead of asking first.
+    // A deleted section, or the local text dropped by 恢复继承, can be written back as it was:
+    // act at once and offer 「撤销」 instead of asking first.
     void run(() => deleteProjectCapability(projectId, INSTRUCTIONS_TYPE, section.id), t(`instructions.toast.${action}`),
-      action === "delete" ? () => putProjectCapability(projectId, INSTRUCTIONS_TYPE, section.id,
+      action === "delete" || action === "restore" ? () => putProjectCapability(projectId, INSTRUCTIONS_TYPE, section.id,
         { value: sectionValue({ title: section.title ?? "", body: section.body, order: section.order }) }) : undefined);
   };
 
   const add = t("instructions.add");
+  const changed = !!draft && (draft.title !== draft.initial.title || draft.body !== draft.initial.body);
   const editor = draft && (
     <div className="kaus-instruction-editor">
       <input value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })}
-        placeholder={t("instructions.field.title")} aria-label={t("instructions.field.title")} style={inputStyle()} />
+        placeholder={t("instructions.field.title")} aria-label={t("instructions.field.title")} style={inputStyle()}
+        onKeyDown={e => { draftEscape(e, changed, () => setDraft(null)); }} />
       <textarea value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} rows={6} autoFocus
         placeholder={t("instructions.field.body")} aria-label={t("instructions.field.body")}
         style={{ ...inputStyle(), resize: "vertical", lineHeight: 1.6 }}
         onKeyDown={e => {
-          if (e.key === "Escape") setDraft(null);
+          if (draftEscape(e, changed, () => setDraft(null))) return;
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save();
         }} />
       <div className="flex justify-end gap-2">
@@ -140,7 +146,7 @@ export function ProjectInstructionsEditor({
   return (
     <Card title={t("instructions.title")} icon={FileText} right={
       <Button aria-label={add} title={add} disabled={busy || draft !== null}
-        onClick={() => setDraft({ id: newSectionId(), title: "", body: "" })}><Plus size={15} /></Button>
+        onClick={() => setDraft({ id: newSectionId(), title: "", body: "", initial: { title: "", body: "" } })}><Plus size={15} /></Button>
     }>
       {effective === null ? (
         <div className="py-2 text-xs" style={{ color: cream(45) }}>{t("instructions.loading")}</div>
