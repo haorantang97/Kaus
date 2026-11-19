@@ -58,6 +58,7 @@ export function WorkbenchPage({moduleId,modules,loading,failed,onRefresh,navigat
     <button role="menuitem" onClick={()=>{setMenu(null);setConfig(item.id);}}><Settings2 size={15}/>{t("workbench.config")}</button>
     <button role="menuitem" disabled={busy||!item.enabled} onClick={()=>{setMenu(null);void mutate(()=>patchWorkbenchModule(item.id,{pinned:!item.pinned}));}}>{item.pinned?<PinOff size={15}/>:<Pin size={15}/>} {t(item.pinned?"workbench.unpin":"workbench.pin")}</button>
     <button role="menuitem" disabled={busy} onClick={()=>{setMenu(null);void mutate(()=>patchWorkbenchModule(item.id,{enabled:!item.enabled}));}}><Power size={15}/>{t(item.enabled?"workbench.disable":"workbench.enable")}</button>
+    {!item.builtin&&<div role="separator" className="kaus-bar-pop-separator"/>}
     {!item.builtin&&<button role="menuitem" disabled={busy} onClick={()=>void remove(item)}><Trash2 size={15}/>{t("workbench.remove")}</button>}
   </div>;
   return <div className={`workbench-page ${moduleId?"is-module":""}`}>

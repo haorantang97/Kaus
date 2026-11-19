@@ -136,7 +136,7 @@ export function HistoryRow({ item, projectId, className, onOpen, onOpenConversat
     <button type="button" className="kaus-row-open" title={item.title} disabled={busy} onClick={() => void open()}>{children}</button>
     <RowMenu busy={busy} point={point} triggerLabel={t("conversation.menuFor", { title: item.title })} menuLabel={t("conversation.menu")} items={[
       { id: "continue", icon: <ArrowRightLeft size={16} aria-hidden />, label: t("project.move.continue"), onSelect: () => setContinuing(true) },
-      { id: "remove", icon: <Unlink size={16} aria-hidden />, label: t("project.history.remove"), separated: true, onSelect: () => void remove() },
+      { id: "remove", icon: <Unlink size={16} aria-hidden />, label: t("project.history.remove"), destructive: true, onSelect: () => void remove() },
     ]} />
     {continuing && <ContinuationDialog source={{ kind: "archive", id: item.id, projectId }} onClose={() => setContinuing(false)}
       onCreated={id => { setContinuing(false); onOpenConversation(id); }} />}

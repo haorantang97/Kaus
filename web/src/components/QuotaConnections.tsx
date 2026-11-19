@@ -163,7 +163,7 @@ export function QuotaConnections({ target, onClose, onChanged }: Props) {
     {busy === "login" && <p className="kaus-quota-connection-status" role="status"><LoaderCircle size={14} className="animate-spin" />{t("quota.connection.waitingLogin")}</p>}
     <footer>{documentation && !removing && <a href={documentation} target="_blank" rel="noopener noreferrer" title={t("quota.connection.docs")} aria-label={t("quota.connection.docs")}><ExternalLink size={15} /></a>}<span />
       <Button onClick={close} disabled={busy === "save" || busy === "remove"}>{t("common.cancel")}</Button>
-      {removing ? <Button variant="primary" disabled={!!busy || !connectionId} onClick={() => void remove()}>{t("quota.connection.disconnect")}</Button> : <>
+      {removing ? <Button variant="danger" disabled={!!busy || !connectionId} onClick={() => void remove()}>{t("quota.connection.disconnect")}</Button> : <>
         {provider?.login && <Button variant={connectionId ? "ghost" : "primary"} disabled={!valid || !!busy} onClick={() => void login()}>{connectionId ? t("quota.connection.loginAgain") : provider.login.label || t("quota.connection.login")}</Button>}
         {(!provider?.login || connectionId) && <Button variant="primary" disabled={!valid || !!busy || loading} onClick={() => void save()}>{busy === "save" && <LoaderCircle size={14} className="animate-spin" />}{busy === "save" ? t("quota.connection.verifying") : t("quota.connection.verifySave")}</Button>}
       </>}
@@ -200,10 +200,12 @@ export function QuotaConnectionMenu({ ids, label, onSelect }: { ids: string[]; l
   if (!unique.length) return null;
   return <><button ref={trigger} type="button" className="kaus-quota-refresh" title={t("quota.connection.manage")} aria-label={t("quota.connection.manageFor", { label })} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}><MoreHorizontal size={16} /></button>
     {open && rect && createPortal(<div ref={menu} className="kaus-quota-menu" role="menu" aria-label={t("quota.connection.manage")} style={{ left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)), top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - unique.length * 76 - 16)) }}>
-      {unique.flatMap((id, index) => ([
-        <button key={`${id}-edit`} type="button" role="menuitem" onClick={() => { setOpen(false); onSelect({ label, connectionId: id, mode: "edit" }); }}><Pencil size={14} />{t("quota.connection.edit")}{unique.length > 1 ? ` ${index + 1}` : ""}</button>,
-        <button key={`${id}-disconnect`} type="button" role="menuitem" onClick={() => { setOpen(false); onSelect({ label, connectionId: id, mode: "disconnect" }); }}><Unplug size={14} />{t("quota.connection.disconnect")}{unique.length > 1 ? ` ${index + 1}` : ""}</button>,
-      ]))}
+      {/* 断开 is destructive: all of them come last, after a separator (2026-11-19). */}
+      {unique.map((id, index) =>
+        <button key={`${id}-edit`} type="button" role="menuitem" onClick={() => { setOpen(false); onSelect({ label, connectionId: id, mode: "edit" }); }}><Pencil size={14} />{t("quota.connection.edit")}{unique.length > 1 ? ` ${index + 1}` : ""}</button>)}
+      <div role="separator" className="kaus-bar-pop-separator" />
+      {unique.map((id, index) =>
+        <button key={`${id}-disconnect`} type="button" role="menuitem" onClick={() => { setOpen(false); onSelect({ label, connectionId: id, mode: "disconnect" }); }}><Unplug size={14} />{t("quota.connection.disconnect")}{unique.length > 1 ? ` ${index + 1}` : ""}</button>)}
     </div>, trigger.current?.closest<HTMLElement>('[role="dialog"], [data-kaus-modal]') ?? document.body)}
   </>;
 }

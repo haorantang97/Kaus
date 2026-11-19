@@ -15,6 +15,15 @@ export interface RowMenuItem {
   separated?: boolean;
   /** Return focus to the trigger after selecting (for actions that keep the row in place). */
   restoreFocus?: boolean;
+  /** Removes the object (删除, 移出…): drawn last, after a separator (2026-11-19). */
+  destructive?: boolean;
+}
+
+/** Destructive items last; one separator opens their group. */
+export function orderRowMenuItems(items: RowMenuItem[]): RowMenuItem[] {
+  const kept = items.filter(item => !item.destructive);
+  const destructive = items.filter(item => item.destructive);
+  return [...kept, ...destructive.map((item, index) => index === 0 && kept.length ? { ...item, separated: true } : item)];
 }
 
 /** A pointer position that opens the menu there (row right-click). `seq` changes per request. */
@@ -86,7 +95,7 @@ export function RowMenu({ triggerLabel, menuLabel, busy = false, items, point, t
         const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : event.key === "ArrowDown" ? (index + 1) % buttons.length : event.key === "ArrowUp" ? (index - 1 + buttons.length) % buttons.length : -1;
         if (next >= 0) { event.preventDefault(); buttons[next]?.focus(); }
       }}>
-      {items.map(item => [
+      {orderRowMenuItems(items).map(item => [
         item.separated ? <div role="separator" key={`${item.id}:separator`} /> : null,
         <button key={item.id} type="button" role="menuitem" disabled={item.disabled} title={item.title}
           onClick={() => { close(item.restoreFocus); item.onSelect(); }}>{item.icon}{item.label}</button>,
@@ -121,7 +130,7 @@ export function ConversationRowMenu({ title, pinned, canArchive, busy, onPin, on
         disabled: !canArchive, title: !canArchive ? t("surface.action.stopFirst") : undefined }] : []),
       { id: "archive", icon: <Archive size={16} aria-hidden />, label: t("conversation.row.archive"), onSelect: onArchive, separated: true,
         disabled: !canArchive, title: !canArchive ? t("conversation.row.archiveBlocked") : undefined },
-      ...(onDelete ? [{ id: "delete", icon: <Trash2 size={16} aria-hidden />, label: t("conversation.row.delete"), onSelect: onDelete,
+      ...(onDelete ? [{ id: "delete", icon: <Trash2 size={16} aria-hidden />, label: t("conversation.row.delete"), onSelect: onDelete, destructive: true,
         disabled: !canArchive, title: !canArchive ? t("conversation.row.archiveBlocked") : undefined }] : []),
     ]} />;
 }

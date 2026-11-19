@@ -135,7 +135,7 @@ export function GroupMaterialsPane({ group, members, changeToken }: {
         <RowMenu busy={disabled || !!draft} triggerLabel={t("groupRows.materialMenuFor", { title: item.title })} menuLabel={t("groupRows.materialMenu")}
           point={menuPoint?.id === item.id ? menuPoint.point : null} items={[
             { id: "edit", icon: <Pencil size={16} aria-hidden />, label: t("group.material.edit"), onSelect: () => setDraft({ ...item, revision: bundle.revision }) },
-            { id: "delete", icon: <Trash2 size={16} aria-hidden />, label: t("group.material.remove"), onSelect: () => void remove(item), separated: true },
+            { id: "delete", icon: <Trash2 size={16} aria-hidden />, label: t("group.material.remove"), onSelect: () => void remove(item), destructive: true },
           ]} />
       </div>
       {item.sourceLabel && <small className="kaus-group-dim">{item.sourceLabel}</small>}

@@ -2196,6 +2196,12 @@ button.kaus-conversation-title:hover {
 }
 
 /* 菜单沿用 `.kaus-bar-pop`，只把它从"向上弹"改成"向下弹"（表格行下方空间足够）。 */
+.kaus-bar-pop-separator {
+  flex: 0 0 auto;
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in srgb, var(--midground-base) 10%, transparent);
+}
 .kaus-cap-menu .kaus-bar-pop {
   top: calc(100% + 4px);
   right: 0;

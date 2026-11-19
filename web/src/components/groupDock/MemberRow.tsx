@@ -86,7 +86,7 @@ function MemberActions({
     ...(left ? [{ id: "rejoin", icon: <UserPlus size={16} aria-hidden />, label: t("group.member.rejoin"), onSelect: onRejoin }] : []),
     // batch52 第 5 件（AD-173）：改他在**本组**的名字。已经走了的人也给——他还可能被重新加入。
     { id: "rename", icon: <Pencil size={16} aria-hidden />, label: t("group.member.rename"), onSelect: onRename },
-    ...(!left ? [{ id: "remove", icon: <UserMinus size={16} aria-hidden />, label: t("group.member.remove"), separated: true, onSelect: onRemove }] : []),
+    ...(!left ? [{ id: "remove", icon: <UserMinus size={16} aria-hidden />, label: t("group.member.remove"), destructive: true, onSelect: onRemove }] : []),
   ];
   return <RowMenu triggerLabel={t("group.member.actions")} menuLabel={t("group.member.actions")} items={items} point={point}
     testId={`member-actions-${member.id}`} />;

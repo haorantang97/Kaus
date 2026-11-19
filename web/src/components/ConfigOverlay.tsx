@@ -181,7 +181,7 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "system", onThe
                   ] : [
                     { id: "restore", icon: <ArchiveRestore size={16} aria-hidden />, label: t("settings.archive.restore"), onSelect: () => void restore(item) },
                   ]),
-                  { id: "delete", icon: <Trash2 size={16} aria-hidden />, label: t("conversation.row.delete"), separated: true, onSelect: () => void remove(item) },
+                  { id: "delete", icon: <Trash2 size={16} aria-hidden />, label: t("conversation.row.delete"), destructive: true, onSelect: () => void remove(item) },
                 ]} />
             </div>; })}</div>}
           </AsyncState>

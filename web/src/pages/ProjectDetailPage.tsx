@@ -36,6 +36,7 @@ import {
 } from "../lib/capabilityRows";
 import { fetchMcpList, type McpItem } from "../lib/mcpApi";
 import { findProject, matchProjectId } from "../lib/projectRef";
+import { orderedActions } from "../components/CardRowMenu";
 import {
   deleteProjectCapability,
   describeFailure,
@@ -442,7 +443,8 @@ function CapabilityRowMenu({
       </button>
       {open && (
         <span className="kaus-bar-pop" role="menu" aria-label={t("capabilities.action.aria")}>
-          {actions.map((action) => (
+          {orderedActions(actions, action => action === "clear").map(({ action, separated }) => [
+            separated ? <span key={`${action}:separator`} role="separator" className="kaus-bar-pop-separator" /> : null,
             <button
               key={action}
               type="button"
@@ -455,8 +457,8 @@ function CapabilityRowMenu({
               }}
             >
               {t(`capabilities.action.${action}`)}
-            </button>
-          ))}
+            </button>,
+          ])}
         </span>
       )}
     </span>

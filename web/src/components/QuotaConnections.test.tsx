@@ -146,6 +146,7 @@ it("断开前可取消，只断开指定连接", async () => {
   expect(api.deleteQuotaConnection).not.toHaveBeenCalled();
   first.unmount();
   render(<View value={{ label: "原有账号", connectionId: "saved-one", mode: "disconnect" }} />);
+  expect(screen.getByRole("button", { name: /^断开$/ })).toHaveClass("kaus-button--danger");
   await userEvent.click(screen.getByRole("button", { name: /^断开$/ }));
   expect(api.deleteQuotaConnection).toHaveBeenCalledWith("saved-one", expect.any(AbortSignal));
   expect(changed).toHaveBeenCalledTimes(1);

@@ -690,7 +690,7 @@ export function GroupDock() {
                             id: "delete",
                             icon: <Trash2 size={16} aria-hidden />,
                             label: t("group.row.delete"),
-                            separated: true,
+                            destructive: true,
                             onSelect: () => setClosing(group),
                           },
                         ]}

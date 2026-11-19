@@ -44,7 +44,8 @@ export function CtxMenu({
   const [renameVal, setRenameVal] = useState(dname(node));
   const [forkId, setForkId] = useState("");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  /** The failure itself, so the notice keeps its code (2026-11-19). */
+  const [err, setErr] = useState<unknown>(null);
   /** Running conversations reported by a refused delete; a confirmed retry stops them first. */
   const [running, setRunning] = useState<number | null>(null);
   /** Sub-projects deleted together with this one; `null` until the preview loads. */
@@ -56,7 +57,7 @@ export function CtxMenu({
     setDescendants(null);
     deletePreview(node.name)
       .then(preview => { if (!cancelled) setDescendants(preview.descendants.map(item => item.label || item.name)); })
-      .catch(e => { if (!cancelled) setErr(e instanceof Error ? e.message : String(e)); });
+      .catch(e => { if (!cancelled) setErr(e); });
     return () => { cancelled = true; };
   }, [mode, node.name]);
   useLayoutEffect(() => {
@@ -85,7 +86,7 @@ export function CtxMenu({
       onChanged();
       onClose();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(e);
       setBusy(false);
     }
   };
@@ -119,7 +120,7 @@ export function CtxMenu({
     } catch (e) {
       const ids = runningConversationsOf(e);
       if (ids && !force) { setRunning(ids.length); setMode("delete"); }
-      else setErr(e instanceof Error ? e.message : String(e));
+      else setErr(e);
       setBusy(false);
     }
   };
@@ -186,6 +187,7 @@ export function CtxMenu({
             {!isDefault && nodes && <button role="menuitem" disabled={busy} className={item} onClick={() => setMode("move")}>
               <FolderInput className="size-3.5" />{t("ctx.move")}
             </button>}
+            {!isDefault && <div role="separator" className="kaus-context-menu-separator" />}
             {!isDefault && (
               <button role="menuitem" disabled={busy} className={item} style={{ color: "var(--danger)" }} onClick={() => void runDelete()}>
                 <Trash2 className="size-3.5" />
@@ -221,7 +223,7 @@ export function CtxMenu({
               style={inputStyle}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) run(() => renameAgent(node.name, renameVal.trim())); }}
             />
-            {err && <ErrorNotice error={err} className="mt-1 text-[0.6875rem]" />}
+            {err !== null && <ErrorNotice error={err} className="mt-1 text-[0.6875rem]" />}
             <Actions onOk={() => run(() => renameAgent(node.name, renameVal.trim()))} okLabel={t("common.save")} />
           </Field>
         )}
@@ -240,7 +242,7 @@ export function CtxMenu({
               style={inputStyle}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) runFork(); }}
             />
-            {err && <ErrorNotice error={err} className="mt-1 text-[0.6875rem]" />}
+            {err !== null && <ErrorNotice error={err} className="mt-1 text-[0.6875rem]" />}
             <Actions onOk={runFork} okLabel={t("ctx.fork")} />
           </Field>
         )}
@@ -260,7 +262,7 @@ export function CtxMenu({
             {running !== null && <div role="alert" className="mb-1 text-[0.6875rem] leading-relaxed" style={{ color: "var(--danger)" }}>
               {t("project.delete.stopConfirm", { count: running })}
             </div>}
-            {err && <ErrorNotice error={err} className="mt-1 text-[0.6875rem]" />}
+            {err !== null && <ErrorNotice error={err} className="mt-1 text-[0.6875rem]" />}
             <Actions onOk={() => void runDelete(true)} okLabel={t("project.delete.stopAndDelete")} disabled={descendants === null} danger />
           </Field>
         )}

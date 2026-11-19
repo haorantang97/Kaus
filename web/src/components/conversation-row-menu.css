@@ -9,7 +9,7 @@
 .kaus-conversation-menu > button { display:flex; align-items:center; gap:10px; min-height:35px; padding:7px 10px; border:0; border-radius:7px; background:transparent; color:inherit; font:13px/1.4 var(--theme-font-sans); text-align:left; cursor: default; }
 .kaus-conversation-menu > button:hover, .kaus-conversation-menu > button:focus-visible { background:color-mix(in srgb,var(--midground-base) 7%,transparent); outline:none; }
 .kaus-conversation-menu > button:disabled { opacity:.4; cursor:default; background:transparent; }
-.kaus-conversation-menu > [role="separator"] { height:1px; margin:4px 6px; background:color-mix(in srgb,var(--midground-base) 10%,transparent); }
+.kaus-conversation-menu > [role="separator"], .kaus-context-menu-separator { height:1px; margin:4px 6px; background:color-mix(in srgb,var(--midground-base) 10%,transparent); }
 .kaus-sidebar-title-input { min-width:0; width:100%; padding:1px 3px; border:1px solid color-mix(in srgb,var(--midground-base) 25%,transparent); border-radius:4px; background:var(--surface-3); color:inherit; font:inherit; line-height:inherit; outline:none; }
 .kaus-sidebar-title-input:focus { border-color:var(--accent-text); }
 @media (hover:none) { .kaus-conversation-menu-trigger { opacity:1; } }
