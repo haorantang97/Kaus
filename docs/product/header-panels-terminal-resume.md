@@ -151,6 +151,13 @@
 - **Q7 面板布局**：先单面板位（本提案）还是一开始就支持多面板并列。
 - **Q8 排期**：负责人此前要求在当前问题解决之后安排；确认先后：带外检测（修正确性）→ 文件面板 → 改动 → 浏览器日常化，或其他顺序。
 
+## 6.1 Q4 补充调研（2026-11-22）
+
+- Codex（已并入 ChatGPT 桌面 App）有可自行打开的集成终端：每个对话一个终端抽屉，入口是「新建标签页 → Terminal」或 Ctrl+\`，可放底部或右侧，可多标签；Agent 自己跑的命令显示在对话流里，不进这个终端；没有找到「需要时卡片邀请启动终端」的证据。CLI → App 有 `/app`，App → CLI 没有入口。
+- Claude Code 桌面端：页头「Terminal」按钮或 Ctrl+\`，在工作目录开普通 shell；同样没有「在 CLI 中继续」，接续只从终端进桌面端（`/desktop`、`--resume`）。
+- 两家都没有 Kaus 这种「把对话搬到外部终端再搬回」；工作目录 shell 是工作区的一个面板，迁移对话放在会话菜单或斜杠命令里。若 Kaus 再做工作目录终端，不应与「搬到终端」共用终端图标。
+- 来源：learn.chatgpt.com integrated-terminal、commands、changelog；code.claude.com/docs/en/desktop。
+
 ## 7 未确认与限制
 
 - Claude Code 桌面端是否列出 CLI 会话、如何从 CLI 会话接入桌面端（desktop.md「Coming from the CLI」正文未读到，与 sessions.md 表述可能不一致）。

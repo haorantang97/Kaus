@@ -45,6 +45,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,6 +75,8 @@ from runtime.session_host import SessionHost
 KAUS_NAMESPACE = USER_MESSAGE_NAMESPACE
 
 SURFACE_CHANGED_NAME = "surface.changed"
+LOGGER = logging.getLogger(__name__)
+
 HISTORY_RECONCILED_NAME = "history.reconciled"
 HISTORY_CHECKPOINT_NAME = "history.checkpoint"
 LEASE_TAKEN_OVER_NAME = "lease.taken_over"
@@ -497,6 +500,148 @@ class SurfaceCoordinator:
             except TurnAlreadyRunningError:
                 return  # A concurrent Card turn retains its own writer lease.
 
+    # --- 带外检测（2026-11-22「带外检测」） --------------------------------- #
+
+    async def sync_out_of_band(self, conversation: Conversation) -> dict[str, Any]:
+        """Fold turns made outside Kaus (the user resumed this native session in their own
+        terminal) into the timeline.
+
+        Called before a send and when the page comes back to the foreground. Returns
+        ``{"status": ...}``: ``merged`` (with ``turns``), ``none``, ``running`` (a Kaus turn
+        is in progress; nothing is stopped or written, the page asks the user), ``skipped``
+        or ``unsupported``. An idle in-Kaus runtime is stopped before the merge so the next
+        turn resumes the native session with the terminal turns included.
+        """
+        if not conversation.native_session_id or conversation.archived_at is not None:
+            return {"status": "skipped"}
+        owner = await self._host.leases.describe(conversation.id)
+        if owner is not None and owner.owner_type == "external-cli":
+            return {"status": "skipped"}  # handed to the terminal through Kaus itself
+        if await self._history_pending(conversation):
+            return {"status": "skipped"}  # the handoff retry path owns this window
+        try:
+            history = await self._load_history(conversation)
+        except Exception:  # noqa: BLE001 - an unreadable record is "cannot tell now"
+            return {"status": "unsupported"}
+        if history is None:
+            return {"status": "unsupported"}
+        entries, turns, last_entry_id = await self._out_of_band_delta(conversation, history)
+        if not turns:
+            await self._advance_checkpoint(conversation, last_entry_id)
+            return {"status": "none"}
+        lock = self._handoff_locks.setdefault(conversation.id, asyncio.Lock())
+        async with lock:
+            try:
+                async with self._host.conversation_control(conversation.id):
+                    if self._host.is_active(conversation.id):
+                        await self._host.stop_runtime(conversation.id)
+                    await self._emit_out_of_band(conversation, history, entries, turns, last_entry_id)
+            except TurnAlreadyRunningError:
+                return {"status": "running", "turns": turns}
+        return {"status": "merged", "turns": turns}
+
+    async def checkpoint_after_turn(self, conversation_id: str) -> None:
+        """After a Kaus turn ends, move the native marker past it, so the next check
+        compares only what came afterwards. Never moves it over terminal turns."""
+        try:
+            await self._checkpoint_after_turn(conversation_id)
+        except Exception:  # noqa: BLE001 - the next check reads again
+            LOGGER.warning("Native checkpoint after a turn failed for %s", conversation_id, exc_info=True)
+
+    async def _checkpoint_after_turn(self, conversation_id: str) -> None:
+        conversation = await self._repositories.conversations.get(conversation_id)
+        if conversation is None or not conversation.native_session_id or await self._history_pending(conversation):
+            return
+        try:
+            history = await self._load_history(conversation)
+        except Exception:  # noqa: BLE001 - the next check reads again
+            return
+        if history is None:
+            return
+        _entries, turns, last_entry_id = await self._out_of_band_delta(conversation, history)
+        if not turns:
+            await self._advance_checkpoint(conversation, last_entry_id)
+
+    async def _out_of_band_delta(
+        self, conversation: Conversation, history: NativeHistory
+    ) -> tuple[tuple[dict[str, Any], ...], int, str | None]:
+        """Native entries after the marker, split into turns (a user entry and what follows).
+        A turn whose user text matches a message Kaus sent after the marker is Kaus's own;
+        the rest were made elsewhere. Returns their entries, their count and the native tail."""
+        marker_index, seen = -1, None
+        events = await self._host.event_store.replay(conversation.id)
+        for index, envelope in enumerate(events):
+            event = envelope.event
+            if (event.type == "extension.event" and event.namespace == KAUS_NAMESPACE
+                    and event.name in (HISTORY_RECONCILED_NAME, HISTORY_CHECKPOINT_NAME)
+                    and isinstance(event.data, dict)
+                    and event.data.get("nativeSessionId") in (None, conversation.native_session_id)
+                    and event.data.get("lastEntryId")):
+                marker_index, seen = index, str(event.data["lastEntryId"])
+        # What Kaus itself sent after the marker, and when each of its turns ran.
+        sent: list[str] = []
+        spans: list[list[datetime]] = []
+        for envelope in events[marker_index + 1:]:
+            event = envelope.event
+            if (event.type == "extension.event" and event.namespace == USER_MESSAGE_NAMESPACE
+                    and event.name == "user.message" and isinstance(event.data, dict)):
+                sent.append(" ".join(str(event.data.get("text") or "").split()))
+                spans.append([envelope.occurred_at, datetime.max.replace(tzinfo=timezone.utc)])
+            elif event.type in _RUN_TERMINAL_TYPES and envelope.parent_run_id is None and spans:
+                spans[-1][1] = envelope.occurred_at
+        known = await self._reconciled_entry_ids(conversation)
+        window: Sequence[Any] = history.entries
+        if seen is not None:
+            position = next((i for i, entry in enumerate(window) if entry.entry_id == seen), None)
+            if position is not None:
+                window = window[position + 1:]
+        window = [entry for entry in window if entry.entry_id not in known and entry.role in ("user", "assistant", "tool")]
+        groups: list[list[Any]] = []
+        for entry in window:
+            if entry.role == "user" and entry.kind == "message" and (entry.text or "").strip():
+                groups.append([entry])
+            elif groups:
+                groups[-1].append(entry)
+            # Entries before the first user entry are the tail of a Kaus turn written late.
+        outside: list[Any] = []
+        turns = 0
+        for group in groups:
+            text = " ".join((group[0].text or "").split())
+            match = next((i for i, value in enumerate(sent) if value and (text == value or text.startswith(value) or value.startswith(text))), None)
+            if match is not None:
+                del sent[: match + 1]  # consume in order
+                continue
+            if _during(group[0].occurred_at, spans):
+                continue  # written while a Kaus turn ran (attachment notes, interruption rows)
+            turns += 1
+            outside.extend(group)
+        folded, _complete, _gaps = _diff_history(history.model_copy(update={"entries": tuple(outside)}), seen=None)
+        last_entry_id = history.entries[-1].entry_id if history.entries else seen
+        return folded, turns, last_entry_id
+
+    async def _advance_checkpoint(self, conversation: Conversation, last_entry_id: str | None) -> None:
+        if not last_entry_id or last_entry_id == await self._last_reconciled_entry_id(conversation):
+            return
+        await self._host.emit_conversation_event(conversation, ExtensionEvent(
+            namespace=KAUS_NAMESPACE, name=HISTORY_CHECKPOINT_NAME,
+            data={"lastEntryId": last_entry_id, "nativeSessionId": conversation.native_session_id},
+        ))
+
+    async def _emit_out_of_band(self, conversation: Conversation, history: NativeHistory,
+                                entries: tuple[dict[str, Any], ...], turns: int, last_entry_id: str | None) -> None:
+        if conversation.origin == "standard":
+            await self._host.event_store.native_storage.begin(conversation.id, conversation.native_session_id)
+        complete = bool(history.complete) and not history.missing
+        await self._host.emit_conversation_event(conversation, ExtensionEvent(
+            namespace=KAUS_NAMESPACE, name=HISTORY_RECONCILED_NAME,
+            data={"entries": list(entries), "complete": complete, "gaps": list(history.missing),
+                  "lastEntryId": last_entry_id, "nativeSessionId": history.native_session_id,
+                  "outOfBand": True, "turns": turns},
+        ))
+        await self._host.compact_native_text(conversation)
+        if not complete:
+            await self._host.emit_conversation_event(conversation, DiagnosticNotice(level="warn", message=INCOMPLETE_NOTICE))
+
     async def _load_history(self, conversation: Conversation) -> NativeHistory | None:
         """Unsupported histories are optional; failed reads must remain retryable."""
         if not conversation.native_session_id:
@@ -766,6 +911,19 @@ def launch_to_wire(launch: TerminalLaunch | None) -> dict[str, Any] | None:
         "launchedAt": launch.launched_at.isoformat(),
         "exitedAt": launch.exited_at.isoformat() if launch.exited_at else None,
     }
+
+
+_RUN_TERMINAL_TYPES = frozenset({"run.completed", "run.failed", "run.interrupted"})
+_SPAN_SLACK = 5  # seconds around a Kaus turn that still count as that turn
+
+
+def _during(moment: datetime | None, spans: list[list[datetime]]) -> bool:
+    if moment is None:
+        return False
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return any((start - moment).total_seconds() <= _SPAN_SLACK and (moment - end).total_seconds() <= _SPAN_SLACK
+               for start, end in spans)
 
 
 def _diff_history(

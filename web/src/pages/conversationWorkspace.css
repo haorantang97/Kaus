@@ -63,3 +63,6 @@
 .kaus-draft-page .kaus-draft-window { max-width: 850px; }
 .kaus-draft-page .kaus-draft-empty h1 { font: 400 28px/1.4 var(--theme-font-sans); letter-spacing: -0.5px; }
 .kaus-draft-page .kaus-draft-empty p { font: 13px/1.7 var(--theme-font-sans); }
+/* Panel switches form one group; the actions after them (terminal, continuation) another (2026-11-22). */
+.kaus-header-panels { display: inline-flex; align-items: center; gap: inherit; margin-right: 6px; }
+.kaus-header-panels .kaus-chat-icon-action[aria-pressed="true"] { background: var(--control-pressed); color: var(--midground-base); }

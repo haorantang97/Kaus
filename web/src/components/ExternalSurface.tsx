@@ -234,7 +234,9 @@ export function ExternalHistoryGroup({ group }: { group: HistoryGroup }) {
       >
         <Chevron className="size-3 kaus-tool-chevron" />
         <span className="kaus-tool-name">
-          {t("surface.history.group", { count: group.entries.length })}
+          {group.outOfBand
+            ? t("surface.history.outOfBand", { count: group.turns ?? group.entries.length })
+            : t("surface.history.group", { count: group.entries.length })}
         </span>
       </button>
       {open && (

@@ -36,7 +36,9 @@ export interface ReconciledEntry {
 
 export type SurfaceEvent =
   | { kind: "surface.changed"; surface: SurfaceKind; launchId: string | null }
-  | { kind: "history.reconciled"; entries: ReconciledEntry[]; complete: boolean; gaps: string[]; imported: boolean }
+  | { kind: "history.reconciled"; entries: ReconciledEntry[]; complete: boolean; gaps: string[]; imported: boolean;
+      /** Turns the user made in their own terminal, outside Kaus (2026-11-22「带外检测」). */
+      outOfBand: boolean; turns: number | null; sequence: number | null }
   | { kind: "lease.taken_over"; previousOwner: string | null; previousOwnerLabel: string | null; stale: boolean; reason: string | null };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -93,6 +95,9 @@ export function parseSurfaceEvent(envelope: AgentEventEnvelope): SurfaceEvent | 
       gaps: asStringList(data.gaps),
       // 2026-11-18: an imported native conversation's own history, shown as the conversation's start.
       imported: data.imported === true,
+      outOfBand: data.outOfBand === true,
+      turns: typeof data.turns === "number" ? data.turns : null,
+      sequence: typeof envelope.sequence === "number" ? envelope.sequence : null,
     };
   }
   if (event.name === LEASE_TAKEN_OVER_NAME) {
@@ -119,6 +124,11 @@ export interface ExternalHistoryGroup {
   gaps: string[];
   /** The history of an imported native conversation (rendered first, not folded). */
   imported?: boolean;
+  /** Merged terminal turns made outside Kaus, and how many. */
+  outOfBand?: boolean;
+  turns?: number | null;
+  /** Event sequence: the group sits among timeline rows by it. */
+  sequence?: number | null;
 }
 
 /** 每条会话最多留这么多组，超了丢最旧的（存储配额不该被一条抽风的会话吃光）。 */
@@ -144,6 +154,9 @@ export function readExternalHistory(conversationId: string): ExternalHistoryGrou
           complete: item.complete !== false,
           gaps: asStringList(item.gaps),
           imported: item.imported === true,
+          outOfBand: item.outOfBand === true,
+          turns: typeof item.turns === "number" ? item.turns : null,
+          sequence: typeof item.sequence === "number" ? item.sequence : null,
         },
       ];
     });

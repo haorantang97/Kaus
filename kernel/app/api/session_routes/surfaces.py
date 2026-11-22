@@ -131,6 +131,15 @@ def build_surface_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
         return await surface_coordinator.describe(conversation)
 
     @ctx.endpoint
+    async def sync_native(conversation_id: str) -> Any:
+        """``POST /native-sync``: fold turns made outside Kaus into the timeline (2026-11-22
+        「带外检测」). ``running`` is a state, not an error: the page asks the user."""
+        conversation = await ctx.load_conversation(conversation_id)
+        if surface_coordinator is None:
+            return {"conversationId": conversation_id, "status": "unsupported"}
+        return {"conversationId": conversation_id, **await surface_coordinator.sync_out_of_band(conversation)}
+
+    @ctx.endpoint
     async def list_launches(conversation_id: str) -> Any:
         """``GET /launches``：终端启动历史（「上次在终端做了什么」）。"""
         coordinator = _require_coordinator()
@@ -146,6 +155,7 @@ def build_surface_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
         RouteSpec('/conversations/{conversation_id}/surface', get_surface, ["GET"], 'session_surface'),
         RouteSpec('/conversations/{conversation_id}/surface/preview', get_surface_preview, ["GET"], 'session_surface_preview'),
         RouteSpec('/conversations/{conversation_id}/surface/focus', focus_surface, ["POST"], 'session_surface_focus'),
+        RouteSpec('/conversations/{conversation_id}/native-sync', sync_native, ["POST"], 'session_native_sync'),
         RouteSpec('/conversations/{conversation_id}/surface/external', open_external_surface, ["POST"], 'session_surface_external', when="coordinator"),
         RouteSpec('/conversations/{conversation_id}/surface/card', return_to_card_surface, ["POST"], 'session_surface_card', when="coordinator"),
         RouteSpec('/conversations/{conversation_id}/launches', list_launches, ["GET"], 'session_launches', when="coordinator"),

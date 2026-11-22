@@ -8,6 +8,8 @@ to a stable code. Uploads and file reads go through
 
 from __future__ import annotations
 
+import logging
+
 import json
 from typing import Any
 from urllib.parse import quote
@@ -40,6 +42,9 @@ from app.api.session_routes.common import (
     unsupported_error,
 )
 from app.api.session_routes.context import SessionRouteContext
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def build_message_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
@@ -98,6 +103,12 @@ def build_message_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
         return {"files": listed, "truncated": truncated}
 
     @ctx.endpoint
+    async def workspace_tree(conversation_id: str, path: str = Query("", max_length=4096)) -> Any:
+        """文件面板的文件树：工作目录里一层目录的内容。只读，不占运行租约。"""
+        conversation = await ctx.load_conversation(conversation_id)
+        return files.list_directory(await ctx.conversation_workspace(conversation), path)
+
+    @ctx.endpoint
     async def send_message(
         conversation_id: str, body: SendMessageBody = Body(...)
     ) -> Any:
@@ -108,6 +119,13 @@ def build_message_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
             raise SessionApiError(409, "conversation_archived", "请先恢复此对话。")
         if not body.text.strip() and not body.attachments:
             raise SessionApiError(400, "empty_message", "请输入消息或添加附件。")
+        # Out-of-band turns go in before this message, so the timeline stays in order and the
+        # runtime that starts next resumes with them (2026-11-22「带外检测」). Never blocks a send.
+        if ctx.surface_coordinator is not None:
+            try:
+                await ctx.surface_coordinator.sync_out_of_band(conversation)
+            except Exception:  # noqa: BLE001
+                LOGGER.warning("Out-of-band check before send failed for %s", conversation_id, exc_info=True)
         prepared = files.prepare(conversation_id, await ctx.conversation_workspace(conversation), body.attachments)
         message = MessageInput(text=body.text, attachments=prepared, metadata=dict(body.metadata), client_ref=(body.client_ref or "").strip() or None)
         # References come only from this conversation's accepted handoff record.
@@ -242,6 +260,7 @@ def build_message_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
         RouteSpec('/conversations/{conversation_id}/attachments', upload_attachment, ["POST"], 'session_upload_attachment'),
         RouteSpec('/conversations/{conversation_id}/files', get_file, ["GET"], 'session_get_file'),
         RouteSpec('/conversations/{conversation_id}/workspace-files', workspace_files, ["GET"], 'session_workspace_files'),
+        RouteSpec('/conversations/{conversation_id}/workspace-tree', workspace_tree, ["GET"], 'session_workspace_tree'),
     ]
 
 

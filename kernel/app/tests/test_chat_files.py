@@ -254,3 +254,26 @@ def test_workspace_listing_stops_at_the_limit_and_refuses_home(tmp_path):
     assert store.list_workspace(str(tmp_path), limit=3) == (["f0.txt", "f1.txt", "f2.txt"], True)
     assert store.list_workspace(str(Path.home())) == ([], False)
     assert store.list_workspace("relative/path") == ([], False)
+
+
+def test_workspace_tree_lists_one_level_dirs_first_and_stays_inside(setup):
+    """文件面板的文件树（2026-11-22）：一层目录，目录在前；不出工作目录，不跟随链接。"""
+    harness, client, cid, _captured, tmp = setup
+    workspace = tmp / "site"
+    (workspace / "src/pages").mkdir(parents=True)
+    (workspace / "src/pages/index.tsx").write_text("x")
+    (workspace / "README.md").write_text("x")
+    (workspace / ".env").write_text("SECRET=1")
+    (workspace / "node_modules/pkg").mkdir(parents=True)
+    (tmp / "elsewhere").mkdir()
+    os.symlink(tmp / "elsewhere", workspace / "linked")
+    url = f"/api/conversations/{cid}/workspace-tree"
+    assert client.get(url).json() == {"root": None, "path": "", "entries": [], "truncated": False}
+    snapshot(harness, cid, workspace)
+    assert client.get(url).json() == {"root": "site", "path": "", "truncated": False, "entries": [
+        {"name": "src", "path": "src", "dir": True}, {"name": "README.md", "path": "README.md", "dir": False}]}
+    assert client.get(url, params={"path": "src/pages"}).json()["entries"] == [
+        {"name": "index.tsx", "path": "src/pages/index.tsx", "dir": False}]
+    for bad in ("../", "linked", ".git", "/etc"):
+        assert client.get(url, params={"path": bad}).status_code in (403, 404), bad
+    assert client.get(url, params={"path": "missing"}).status_code == 404

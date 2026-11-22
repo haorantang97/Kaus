@@ -522,6 +522,15 @@ export function saveMessageQueue(conversationId: string, items: QueuedMessageWir
 }
 
 /** 输入框 `@` 的候选：会话工作目录里的文件（相对路径，最多 5000 个）。 */
+export interface WorkspaceEntryWire { name: string; path: string; dir: boolean }
+export interface WorkspaceTreeWire { root: string | null; path: string; entries: WorkspaceEntryWire[]; truncated: boolean }
+
+/** One directory level of the conversation's workspace, for the files panel (2026-11-22). */
+export function fetchWorkspaceTree(conversationId: string, path = "", signal?: AbortSignal): Promise<WorkspaceTreeWire> {
+  const query = path ? `?${new URLSearchParams({ path })}` : "";
+  return request(`/api/conversations/${encodeURIComponent(conversationId)}/workspace-tree${query}`, { signal });
+}
+
 export function fetchWorkspaceFiles(conversationId: string, signal?: AbortSignal): Promise<{ files: string[]; truncated: boolean }> {
   return request(`/api/conversations/${encodeURIComponent(conversationId)}/workspace-files`, { signal });
 }
@@ -980,6 +989,13 @@ export function openExternalSurface(
 }
 
 /** 收回站内写权并校准原生历史。`force` = 终端还开着也抢回来。 */
+export interface NativeSyncWire { conversationId: string; status: "merged" | "none" | "running" | "skipped" | "unsupported"; turns?: number }
+
+/** Fold turns made outside Kaus into the timeline (2026-11-22「带外检测」). */
+export function syncNativeHistory(conversationId: string): Promise<NativeSyncWire> {
+  return request(`/api/conversations/${encodeURIComponent(conversationId)}/native-sync`, { method: "POST" });
+}
+
 export function returnToCardSurface(
   conversationId: string,
   options: { force?: boolean } = {},

@@ -3,6 +3,18 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 22 日（再续）：页头面板与带外检测
+
+依据 `product-decisions.md`「页头面板」「带外检测」。前后对比（改前 ae79bfb、改后当前代码）在本机 `output/visual-20261122/`（`before-conv*`、`after-*`）。
+- 一个面板位：页头右上角按「改动、浏览器、文件」排列，后接「在终端打开、接续」；点另一个图标替换面板，再点当前图标收起，记在本窗口（`kaus.panel`，旧的浏览器开关迁过来）。宽度与拖动沿用侧边浏览器（`lib/sidePanel.tsx`、`components/SidePanelFrame.tsx`、`BrowserPanel.tsx`、`ConversationHeader.tsx`）。
+- 文件面板：会话工作目录的只读文件树（逐层读取，目录在前，不跟随链接，跳过隐藏、敏感与依赖目录）+ 下方查看器（源码带行号、Markdown、图片、PDF、HTML 沙箱、下载）。新接口 `GET /api/conversations/{id}/workspace-tree?path=`（`conversation_files.py` `list_directory`）。没有工作目录时不显示图标。消息里的非图片文件引用在面板打开，图片仍用灯箱（`components/FilesPanel.tsx`、`ArtifactPreview.tsx`）。
+- 改动面板：按路径汇总本对话工具事件里的 diff（不依赖 git），行旁「+」写评论，回车把 `` `路径:行` 评论 `` 追加进输入框草稿，由用户发送；删除的行不能评论（`components/ChangesPanel.tsx`）。
+- 网页链接：页面有侧边浏览器时在侧边浏览器打开，⌘ / Ctrl 点击仍走外部浏览器；没有侧边浏览器（日常 WKWebView 窗口）照旧（`MarkdownContent.tsx`）。
+- 带外检测：`SurfaceCoordinator.sync_out_of_band` 读原生记录，按标记之后的回合区分：用户文本与 Kaus 发出的消息对得上、或发生在 Kaus 一轮运行期间（前后 5 秒）的算 Kaus 自己的，其余算终端里的。站内闲置时停掉闲置进程，写一条带 `outOfBand`、`turns` 的 `history.reconciled`；站内正在运行时返回 `running`，不停、不写。Kaus 每轮结束后在后台推进标记（`history.checkpoint`，只越过 Kaus 自己的回合）。触发点：发送前（先并入再写用户消息，保证顺序）、`POST /native-sync`（页面打开、窗口回到前台，5 秒内不重复）。外部终端租约在、记录读不到、驱动不支持时跳过（`runtime/surface_handoff.py`、`session_routes/surfaces.py`、`messages.py`、`session_bootstrap.py`）。
+- 时间线：并入的一组写「已并入终端中的 N 轮对话」，可展开；回站校准与并入的组按事件序号插在对应位置，不再统一排在末尾。站内运行时显示「此会话也在终端中使用」与「本轮结束后并入」「停止本轮」（`useNativeSync.ts`、`ExternalSurface.tsx`、`ConversationPage.tsx`）。
+- 测试：内核 `pytest -q` 4,234 项通过、128 项跳过、7 项 warning（新增 `test_out_of_band_sync.py` 6 项、文件树 1 项）；根目录 `tests/` 369 项通过；前端 `npm run check` 通过（133 个文件 1,096 项，新增面板 11 项、带外检测 3 项）。
+- 限制：带外检测未用真实 Agent 实测（只有协议假实现）；驱动若改写用户文本（如展开技能命令）且回合不在运行期间，可能被误判为终端回合。浏览器图标在截图环境（无原生浏览器桥）不出现。终端图标的去向（Q4）待负责人定。
+
 ## 11 月 22 日（续）：删除引擎私有设置
 
 依据 `product-decisions.md`「引擎私有设置」。旧迁移曾把引擎 `config.yaml` 的运行时键、`model` 和委派段的私有键存成 `hermes:runtime-config` / `hermes:default-model` / `hermes:delegation-extras` 行，启动时写回引擎。

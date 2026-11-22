@@ -16,6 +16,7 @@ import { ImageLightbox, type ImageLightboxHandle } from "./ImageLightbox";
 import { SplitPane } from "../SplitPane";
 import { transitionImage } from "../../lib/sharedImageTransition";
 import { ArtifactGallery } from "./ArtifactGallery";
+import { useSidePanelRouting } from "../../lib/sidePanel";
 import "./conversationContent.css";
 
 const MAX_TEXT_PREVIEW = 2 * 1024 * 1024;
@@ -30,6 +31,7 @@ export function FileReference({ source, conversationId, children, compact = fals
 }) {
   const [open, setOpen] = useState(false);
   const c = useContentText();
+  const routing = useSidePanelRouting();
   const inline = inlineImageUrl(source.uri);
   const isImage = previewKind(source) === "image" || !!inline;
   const imageGallery = useMemo(() => [...new Map((gallery ?? [source]).filter(item => previewKind(item) === "image" || inlineImageUrl(item.uri)).map(item => [item.uri, item])).values()], [gallery, source.uri]);
@@ -72,7 +74,8 @@ export function FileReference({ source, conversationId, children, compact = fals
   }, [conversationId, hasThumbnail, inline, source.uri, visible]);
   const Icon = isImage ? ImageIcon : File;
   const previewImage = () => Array.from(document.querySelectorAll<HTMLImageElement>(".kaus-artifact-preview .kaus-image-viewport img")).at(-1) ?? null;
-  const openPreview = () => transitionImage(button.current?.querySelector("img") ?? null, () => { setGalleryIndex(Math.max(0, imageGallery.findIndex(item => item.uri === source.uri))); setOpen(true); }, previewImage);
+  // A non-image file opens in the files panel when the page has one; images keep the lightbox.
+  const openPreview = () => (!isImage && path && routing.openFile?.(path)) || transitionImage(button.current?.querySelector("img") ?? null, () => { setGalleryIndex(Math.max(0, imageGallery.findIndex(item => item.uri === source.uri))); setOpen(true); }, previewImage);
   const closePreview = () => {
     if (openedSource.uri !== source.uri) { setOpen(false); return; }
     transitionImage(previewImage(), () => setOpen(false), () => button.current?.querySelector("img") ?? null);

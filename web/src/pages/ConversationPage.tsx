@@ -2,9 +2,12 @@ import { ContinuationDialog } from "../components/ContinuationDialog";
 import { ConversationJumpRail } from "../components/ConversationJumpRail";
 import { readableContinuationDraft } from "../lib/continuations";
 import { FileReference } from "../components/cards/ArtifactPreview";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Square, FileText, X, LoaderCircle, GitBranch } from "lucide-react";
-import { BrowserPanel, useBrowserPanel } from "../components/BrowserPanel";
+import { BrowserPanel } from "../components/BrowserPanel";
+import { FilesPanel } from "../components/FilesPanel";
+import { ChangesPanel, changedFiles } from "../components/ChangesPanel";
+import { SidePanelRoutingProvider, useSidePanel, type SidePanelRouting } from "../lib/sidePanel";
 import { browserBridge } from "../lib/browserSurface";
 import { useLocale } from "../i18n";
 import { cream, toast } from "../components/ui";
@@ -50,6 +53,7 @@ import {
   type ConversationDetailWire,
   describeFailure,
   failureClientRef,
+  fetchWorkspaceTree,
 } from "../lib/sessionApi";
 import {
   parseBackendRunState,
@@ -66,6 +70,7 @@ import {
   messageDeliveryStatus,
   messageText,
   type AgentEventEnvelope,
+  type FileChangeItem,
   type InteractionItem,
   type TimelineItem,
 } from "../lib/timeline/reducer";
@@ -84,6 +89,7 @@ import {
   type HandoffPending,
 } from "./conversation/pageState";
 import { ConversationHeader } from "./conversation/ConversationHeader";
+import { useNativeSync } from "./conversation/useNativeSync";
 import { PendingMessageRows } from "./conversation/PendingMessageRows";
 import { useConversationEvents } from "./conversation/useConversationEvents";
 import { useMarkViewed } from "./conversation/useMarkViewed";
@@ -601,6 +607,7 @@ export function ConversationPage({
    *  detail 上的 owner 只是首帧的兜底。 */
   const external = surface === "external-cli" || owner?.ownerType === "external-cli";
   const terminalPreview = useTerminalPreview(conversationId, external);
+  const nativeSync = useNativeSync({ conversationId, running, external, archived, ready: detailLoaded && snapshotReady });
   const readOnly = external || archived || archiveBusy;
   const sidebarRunState = useRef<string | null>(null);
   useEffect(() => {
@@ -742,7 +749,31 @@ export function ConversationPage({
     [checkDelivery, readOnly, items, resendText, running, settingsBusy, updateDraft],
   );
 
-  const browser = useBrowserPanel();
+  /* One side panel slot (2026-11-22「页头面板」): Changes, Browser and Files, switched from the header. */
+  const browserAvailable = Boolean(browserBridge());
+  const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setWorkspaceRoot(null);
+    void fetchWorkspaceTree(conversationId).then(tree => { if (!cancelled) setWorkspaceRoot(tree.root); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [conversationId]);
+  const changes = useMemo(() => changedFiles(items.filter((item): item is FileChangeItem => item.kind === "file")), [items]);
+  const side = useSidePanel({ changes: changes.length > 0 || workspaceRoot !== null, browser: browserAvailable, files: workspaceRoot !== null });
+  const browser = { open: side.panel === "browser" };
+  const [filePath, setFilePath] = useState<string | null>(null);
+  useEffect(() => { setFilePath(null); }, [conversationId]);
+  const panelRouting = useMemo<SidePanelRouting>(() => ({
+    openUrl: browserAvailable ? (url: string) => {
+      side.setPanel("browser");
+      void browserBridge()?.send({ action: "open", url }).catch(() => {});
+      return true;
+    } : undefined,
+    openFile: workspaceRoot !== null ? (path: string) => { side.setPanel("files"); setFilePath(path); return true; } : undefined,
+  }), [browserAvailable, side.setPanel, workspaceRoot]);
+  const addComment = useCallback((comment: string) => {
+    updateDraft(current => ({ ...current, text: current.text.trim() ? `${current.text.trimEnd()}\n${comment}` : comment }));
+  }, [updateDraft]);
   // Filling the side browser is independent of run state: it never sends to the Agent.
   const fillBrowser = useCallback(async (body: string) => {
     const result = await browserBridge()?.send({ action: "fill", text: body }).catch(() => null) as { accepted?: boolean; error?: string } | null;
@@ -840,7 +871,12 @@ export function ConversationPage({
     onRemove: () => updateDraft(current => ({ ...current, attachments: current.attachments.filter(candidate => candidate.ref !== file.ref) })),
   }));
 
+  /* Groups with a sequence render among the rows; `placed` collects them during this render. */
+  const placedGroups = surfaceReady ? history.groups.filter(group => !group.imported && typeof group.sequence === "number") : [];
+  const placed = new Set<string>();
+
   return (
+    <SidePanelRoutingProvider value={panelRouting}>
     <div className="kaus-conversation-layout">
     <div className="kaus-conversation-page">
       <ConversationHeader
@@ -860,7 +896,7 @@ export function ConversationPage({
         onChangeArchive={changeArchive}
         onOpenContinuation={onContinue ? () => setContinuationOpen(true) : undefined}
         continuationDisabled={running || sending || handoffBusy}
-        browser={browser.available ? { open: browser.open, onToggle: () => browser.setOpen(!browser.open) } : undefined}
+        panels={{ current: side.panel, available: { changes: changes.length > 0 || workspaceRoot !== null, browser: browserAvailable, files: workspaceRoot !== null }, onToggle: side.toggle }}
       />
       {continuationOpen && detail && onContinue && <ContinuationDialog
         source={{ kind: "conversation", id: conversationId, projectId: detail.conversation.projectId }}
@@ -874,9 +910,17 @@ export function ConversationPage({
           source={{ uri: file.ref, title: file.name, mimeType: file.mimeType, sizeBytes: file.size }} />)}
       </div>}
 
-      {(disconnected || detail?.advisory?.message || error || notice || degraded) && (
+      {(disconnected || detail?.advisory?.message || error || notice || degraded || nativeSync.conflict) && (
         <div className="kaus-thread kaus-conversation-bars">
           {disconnected && <div className="kaus-stream-bar">{t("conversation.reconnecting")}</div>}
+          {/* 2026-11-22「带外检测」: a Kaus turn is running while the terminal also wrote to this session. */}
+          {nativeSync.conflict && <div className="kaus-external-degraded" role="status" data-testid="native-sync-conflict">
+            <div className="kaus-external-degraded-head">
+              <span>{t("surface.oob.running")}</span>
+              <button type="button" className="kaus-bar-pill is-button" onClick={nativeSync.later}>{t("surface.oob.later")}</button>
+              <button type="button" className="kaus-bar-pill is-button" onClick={() => { nativeSync.later(); void stop(); }}>{t("surface.oob.stop")}</button>
+            </div>
+          </div>}
           {detail?.advisory?.message && <div className="kaus-advisory-bar">{detail.advisory.message}</div>}
           {/* 第 4 件：接管提示是中性横幅，不是错误行。 */}
           {notice && <NoticeBanner text={notice} testId="takeover-banner" />}
@@ -924,8 +968,14 @@ export function ConversationPage({
               <button type="button" className="kaus-inline-action" onClick={() => setReloadKey(key => key + 1)}>{t("conversation.history.retry")}</button>
             </div>
           )}
-          {rows.map((row) =>
-            row.kind === "tools" ? (
+          {rows.map((row) => {
+            // Merged terminal turns sit where they happened among the rows (2026-11-22).
+            const order = row.kind === "tools" || row.kind === "files" ? row.items[0]?.order ?? 0 : row.item.order;
+            const before = placedGroups.filter(group => (group.sequence ?? 0) < order && !placed.has(group.id));
+            before.forEach(group => placed.add(group.id));
+            return <Fragment key={row.key}>
+            {before.map(group => <ExternalHistoryGroup key={group.id} group={group} />)}
+            {row.kind === "tools" ? (
               <ToolGroup key={row.key} count={row.items.length}>
                 {row.items.map((item) => (
                   <div key={item.itemId}>{renderCard(item)}</div>
@@ -940,8 +990,9 @@ export function ConversationPage({
               </RowGroup>
             ) : (
               <div key={row.key} data-message-anchor={row.item.kind === "message" && row.item.role === "user" ? row.item.itemId : undefined}>{renderCard(row.item)}</div>
-            ),
-          )}
+            )}
+            </Fragment>;
+          })}
           <PendingMessageRows
             pending={page.pending}
             retryDisabled={running || stopping || settingsBusy || readOnly}
@@ -951,7 +1002,7 @@ export function ConversationPage({
             onCheckDelivery={clientRef => void checkDelivery(clientRef)}
           />
           {/* 第 3 件：回站后折叠的历史组，接在消息流末尾。 */}
-          {surfaceReady && history.groups.filter(group => !group.imported).map((group) => (
+          {surfaceReady && history.groups.filter(group => !group.imported && !placed.has(group.id)).map((group) => (
             <ExternalHistoryGroup key={group.id} group={group} />
           ))}
           {external && <TerminalPreview entries={terminalPreview.entries} />}
@@ -1116,7 +1167,10 @@ export function ConversationPage({
         />
       )}
     </div>
-    {browser.open && <BrowserPanel onClose={() => browser.setOpen(false)} />}
+    {side.panel === "browser" && <BrowserPanel onClose={() => side.setPanel(null)} />}
+    {side.panel === "files" && <FilesPanel conversationId={conversationId} selected={filePath} onSelect={setFilePath} onClose={() => side.setPanel(null)} />}
+    {side.panel === "changes" && <ChangesPanel files={changes} onComment={addComment} onClose={() => side.setPanel(null)} />}
     </div>
+    </SidePanelRoutingProvider>
   );
 }

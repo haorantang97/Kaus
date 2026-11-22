@@ -1,26 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Globe, PanelRightClose, Plus, RotateCw, X } from "lucide-react";
 
 import { useLocale } from "../i18n";
 import { addressUrl, browserBridge, browserState, EMPTY_BROWSER, tabLabel, type BrowserState } from "../lib/browserSurface";
 import "./browser-panel.css";
 
-const OPEN_KEY = "kaus.browser.open";
-const WIDTH_KEY = "kaus.browser.width";
-const MIN_WIDTH = 420;
-const read = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
-const write = (key: string, value: string | null) => { try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* per-viewer convenience only */ } };
-
-/** Whether the side browser is open; remembered across conversations in this window. */
-export function useBrowserPanel() {
-  const available = Boolean(browserBridge());
-  const [open, setOpen] = useState(() => available && read(OPEN_KEY) === "1");
-  return {
-    available,
-    open: available && open,
-    setOpen: (next: boolean) => { write(OPEN_KEY, next ? "1" : null); setOpen(next); },
-  };
-}
+import { SidePanelFrame } from "./SidePanelFrame";
 
 export function BrowserPanel({ onClose }: { onClose: () => void }) {
   const { t } = useLocale();
@@ -30,7 +15,6 @@ export function BrowserPanel({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<BrowserState>(EMPTY_BROWSER);
   const [draft, setDraft] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [width, setWidth] = useState(() => { const stored = Number(read(WIDTH_KEY)); return stored > 0 ? Math.max(MIN_WIDTH, stored) : null; });
   const current = state.tabs.find(tab => tab.id === state.selected) ?? null;
   const send = (message: Record<string, unknown>) => native?.send(message).catch(() => null) ?? Promise.resolve(null);
 
@@ -81,25 +65,8 @@ export function BrowserPanel({ onClose }: { onClose: () => void }) {
     setDraft(null); address.current?.blur();
     void send(current ? { action: "navigate", tab: current.id, url } : { action: "open", url });
   };
-  const resizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    const handle = event.currentTarget, start = event.clientX, from = handle.parentElement?.getBoundingClientRect().width ?? MIN_WIDTH;
-    const limit = () => Math.max(MIN_WIDTH, (handle.parentElement?.parentElement?.getBoundingClientRect().width ?? window.innerWidth) - 380);
-    handle.setPointerCapture?.(event.pointerId); setDragging(true);
-    const move = (e: PointerEvent) => setWidth(Math.min(limit(), Math.max(MIN_WIDTH, from + start - e.clientX)));
-    const end = () => {
-      handle.removeEventListener("pointermove", move); handle.removeEventListener("pointerup", end); handle.removeEventListener("pointercancel", end);
-      setDragging(false); setWidth(value => { if (value) write(WIDTH_KEY, String(Math.round(value))); return value; });
-    };
-    handle.addEventListener("pointermove", move); handle.addEventListener("pointerup", end); handle.addEventListener("pointercancel", end);
-  };
-
   return (
-    <aside className="kaus-browser-panel" aria-label={t("browser.title")} data-dragging={dragging || undefined}
-      style={width ? { "--browser-width": `${width}px` } as CSSProperties : undefined}>
-      <div className="kaus-browser-handle" role="separator" aria-orientation="vertical" aria-label={t("browser.resize")}
-        onPointerDown={resizeStart} onDoubleClick={() => { setWidth(null); write(WIDTH_KEY, null); }} />
+    <SidePanelFrame label={t("browser.title")} onDraggingChange={setDragging}>
       <div className="kaus-browser-tabs" role="tablist" aria-label={t("browser.tabs")}>
         {state.tabs.map(tab => {
           const label = tabLabel(tab, t("browser.newTab"));
@@ -138,6 +105,6 @@ export function BrowserPanel({ onClose }: { onClose: () => void }) {
       <div ref={viewport} className="kaus-browser-viewport" data-testid="browser-viewport">
         {!current && <Globe className="kaus-browser-empty" size={28} aria-hidden />}
       </div>
-    </aside>
+    </SidePanelFrame>
   );
 }

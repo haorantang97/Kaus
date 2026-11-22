@@ -1294,6 +1294,17 @@ def open_session_runtime(
         registry=registry,
         launcher=launcher,
     )
+    # After each Kaus turn, move the native marker past it so out-of-band checks compare
+    # only what came afterwards (2026-11-22「带外检测」). Runs off the event path.
+    checkpoint_tasks: set[asyncio.Task] = set()
+
+    async def _checkpoint_after_turn(envelope) -> None:
+        if envelope.event.type in {"run.completed", "run.failed", "run.interrupted"} and envelope.parent_run_id is None:
+            task = asyncio.create_task(surface_coordinator.checkpoint_after_turn(envelope.conversation_id))
+            checkpoint_tasks.add(task)
+            task.add_done_callback(checkpoint_tasks.discard)
+
+    session_host.add_event_observer(_checkpoint_after_turn)
     external_monitor = ExternalCliMonitor(
         leases=session_host.leases,
         terminal_launches=repositories.terminal_launches,

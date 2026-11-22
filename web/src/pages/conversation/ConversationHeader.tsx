@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { ArchiveRestore, GitBranch, Globe, Terminal } from "lucide-react";
+import { ArchiveRestore, FileDiff, Folder, GitBranch, Globe, Terminal } from "lucide-react";
 
 import { useLocale } from "../../i18n";
 import { useDraftEscape } from "../../hooks/useDraftEscape";
 import { UsagePill } from "../../components/cards/UsageBar";
 import type { TimelineState } from "../../lib/timeline/reducer";
+import type { SidePanelKind } from "../../lib/sidePanel";
 
 /* 对话页页头：标题（就地改名）、运行状态、用量 Pill、「到终端打开」与 ⋯ 菜单。
  * 页头背景横跨全宽，内容对齐 760 栏（G-1）。 */
@@ -31,9 +32,12 @@ export interface ConversationHeaderProps {
   /** 「用其他 Agent 接续」 as a header icon (2026-11-18); also in the sidebar row menu. */
   onOpenContinuation?: () => void;
   continuationDisabled?: boolean;
-  /** 侧边浏览器开关：只在带浏览器桥的 Chromium 壳里渲染（没有就不传）。 */
-  browser?: { open: boolean; onToggle: () => void };
+  /** Panel switches (2026-11-22, same order as the reference desktop app: Changes, Browser, Files). One slot:
+   *  pressing another icon replaces the panel, pressing the open one closes it. */
+  panels?: { current: SidePanelKind | null; available: Record<SidePanelKind, boolean>; onToggle: (kind: SidePanelKind) => void };
 }
+
+const PANEL_ICONS = [["changes", FileDiff], ["browser", Globe], ["files", Folder]] as const;
 
 export function ConversationHeader({
   title,
@@ -51,7 +55,7 @@ export function ConversationHeader({
   onChangeArchive,
   onOpenContinuation,
   continuationDisabled,
-  browser,
+  panels,
 }: ConversationHeaderProps) {
   const { t } = useLocale();
   /** batch52 第 5 件：正在就地改会话标题（null = 没在改）。 */
@@ -111,11 +115,14 @@ export function ConversationHeader({
           </span>}
           {/* G-8：用量折成一枚 Pill，挂在页头右侧；没有 usage 能力就不渲染。 */}
           {showUsage && <UsagePill usage={usage} />}
-          {browser && (
-            <button type="button" className="kaus-chat-icon-action" aria-pressed={browser.open}
-              title={browser.open ? t("browser.close") : t("browser.open")} aria-label={browser.open ? t("browser.close") : t("browser.open")}
-              onClick={browser.onToggle}><Globe size={16} aria-hidden /></button>
-          )}
+          {panels && PANEL_ICONS.filter(([kind]) => panels.available[kind]).length > 0 && <span className="kaus-header-panels">
+            {PANEL_ICONS.filter(([kind]) => panels.available[kind]).map(([kind, Icon]) => {
+              const label = t(`panel.${kind}`);
+              return <button key={kind} type="button" className="kaus-chat-icon-action" aria-pressed={panels.current === kind}
+                data-testid={`panel-toggle-${kind}`} title={label} aria-label={label} onClick={() => panels.onToggle(kind)}>
+                <Icon size={16} aria-hidden /></button>;
+            })}
+          </span>}
           {canOpenExternal && (
             <button
               type="button"

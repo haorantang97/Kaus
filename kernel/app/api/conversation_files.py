@@ -195,6 +195,40 @@ class ConversationFiles:
                     return found, True
         return found, False
 
+    def list_directory(self, workspace_root: str | None, raw_path: str = "", *, limit: int = MAX_LISTED_FILES) -> dict:
+        """工作目录里一层目录的内容，给文件面板的文件树用（2026-11-22「页头面板」）。
+
+        只读、只在工作目录内；与 :meth:`list_workspace` 同一套过滤：不跟随符号链接，
+        跳过隐藏、敏感与依赖目录。目录在前，各自按名字排序。
+        """
+        root = self._workspace(workspace_root)
+        if root is None or not root.is_dir():
+            return {"root": None, "path": "", "entries": [], "truncated": False}
+        relative = Path(raw_path.strip("/")) if raw_path.strip("/") else Path()
+        if relative.is_absolute() or ".." in relative.parts or not _safe_parts(relative):
+            raise _forbidden()
+        target = root / relative
+        if any((root / Path(*relative.parts[:index + 1])).is_symlink() for index in range(len(relative.parts))):
+            raise _forbidden()
+        if not target.is_dir():
+            raise ApiError(404, "file_not_found", "文件不存在或已被移动。")
+        entries: list[dict] = []
+        truncated = False
+        with os.scandir(target) as listing:
+            items = sorted(listing, key=lambda item: (not item.is_dir(follow_symlinks=False), item.name.lower()))
+        for item in items:
+            if item.is_symlink() or not _safe_parts(Path(item.name)):
+                continue
+            is_dir = item.is_dir(follow_symlinks=False)
+            if is_dir and item.name in _SKIPPED_DIRS:
+                continue
+            if len(entries) >= limit:
+                truncated = True
+                break
+            entries.append({"name": item.name, "path": (relative / item.name).as_posix(), "dir": is_dir})
+        return {"root": root.name or str(root), "path": relative.as_posix() if relative.parts else "",
+                "entries": entries, "truncated": truncated}
+
     def read(self, conversation_id: str, workspace_root: str | None, raw_path: str, *, limit: int = MAX_READ_BYTES) -> LocalFile:
         path = _decode_path(raw_path)
         if ".." in path.parts or not _safe_parts(Path(path.name)):

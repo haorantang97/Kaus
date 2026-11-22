@@ -4,6 +4,7 @@ import { marked, type Token, type Tokens } from "marked";
 import { useLocale } from "../../i18n";
 import { localArtifactPath, inlineImageUrl, remoteArtifactUrl, type ArtifactSource } from "../../lib/artifactApi";
 import { safeUrl } from "../../lib/md";
+import { useSidePanelRouting } from "../../lib/sidePanel";
 import { FileReference } from "./ArtifactPreview";
 import { CopyButton } from "./CopyButton";
 import { DiffViewer } from "./DiffViewer";
@@ -25,6 +26,7 @@ function CodeBlock({ text, language }: { text: string; language?: string }) {
 }
 
 export function MarkdownContent({ text, conversationId }: { text: string; conversationId?: string }) {
+  const routing = useSidePanelRouting();
   // The parser only tokenizes. Raw HTML is rendered as text; it never enters innerHTML.
   const tokens = useMemo(() => marked.lexer(text, { gfm: true, breaks: true }), [text]);
   const gallery = useMemo(() => {
@@ -71,7 +73,13 @@ export function MarkdownContent({ text, conversationId }: { text: string; conver
         const href = decodeText(token.href || "");
         if (localArtifactPath(href)) return <FileReference key={key} source={{ uri: href, title: token.text }} conversationId={conversationId} compact>{inline()}</FileReference>;
         const url = safeUrl(href);
-        return <a key={key} href={url || "#"} target={url?.startsWith("#") ? undefined : "_blank"} rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={url ? undefined : (event) => event.preventDefault()}>{inline()}</a>;
+        // A web link opens in the side browser when this window has one (2026-11-22).
+        const web = !!url && /^https?:\/\//i.test(url);
+        return <a key={key} href={url || "#"} target={url?.startsWith("#") ? undefined : "_blank"} rel="noopener noreferrer" referrerPolicy="no-referrer"
+          onClick={(event) => {
+            if (!url) { event.preventDefault(); return; }
+            if (web && !event.metaKey && !event.ctrlKey && routing.openUrl?.(url)) event.preventDefault();
+          }}>{inline()}</a>;
       }
       case "image": {
         const uri = decodeText(token.href || "");

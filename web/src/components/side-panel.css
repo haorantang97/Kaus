@@ -1,0 +1,44 @@
+/* Files and Changes panels share the side panel slot with the browser (2026-11-22). */
+.kaus-side-panel-header { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 4px 6px 4px 14px; border-bottom: 1px solid var(--border-subtle, #8882); }
+.kaus-side-panel-header strong { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.kaus-side-panel-header .kaus-chat-icon-action { margin-left: auto; }
+.kaus-side-panel-count { color: var(--text-tertiary); font-size: 12px; white-space: nowrap; }
+.kaus-side-panel-empty { margin: 0; padding: 18px 14px; color: var(--text-tertiary); font-size: 12.5px; }
+
+.kaus-files-body { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.kaus-file-tree { flex: 1 1 auto; min-height: 0; padding: 4px 0; overflow: auto; }
+.kaus-files-body.has-selection .kaus-file-tree { flex: 0 0 38%; border-bottom: 1px solid var(--border-subtle, #8882); }
+.kaus-file-tree-row { display: flex; align-items: center; gap: 5px; width: 100%; min-height: 26px; padding-right: 10px; border: 0; background: transparent; color: color-mix(in srgb, var(--midground-base) 82%, transparent); font-size: 12.5px; text-align: left; cursor: default; }
+.kaus-file-tree-row:hover { background: color-mix(in srgb, var(--midground-base) 5%, transparent); }
+.kaus-file-tree-row[data-selected] { background: color-mix(in srgb, var(--midground-base) 9%, transparent); color: var(--midground-base); }
+.kaus-file-tree-row:focus-visible { outline: 2px solid var(--focus-ring, currentColor); outline-offset: -2px; }
+.kaus-file-tree-row svg { flex: 0 0 auto; opacity: .62; }
+.kaus-file-tree-chevron { display: inline-flex; flex: 0 0 13px; }
+.kaus-file-tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.kaus-file-viewer { display: flex; flex: 1 1 62%; flex-direction: column; min-height: 0; }
+.kaus-file-viewer-header { display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 2px 6px 2px 14px; color: var(--text-secondary); font: 12px var(--theme-font-mono); }
+.kaus-file-viewer-header span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kaus-file-viewer-header .kaus-chat-icon-action { margin-left: auto; }
+.kaus-file-viewer-body { flex: 1; min-height: 0; padding: 0 0 16px; overflow: auto; }
+.kaus-file-viewer-body .kaus-preview-markdown { padding: 0 18px; }
+.kaus-file-viewer-body .kaus-preview-frame { min-height: 100%; }
+.kaus-file-viewer-image { display: block; max-width: 100%; margin: 8px auto; }
+.kaus-file-source { margin: 0; font: 12px/1.7 var(--theme-font-mono); }
+.kaus-file-source-line { display: grid; grid-template-columns: 48px minmax(max-content, 1fr); }
+.kaus-file-source-number { padding: 0 10px; color: var(--text-tertiary); text-align: right; user-select: none; font-variant-numeric: tabular-nums; }
+.kaus-file-source code { padding: 0 12px 0 4px; background: none; font: inherit; white-space: pre; }
+
+.kaus-changes-body { flex: 1; min-height: 0; overflow: auto; }
+.kaus-changes-file + .kaus-changes-file { border-top: 1px solid var(--border-subtle, #8882); }
+.kaus-changes-file-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px; padding: 0 12px 0 10px; border: 0; background: var(--surface-raised, var(--background-base, #fff)); color: var(--midground-base); font: 12px var(--theme-font-mono); text-align: left; cursor: default; }
+.kaus-changes-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kaus-changes-file-header .kaus-diff-counts { margin-left: auto; }
+.kaus-changes-diff { max-height: none; }
+.kaus-changes-diff code { padding: 0 10px 0 4px; background: none; font: inherit; white-space: pre; }
+.kaus-diff-line.kaus-changes-line { grid-template-columns: 20px 42px 42px 20px minmax(max-content, 1fr); }
+.kaus-changes-comment-add { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin: 2px 1px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: transparent; }
+.kaus-changes-line:hover button.kaus-changes-comment-add, button.kaus-changes-comment-add:focus-visible { background: var(--accent, #6b7d2b); color: var(--accent-contrast, #fff); }
+.kaus-changes-comment { padding: 6px 12px 8px 62px; background: color-mix(in srgb, var(--midground-base) 4%, transparent); }
+.kaus-changes-comment textarea { width: 100%; min-height: 44px; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--midground-base) 20%, transparent); border-radius: 7px; background: var(--background-base, transparent); color: var(--midground-base); font: 12.5px/1.5 inherit; resize: vertical; }
+.kaus-changes-comment textarea:focus { border-color: color-mix(in srgb, var(--midground-base) 36%, transparent); outline: none; }

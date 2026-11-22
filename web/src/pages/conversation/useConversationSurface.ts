@@ -150,11 +150,14 @@ export function useConversationSurface({ conversationId, archived, archiveBusy, 
       if (event.kind === "history.reconciled") {
         if (event.entries.length === 0 && event.complete) return;
         addHistoryGroup({
-          id: `${event.imported ? "imported" : "reconciled"}:${event.entries[0]?.entryId ?? "empty"}:${event.entries.length}`,
+          id: `${event.imported ? "imported" : event.outOfBand ? "oob" : "reconciled"}:${event.entries[0]?.entryId ?? "empty"}:${event.entries.length}`,
           entries: event.entries,
           complete: event.complete,
           gaps: event.gaps,
           imported: event.imported,
+          outOfBand: event.outOfBand,
+          turns: event.turns,
+          sequence: event.sequence,
         });
         return;
       }
