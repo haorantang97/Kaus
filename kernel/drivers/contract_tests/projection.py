@@ -302,6 +302,8 @@ class ProjectionContractTests:
         """AD-149：不知道怎么关就不猜——报 ``not_blockable``，不删键。"""
         driver, project, binding = wired
         scenario = ProjectionScenario.BLOCK_UNSUPPORTED
+        if scenario not in getattr(rig, "COORDS", {scenario: None}):
+            pytest.skip("这个引擎的写表里每个类型都有关闭值")
         result = await self._materialize(
             driver, project, binding, rig.effective(scenario), dry_run=False
         )
@@ -436,6 +438,8 @@ class ProjectionContractTests:
         """D-03 / N §13.1：applied ∪ unsupported 必须盖住每一条能力与每一条 block。"""
         driver, project, binding = wired
         for scenario in ProjectionScenario:
+            if scenario not in getattr(rig, "COORDS", {scenario: None}):
+                continue
             effective = rig.effective(scenario)
             result = await self._materialize(driver, project, binding, effective)
             touched = {

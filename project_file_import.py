@@ -211,8 +211,6 @@ def _block_rows(config_keys: list[str]) -> list[tuple[str, str]]:
         if entry is None:
             continue
         out.append((entry.capability_type, entry.capability_id))
-        if entry.splits:
-            out.append((entry.extras_capability_type, entry.extras_capability_id))
     return out
 
 

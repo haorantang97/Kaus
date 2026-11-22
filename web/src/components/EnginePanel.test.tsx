@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { EnginePanel, describeConfig, groupNameKeys, isBackendScoped, type EngineRow } from "./EnginePanel";
+import { EnginePanel, type EngineRow } from "./EnginePanel";
 import { Overlay } from "./ui";
 import { setLocalePref } from "../i18n";
 
@@ -78,42 +78,6 @@ const binding = {
 const capabilities = {
   entries: [
     {
-      capabilityType: "mock:runtime-config",
-      capabilityId: "providers",
-      config: { value: { openai: { api_key: "credential-ref://mock/default/providers.openai.api_key" }, anthropic: {} } },
-      sourceProjectId: "project:default",
-      inherited: true,
-    },
-    {
-      capabilityType: "mock:runtime-config",
-      capabilityId: "toolsets",
-      config: { value: ["shell", "web"] },
-      sourceProjectId: "project:pronto",
-      inherited: false,
-    },
-    {
-      capabilityType: "mock:default-model",
-      capabilityId: "model",
-      config: { value: "mock-small" },
-      sourceProjectId: "project:pronto",
-      inherited: false,
-    },
-    {
-      capabilityType: "mock:delegation-extras",
-      capabilityId: "delegation",
-      config: { value: { fanout: 3 } },
-      sourceProjectId: "project:default",
-      inherited: true,
-    },
-    {
-      capabilityType: "mock:runtime-config",
-      capabilityId: "brand_new_key",
-      config: { value: "x" },
-      sourceProjectId: "project:pronto",
-      inherited: false,
-    },
-    // 通用能力：**不该**出现在引擎卡里（它们在项目页的「能力」表）。
-    {
       capabilityType: "mcp",
       capabilityId: "mcp_servers",
       config: { value: {} },
@@ -121,9 +85,7 @@ const capabilities = {
       inherited: false,
     },
   ],
-  blocked: [
-    { capabilityType: "mock:runtime-config", capabilityId: "compression", blockedByProjectId: "project:default" },
-  ],
+  blocked: [],
 };
 
 const row: EngineRow = { binding, backend, capabilities };
@@ -137,14 +99,13 @@ it("退出目录的连接保留管理操作，移除新建和设为默认入口"
   expect(screen.getByRole('button', { name:'解除' })).toBeInTheDocument();
 });
 
-const projectLabel = (id: string) => (id === "project:default" ? "X" : "Pronto");
 
 function renderPanel(rows: EngineRow[] = [row]) {
-  render(<EnginePanel rows={rows} projectLabel={projectLabel} />);
+  render(<EnginePanel rows={rows} />);
 }
 
 /** batch40（DESIGN ★L 第 3 条）：卡面默认只有两行摘要，其余全在「详情」里。
- *  凡是要看引擎侧身份 / 原生会话 / 已登录 / 审批模式 / 能力清单 / 引擎配置的用例，
+ *  凡是要看引擎侧身份 / 原生会话 / 已登录 / 审批模式 / 能力清单的用例，
  *  都得先点开这一枚。 */
 async function openDetails() {
   await userEvent.click(screen.getAllByTestId("engine-details-toggle")[0]);
@@ -155,97 +116,6 @@ async function openCapabilities() {
   await openDetails();
   await userEvent.click(screen.getByRole("button", { name: /能力清单|Capabilities/ }));
 }
-
-async function openConfig() {
-  await openDetails();
-  const section = screen.getByTestId("engine-config-section");
-  await userEvent.click(within(section).getByRole("button", { expanded: false }));
-  return section;
-}
-
-describe("引擎配置展开区（AD-97）", () => {
-  it("按 capability_id 分组、组名走词典，查不到的用原键名", async () => {
-    renderPanel();
-    const section = await openConfig();
-
-    expect(within(section).getByText("模型供应商")).toBeInTheDocument();
-    expect(within(section).getByText("工具集")).toBeInTheDocument();
-    expect(within(section).getByText("默认模型")).toBeInTheDocument();
-    // capability_id 是 `delegation`，词典里没有；靠能力类型后缀 `delegation-extras` 查到。
-    expect(within(section).getByText("委派（引擎专属）")).toBeInTheDocument();
-    // 词典里两条路都查不到 → 原键名，不显示空白。
-    expect(within(section).getByText("brand_new_key")).toBeInTheDocument();
-    expect(within(section).getByText("压缩")).toBeInTheDocument();
-  });
-
-  it("通用能力不进引擎卡（留在项目页的「能力」表）", async () => {
-    renderPanel();
-    const section = await openConfig();
-    expect(within(section).queryByText("mcp_servers")).toBeNull();
-    // 组数 = 5 条 scoped + 1 条被禁止的 scoped，通用那条不算。
-    expect(screen.getByText(/引擎配置 · 6 组/)).toBeInTheDocument();
-  });
-
-  it("来源三态：本项目 / 继承自 X / 在 X 停用", async () => {
-    renderPanel();
-    const section = await openConfig();
-    expect(within(section).getAllByText("继承自「X」").length).toBe(2);
-    expect(within(section).getAllByText("本项目").length).toBe(3);
-    expect(within(section).getByText("在「X」停用")).toBeInTheDocument();
-  });
-
-  it("值摘要：对象只列键名，标量原样（凭据占位串不被展开）", async () => {
-    renderPanel();
-    const section = await openConfig();
-    expect(within(section).getByText("openai · anthropic")).toBeInTheDocument();
-    // 键名之外的东西一律不展开：库里那串 credential-ref 占位不该出现在页面上。
-    expect(section.textContent).not.toContain("credential-ref://");
-    expect(within(section).getByText("2 项")).toBeInTheDocument();
-    expect(within(section).getByText("mock-small")).toBeInTheDocument();
-  });
-
-  /* 批次十五第 4 件：区头那枚「需后端补」chip 去掉了（AD-111：工程状态不该挂在
-     用户脸上），一组配置都没有时整段不渲染。 */
-  it("区头不再挂「需后端补」chip", async () => {
-    renderPanel();
-    await openDetails();
-    const section = screen.getByTestId("engine-config-section");
-    expect(within(section).queryByText("需后端补")).toBeNull();
-  });
-
-  it("一组 backend-scoped 配置都没有 → 整段不渲染（不是空态文案）", async () => {
-    renderPanel([{ binding, backend, capabilities: { entries: [], blocked: [] } }]);
-    expect(screen.queryByTestId("engine-config-section")).toBeNull();
-  });
-
-  it("能力还没读到时不谎报「没有配置」", async () => {
-    renderPanel([{ binding, backend }]);
-    const section = await openConfig();
-    expect(within(section).getByText("正在读取引擎配置…")).toBeInTheDocument();
-  });
-});
-
-describe("分组与取值的纯函数", () => {
-  it("backend-scoped 的判据只看形状（类型里带冒号），不看是哪个引擎", () => {
-    expect(isBackendScoped("mock:runtime-config")).toBe(true);
-    expect(isBackendScoped("whatever-new-engine:runtime-config")).toBe(true);
-    expect(isBackendScoped("mcp")).toBe(false);
-    expect(isBackendScoped("delegation")).toBe(false);
-  });
-
-  it("查表键：先 capability_id，再能力类型后缀", () => {
-    expect(groupNameKeys("mock:runtime-config", "providers")).toEqual(["providers", "runtime-config"]);
-    expect(groupNameKeys("mock:delegation-extras", "delegation")).toEqual(["delegation", "delegation-extras"]);
-  });
-
-  it("值的形状：空 / 标量 / 列表 / 对象", () => {
-    expect(describeConfig({ value: null })).toEqual({ kind: "empty" });
-    expect(describeConfig({ value: {} })).toEqual({ kind: "empty" });
-    expect(describeConfig({ value: "gpt" })).toEqual({ kind: "scalar", text: "gpt" });
-    expect(describeConfig({ value: [1, 2, 3] })).toEqual({ kind: "list", count: 3 });
-    expect(describeConfig({ value: { a: 1, b: 2 } })).toEqual({ kind: "object", keys: ["a", "b"] });
-  });
-});
 
 describe("语言开关（AD-96）", () => {
   it("切到英文后面板文案变英文，取值枚举也跟着换", async () => {
@@ -264,15 +134,6 @@ describe("语言开关（AD-96）", () => {
     expect(screen.getByText("warm resume")).toBeInTheDocument();
     expect(screen.getByText(/bench-tested/)).toBeInTheDocument();
     expect(screen.queryByText("已接引擎")).toBeNull();
-  });
-
-  it("英文界面下引擎配置区的组名与来源也是英文", async () => {
-    setLocalePref("en");
-    renderPanel();
-    const section = await openConfig();
-    expect(within(section).getByText("Model providers")).toBeInTheDocument();
-    expect(within(section).getAllByText("Inherited from “X”").length).toBe(2);
-    expect(within(section).getByText("Disabled at “X”")).toBeInTheDocument();
   });
 });
 
@@ -389,7 +250,6 @@ describe("引擎卡的模型 / 推理强度 / 未就绪（第 4、5 件）", () 
     render(
       <EnginePanel
         rows={[{ binding, backend, capabilities, effectiveSettings: settings }]}
-        projectLabel={projectLabel}
         onChangeReasoning={onChangeReasoning}
       />,
     );
@@ -417,7 +277,6 @@ describe("引擎卡的模型 / 推理强度 / 未就绪（第 4、5 件）", () 
             },
           },
         ]}
-        projectLabel={projectLabel}
         onChangeModel={vi.fn()}
       />,
     );
@@ -431,7 +290,6 @@ describe("引擎卡的模型 / 推理强度 / 未就绪（第 4、5 件）", () 
     render(
       <EnginePanel
         rows={[{ binding, backend, capabilities, effectiveSettings: settings, catalog: { models: [] } }]}
-        projectLabel={projectLabel}
         onChangeModel={vi.fn()}
       />,
     );
@@ -451,7 +309,6 @@ describe("引擎卡的模型 / 推理强度 / 未就绪（第 4、5 件）", () 
           effectiveSettings: engineDecides,
           catalog: { models: [], selectionApplies: false },
         }]}
-        projectLabel={projectLabel}
         onChangeModel={vi.fn()}
       />,
     );

@@ -70,13 +70,10 @@ class HermesProjectionHarness:
     #: 情景 → (capability_type, capability_id, config.yaml 键路径)
     COORDS = {
         ProjectionScenario.WRITABLE: ("mcp", "mcp_servers", "mcp_servers"),
-        ProjectionScenario.CREDENTIAL: (
-            "hermes:runtime-config",
-            "auxiliary",
-            "auxiliary",
-        ),
+        ProjectionScenario.CREDENTIAL: ("mcp", "mcp_servers", "mcp_servers"),
         ProjectionScenario.BLOCK_SUPPORTED: ("mcp", "mcp_servers", "mcp_servers"),
-        ProjectionScenario.BLOCK_UNSUPPORTED: ("hermes:runtime-config", "memory", "memory"),
+        # BLOCK_UNSUPPORTED 无坐标：剩下的通用类型（mcp / delegation / hooks）都有关闭值
+        # （2026-11-22 删除引擎私有设置后）。
         # 批次四十四：项目指令落的是 profile 目录里的文件，不是 config.yaml 的键。
         ProjectionScenario.INSTRUCTIONS: (
             "instructions",

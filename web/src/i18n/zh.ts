@@ -399,25 +399,8 @@ export const zh = {
   "engine.caps.toggle": "能力清单 · {count} 项",
 
   /* ---- 引擎配置展开区（AD-97） ---- */
-  "engine.config.toggle": "引擎配置 · {count} 组",
-  "engine.config.loading": "正在读取引擎配置…",
-  "engine.config.items": "{count} 项",
 
   /* ---- 能力分组名（按 capability_id 查；查不到用原键名） ---- */
-  "capGroup.providers": "模型供应商",
-  "capGroup.fallback_providers": "备用供应商",
-  "capGroup.toolsets": "工具集",
-  "capGroup.compression": "压缩",
-  "capGroup.context": "上下文",
-  "capGroup.prompt_caching": "提示缓存",
-  "capGroup.auxiliary": "辅助模型",
-  "capGroup.image_gen": "图像生成",
-  "capGroup.agent": "代理行为",
-  "capGroup.tool_loop_guardrails": "工具循环护栏",
-  "capGroup.credential_pool_strategies": "凭据池策略",
-  "capGroup.model": "默认模型",
-  "capGroup.curator": "技能策展",
-  "capGroup.delegation-extras": "委派（引擎专属）",
 
   /* ---- 能力取值（第 4 件：取值本地化） ---- */
   "capValue.supported": "支持",

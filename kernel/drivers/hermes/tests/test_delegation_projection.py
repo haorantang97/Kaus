@@ -8,7 +8,7 @@
    里的 TODO；本分支只用现有的 :class:`SupportLevel` 接口，不依赖三态分支）；
 3. 当前映射表**一条都没验证** → 真实配置下一项都投不出去 → 归 ``unsupported``，
    绝不假装 applied；
-4. ``hermes:delegation-extras`` 原样写回同一段，不做翻译；
+4. 已删除的 ``hermes:delegation-extras`` 不再写回（2026-11-22）；
 5. 每条 Effective Capability 都有去处（applied ∪ unsupported 全覆盖）。
 """
 
@@ -26,7 +26,6 @@ CAPABILITIES = BackendCapabilities(
     capability_projection={
         "skills": SupportLevel.NATIVE,
         "delegation": SupportLevel.NATIVE,
-        delegation_map.EXTRAS_CAPABILITY_TYPE: SupportLevel.NATIVE,
     }
 )
 
@@ -110,12 +109,10 @@ def test_nothing_projectable_is_reported_as_unsupported_not_applied(monkeypatch)
     assert result.unsupported[0].level is SupportLevel.PARTIAL
 
 
-def test_backend_scoped_extras_are_written_back_verbatim() -> None:
+def test_retired_delegation_extras_are_not_written() -> None:
     effective = EffectiveCapabilities(
         project_id="project:demo",
-        entries=(
-            _entry(delegation_map.EXTRAS_CAPABILITY_TYPE, {"value": {"vendor_knob": 1}}),
-        ),
+        entries=(_entry("hermes:delegation-extras", {"value": {"vendor_knob": 1}}),),
     )
     result = project_capabilities(
         binding_id="binding:demo",
@@ -123,14 +120,9 @@ def test_backend_scoped_extras_are_written_back_verbatim() -> None:
         effective=effective,
         capabilities=CAPABILITIES,
     )
-    assert [e.capability_type for e in result.applied] == [
-        delegation_map.EXTRAS_CAPABILITY_TYPE
-    ]
-    assert result.applied[0].target_ref == f"{HOME}/config.yaml#delegation"
-    # 批次二十四：extras 与通用策略落在**同一个**顶层键上（split 的逆）。
-    assert result.applied[0].key_path == delegation_map.CONFIG_KEY
-    assert result.applied[0].after == {"vendor_knob": 1}
-    assert result.unsupported == ()
+    assert result.applied == ()
+    assert [(e.capability_type, e.reason) for e in result.unsupported] == [
+        ("hermes:delegation-extras", "not_mapped")]
 
 
 def test_every_capability_still_has_a_destination() -> None:
@@ -138,7 +130,6 @@ def test_every_capability_still_has_a_destination() -> None:
         project_id="project:demo",
         entries=(
             _entry("delegation", {"value": {"enabled": True}}),
-            _entry(delegation_map.EXTRAS_CAPABILITY_TYPE, {"value": {"k": 1}}),
             _entry("skills", {}),
             _entry("never-declared-type", {}),
         ),
@@ -150,13 +141,8 @@ def test_every_capability_still_has_a_destination() -> None:
         capabilities=CAPABILITIES,
     )
     touched = {e.capability_type for e in (*result.applied, *result.unsupported)}
-    # 批次二十四：delegation 的两条行合并成同一个顶层键的一条投射条目，所以
-    # 「每条能力都有去处」在这里的含义是：**每个类型**都出现在报告的某一侧。
-    assert touched >= {
-        delegation_map.EXTRAS_CAPABILITY_TYPE,
-        "skills",
-        "never-declared-type",
-    }
+    # 「每条能力都有去处」：**每个类型**都出现在报告的某一侧。
+    assert touched >= {"delegation", "skills", "never-declared-type"}
     # skills 与未声明类型都没有 config.yaml 落点，必须带 reason 落 unsupported。
     reasons = {e.capability_type: e.reason for e in result.unsupported}
     assert reasons["skills"] == "not_mapped"

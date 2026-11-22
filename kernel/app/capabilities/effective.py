@@ -24,7 +24,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.capabilities.models import EffectiveCapabilities, EffectiveCapability, parse_capability_type
+from app.capabilities.models import (
+    AGENT_BOUND_CAPABILITY_NAMES,
+    EffectiveCapabilities,
+    EffectiveCapability,
+    parse_capability_type,
+)
 from app.capabilities.resolver import (
     CapabilityResolutionRequest,
     TreeCapabilityResolver,
@@ -290,11 +295,25 @@ async def _shared_imports(repositories: Any, binding: Any, catalog: dict | None)
     return tuple(result)
 
 
+def without_engine_settings(effective: EffectiveCapabilities) -> EffectiveCapabilities:
+    """Agent-scoped entries other than the Agent-bound kinds are engine-private settings,
+    which Kaus no longer keeps (2026-11-22). Old rows and frozen group snapshots may
+    still hold them until the boot migration runs; they never reach a driver."""
+    def kept(entry: Any) -> bool:
+        ref = parse_capability_type(entry.capability_type)
+        return not ref.is_backend_scoped or ref.name in AGENT_BOUND_CAPABILITY_NAMES
+    if all(kept(e) for e in (*effective.entries, *effective.blocked)):
+        return effective
+    return effective.model_copy(update={"entries": tuple(e for e in effective.entries if kept(e)),
+                                        "blocked": tuple(e for e in effective.blocked if kept(e))})
+
+
 async def resolve_effective_for_binding(
     repositories: Any, binding: Any
 ) -> EffectiveCapabilities:
     """这条 Binding 的有效能力（带 ``backend_key`` 过滤，R-01）。"""
-    effective = without_native_plugins(without_native_mcp(await _resolve_effective_for_binding(repositories, binding)))
+    effective = without_native_plugins(without_native_mcp(without_engine_settings(
+        await _resolve_effective_for_binding(repositories, binding))))
     settings = getattr(repositories, "settings", None)
     catalog = await settings.get("skill_tree.catalog.v1") if settings else None
 

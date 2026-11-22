@@ -34,7 +34,7 @@ async def test_hermes_override_preserves_settings_and_uses_acp_not_http(
     staging = tmp_path / "staging"
     for root in (native, original, staging):
         root.mkdir()
-    native_config = "model:\n  default: original-model\ntoolsets: [native-tool]\n"
+    native_config = "model:\n  default: original-model\nhooks: [native-tool]\n"
     (native / "config.yaml").write_text(native_config)
     owner = HermesDriver(hermes_root=native)
     owner._capabilities = BackendCapabilities()
@@ -53,7 +53,7 @@ async def test_hermes_override_preserves_settings_and_uses_acp_not_http(
     )]
     if project_scoped:
         entries.append(EffectiveCapability(
-            capability_type="hermes:runtime-config", capability_id="toolsets",
+            capability_type="hooks", capability_id="hooks",
             config={"value": ["terminal"]}, source_project_id=binding.project_id, inherited=False,
         ))
     effective = EffectiveCapabilities(project_id=binding.project_id, entries=tuple(entries))
@@ -95,7 +95,7 @@ async def test_hermes_override_preserves_settings_and_uses_acp_not_http(
         home = Path(created[-1][0].agent_spec.env["HERMES_HOME"])
         if project_scoped:
             assert home != native
-            assert config_yaml.load((home / "config.yaml").read_text())["toolsets"] == ["terminal"]
+            assert config_yaml.load((home / "config.yaml").read_text())["hooks"] == ["terminal"]
         else:
             assert home == native
         assert (native / "config.yaml").read_text() == native_config

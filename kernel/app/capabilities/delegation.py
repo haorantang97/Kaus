@@ -19,7 +19,7 @@
 这是**引擎无关**的一小组通用策略。各 Backend 的 Driver 负责把它投影到自家能懂的
 形式；投影不了的项由 Driver 在**能力投射**那根轴上标 ``partial``（``SupportLevel``，AD-69），
 **不得静默丢弃**。某个 Backend 私有的、超出这五项的委派配置不进这个类型，
-应落 backend-scoped 的扩展类型（``<backend-key>:delegation-extras``）。
+Kaus 也不保管，留在引擎自己的配置里（2026-11-22）。
 
 Group（跨引擎编排层）与引擎内委派**并存、不互相替代**（AD-46 改判末句）：
 Group 编排的是多个 Binding 之间的协作，本类型约束的是单个 Binding 内部

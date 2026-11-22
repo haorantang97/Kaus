@@ -4,18 +4,17 @@
 ----
 1. 定义 **capability type** 的两种形态（R-01）：
    - 通用能力：``skills`` / ``mcp`` / ``instructions`` / ``plugins`` …
-   - backend-scoped 能力：``<backend-key>:<name>``，例如某 Backend 的
-     ``<backend>:runtime-config`` / ``<backend>:default-model``。
+   - backend-scoped 能力：``<backend-key>:<name>``，只用于 Agent 自己的技能、MCP、
+     插件与 hooks（:data:`AGENT_BOUND_CAPABILITY_NAMES`）。引擎私有设置
+     （旧 ``<backend>:runtime-config`` 等）2026-11-22 起不再保管。
    两者共用同一套 Registry 与 Resolver，只在 Projector 落盘时按 backend 过滤。
 2. 定义 :class:`ProjectCapability`（一条能力赋值，对应 v1.0 §11.1
    ``project_capabilities`` 表）与 :class:`EffectiveCapabilities`（Resolver 输出）。
 
 对应规范
 --------
-- R-01：16 个继承键中不属于通用项目能力的键、以及软继承的 ``model`` 默认值，
-  建模为 backend-scoped capability type，进入同一 Capability Registry / Resolver
-  参与树继承；Projector 按 backend 过滤后写入对应 Binding 的有效配置。
-  D-10 语义保持：Binding 的本地 default model = 未被祖先 scoped 配置覆盖时的取值。
+- R-01：backend-scoped 类型与通用类型进入同一 Capability Registry / Resolver 参与树继承；
+  Projector 按 backend 过滤后写入对应 Binding 的有效配置。
 - v1.0 §5.2：Effective = Ancestor Assignments + Local Assignments − Local Blocks
   + Type-specific Merge Rules；「不同类型不得使用完全相同的合并算法」。
 - v1.0 §5.2：每条规则保留来源 Project，便于解释「为什么生效」。
@@ -58,8 +57,7 @@ GENERIC_CAPABILITY_TYPES: Final[frozenset[str]] = frozenset(
         # 委派：AD-46 改判把它从 backend-scoped 提为通用类型——配置只是「上限与
         # 默认值」（是否允许 / 最大嵌套 / 最大并发 / 子 agent 默认模型 / 超时），
         # 这五项在任何能派子 agent 的引擎上都成立。策略 schema 见
-        # :mod:`app.capabilities.delegation`；某个 Backend 私有的额外委派配置
-        # 落 ``<backend-key>:delegation-extras``，不进这里。
+        # :mod:`app.capabilities.delegation`；某个 Backend 私有的额外委派配置不保管。
         "delegation",
         "plugins",
         "policies",
@@ -67,6 +65,10 @@ GENERIC_CAPABILITY_TYPES: Final[frozenset[str]] = frozenset(
         "workspace",
     }
 )
+
+#: backend-scoped 能力只能是这几种：某个 Agent 自己的技能、MCP、插件与 hooks
+#: （Agent 绑定能力）。引擎私有设置不保管（2026-11-22），写端点拒收其他名字。
+AGENT_BOUND_CAPABILITY_NAMES: Final[frozenset[str]] = frozenset({"skills", "mcp", "plugins", "hooks"})
 
 _CAPABILITY_TYPE_RE: Final[re.Pattern[str]] = re.compile(
     rf"^(?:(?P<backend>{SEGMENT_PATTERN}):)?(?P<name>{SEGMENT_PATTERN})$"
@@ -88,7 +90,7 @@ class CapabilityTypeRef(NamedTuple):
 
 
 def parse_capability_type(capability_type: str) -> CapabilityTypeRef:
-    """把 ``skills`` / ``<backend>:runtime-config`` 解析为 :class:`CapabilityTypeRef`。"""
+    """把 ``skills`` / ``<agent>:skills`` 解析为 :class:`CapabilityTypeRef`。"""
     match = _CAPABILITY_TYPE_RE.match(capability_type or "")
     if match is None:
         raise CapabilityTypeError(
@@ -116,9 +118,7 @@ class ProjectCapability(DomainModel):
     """一条能力赋值（v1.0 §11.1 ``project_capabilities`` 的一行）。
 
     - ``capability_type``：见 :func:`parse_capability_type`（通用或 backend-scoped）。
-    - ``capability_id``：该类型内部的条目键，例如某个 skill id、某个 MCP connection id；
-      对 ``<backend>:runtime-config`` 这类「整份配置」型能力，惯例用固定键
-      （如 ``default``），因为它没有天然的条目维度。
+    - ``capability_id``：该类型内部的条目键，例如某个 skill id、某个 MCP connection id。
     - ``assignment_mode``：``block`` 表示在这个节点显式阻断该条目（v1.0 §5.2）。
     - ``source_project_id``：``inherited-override`` 时标注被覆盖的来源节点，
       用于解释「为什么生效」。
@@ -279,6 +279,7 @@ __all__ = [
     "CapabilityTypeRef",
     "EffectiveCapabilities",
     "EffectiveCapability",
+    "AGENT_BOUND_CAPABILITY_NAMES",
     "GENERIC_CAPABILITY_TYPES",
     "ProjectCapability",
     "is_backend_scoped",

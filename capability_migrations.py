@@ -11,8 +11,9 @@
 AD-46 改判之后：
 
     delegation                → 通用能力（策略：上限与默认值）
-    hermes:delegation-extras  → 引擎私有的其余委派键
-    hermes:runtime-config     → curator 并回来，capability_id="curator"
+
+2026-11-22 起 Kaus 不保管引擎私有设置：`hermes:runtime-config`、`hermes:default-model`、
+`hermes:delegation-extras` 的行、`curator` 与旧 `memory/memory` 行在启动时删除。
 
 导入器（`capability_import.py`）会按新形态产出计划，但**它不会删旧行**：
 `apply_capabilities` 的收敛只覆盖 `OWNED_CAPABILITY_TYPES`，而旧的两个类型已经
@@ -86,7 +87,10 @@ def _content(assignment: Any) -> dict[str, Any]:
 
 
 async def migrate_retired_capability_types(repositories: Any) -> MigrationResult:
-    """把 :data:`capability_import.RETIRED_CAPABILITY_TYPES` 里的旧行改写成新形态。
+    """把 :data:`capability_import.RETIRED_CAPABILITY_TYPES` 里的旧行改写成新形态或删除。
+
+    :data:`capability_import.RETIRED_ENGINE_SETTING_TYPES`（已删除的引擎私有设置）的行
+    以及表里落点为 ``None`` 的行直接删除。
 
     对每一条旧行：
 
@@ -104,7 +108,14 @@ async def migrate_retired_capability_types(repositories: Any) -> MigrationResult
 
     for project in await repositories.projects.list_all():
         for existing in list(await repositories.capabilities.list_for_project(project.id)):
-            config_key = retired.get((existing.capability_type, existing.capability_id))
+            key = (existing.capability_type, existing.capability_id)
+            if existing.capability_type in capability_import.RETIRED_ENGINE_SETTING_TYPES or (
+                    key in retired and retired[key] is None):
+                # Engine-private settings are no longer kept (2026-11-22).
+                await repositories.capabilities.delete(existing.id)
+                result.removed.append(existing.id)
+                continue
+            config_key = retired.get(key)
             if config_key is None:
                 continue
 
@@ -112,10 +123,6 @@ async def migrate_retired_capability_types(repositories: Any) -> MigrationResult
             if existing.assignment_mode == "block":
                 entry = capability_import.classification_for_key(config_key)
                 targets = [(entry.capability_type, entry.capability_id, {})]
-                if entry.splits:
-                    targets.append(
-                        (entry.extras_capability_type, entry.extras_capability_id, {})
-                    )
             elif set(existing.config) == {"value"}:
                 targets, _notes = capability_import.capability_rows_for_key(
                     config_key, existing.config["value"]

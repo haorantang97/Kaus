@@ -85,8 +85,8 @@ def test_invalid_capability_types(bad: str) -> None:
 
 def test_merge_strategy_is_selected_by_name_not_backend() -> None:
     """策略表按类型 name 选择，因此不含任何 backend 名字（N §3）。"""
-    assert select_merge_strategy(RUNTIME_CONFIG) is merge_config_child_wins
-    assert select_merge_strategy(OTHER_RUNTIME_CONFIG) is merge_config_child_wins
+    assert select_merge_strategy(RUNTIME_CONFIG) is replace_child_wins
+    assert select_merge_strategy(OTHER_RUNTIME_CONFIG) is replace_child_wins
     assert select_merge_strategy("skills") is replace_child_wins
     assert select_merge_strategy(DEFAULT_MODEL) is replace_child_wins
 
@@ -215,24 +215,6 @@ def test_r01_scoped_and_generic_share_one_resolver() -> None:
     assert effective.get(DEFAULT_MODEL, "default") is not None
     assert len(effective.generic()) == 1
     assert len(effective.scoped_for("acme")) == 2
-
-
-def test_r01_runtime_config_merges_per_key_root_change_propagates() -> None:
-    """R-01 核心价值：根上改一次、全树生效；子级只覆盖个别键。"""
-    assignments = group(
-        assign(
-            ROOT,
-            RUNTIME_CONFIG,
-            "default",
-            config={"providers": ["p1"], "compression": True, "context": 8000},
-        ),
-        assign(LEAF, RUNTIME_CONFIG, "default", config={"context": 32000}),
-    )
-    entry = resolve_effective_capabilities(CHAIN, assignments).get(RUNTIME_CONFIG, "default")
-    assert entry is not None
-    assert entry.config == {"providers": ["p1"], "compression": True, "context": 32000}
-    assert entry.source_project_id == LEAF
-    assert entry.contributing_project_ids == (ROOT, LEAF)
 
 
 def test_r01_default_model_is_soft_inheritance_d10() -> None:

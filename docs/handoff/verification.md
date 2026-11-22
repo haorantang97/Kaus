@@ -3,14 +3,25 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 22 日（续）：删除引擎私有设置
+
+依据 `product-decisions.md`「引擎私有设置」。旧迁移曾把引擎 `config.yaml` 的运行时键、`model` 和委派段的私有键存成 `hermes:runtime-config` / `hermes:default-model` / `hermes:delegation-extras` 行，启动时写回引擎。
+- 不再写回：Hermes 写表只剩 `mcp`、`delegation`、`hooks`；投射器去掉软继承与委派私有键的分支；`.kaus-projected.json` 里这三类留下的旧记账在下次写入时释放，私有运行目录的基线不再因旧记账丢掉引擎原值，已写进引擎配置的键留给引擎（`drivers/hermes/projection_map.py`、`projector.py`、`project_scope.py`、`delegation_map.py`）。
+- 不再导入：旧迁移分类表只剩 `mcp_servers`、`delegation`（只取能映射到通用策略的部分）、`hooks`（`capability_import.py`、`project_file_import.py`）；fork 不复制。
+- 删除旧数据：启动时的能力迁移删除这三类行以及旧 `hermes:curator`、`memory/memory` 行（`capability_migrations.py`，每次启动幂等运行）；恢复旧归档时不再带回 Agent 绑定能力以外的 Agent 范围行（`tree_store.py`）；有效能力里这类条目不交给驱动，覆盖冻结的协作组快照（`effective.py` `without_engine_settings`）。删除不可恢复。
+- 写端点：Agent 范围的能力类型只接受 skills / mcp / plugins / hooks，其余返回 400 `unknown_capability_type`（`session_routes/capabilities.py`，`AGENT_BOUND_CAPABILITY_NAMES`）；解析器去掉 `runtime-config`、`delegation-extras` 的默认合并策略。
+- 前端：删掉只在预览里出现的引擎卡「引擎配置」折叠区及 34 个词条（`EnginePanel.tsx`、`i18n`）。
+- 测试：前端 `npm run check` 通过（131 个文件 1,082 项）；根目录 `tests/` 369 项通过；内核 `pytest -q` 4,227 项通过、128 项跳过、7 项 warning。新增：启动迁移删除引擎设置行且保留 `hermes:skills`、恢复归档不带回引擎设置、写端点拒收、有效能力过滤、旧记账释放与私有运行目录保留引擎原值；改写分类表、委派、投射合约（Hermes 已无「无关闭值」的类型，该情景跳过）等用例。
+- 未在本机真实数据库上运行（Kaus 当时未运行）；下次启动时迁移才执行。
+
 ## 11 月 22 日：项目页「项目配置」表去掉，模块 MCP 进「配置」
 
 依据 `product-decisions.md`「项目页「项目配置」表」。前后对比（改前 9d309ef、改后当前代码）在本机 `output/visual-20261122/`。
 - 项目页去掉「项目配置」表（含「通用 / 引擎配置」两栏），删除 `CapabilitiesSection` 及 `lib/capabilityRows.ts`；20 个不再使用的 `capabilities.*` 词条同步删除（`ProjectDetailPage.tsx`，`i18n/zh.ts`、`en.ts`）。
 - 工作台模块写入的 MCP（`capability_id` 以 `module-` 开头）进入「配置」视图，显示为模块名、带锁、不可拖动；锁的提示为「来自工作台模块，在工作台调整」。后端对这类行的排布操作返回 409 `capability_from_module`；MCP 列表不重复列出（`skill_tree.py`、`mcp_manager.py`、`ProjectSkillTree.tsx`）。
-- 「引擎配置」（`<agent>:<name>` 类行，仅来自旧版 Hermes 迁移）不再在界面显示；数据库里的行不动，启动时照常下发。
+- 「引擎配置」不再在界面显示（同日随后彻底删除，见下一节）。
 - 测试：新增 `test_workbench_module_mcp_is_shown_locked_and_cannot_be_arranged` 与前端「模块 MCP 带锁」用例，改写项目页首个用例（断言没有「项目配置」）并删除能力分区用例。前端 `npm run check` 通过（131 个文件 1,093 项）；内核 `pytest -q` 4,226 项通过、127 项跳过、7 项 warning；根目录 `tests/` 369 项通过（2 项 warning）。
-- 限制：模块 MCP 行的拖动柄与 ⋯ 显示为不可用，沿用「不可隔离」锁定行的做法，未另行隐藏；以后若在「设置 → Agent → Hermes」显示引擎配置，需新决定。
+- 限制：模块 MCP 行的拖动柄与 ⋯ 显示为不可用，沿用「不可隔离」锁定行的做法，未另行隐藏。
 
 ## 11 月 19 日（续）：待处理标记、项目页对话行的「空闲」
 

@@ -138,7 +138,7 @@ _BY_FIELD: Final[Mapping[str, SafetyField]] = {f.field: f for f in SAFETY_FIELDS
 #: 走单调策略的能力类型**名**（``<backend>:<name>`` 里冒号后那段，所以表里没有
 #: 任何 backend 名字）。别的类型继续走 child-wins。
 MONOTONIC_CAPABILITY_NAMES: Final[frozenset[str]] = frozenset(
-    {"delegation", "delegation-extras", "policies"}
+    {"delegation", "policies"}
 )
 
 

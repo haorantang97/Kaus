@@ -25,7 +25,7 @@ import { backendDisplay, bindingDisplayName } from "../lib/backend-display";
  * 并且并入了 `GET /api/projects/{id}/bindings` 的每一行，所以面板照旧不自己请求数据。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { LogIn, MessageSquare, Plug } from "lucide-react";
 
 import { useLocale, type DictKey } from "../i18n";
@@ -340,180 +340,6 @@ function EditableSelect({
 }
 
 /* ------------------------------------------------------------------ *
- * 引擎配置（AD-97）
- * ------------------------------------------------------------------ */
-
-/** backend-scoped 的能力类型长成 `<引擎 key>:<名字>`；通用能力（mcp / memory /
- *  hooks / delegation）没有冒号。判据只看**形状**，不看是哪个引擎——这正是
- *  组件边界①要的：新引擎接进来不改这一行。 */
-export function isBackendScoped(capabilityType: string): boolean {
-  return capabilityType.includes(":");
-}
-
-/** 分组名的查表键：先按 `capability_id`，再退到能力类型的后缀，最后用原键名。
- *  （`<引擎 key>:delegation-extras` 的 id 是 `delegation`，靠后缀才分得出来。） */
-export function groupNameKeys(capabilityType: string, capabilityId: string): [string, string] {
-  const suffix = isBackendScoped(capabilityType)
-    ? capabilityType.slice(capabilityType.indexOf(":") + 1)
-    : capabilityType;
-  return [capabilityId, suffix];
-}
-
-/** 值的**形状**（不解释内容：各引擎的 config 长什么样公共层不知道）。 */
-export type ConfigShape =
-  | { kind: "empty" }
-  | { kind: "scalar"; text: string }
-  | { kind: "list"; count: number }
-  | { kind: "object"; keys: string[] };
-
-/** 导入侧把每个配置键包成 `{"value": 原值}`（capability_import.capability_rows_for_key）；
- *  老行或别的形状就把整个 config 当值看。凭据在库里已经是 `credential-ref://…`
- *  占位串（R-06 脱敏），所以标量分支原样显示即可，**不展开对象**。 */
-export function describeConfig(config: Record<string, unknown>): ConfigShape {
-  const raw = config && "value" in config ? config.value : config;
-  if (raw === null || raw === undefined || raw === "") return { kind: "empty" };
-  if (Array.isArray(raw)) return { kind: "list", count: raw.length };
-  if (typeof raw === "object") {
-    const keys = Object.keys(raw as Record<string, unknown>);
-    return keys.length === 0 ? { kind: "empty" } : { kind: "object", keys };
-  }
-  return { kind: "scalar", text: String(raw) };
-}
-
-function ConfigValue({ shape }: { shape: ConfigShape }) {
-  const { t } = useLocale();
-  if (shape.kind === "empty") return <span style={{ color: cream(38) }}>{t("common.dash")}</span>;
-  if (shape.kind === "scalar") {
-    return (
-      <span style={{ font: "0.7rem var(--theme-font-mono, monospace)", color: cream(62) }}>
-        {shape.text}
-      </span>
-    );
-  }
-  if (shape.kind === "list") {
-    return <span style={{ color: cream(62) }}>{t("engine.config.items", { count: shape.count })}</span>;
-  }
-  return (
-    <span className="kaus-config-value-scroll" style={{ font: "0.7rem var(--theme-font-mono, monospace)", color: cream(62) }}>
-      {shape.keys.join(" · ")}
-    </span>
-  );
-}
-
-/** 一行 = 一组能力：组名 · 来源 · 值摘要。 */
-function ConfigRow({
-  name,
-  source,
-  danger = false,
-  shape,
-}: {
-  name: string;
-  source: string;
-  danger?: boolean;
-  shape: ConfigShape;
-}) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-1 text-xs">
-      <span className="w-28 shrink-0" style={{ color: "var(--midground-base)" }}>
-        {name}
-      </span>
-      <span className="shrink-0 text-[0.6875rem]" style={{ color: danger ? "var(--danger)" : "var(--accent-text)" }}>
-        {source}
-      </span>
-      <span className="min-w-0 flex-1">
-        <ConfigValue shape={shape} />
-      </span>
-    </div>
-  );
-}
-
-/** 引擎卡里的「引擎配置」折叠区。
- *
- * 只列 **backend-scoped** 的行；通用能力（mcp / memory / hooks / delegation）留在
- * 项目页的「能力」表，不在这里重复一遍。**只读**——写端点还没有，标记挂在区头上
- * （工程状态，不是能力备注）。 */
-export function EngineConfigSection({
-  capabilities,
-  projectLabel,
-}: {
-  capabilities?: EffectiveCapabilitiesView | null;
-  /** Project id → 显示名。默认原样回显 id。 */
-  projectLabel?: (projectId: string) => string;
-}) {
-  const { t, tDynamic } = useLocale();
-  const [open, setOpen] = useState(false);
-  const label = projectLabel ?? ((projectId: string) => projectId);
-
-  const rows = useMemo(() => {
-    const name = (type: string, id: string) => {
-      const [byId, bySuffix] = groupNameKeys(type, id);
-      return tDynamic(`capGroup.${byId}`, tDynamic(`capGroup.${bySuffix}`, byId));
-    };
-    const entries = (capabilities?.entries ?? [])
-      .filter((entry) => isBackendScoped(entry.capabilityType))
-      .map((entry) => ({
-        key: `${entry.capabilityType}/${entry.capabilityId}`,
-        name: name(entry.capabilityType, entry.capabilityId),
-        source: entry.inherited
-          ? t("capabilities.source.inherited", { name: label(entry.sourceProjectId) })
-          : t("capabilities.source.local"),
-        danger: false,
-        shape: describeConfig(entry.config),
-      }));
-    const blocked = (capabilities?.blocked ?? [])
-      .filter((entry) => isBackendScoped(entry.capabilityType))
-      .map((entry) => ({
-        key: `blocked:${entry.capabilityType}/${entry.capabilityId}`,
-        name: name(entry.capabilityType, entry.capabilityId),
-        source: t("capabilities.source.blocked", { name: label(entry.blockedByProjectId) }),
-        danger: true,
-        shape: { kind: "empty" } as ConfigShape,
-      }));
-    return [...entries, ...blocked];
-  }, [capabilities, label, t, tDynamic]);
-
-  /* 批次十五第 4 件：一组配置都没有 = 整段不渲染（AD-111 同样适用于此处）。
-     还在读的时候（`undefined`）留住加载态，否则会闪一下。 */
-  if (capabilities !== undefined && rows.length === 0) return null;
-
-  return (
-    <div className="pt-1" data-testid="engine-config-section">
-      <div className="mb-1 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          aria-expanded={open}
-          className="text-[0.6875rem] "
-          style={{ color: cream(45) }}
-        >
-          {t("engine.config.toggle", { count: rows.length })} {open ? "▾" : "▸"}
-        </button>
-        {/* 「需后端补」chip 随第 4 件去掉：写端点缺不缺是我们的工程状态，
-            不该在用户脸上挂一整年（AD-111 的同一条精神）。 */}
-      </div>
-      {open &&
-        (capabilities === undefined ? (
-          <div className="py-1 text-xs" style={{ color: cream(45) }}>
-            {t("engine.config.loading")}
-          </div>
-        ) : (
-          <div>
-            {rows.map((row) => (
-              <ConfigRow
-                key={row.key}
-                name={row.name}
-                source={row.source}
-                danger={row.danger}
-                shape={row.shape}
-              />
-            ))}
-          </div>
-        ))}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ *
  * 能力清单（唯一允许显示 note 的地方）
  * ------------------------------------------------------------------ */
 
@@ -634,7 +460,6 @@ export function CapabilityList({ detail }: { detail: DetailCapabilityTree }) {
 
 export function EngineCard({
   row,
-  projectLabel,
   onSignIn,
   onNewConversation,
   onChangeModel,
@@ -644,7 +469,7 @@ export function EngineCard({
   onDetach,
   onMaterialize,
   onViewDrift,
-}: { row: EngineRow; projectLabel?: (projectId: string) => string } & EngineWriteActions) {
+}: { row: EngineRow } & EngineWriteActions) {
   const { t, tDynamic } = useLocale();
   /* batch37 第 4 件（外部评审的产品判断 #6）：能力清单**默认折起来**。
      AD-111 已经把那面「23 行 unknown」的墙拆了，但剩下的那几行仍然是**取证**，
@@ -972,8 +797,6 @@ export function EngineCard({
             {t("engine.field.preset")}：{backend.preset.label}
           </div>
         )}
-        {/* AD-97：引擎配置（backend-scoped 能力按组列出，只读）。 */}
-        <EngineConfigSection capabilities={row.capabilities} projectLabel={projectLabel} />
       </div>
       )}
     </div>
@@ -991,12 +814,9 @@ export function EngineCard({
 export function EnginePanel({
   rows,
   onConnectEngine,
-  projectLabel,
   ...actions
 }: {
   rows: EngineRow[];
-  /** Project id → 显示名（引擎配置区的「继承自 X」用）。 */
-  projectLabel?: (projectId: string) => string;
   /** batch26：打开「接入引擎」面板（batch40 起那枚「接入」下拉也在这个弹窗里）。 */
   onConnectEngine?: () => void;
 } & EngineWriteActions) {
@@ -1031,7 +851,7 @@ export function EnginePanel({
       ) : (
         <div className="grid gap-3">
           {rows.map((row) => (
-            <EngineCard key={row.binding.id} row={row} projectLabel={projectLabel} {...actions} />
+            <EngineCard key={row.binding.id} row={row} {...actions} />
           ))}
         </div>
       )}

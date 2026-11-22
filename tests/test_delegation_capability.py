@@ -1,13 +1,15 @@
-"""AD-46 改判：`delegation` 是通用能力、`curator` 并回 `hermes:runtime-config`。
+"""AD-46 改判：`delegation` 是通用能力；2026-11-22 起引擎私有设置不再保管。
 
 覆盖
 ----
-1. **拆分是数据驱动的**：Hermes `delegation` 段按 Driver 里的映射表拆成
-   「通用策略行 + `hermes:delegation-extras` 行」；
+1. **拆分是数据驱动的**：Hermes `delegation` 段按 Driver 里的映射表拆出通用策略，
+   没映射到的键不导入；
 2. **换上一张已验证的表**（测试自造）时，拆分/投影/单位换算都成立，且两个方向
    互为逆；
-3. **迁移**：旧形态的库（`hermes:delegation` / `hermes:curator`）启动后变成
-   新形态，且第二次启动一行都不写（幂等）。
+3. **迁移**：旧形态的库（`hermes:delegation`）启动后变成通用 `delegation` 行；
+   `hermes:curator`、`hermes:runtime-config`、`hermes:default-model`、
+   `hermes:delegation-extras` 行被删除，Agent 绑定能力（`hermes:skills`）不动；
+   第二次启动一行都不写（幂等）。
 
 隔离：全部用 `tmp_path` 里的领域库，不读任何 Agent 目录。
 
@@ -57,15 +59,23 @@ CURATOR_SECTION = {"prune_builtins": False, "max_skills": 40}
 COMPRESSION_SECTION = {"enabled": True, "trigger_tokens": 100000}
 
 
-def seed_tree(db: Path) -> None:
-    """A root with `delegation` / `curator` / `compression` rows in the current shape and a child."""
+def seed_tree(db: Path, *, legacy: bool = True) -> None:
+    """A root with a generic `delegation` row, an Agent-bound skill row and a child.
+
+    ``legacy`` adds the removed engine-settings rows as the old importer wrote them.
+    """
     store = ProjectTreeStore(SqliteDatabase(db))
     store.ensure_root("根")
     store.create("kid", display_name="娃", draft=False, parent="default")
-    for key, value in (("delegation", DELEGATION_SECTION), ("curator", CURATOR_SECTION),
-                       ("compression", COMPRESSION_SECTION)):
-        for capability_type, capability_id, config in capability_import.capability_rows_for_key(key, value)[0]:
-            store.put_row("default", capability_type, capability_id, "local", config)
+    for capability_type, capability_id, config in capability_import.capability_rows_for_key(
+            "delegation", DELEGATION_SECTION)[0]:
+        store.put_row("default", capability_type, capability_id, "local", config)
+    store.put_row("default", "hermes:skills", "notes", "local", {"value": {"enabled": True}})
+    if legacy:
+        store.put_row("default", "hermes:delegation-extras", "delegation", "local", {"value": EXPECTED_EXTRAS})
+        store.put_row("default", "hermes:runtime-config", "curator", "local", {"value": CURATOR_SECTION})
+        store.put_row("default", "hermes:runtime-config", "compression", "local", {"value": COMPRESSION_SECTION})
+        store.put_row("kid", "hermes:default-model", "model", "local", {"value": "m"})
     store.db.close()
 
 
@@ -113,14 +123,11 @@ EXPECTED_EXTRAS = {"subagent_auto_approve": False}
 
 
 def test_delegation_is_registered_as_a_generic_capability_type():
-    """AD-46 改判：通用类型（无 backend 前缀），扩展类型才是 backend-scoped。"""
+    """AD-46 改判：通用类型（无 backend 前缀）。"""
     from app.capabilities.models import GENERIC_CAPABILITY_TYPES, is_backend_scoped
 
     assert "delegation" in GENERIC_CAPABILITY_TYPES
     assert is_backend_scoped("delegation") is False
-    assert is_backend_scoped(delegation_map.EXTRAS_CAPABILITY_TYPE) is True
-    # 通用能力行会出现在「不带 backend 过滤」的视图里，投影时才按 backend 过滤。
-    assert delegation_map.EXTRAS_CAPABILITY_TYPE.startswith(capability_import.BACKEND_KEY + ":")
 
 
 def test_real_section_splits_into_policy_and_extras():
@@ -130,12 +137,10 @@ def test_real_section_splits_into_policy_and_extras():
     assert split.unverified_keys == ()
 
 
-def test_capability_rows_for_key_lands_delegation_in_two_rows_and_curator_in_runtime_config():
+def test_capability_rows_for_key_keeps_only_the_generic_delegation_policy():
     emitted, _notes = capability_import.capability_rows_for_key("delegation", DELEGATION_SECTION)
-    assert emitted == [("delegation", "delegation", {"value": EXPECTED_POLICY}),
-                       ("hermes:delegation-extras", "delegation", {"value": EXPECTED_EXTRAS})]
-    emitted, _notes = capability_import.capability_rows_for_key("curator", CURATOR_SECTION)
-    assert emitted == [("hermes:runtime-config", "curator", {"value": CURATOR_SECTION})]
+    assert emitted == [("delegation", "delegation", {"value": EXPECTED_POLICY})]
+    assert capability_import.classification_for_key("curator") is None
 
 
 def test_empty_model_string_means_engine_default():
@@ -298,6 +303,10 @@ def open_runtime(tmp_path: Path, db: Path):
     )
 
 
+RETIRED = {"hermes:delegation", "hermes:curator", "hermes:delegation-extras",
+           "hermes:runtime-config", "hermes:default-model"}
+
+
 def test_batch4_database_is_rewritten_on_boot(tmp_path):
     db = tmp_path / "domain.sqlite3"
     seed_tree(db)
@@ -306,6 +315,7 @@ def test_batch4_database_is_rewritten_on_boot(tmp_path):
     before = rows_of(db)
     assert ("project:default", "hermes:delegation", "delegation") in before
     assert ("project:default", "hermes:curator", "curator") in before
+    assert ("project:kid", "hermes:default-model", "model") in before
 
     runtime = open_runtime(tmp_path, db)
     try:
@@ -314,18 +324,12 @@ def test_batch4_database_is_rewritten_on_boot(tmp_path):
         runtime.close()
 
     after = rows_of(db)
-    # 老形态消失，新形态出现，值原样搬过来。
-    assert not [key for key in after if key[1] in {"hermes:delegation", "hermes:curator"}]
+    # 旧委派行变成通用策略；引擎私有设置全部删除。
+    assert not [key for key in after if key[1] in RETIRED]
     assert after[("project:default", "delegation", "delegation")] == {"value": EXPECTED_POLICY}
-    assert after[("project:default", "hermes:delegation-extras", "delegation")] == {
-        "value": EXPECTED_EXTRAS
-    }
-    assert after[("project:default", "hermes:runtime-config", "curator")] == {
-        "value": CURATOR_SECTION
-    }
-    # 其余行一条没动。
-    untouched = {k: v for k, v in before.items()
-                 if k[1] not in {"hermes:delegation", "hermes:curator"}}
+    # 其余行（Agent 绑定技能等）一条没动。
+    untouched = {k: v for k, v in before.items() if k[1] not in RETIRED}
+    assert ("project:default", "hermes:skills", "notes") in untouched
     for key, value in untouched.items():
         assert after[key] == value
 
@@ -352,7 +356,7 @@ def test_migration_on_a_clean_database_does_nothing(tmp_path):
     from app.persistence.sqlite import SqliteUnitOfWork
 
     db = tmp_path / "domain.sqlite3"
-    seed_tree(db)
+    seed_tree(db, legacy=False)
     with SqliteUnitOfWork(db) as uow:
         result = asyncio.run(
             capability_migrations.migrate_retired_capability_types(uow.repositories)
@@ -367,10 +371,10 @@ def test_migration_leaves_unexpected_config_shapes_alone(tmp_path):
     from app.persistence.sqlite import SqliteUnitOfWork
 
     db = tmp_path / "domain.sqlite3"
-    seed_tree(db)
+    seed_tree(db, legacy=False)
 
     weird_id = "capability:" + capability_import.assignment_uuid(
-        "project:kid", "hermes:curator", "curator"
+        "project:kid", "hermes:delegation", "delegation"
     )
     with SqliteUnitOfWork(db) as uow:
         asyncio.run(
@@ -378,8 +382,8 @@ def test_migration_leaves_unexpected_config_shapes_alone(tmp_path):
                 ProjectCapability(
                     id=weird_id,
                     project_id="project:kid",
-                    capability_type="hermes:curator",
-                    capability_id="curator",
+                    capability_type="hermes:delegation",
+                    capability_id="delegation",
                     config={"unexpected": 1},
                 )
             )
@@ -389,4 +393,4 @@ def test_migration_leaves_unexpected_config_shapes_alone(tmp_path):
             capability_migrations.migrate_retired_capability_types(uow.repositories)
         )
     assert result.warnings and weird_id in result.warnings[0]
-    assert ("project:kid", "hermes:curator", "curator") in rows_of(db)
+    assert ("project:kid", "hermes:delegation", "delegation") in rows_of(db)

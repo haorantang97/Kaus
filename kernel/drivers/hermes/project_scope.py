@@ -10,7 +10,7 @@ import json
 import os
 from pathlib import Path
 
-from drivers.hermes import config_yaml
+from drivers.hermes import config_yaml, projection_map
 from drivers.projection_store import Provenance, atomic_write_text
 
 SCOPE_KEY = "project_execution"
@@ -76,7 +76,9 @@ def prepare(root: Path, source: Path, binding, *, refresh: bool = False) -> Path
     text = source_config.read_text() if source_config.is_file() else ""
     values = config_yaml.load(text)
     owned = Provenance.load(source)
-    for key in owned.records:
+    for key, record in owned.records.items():
+        if record.capability_type in projection_map.RETIRED_CAPABILITY_TYPES:
+            continue  # removed engine settings: the engine's own value is the baseline
         top = key.split(".")[0]
         values.pop(top, None)
     disable_native_curator(values)

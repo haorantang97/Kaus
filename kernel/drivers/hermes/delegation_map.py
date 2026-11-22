@@ -13,7 +13,7 @@ AD-46 改判
 ``delegation`` 是**通用能力类型**：配置只是上限与默认值（是否允许 / 最大嵌套 /
 最大并发 / 子 agent 默认模型 / 超时），语义见
 :mod:`app.capabilities.delegation`。Hermes 的 ``delegation`` 段里**超出**这五项
-的键不进通用类型，落 backend-scoped 的 :data:`EXTRAS_CAPABILITY_TYPE`。
+的键不进通用类型，也不导入（2026-11-22 起 Kaus 不保管引擎私有设置）。
 
 「未验证」纪律（本批次的硬约束）
 --------------------------------
@@ -26,8 +26,7 @@ TUI Gateway 的方法名（``delegation.status`` / ``subagent.interrupt`` /
 因此表里每一条的 :attr:`HermesDelegationKey.verified` 都是 ``False``：键名是从
 Dashboard 现有代码里读到的**旁证**（见每条的 ``evidence``），没有在授权来源里
 坐实。:func:`split_delegation_section` **只应用 verified 的条目**，所以在有人
-补上取证之前，Hermes 的 ``delegation`` 段会**整段**进 extras，通用行不产生——
-这正是任务规格要求的「查不到依据就整段进 extras 并标『未验证』」。
+补上取证之前，Hermes 的 ``delegation`` 段不产生通用行，整段留在引擎自己的配置里。
 
 补取证之后要做的事只有一件：把对应条目的 ``verified`` 改成 ``True``（并写上
 出处）。拆分/投影/迁移的代码一行都不用动，导入器下次启动会自动改写成新形态。
@@ -39,12 +38,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Final, Mapping, Sequence
 
 from app.capabilities.delegation import POLICY_FIELDS, DelegationPolicy
-
-#: 私有扩展的落点：Hermes ``delegation`` 段里不属于通用策略的那部分。
-EXTRAS_CAPABILITY_TYPE: Final[str] = "hermes:delegation-extras"
-
-#: 条目粒度沿用 AD-44（= 配置键名）。
-EXTRAS_CAPABILITY_ID: Final[str] = "delegation"
 
 #: ``config.yaml`` 里这一段的键名。
 CONFIG_KEY: Final[str] = "delegation"
@@ -177,8 +170,7 @@ class DelegationSplit:
 
     #: 通用 ``delegation`` 行的 config（``{"value": {...}}`` 之内的那份策略）。
     policy: dict[str, Any] | None = None
-    #: ``hermes:delegation-extras`` 行的 config 值（原样保留的剩余键；段本身不是
-    #: 映射时就是那份原值，不做任何改写）。
+    #: 没映射到通用策略的剩余键（段本身不是映射时就是那份原值）。只供报告，不导入。
     extras: Any | None = None
     #: 因为「未验证」而没有参与映射的键（原样键名，供报告用）。
     unverified_keys: tuple[str, ...] = ()
@@ -210,8 +202,7 @@ def split_delegation_section(
             extras={} if value is None else value,
             unverified_keys=unverified_names,
             notes=(
-                f"`{CONFIG_KEY}` 不是映射（{type(value).__name__}），整段原样进 "
-                f"{EXTRAS_CAPABILITY_TYPE}。",
+                f"`{CONFIG_KEY}` 不是映射（{type(value).__name__}），不导入。",
             ),
         )
 
@@ -230,7 +221,7 @@ def split_delegation_section(
     if present_unverified:
         notes.append(
             f"`{CONFIG_KEY}` 的这些键的键名{UNVERIFIED_MARK}（授权取证来源里查不到），"
-            f"未映射到通用策略，原样进 {EXTRAS_CAPABILITY_TYPE}："
+            "未映射到通用策略，不导入："
             + ", ".join(sorted(present_unverified))
         )
 
@@ -244,7 +235,7 @@ def split_delegation_section(
                 notes=(
                     *notes,
                     f"`{CONFIG_KEY}` 的通用策略校验失败（{exc.__class__.__name__}），"
-                    f"整段退回 {EXTRAS_CAPABILITY_TYPE}。",
+                    "整段不导入。",
                 ),
             )
     else:
@@ -326,8 +317,6 @@ def project_policy(
 __all__ = [
     "CONFIG_KEY",
     "DELEGATION_KEY_MAP",
-    "EXTRAS_CAPABILITY_ID",
-    "EXTRAS_CAPABILITY_TYPE",
     "UNIT_CONVERSIONS",
     "UNVERIFIED_MARK",
     "DelegationProjection",

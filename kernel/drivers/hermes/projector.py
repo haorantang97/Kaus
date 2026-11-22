@@ -193,6 +193,20 @@ def _redact(value: Any) -> Any:
     return redaction.redact(value)
 
 
+def release_retired_claims(provenance: Provenance) -> bool:
+    """Forget claims left by the removed engine-settings rows (2026-11-22).
+
+    The keys they wrote stay in ``config.yaml`` and now belong to the engine: Kaus no
+    longer manages them, reports them as drift or drops them from a private home's
+    baseline. Returns whether any claim was released.
+    """
+    retired = [key for key, record in provenance.records.items()
+               if record.capability_type in projection_map.RETIRED_CAPABILITY_TYPES]
+    for key in retired:
+        del provenance.records[key]
+    return bool(retired)
+
+
 def _collect_desired(
     *,
     effective: EffectiveCapabilities,
@@ -205,14 +219,10 @@ def _collect_desired(
 ) -> list[_Desired]:
     """把有效能力 + Binding 覆盖翻成「这些键应该是什么」。
 
-    ``delegation`` 的两条能力行（通用策略 + 私有扩展）落在**同一个**顶层键上，
-    所以它们在这里被合成一条 ``_Desired``——这正是
-    ``delegation_map.split_delegation_section`` 的逆运算，往返靠它成立。
+    通用 ``delegation`` 策略写进引擎的 ``delegation`` 段时保留该段里引擎自己的其他键。
     """
     desired: list[_Desired] = []
     delegation_generic: _Desired | None = None
-    delegation_extras: Any = None
-    delegation_extras_entry: Any = None
 
     for entry in effective.entries:
         if projection_map.file_rule_for(entry.capability_type) is not None:
@@ -235,23 +245,6 @@ def _collect_desired(
                 )
             )
             continue
-        if projection_map.is_soft(entry.capability_type, entry.capability_id):
-            plan.unsupported.append(
-                ProjectionEntry(
-                    capability_type=entry.capability_type,
-                    capability_id=entry.capability_id,
-                    level=verdict.level,
-                    key_path=rule.key_path,
-                    target_ref=config_target_ref("", rule.key_path).lstrip("/"),
-                    reason="not_mapped",
-                    detail=(
-                        "软继承键（D-10 / AD-12）：不物化进 profile 的 config.yaml；"
-                        "Binding 的默认模型另有一条规则"
-                    ),
-                )
-            )
-            continue
-
         if entry.capability_type == DELEGATION_CAPABILITY_TYPE:
             projection = delegation_map.project_policy(delegation_policy_of(entry.config))
             level = verdict.level
@@ -287,11 +280,6 @@ def _collect_desired(
             )
             continue
 
-        if entry.capability_type == delegation_map.EXTRAS_CAPABILITY_TYPE:
-            delegation_extras = value_of(entry.config)
-            delegation_extras_entry = entry
-            continue
-
         desired.append(
             _Desired(
                 key_path=rule.key_path,
@@ -305,50 +293,18 @@ def _collect_desired(
             )
         )
 
-    # --- delegation：通用策略 + 私有扩展合成同一段（split 的逆） -------------- #
-    if delegation_generic is not None or delegation_extras is not None:
+    # --- delegation：通用策略写进同一段，引擎已有的其他键保留 ---------------- #
+    if delegation_generic is not None:
         section: dict[str, Any] = {}
         current = config_yaml.get_path(existing, delegation_map.CONFIG_KEY)
         if isinstance(current, Mapping):
             # 引擎那边已有的键先留着：物化只该动自己管的那几个，别人的键不抹。
             section.update({str(k): v for k, v in current.items()})
-        if isinstance(delegation_extras, Mapping):
-            section.update({str(k): v for k, v in delegation_extras.items()})
-        elif delegation_extras is not None and delegation_extras_entry is not None:
-            plan.warnings.append(
-                # 批次二十六第 5 件③：这句话给用户看，所以不报 Python 类型名——
-                # 「不是一组键值对」他能据此去改配置，`list` 不能。
-                f"{delegation_map.CONFIG_KEY} 的私有扩展不是一组键值对，"
-                "本次未合并进该段。"
-            )
-        base = delegation_generic or _Desired(
-            key_path=delegation_map.CONFIG_KEY,
-            value={},
-            capability_type=delegation_map.EXTRAS_CAPABILITY_TYPE,
-            capability_id=delegation_map.EXTRAS_CAPABILITY_ID,
-            level=SupportLevel.NATIVE,
-            version=(
-                delegation_extras_entry.version
-                if delegation_extras_entry is not None
-                else None
-            ),
-            detail="backend-scoped 委派扩展：原样写回 `delegation` 段，不做翻译",
-        )
-        if isinstance(base.value, Mapping):
-            section.update(base.value)
-        base.value = section
-        base.contributors = [(base.capability_type, base.capability_id)]
-        if delegation_extras_entry is not None and (
-            delegation_extras_entry.capability_type,
-            delegation_extras_entry.capability_id,
-        ) not in base.contributors:
-            base.contributors.append(
-                (
-                    delegation_extras_entry.capability_type,
-                    delegation_extras_entry.capability_id,
-                )
-            )
-        desired.append(base)
+        if isinstance(delegation_generic.value, Mapping):
+            section.update(delegation_generic.value)
+        delegation_generic.value = section
+        delegation_generic.contributors = [(delegation_generic.capability_type, delegation_generic.capability_id)]
+        desired.append(delegation_generic)
 
     # --- 被 block 的条目 ----------------------------------------------------- #
     for blocked in effective.blocked:
@@ -611,6 +567,8 @@ def project_capabilities(
         text = ""
     existing = config_yaml.load(text)
     provenance = Provenance.load(home)
+    if release_retired_claims(provenance) and not dry_run:
+        provenance.save()
     plan = _Plan()
     if effective.warnings:
         plan.warnings.extend(effective.warnings)
@@ -777,6 +735,7 @@ def inspect_config_drift(
         text = ""
     existing = config_yaml.load(text)
     provenance = Provenance.load(home)
+    release_retired_claims(provenance)
     plan = _Plan()
     desired = _collect_desired(
         effective=effective,
@@ -927,6 +886,7 @@ __all__ = [
     "inspect_config_drift",
     "project_capabilities",
     "project_delegation",
+    "release_retired_claims",
     "stale_drift",
     "value_of",
 ]

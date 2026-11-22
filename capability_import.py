@@ -4,14 +4,15 @@
 位置说明
 --------
 本模块**不在** `kernel/app/` 里：它认识 Hermes 运行配置的键名（`config.yaml`
-的 16 个可继承键），属于接入层。公共层只收到 `(capability_type, capability_id,
+的可继承键），属于接入层。公共层只收到 `(capability_type, capability_id,
 config)` 这种不透明三元组。
 
 它做三件事
 ----------
-1. **分类**：把 16 个配置键 + `model` 映射到能力类型。映射是一张**数据表**
-   （:data:`CAPABILITY_CLASSIFICATION`），不是散落在 if/else 里的逻辑。
-   `server.py` 的 fork 用它判断哪些能力行可复制；Hermes 驱动的投射表是它的逆；
+1. **分类**：把旧配置里所有 Agent 通用的三个键（`mcp_servers`、`delegation`、`hooks`）
+   映射到能力类型。映射是一张**数据表**（:data:`CAPABILITY_CLASSIFICATION`）。
+   引擎私有的运行时键（工具集、上下文压缩、备用模型、`model` 等）2026-11-22 起
+   不再导入：Kaus 不保管引擎私有设置；
 2. **旧文件读取**（仅供 `project_file_import.py` 的一次性迁移）：Kaus 配置目录的
    `config.yaml` 与 `config_inherit_block.json`；
 3. **脱敏**：任何疑似明文凭据的叶子值都换成 `credential-ref://…` 占位符
@@ -22,28 +23,13 @@ config)` 这种不透明三元组。
 能力条目的粒度 = **整个 config 键**（`capability_id == 配置键名`），不是
 「每个 MCP connection 一条」「每个 skill 一条」。
 
-AD-46 改判（批次五）：一个键可以落**两条**行
---------------------------------------------
+`delegation`
+------------
 `delegation` 是**通用**能力类型（策略 = 上限与默认值，schema 在
-`kernel/app/capabilities/delegation.py`），Hermes `delegation` 段因此拆两份：
-
-===============================  ===============================================
-能映射到通用策略的键              通用行 `delegation` / `delegation`
-其余键（含全部未验证键）          `hermes:delegation-extras` / `delegation`
-===============================  ===============================================
-
-拆分规则是 Driver 里的一张**数据表**（`drivers.hermes.delegation_map`），
-导入侧与投影侧共用同一份，两个方向不会走样；入口是
-:func:`capability_rows_for_key`，对账的期望侧走的也是它。
-
-**取证纪律**：表里每个 Hermes 键名都带 `verified` 与取证出处，只有 `verified`
-的条目参与映射。授权取证来源（`docs/probes/*.md`、
-`docs/architecture/hermes-driver-spec.md`、Driver fixtures）里查不到任何
-`delegation` 配置键名，所以当前**一条都没验证**、整段进 extras——不编造键名。
-
-同一次改判还把 `curator` 从独立能力类型并回 `hermes:runtime-config`
-（`capability_id="curator"`）整块继承；「出厂技能保护」改由引擎无关的 AD-59
-机制承担。旧库里的老形态由 `capability_migrations.py` 在启动时幂等改写。
+`kernel/app/capabilities/delegation.py`）。Hermes `delegation` 段里能映射到通用
+策略的键落通用行；其余键不导入。拆分规则是 Driver 里的数据表
+（`drivers.hermes.delegation_map`），入口是 :func:`capability_rows_for_key`。
+旧库里的老形态由 `capability_migrations.py` 在启动时幂等改写或删除。
 """
 
 from __future__ import annotations
@@ -81,106 +67,50 @@ class KeyClassification:
     - `capability_type`：通用类型（无冒号）或 backend-scoped 类型（`<backend>:<name>`）；
     - `capability_id`：该类型内部的条目键。Phase 1 一律等于配置键名（见模块 docstring
       的「粒度取舍」）；
-    - `soft`：软继承键（`model`）——不物化进子 `config.yaml`、不进记账文件；
     - `credential_bearing`：R-06 点名的两个键，一定要走脱敏。
     """
 
     config_key: str
     capability_type: str
     capability_id: str
-    soft: bool = False
     credential_bearing: bool = False
     note: str = ""
-    #: 一个配置键拆成**两条**能力行时，第二条（backend-scoped 扩展）的落点。
-    #: 目前只有 `delegation` 用到（AD-46 改判：通用策略 + `hermes:delegation-extras`）。
-    extras_capability_type: str = ""
-    extras_capability_id: str = ""
-
-    @property
-    def splits(self) -> bool:
-        return bool(self.extras_capability_type)
+    #: 值要按 Driver 的映射表拆出通用策略（目前只有 `delegation`），没映射到的键不导入。
+    policy_split: bool = False
 
 
 def _scoped(name: str) -> str:
     return f"{BACKEND_KEY}:{name}"
 
 
-#: **AD-42 的分类表**。前 16 条是 Hermes `config.yaml` 的可继承键。
-#:
-#: 归类依据（基线 §5.2.1）：
-#:
-#: - `mcp_servers` / `hooks` → **通用能力**（§5.2.1 明列的可通用化的一部分）；
-#: - `delegation` → **通用能力**（AD-46 改判）：能映射到通用策略（是否允许 /
-#:   最大嵌套 / 最大并发 / 子 agent 默认模型 / 超时）的键落通用 `delegation` 行，
-#:   其余键落 `hermes:delegation-extras`。拆分规则是 Driver 里的一张数据表
-#:   （`drivers.hermes.delegation_map`），导入与投影共用；
-#: - `curator` → **不是独立能力类型**（AD-46 改判）：并回 `hermes:runtime-config`
-#:   （`capability_id="curator"`）整块继承。用户要的「出厂技能保护」改由引擎无关的
-#:   AD-59 机制承担，不做 Hermes 专属的 curator 面板；
-#: - §5.2.1 明确点名的运行时键（含并回来的 `curator`）→ `hermes:runtime-config` 的**分键**
-#:   （`capability_id` = 键名），这样「根上改一次、全树生效」对它们成立，
-#:   同时子级只覆盖个别键时其余键继续从根继承；
-#: - 软继承的 `model` → `hermes:default-model`（D-10 / AD-12）。
+#: **分类表**：旧配置里所有 Agent 通用的键。引擎私有的运行时键与 `model` 不在表里，
+#: :func:`classification_for_key` 对它们返回 ``None``，调用方按「不导入」处理。
 CAPABILITY_CLASSIFICATION: tuple[KeyClassification, ...] = (
-    KeyClassification("providers", _scoped("runtime-config"), "providers", credential_bearing=True),
-    KeyClassification("fallback_providers", _scoped("runtime-config"), "fallback_providers"),
-    KeyClassification(
-        "credential_pool_strategies",
-        _scoped("runtime-config"),
-        "credential_pool_strategies",
-        credential_bearing=True,
-    ),
     KeyClassification("mcp_servers", "mcp", "mcp_servers", note="§5.2.3 通用 MCP 能力"),
-    KeyClassification("toolsets", _scoped("runtime-config"), "toolsets"),
-    KeyClassification("agent", _scoped("runtime-config"), "agent"),
-    KeyClassification("tool_loop_guardrails", _scoped("runtime-config"), "tool_loop_guardrails"),
-    KeyClassification("compression", _scoped("runtime-config"), "compression"),
-    KeyClassification("context", _scoped("runtime-config"), "context"),
-    KeyClassification("prompt_caching", _scoped("runtime-config"), "prompt_caching"),
-    KeyClassification("auxiliary", _scoped("runtime-config"), "auxiliary"),
-    KeyClassification("image_gen", _scoped("runtime-config"), "image_gen"),
-    KeyClassification("memory", "hermes:runtime-config", "memory", note="引擎原生记忆设置"),
     KeyClassification(
         "delegation",
         "delegation",
         "delegation",
-        note="AD-46 改判：通用委派策略（上限与默认值），私有键进 hermes:delegation-extras",
+        note="AD-46：通用委派策略（上限与默认值）；没映射到的私有键不导入",
         credential_bearing=True,  # 实测该段含 api_key（AD-67 取证）
-        extras_capability_type=_scoped("delegation-extras"),
-        extras_capability_id="delegation",
-    ),
-    KeyClassification(
-        "curator",
-        _scoped("runtime-config"),
-        "curator",
-        note="AD-46 改判：curator 不是独立能力类型，并回 runtime-config 整块继承",
+        policy_split=True,
     ),
     KeyClassification("hooks", "hooks", "hooks", note="§5.2.1 列为可通用化"),
-    KeyClassification("model", _scoped("default-model"), "model", soft=True),
 )
 
 #: 旧「关闭技能自动继承」开关曾落成的 block 行坐标（仍可能存在于旧库里）。
 SKILL_INHERITANCE_CAPABILITY: tuple[str, str] = ("skills", "ancestor-skill-dirs")
 
-#: 16 个可继承键（不含软继承的 model）。
-INHERITABLE_KEYS: tuple[str, ...] = tuple(
-    c.config_key for c in CAPABILITY_CLASSIFICATION if not c.soft
-)
+#: 参与导入的配置键。
+INHERITABLE_KEYS: tuple[str, ...] = tuple(c.config_key for c in CAPABILITY_CLASSIFICATION)
 
-#: 全部参与导入的配置键（16 + model）。
 IMPORTED_KEYS: tuple[str, ...] = tuple(c.config_key for c in CAPABILITY_CLASSIFICATION)
 
 _BY_CONFIG_KEY: Mapping[str, KeyClassification] = {
     c.config_key: c for c in CAPABILITY_CLASSIFICATION
 }
 _BY_CAPABILITY: Mapping[tuple[str, str], KeyClassification] = {
-    **{(c.capability_type, c.capability_id): c for c in CAPABILITY_CLASSIFICATION},
-    # 拆分键的第二条落点也要能反查回配置键（对账的反向映射靠它）。
-    **{
-        (c.extras_capability_type, c.extras_capability_id): c
-        for c in CAPABILITY_CLASSIFICATION
-        if c.splits
-    },
+    (c.capability_type, c.capability_id): c for c in CAPABILITY_CLASSIFICATION
 }
 
 
@@ -203,19 +133,15 @@ def classification_table_json() -> list[dict[str, Any]]:
             "configKey": c.config_key,
             "capabilityType": c.capability_type,
             "capabilityId": c.capability_id,
-            "soft": c.soft,
             "credentialBearing": c.credential_bearing,
             "note": c.note,
         }
-        if c.splits:
-            row["extrasCapabilityType"] = c.extras_capability_type
-            row["extrasCapabilityId"] = c.extras_capability_id
         out.append(row)
     return out
 
 
 # --------------------------------------------------------------------------- #
-# 1b. 拆分键：delegation → 通用策略 + backend-scoped 扩展（AD-46 改判）
+# 1b. 拆分键：delegation → 通用策略（AD-46 改判）
 # --------------------------------------------------------------------------- #
 
 
@@ -237,22 +163,17 @@ def capability_rows_for_key(
     """一个配置键的值 → ``[(capability_type, capability_id, config), …]`` + 说明。
 
     导入侧与启动时的旧形态迁移（`capability_migrations.py`）共用这一个函数。
-
-    绝大多数键返回一行 ``{"value": 原值}``；:attr:`KeyClassification.splits` 的键
-    （目前只有 `delegation`）按 Driver 的映射表拆成通用策略行 + extras 行。
+    绝大多数键返回一行 ``{"value": 原值}``；:attr:`KeyClassification.policy_split` 的键
+    （目前只有 `delegation`）只留下能映射到通用策略的部分，其余不导入。
     """
     entry = _BY_CONFIG_KEY[config_key]
-    if not entry.splits:
+    if not entry.policy_split:
         return [(entry.capability_type, entry.capability_id, {"value": value})], []
 
     split = _delegation_map().split_delegation_section(value)
     rows: list[tuple[str, str, dict[str, Any]]] = []
     if split.policy is not None:
         rows.append((entry.capability_type, entry.capability_id, {"value": split.policy}))
-    if split.extras is not None:
-        rows.append(
-            (entry.extras_capability_type, entry.extras_capability_id, {"value": split.extras})
-        )
     return rows, list(split.notes)
 
 
@@ -295,7 +216,7 @@ def redact_credentials(
     - `reference`（`${ENV}` 一类）→ **原样保留**：它本来就是引用而不是密钥；
     - 其余（数字、路径、良性串、空值）→ 原样保留。
 
-    这道脱敏对**全部 16 个键**生效，不只是 R-06 点名的两个：多花的成本只有一次
+    这道脱敏对**全部导入的键**生效，不只是 R-06 点名的两个：多花的成本只有一次
     形状判定，换来的是「明文绝不入库」这条不用靠归类正确性来保证。
     """
     from drivers import secret_guard
@@ -385,14 +306,21 @@ def assignment_uuid(project_id: str, capability_type: str, capability_id: str) -
     return str(uuid.uuid5(_ASSIGNMENT_NAMESPACE, row_key(project_id, capability_type, capability_id)))
 
 
-#: AD-46 改判**之前**用过的能力类型 → 现在的落点。
-#: 迁移器（`capability_migrations.py`）按这张表改写老库；这里只放数据，
-#: 迁移逻辑不认识具体名字。
-RETIRED_CAPABILITY_TYPES: Mapping[tuple[str, str], str] = {
-    ("memory", "memory"): "memory",
+#: 旧库里不再使用的能力行 → 现在的配置键（按它改写），``None`` = 直接删除。
+#: 迁移器（`capability_migrations.py`）按这张表处理老库；这里只放数据，
+#: 迁移逻辑不认识具体名字。2026-11-22 起引擎私有设置不再保管，对应各行一并删除。
+RETIRED_CAPABILITY_TYPES: Mapping[tuple[str, str], str | None] = {
+    ("memory", "memory"): None,
     (_scoped("delegation"), "delegation"): "delegation",
-    (_scoped("curator"), "curator"): "curator",
+    (_scoped("curator"), "curator"): None,
 }
+
+#: 已删除的引擎私有设置类型：这些类型的行一律删除（迁移、fork、恢复归档都不再带上）。
+RETIRED_ENGINE_SETTING_TYPES: frozenset[str] = frozenset({
+    _scoped("runtime-config"),
+    _scoped("default-model"),
+    _scoped("delegation-extras"),
+})
 
 
 
@@ -403,6 +331,7 @@ __all__ = [
     "INHERITABLE_KEYS",
     "KeyClassification",
     "RETIRED_CAPABILITY_TYPES",
+    "RETIRED_ENGINE_SETTING_TYPES",
     "SKILL_INHERITANCE_CAPABILITY",
     "assignment_uuid",
     "capability_rows_for_key",

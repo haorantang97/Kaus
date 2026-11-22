@@ -19,10 +19,10 @@ import capability_import  # noqa: E402
 FAKE_PLAINTEXT_KEY = "sk-testonly000000000000000000000000000000000000000000"
 
 
-def test_classification_covers_sixteen_inheritable_keys_plus_model():
-    assert len(capability_import.INHERITABLE_KEYS) == 16
-    assert capability_import.IMPORTED_KEYS[-1] == "model"
-    assert len(capability_import.IMPORTED_KEYS) == 17
+def test_only_generic_keys_are_imported():
+    """Engine-private runtime keys and `model` are not imported (2026-11-22)."""
+    assert capability_import.IMPORTED_KEYS == ("mcp_servers", "delegation", "hooks")
+    assert capability_import.INHERITABLE_KEYS == capability_import.IMPORTED_KEYS
 
 
 def test_classification_is_a_bijection_and_matches_the_ruling():
@@ -31,6 +31,7 @@ def test_classification_is_a_bijection_and_matches_the_ruling():
     for entry in capability_import.CAPABILITY_CLASSIFICATION:
         key = (entry.capability_type, entry.capability_id)
         assert key not in seen, f"重复的能力条目：{key}"
+        assert ":" not in entry.capability_type
         seen.add(key)
         assert capability_import.config_key_for(*key) == entry.config_key
 
@@ -38,39 +39,28 @@ def test_classification_is_a_bijection_and_matches_the_ruling():
         return capability_import.classification_for_key(config_key).capability_type
 
     assert type_of("mcp_servers") == "mcp"
-    assert type_of("memory") == "hermes:runtime-config"
     assert type_of("hooks") == "hooks"
     assert type_of("delegation") == "delegation"
-    delegation = capability_import.classification_for_key("delegation")
-    assert delegation.extras_capability_type == "hermes:delegation-extras"
-    assert capability_import.config_key_for(
-        delegation.extras_capability_type, delegation.extras_capability_id
-    ) == "delegation"
-    assert type_of("curator") == "hermes:runtime-config"
-    assert capability_import.classification_for_key("curator").capability_id == "curator"
-    assert type_of("model") == "hermes:default-model"
     for config_key in (
         "providers", "fallback_providers", "credential_pool_strategies", "compression",
         "context", "prompt_caching", "agent", "tool_loop_guardrails", "auxiliary",
-        "image_gen", "toolsets", "curator",
+        "image_gen", "toolsets", "curator", "memory", "model", "unknown_key",
     ):
-        assert type_of(config_key) == "hermes:runtime-config", config_key
-        assert capability_import.classification_for_key(config_key).capability_id == config_key
-    assert capability_import.classification_for_key("unknown_key") is None
+        assert capability_import.classification_for_key(config_key) is None, config_key
+    assert capability_import.config_key_for("hermes:runtime-config", "compression") is None
     assert capability_import.config_key_for("mcp", "nope") is None
 
 
-def test_runtime_config_uses_the_dict_merge_strategy():
-    from app.capabilities.resolver import merge_config_child_wins, select_merge_strategy
+def test_no_default_strategy_for_retired_engine_settings():
+    from app.capabilities.resolver import DEFAULT_MERGE_STRATEGY, select_merge_strategy
 
-    assert select_merge_strategy("hermes:runtime-config") is merge_config_child_wins
-    assert select_merge_strategy("other-backend:runtime-config") is merge_config_child_wins
+    assert select_merge_strategy("other-backend:runtime-config") is DEFAULT_MERGE_STRATEGY
 
 
 def test_row_id_construction_agrees_across_layers():
     from app.api.router import capability_row_id
 
-    args = ("project:leaf", "hermes:runtime-config", "compression")
+    args = ("project:leaf", "mcp", "mcp_servers")
     assert capability_import.row_key(*args) == capability_row_id(*args)
     assert capability_import.assignment_uuid(*args) == capability_import.assignment_uuid(*args)
 

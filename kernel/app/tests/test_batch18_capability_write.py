@@ -231,20 +231,28 @@ def test_an_unknown_generic_type_is_a_400(harness, client):
 
 
 def test_a_backend_scoped_type_needs_a_backend_that_exists(harness, client):
-    """``<backend>:<name>``：backend 必须是领域库里有的（公共层不硬编码名字）。"""
+    """``<backend>:<name>``：backend 必须是领域库里有的（公共层不硬编码名字），
+    名字只能是 Agent 绑定能力（引擎私有设置 2026-11-22 起不保管）。"""
     ok = client.put(
-        _path(harness.root.id, "mock:runtime-config", "default"),
-        json={"value": {"approvals": "smart"}},
+        _path(harness.root.id, "mock:skills", "notes"),
+        json={"value": {"enabled": True}},
     )
     assert ok.status_code == 200
-    assert ok.json()["entry"]["config"] == {"approvals": "smart"}
+    assert ok.json()["entry"]["config"] == {"enabled": True}
 
     missing = client.put(
-        _path(harness.root.id, "nosuch:runtime-config", "default"),
+        _path(harness.root.id, "nosuch:skills", "notes"),
         json={"value": {"v": 1}},
     )
     assert missing.status_code == 400
     assert missing.json()["error"]["code"] == "unknown_capability_type"
+
+    settings = client.put(
+        _path(harness.root.id, "mock:runtime-config", "default"),
+        json={"value": {"approvals": "smart"}},
+    )
+    assert settings.status_code == 400
+    assert settings.json()["error"]["code"] == "unknown_capability_type"
 
 
 def test_an_empty_patch_is_a_400(harness, client):

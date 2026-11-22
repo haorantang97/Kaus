@@ -238,7 +238,7 @@ def test_legacy_profile_projection_never_writes_the_curator_key(tmp_path):
     home.mkdir()
     (home / "config.yaml").write_text("model:\n  default: m\n")
     effective = EffectiveCapabilities(project_id="project:p", entries=(EffectiveCapability(
-        capability_type="hermes:runtime-config", capability_id="toolsets", config={"value": ["web"]},
+        capability_type="hooks", capability_id="hooks", config={"value": ["web"]},
         source_project_id="project:p", inherited=False),))
     project_capabilities(binding_id="b", hermes_home=home, effective=effective, capabilities=BackendCapabilities(),
                          project_id="project:p", dry_run=False)
@@ -268,12 +268,12 @@ def test_linked_config_is_reported_as_a_conflict_and_left_in_place(tmp_path):
     home.mkdir()
     (home / "config.yaml").symlink_to(original)
     effective = EffectiveCapabilities(project_id="project:p", entries=(EffectiveCapability(
-        capability_type="hermes:runtime-config", capability_id="toolsets", config={"value": ["web"]},
+        capability_type="hooks", capability_id="hooks", config={"value": ["web"]},
         source_project_id="project:p", inherited=False),))
     for dry_run in (True, False):
         result = project_capabilities(binding_id="b", hermes_home=home, effective=effective,
                                       capabilities=BackendCapabilities(), project_id="project:p", dry_run=dry_run)
-        assert [(e.capability_id, e.reason) for e in result.unsupported] == [("toolsets", "target_linked")]
+        assert [(e.capability_id, e.reason) for e in result.unsupported] == [("hooks", "target_linked")]
         assert not result.applied and result.backup_path is None
     assert (home / "config.yaml").is_symlink()
     assert original.read_text() == "model:\n  default: m\n"

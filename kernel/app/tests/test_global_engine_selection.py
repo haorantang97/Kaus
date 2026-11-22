@@ -121,8 +121,10 @@ def test_new_association_resolves_project_plugins_and_filters_engine_specific_co
         for project, kind, key in [
             ("one", "mcp", "inherited-plugin"),
             ("two", "mcp", "local-plugin"),
-            ("two", "local:runtime-config", "matching-engine"),
-            ("two", "orphan:runtime-config", "other-engine"),
+            ("two", "local:skills", "matching-engine"),
+            ("two", "orphan:skills", "other-engine"),
+            # An engine-private setting left by an old database never reaches the driver.
+            ("two", "local:runtime-config", "retired-setting"),
         ]:
             await repos.capabilities.save(ProjectCapability.create(
                 project_id=f"project:{project}", capability_type=kind, capability_id=key))

@@ -4,8 +4,8 @@
 ----
 把「根 → … → 目标 Project」这条祖先链上的能力赋值，合并成目标 Project 的
 有效能力集合。**Backend 无关**：通用能力（skills / mcp / instructions /
-plugins …）与 backend-scoped 能力（``<backend>:runtime-config``、
-``<backend>:default-model`` …）走完全相同的合并算法，唯一区别是可选的
+plugins …）与 backend-scoped 能力（``<agent>:skills``、``<agent>:mcp`` …）
+走完全相同的合并算法，唯一区别是可选的
 ``backend_key`` 过滤视图（供 Projector 落盘用）。
 
 本模块是**纯函数**：不读文件、不查数据库、不依赖时间。输入 = 祖先链 + 赋值表，
@@ -27,13 +27,12 @@ v1.0 §5.2 明确要求「不同类型不得使用完全相同的合并算法」
 
 - :func:`replace_child_wins`（默认）：子级整条替换祖先条目。
   对应 v1.0 §5.2「本地同 ID 版本覆盖祖先版本」（skills）与「同 ID Connection 由
-  子级配置覆盖」（mcp），以及 R-01 的 ``<backend>:default-model``
-  ——最近的祖先赋值生效，本地赋值覆盖之（D-10 软继承语义）。
+  子级配置覆盖」（mcp）——最近的祖先赋值生效，本地赋值覆盖之。
 - :func:`merge_config_child_wins`：按**键**合并 config，子级键覆盖祖先键。
-  用于 ``runtime-config`` 这类「整份配置」型 backend-scoped 能力，
-  以保住 R-01 的核心价值「根上改一次、全树生效」，同时允许子级只覆盖个别键。
+  默认表里不再有类型使用它（原用户是 2026-11-22 删除的引擎私有设置），
+  留作可注入的策略。
 - :func:`monotonic_child_wins`：同上，但**安全字段只能收紧**（R-12 / AD-150）。
-  用于 ``delegation`` / ``delegation-extras`` / ``policies``。
+  用于 ``delegation`` / ``policies``。
 
 对应规范
 --------
@@ -115,8 +114,7 @@ def merge_config_child_wins(
 ) -> EffectiveCapability:
     """按键合并 config，子级键覆盖祖先键；祖先独有的键保留。
 
-    这是 R-01「根上改一次、全树生效」的载体：祖先在根上写一份 runtime-config，
-    子级只需要覆盖个别键，其余键继续从根继承。
+    祖先写一份整体配置，子级只覆盖个别键，其余键继续从祖先继承。
     """
     merged: dict[str, Any] = dict(inherited.config)
     merged.update(assignment.config)
@@ -176,9 +174,8 @@ def monotonic_child_wins(
 
 
 #: 按 capability type 的 *name* 段选择策略。键里不含任何 backend 名字，
-#: 因此 ``<backend-a>:runtime-config`` 与 ``<backend-b>:runtime-config`` 自动同策略。
+#: 因此 ``<backend-a>:<name>`` 与 ``<backend-b>:<name>`` 自动同策略。
 DEFAULT_MERGE_STRATEGIES: Final[Mapping[str, MergeStrategy]] = {
-    "runtime-config": merge_config_child_wins,
     # AD-150：委派与策略类能力走单调合并（安全字段只能收紧）。
     **{name: monotonic_child_wins for name in monotonic.MONOTONIC_CAPABILITY_NAMES},
 }

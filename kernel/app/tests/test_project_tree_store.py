@@ -92,6 +92,22 @@ def test_reusing_a_deleted_slug_snapshots_and_clears_its_rows(tmp_path):
     assert {r["capability_id"] for r in store.rows("design")} == {"project-persona", "mcp_servers"}
 
 
+def test_restoring_an_old_archive_leaves_engine_settings_out(tmp_path):
+    """Archives made before 2026-11-22 may hold engine-private settings; only Agent-bound
+    kinds come back among Agent-scoped rows."""
+    store = open_store(tmp_path)
+    store.create("design", draft=False, parent="default")
+    store.put_row("design", "mcp", "mcp_servers", "local", {"value": {}})
+    store.put_row("design", "acme:skills", "notes", "local", {"value": {}})
+    store.put_row("design", "acme:runtime-config", "toolsets", "local", {"value": ["web"]})
+    archive_id = store.archive("design", {"parent": "default"})
+    store.create("design", display_name="New")
+    store.archive("design", {"parent": None})
+    store.restore("design", archive_id, parent="default")
+    assert {(r["capability_type"], r["capability_id"]) for r in store.rows("design")} == {
+        ("mcp", "mcp_servers"), ("acme:skills", "notes")}
+
+
 def test_replace_rows_only_touches_the_selected_ids(tmp_path):
     store = open_store(tmp_path)
     store.create("design", draft=False, parent="default")

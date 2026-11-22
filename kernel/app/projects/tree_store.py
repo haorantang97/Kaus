@@ -49,6 +49,14 @@ def _slug(identifier: str | None) -> str | None:
     return identifier[len("project:"):] if identifier.startswith("project:") else identifier
 
 
+
+def _restorable_type(capability_type: str) -> bool:
+    """Agent-scoped rows come back only for Agent-bound kinds. Older archives may hold
+    engine-private settings, which Kaus no longer keeps (2026-11-22)."""
+    from app.capabilities.models import AGENT_BOUND_CAPABILITY_NAMES
+    scope, _, name = capability_type.rpartition(":")
+    return not scope or name in AGENT_BOUND_CAPABILITY_NAMES
+
 class ProjectTreeStore:
     def __init__(self, database, *, root_slug: str = "default"):
         self.db = database
@@ -425,7 +433,7 @@ class ProjectTreeStore:
             present = {(r["capability_type"], r["capability_id"]) for r in self.tx_rows(conn, slug)}
             for cleared in snapshot.get("clearedRows") or []:
                 key = (cleared.get("capability_type"), cleared.get("capability_id"))
-                if key[0] and key[1] and key not in present:
+                if key[0] and key[1] and key not in present and _restorable_type(key[0]):
                     self.tx_put_row(conn, slug, key[0], key[1], cleared.get("assignment_mode", "local"), cleared.get("config"))
             conn.execute("UPDATE project_archives SET restored_at = ? WHERE id = ?", (_now(), archive_id))
             self.tx_bump(conn)

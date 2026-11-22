@@ -16,7 +16,7 @@ from runtime.capability_matrix import BackendCapabilities
 
 def settings(project, tools):
     return EffectiveCapabilities(project_id=project.id, entries=(EffectiveCapability(
-        capability_type="hermes:runtime-config", capability_id="toolsets",
+        capability_type="hooks", capability_id="hooks",
         config={"value": tools}, source_project_id=project.id, inherited=False,
     ),))
 
@@ -25,7 +25,7 @@ def seeded(tmp_path, monkeypatch):
     monkeypatch.setattr(isolated_runtime, "available", lambda _: True)
     root = tmp_path / "native"
     root.mkdir()
-    (root / "config.yaml").write_text("model:\n  default: global-model\ntoolsets: [global-tool]\n")
+    (root / "config.yaml").write_text("model:\n  default: global-model\nhooks: [global-tool]\n")
     (root / ".env").write_text("FAKE_AUTH_FOR_TEST=placeholder\n")
     (root / "state.db").write_bytes(b"private history placeholder")
     (root / "memories").mkdir()
@@ -63,7 +63,7 @@ async def test_two_projects_project_into_private_homes_and_cli_uses_same_scope(t
         result = await driver.materialize_project_capabilities(project, binding, settings(project, tools), dry_run=False)
         assert result.applied[0].after == tools
         home = driver.projection_scope(binding)
-        assert config_yaml.load((home / "config.yaml").read_text())["toolsets"] == tools
+        assert config_yaml.load((home / "config.yaml").read_text())["hooks"] == tools
         assert (home / ".env").is_symlink() and (home / ".env").resolve() == root / ".env"
         assert not (home / "state.db").exists()
         assert not (home / "memories").exists()
@@ -98,7 +98,7 @@ def test_legacy_writer_cannot_overwrite_another_project_even_with_adopt(tmp_path
         if name == "two":
             assert not result.applied
             assert [r.reason for r in result.unsupported] == ["workspace_shared"]
-    assert config_yaml.load((tmp_path / "config.yaml").read_text())["toolsets"] == ["one"]
+    assert config_yaml.load((tmp_path / "config.yaml").read_text())["hooks"] == ["one"]
 
 
 def test_existing_native_profile_mapping_is_preserved(tmp_path, monkeypatch):
@@ -112,12 +112,41 @@ def test_new_scope_does_not_inherit_project_managed_values(tmp_path, monkeypatch
     from drivers.projection_store import Provenance
     root, driver = seeded(tmp_path, monkeypatch)
     provenance = Provenance.load(root)
+    provenance.claim("hooks", project_id="project:another", capability_type="hooks",
+        capability_id="hooks", applied_at="test")
+    provenance.save()
+    binding = driver.prepare_project_binding(AgentBinding.create(project="one", backend="hermes"))
+    home = project_scope.prepare(root, root, binding)
+    assert "hooks" not in config_yaml.load((home / "config.yaml").read_text())
+
+
+def test_claims_of_removed_engine_settings_no_longer_hide_native_values(tmp_path, monkeypatch):
+    """A key written long ago from a removed engine-settings row belongs to the engine
+    again: the private home keeps the native value (2026-11-22)."""
+    from drivers.projection_store import Provenance
+    root, driver = seeded(tmp_path, monkeypatch)
+    (root / "config.yaml").write_text("model:\n  default: global-model\ntoolsets: [global-tool]\n")
+    provenance = Provenance.load(root)
     provenance.claim("toolsets", project_id="project:another", capability_type="hermes:runtime-config",
         capability_id="toolsets", applied_at="test")
     provenance.save()
     binding = driver.prepare_project_binding(AgentBinding.create(project="one", backend="hermes"))
     home = project_scope.prepare(root, root, binding)
-    assert "toolsets" not in config_yaml.load((home / "config.yaml").read_text())
+    assert config_yaml.load((home / "config.yaml").read_text())["toolsets"] == ["global-tool"]
+
+
+def test_materialize_releases_claims_of_removed_engine_settings(tmp_path):
+    from drivers.projection_store import Provenance
+    (tmp_path / "config.yaml").write_text("toolsets: [kept]\n")
+    provenance = Provenance.load(tmp_path)
+    provenance.claim("toolsets", project_id="project:one", capability_type="hermes:runtime-config",
+        capability_id="toolsets", applied_at="test")
+    provenance.save()
+    project_capabilities(binding_id="binding:one", hermes_home=tmp_path, project_id="project:one",
+        effective=EffectiveCapabilities(project_id="project:one"), capabilities=BackendCapabilities(),
+        dry_run=False)
+    assert "toolsets" not in Provenance.load(tmp_path).records
+    assert config_yaml.load((tmp_path / "config.yaml").read_text())["toolsets"] == ["kept"]
 
 
 @pytest.mark.parametrize("retire_transport", [False, True])
@@ -138,7 +167,7 @@ async def test_project_runtime_uses_shared_acp_events_and_restores_same_native_i
     monkeypatch.setattr(isolated_runtime, "create_driver", lambda *args, **kwargs: delegate)
     conversation = Conversation.create(title="Scoped", project_id=project.id, agent_binding_id=binding.id)
     projection = await owner.session_options_for(conversation, settings(project, ["web"]))
-    assert projection.summary == {"projectSettings": ["toolsets"]}
+    assert projection.summary == {"projectSettings": ["hooks"]}
     runtime = await owner.start_runtime(conversation, "card", session_options=projection.options)
     try:
         assert owner.runtime_reusable(runtime)
@@ -189,10 +218,10 @@ async def test_refresh_removes_project_overrides_and_keeps_native_history(tmp_pa
     home = driver.projection_scope(binding)
     assert "Project-specific identity" in (home / "SOUL.md").read_text()
     (home / "state.db").write_bytes(b"preserved private history")
-    (root / "config.yaml").write_text("model:\n  default: new-global-model\ntoolsets: [global-tool]\n")
+    (root / "config.yaml").write_text("model:\n  default: new-global-model\nhooks: [global-tool]\n")
     await driver.materialize_project_capabilities(project, binding, EffectiveCapabilities(project_id=project.id), dry_run=False)
     current = config_yaml.load((home / "config.yaml").read_text())
-    assert current["toolsets"] == ["global-tool"]
+    assert current["hooks"] == ["global-tool"]
     assert current["model"]["default"] == "new-global-model"
     assert "Project-specific identity" not in (home / "SOUL.md").read_text()
     assert (home / "state.db").read_bytes() == b"preserved private history"

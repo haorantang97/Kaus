@@ -94,7 +94,7 @@ def seeded_store(state: Path) -> ProjectTreeStore:
     store.ensure_root("Renamed root")
     store.create("coding", display_name="Old label", draft=False, parent="default")
     store.put_row("coding", "instructions", "project-persona", "local", {"body": "mirrored SOUL"})
-    store.put_row("coding", "hermes:runtime-config", "compression", "local", {"value": {"enabled": "kept"}})
+    store.put_row("coding", "hooks", "hooks", "local", {"value": {"pre_tool": "kept"}})
     return store
 
 
@@ -143,11 +143,12 @@ def test_import_moves_everything_into_the_database_and_backs_up_files(tmp_path):
     # credentials redacted. Native config.yaml is the Agent's own and is not imported.
     assert rows[("mcp", "mcp_servers")]["assignment_mode"] == "local"
     assert rows[("delegation", "delegation")]["assignment_mode"] == "block"
-    assert rows[("hermes:delegation-extras", "delegation")]["assignment_mode"] == "block"
-    assert "sk-testonly" not in json.dumps(rows[("hermes:runtime-config", "providers")]["config"])
+    # Engine-private settings (runtime keys, model, private delegation keys) are not imported (2026-11-22).
+    assert not [key for key in rows if ":" in key[0]]
+    assert "sk-testonly" not in json.dumps([r["config"] for r in store.rows("design")])
     coding_rows = {(r["capability_type"], r["capability_id"]): r for r in store.rows("coding")}
-    assert coding_rows[("hermes:runtime-config", "compression")]["config"] == {"value": {"enabled": "kept"}}
-    assert ("hermes:default-model", "model") not in {(r["capability_type"], r["capability_id"]) for r in store.rows("default")}
+    assert coding_rows[("hooks", "hooks")]["config"] == {"value": {"pre_tool": "kept"}}
+    assert not [r for r in store.rows("default") if ":" in r["capability_type"]]
     # Skill files are only counted.
     assert report.skill_files == 2 and not any(r["capability_type"] == "skills" and r["assignment_mode"] == "local" for r in store.rows("design"))
     # Archives.

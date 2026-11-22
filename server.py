@@ -392,10 +392,10 @@ def api_fork(name: str, req: ForkReq):
 
 
 def _fork_row_selector(source: str, target: str):
-    """fork 复制哪些行：本级指令（守则层行 id 从源名改成目标名）+ 可继承且不带凭据的配置项；
-    model 与 providers/auxiliary/delegation 不复制。"""
+    """fork 复制哪些行：本级指令（守则层行 id 从源名改成目标名）+ 可继承且不带凭据的通用配置项；
+    delegation 不复制，引擎私有设置不再保管。"""
     import capability_import
-    skipped = {"providers", "auxiliary", "delegation", "model"}
+    skipped = {"delegation"}
 
     def select(row: dict) -> bool:
         kind, key = row["capability_type"], row["capability_id"]

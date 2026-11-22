@@ -14,6 +14,7 @@ from app.api.views import (
     normalize_project_id,
 )
 from app.capabilities.models import (
+    AGENT_BOUND_CAPABILITY_NAMES,
     GENERIC_CAPABILITY_TYPES,
     ProjectCapability,
     parse_capability_type,
@@ -38,7 +39,8 @@ def build_capability_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
         - 通用能力：必须在 :data:`GENERIC_CAPABILITY_TYPES` 里。它不是「随便什么
           标识符都行」的开放集合——写端点是**产生**赋值行的地方，把打错的
           ``skils`` 收下来，只会在 Resolver 输出里长出一条谁也认不出的能力；
-        - backend-scoped（``<backend-key>:<name>``）：backend 必须是这台机器上
+        - backend-scoped（``<backend-key>:<name>``）：名字只能是 Agent 绑定能力
+          （:data:`AGENT_BOUND_CAPABILITY_NAMES`），backend 必须是这台机器上
           **有记录**的那些。公共层不硬编码任何 backend 名字（N §3），所以「已知」
           的定义就是领域库里的 ``backends`` 行。
         """
@@ -57,6 +59,13 @@ def build_capability_routes(ctx: SessionRouteContext) -> list[RouteSpec]:
                     detail={"known": sorted(GENERIC_CAPABILITY_TYPES)},
                 )
             return ref.name
+        if ref.name not in AGENT_BOUND_CAPABILITY_NAMES:
+            raise SessionApiError(
+                400,
+                "unknown_capability_type",
+                f"Agent 范围的能力只能是技能、MCP、插件或 hooks：{ref.name!r}",
+                detail={"known": sorted(AGENT_BOUND_CAPABILITY_NAMES)},
+            )
         backend_id = normalize_backend_key_id(ref.backend_key)
         if await repositories.backends.get(backend_id) is None:
             raise SessionApiError(

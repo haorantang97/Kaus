@@ -24,11 +24,14 @@ AD-45：block = 从这里往下都没有。物化一条 block 意味着要在引
 把一个不知道怎么关的键删掉，可能等于把它恢复成引擎默认值（那往往比原值更松），
 正好与「禁止」相反。
 
-软继承的 ``model`` 不在写表里
------------------------------
-D-10 / AD-12：``model`` 是软继承键，**不物化进子 profile 的 config.yaml**。
-Binding 上的默认模型另有一条规则（:data:`BINDING_RULES` 的 ``model.default`` /
-``model.provider``），来源是 Binding 行而不是能力表——两者不该混成一条。
+旧版引擎设置已删除（2026-11-22）
+--------------------------------
+旧迁移曾把 ``config.yaml`` 的运行时键（工具集、上下文压缩、备用模型等）、``model``
+和 ``delegation`` 段的私有键存成 ``hermes:runtime-config`` / ``hermes:default-model`` /
+``hermes:delegation-extras`` 三类能力行，启动时再写回。项目负责人定：Kaus 不保管
+引擎私有设置，引擎只用它自己的配置。这三类不再写入，数据库里的旧行由迁移删除；
+:data:`RETIRED_CAPABILITY_TYPES` 只用于释放旧记账。Binding 上的默认模型、推理强度
+与审批档另有 :data:`BINDING_RULES`，不受影响。
 """
 
 from __future__ import annotations
@@ -45,8 +48,13 @@ NOT_BLOCKABLE: Final[object] = object()
 #: backend-scoped 能力类型的前缀。与 ``capability_import.BACKEND_KEY`` 一致
 #: （有测试守着）。
 BACKEND_KEY: Final[str] = "hermes"
-RUNTIME_CONFIG_TYPE: Final[str] = f"{BACKEND_KEY}:runtime-config"
-DEFAULT_MODEL_TYPE: Final[str] = f"{BACKEND_KEY}:default-model"
+#: 已删除的旧版引擎设置类型（见模块说明）。只用来认出 ``.kaus-projected.json`` 里
+#: 它们留下的旧记账并释放，不再写入任何键。
+RETIRED_CAPABILITY_TYPES: Final[frozenset[str]] = frozenset({
+    f"{BACKEND_KEY}:runtime-config",
+    f"{BACKEND_KEY}:default-model",
+    f"{BACKEND_KEY}:delegation-extras",
+})
 
 
 @dataclass(frozen=True)
@@ -71,23 +79,9 @@ class WriteRule:
         return self.disable_value is not NOT_BLOCKABLE
 
 
-def _runtime(config_key: str, **kwargs: Any) -> WriteRule:
-    return WriteRule(RUNTIME_CONFIG_TYPE, config_key, config_key, **kwargs)
 
-
-#: **写表**。顺序照 ``capability_import.CAPABILITY_CLASSIFICATION``，逐条对得上。
+#: **写表**。只剩所有 Agent 通用的能力类型。
 WRITE_RULES: Final[tuple[WriteRule, ...]] = (
-    _runtime(
-        "providers",
-        credential_bearing=True,
-        note="R-06 点名：provider 段带 api_key，永不写",
-    ),
-    _runtime("fallback_providers"),
-    _runtime(
-        "credential_pool_strategies",
-        credential_bearing=True,
-        note="R-06 点名：凭据池策略带凭据引用，永不写",
-    ),
     WriteRule(
         "mcp",
         "mcp_servers",
@@ -95,15 +89,6 @@ WRITE_RULES: Final[tuple[WriteRule, ...]] = (
         disable_value={},
         note="§5.2.3 通用 MCP 能力；关闭值 = 一个 server 都不挂",
     ),
-    _runtime("toolsets", disable_value=[], note="关闭值 = 一个工具集都不挂"),
-    _runtime("agent"),
-    _runtime("tool_loop_guardrails"),
-    _runtime("compression"),
-    _runtime("context"),
-    _runtime("prompt_caching"),
-    _runtime("auxiliary"),
-    _runtime("image_gen"),
-    _runtime("memory", note="引擎原生记忆设置"),
     WriteRule(
         DELEGATION_CAPABILITY_TYPE,
         delegation_map.CONFIG_KEY,
@@ -115,23 +100,7 @@ WRITE_RULES: Final[tuple[WriteRule, ...]] = (
             "而引擎默认是**开着**的，与「禁止」正好相反）"
         ),
     ),
-    WriteRule(
-        delegation_map.EXTRAS_CAPABILITY_TYPE,
-        delegation_map.EXTRAS_CAPABILITY_ID,
-        delegation_map.CONFIG_KEY,
-        note=(
-            "同一段里引擎私有的其余键，原样写回、不做翻译。AD-67 实测这一段可能含 "
-            "api_key——由 drivers.secret_guard 的值级判定拦，不在类型级一刀切"
-        ),
-    ),
-    _runtime("curator", note="AD-46：curator 并回 runtime-config 整块继承"),
     WriteRule("hooks", "hooks", "hooks", disable_value={}, note="§5.2.1 列为可通用化"),
-    WriteRule(
-        DEFAULT_MODEL_TYPE,
-        "model",
-        "model",
-        note="D-10 / AD-12：软继承键，**不物化**（见模块 docstring）",
-    ),
 )
 
 @dataclass(frozen=True)
@@ -175,11 +144,6 @@ def file_rule_for(capability_type: str) -> FileRule | None:
     return _BY_FILE_TYPE.get(capability_type)
 
 
-#: 软继承：登记在表里（往返比对要看得见它），但**不写**。
-SOFT_CAPABILITIES: Final[frozenset[tuple[str, str]]] = frozenset(
-    {(DEFAULT_MODEL_TYPE, "model")}
-)
-
 _BY_CAPABILITY: Final[Mapping[tuple[str, str], WriteRule]] = {
     (r.capability_type, r.capability_id): r for r in WRITE_RULES
 }
@@ -188,10 +152,6 @@ _BY_CAPABILITY: Final[Mapping[tuple[str, str], WriteRule]] = {
 def rule_for(capability_type: str, capability_id: str) -> WriteRule | None:
     """能力坐标 → 写规则；表里没有就是 ``None``（调用方报 ``not_mapped``）。"""
     return _BY_CAPABILITY.get((capability_type, capability_id))
-
-
-def is_soft(capability_type: str, capability_id: str) -> bool:
-    return (capability_type, capability_id) in SOFT_CAPABILITIES
 
 
 # --------------------------------------------------------------------------- #
@@ -238,7 +198,6 @@ def write_table_json() -> list[dict[str, Any]]:
             "keyPath": r.key_path,
             "credentialBearing": r.credential_bearing,
             "blockable": r.blockable,
-            "soft": is_soft(r.capability_type, r.capability_id),
             "note": r.note,
         }
         for r in WRITE_RULES
@@ -249,19 +208,16 @@ __all__ = [
     "APPROVAL_PROJECTION_TYPE",
     "BACKEND_KEY",
     "BINDING_RULES",
-    "DEFAULT_MODEL_TYPE",
     "MODEL_PROJECTION_TYPE",
     "NOT_BLOCKABLE",
     "REASONING_PROJECTION_TYPE",
-    "RUNTIME_CONFIG_TYPE",
+    "RETIRED_CAPABILITY_TYPES",
     "BindingRule",
     "FILE_RULES",
     "FileRule",
-    "SOFT_CAPABILITIES",
     "WRITE_RULES",
     "WriteRule",
     "file_rule_for",
-    "is_soft",
     "rule_for",
     "write_table_json",
 ]
