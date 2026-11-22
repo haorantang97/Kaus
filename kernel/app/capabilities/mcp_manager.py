@@ -112,7 +112,8 @@ class McpManager:
     def list(self) -> dict:
         catalog, cache, disabled, tree, _ = self._catalog()
         rows = [self._row(record, cache, disabled, tree) for record in catalog.values()
-                if record.get("kind") == "mcp" and not record.get("importedAs")]
+                if record.get("kind") == "mcp" and not record.get("importedAs")
+                and record.get("boundReason") != "module"]  # a module's own MCP is managed in 工作台
         rows.sort(key=lambda r: (r["name"].casefold(), r["agentLabel"].casefold(), r["id"]))
         return {"items": rows}
 

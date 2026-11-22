@@ -360,19 +360,10 @@ export const en: Record<keyof typeof zh, string> = {
   "instructions.delivery.keep": "Keep file",
   "instructions.delivery.importDone": "Imported {file}",
   "instructions.delivery.keepDone": "Kept {file}",
-
-  "capabilities.title": "Project configuration",
   "capabilities.scope.common": "General",
-  "capabilities.scope.native": "Engine",
-  "capabilities.loading": "Loading capabilities…",
-  "capabilities.col.type": "Setting",
-  "capabilities.col.content": "Content",
-  "capabilities.col.source": "Source",
   "capabilities.source.local": "This project",
   "capabilities.source.inherited": "Inherited from “{name}”",
   "capabilities.source.blocked": "Disabled at “{name}”",
-  "capabilities.overridden": "Overridden",
-  "capabilities.overridden.title": "Set at {chain} along the chain; “{name}” wins",
 
 
   "engine.panel.title": "Connected engines",
@@ -673,17 +664,6 @@ export const en: Record<keyof typeof zh, string> = {
 
   /* ---- batch18 ---- */
   "conversation.historyMissing": "History incomplete",
-  "capabilities.col.actions": "Actions",
-  "capabilities.action.aria": "Capability actions",
-  "capabilities.action.block": "Disable (subtree)",
-  "capabilities.action.blockHere": "Disable in this project",
-  "capabilities.action.clear": "Remove local assignment",
-  "capabilities.action.unblock": "Re-enable",
-  "capabilities.toast.block": "Disabled “{name}” (subprojects included)",
-  "capabilities.toast.blockHere": "Disabled “{name}” in this project (subprojects included)",
-  "capabilities.toast.clear": "Removed the local assignment of “{name}”",
-  "capabilities.toast.unblock": "Re-enabled “{name}”",
-  "capabilities.toast.failed": "The action failed: {error}",
 
   /* ---- batch19 ---- */
   "engine.authModel.managed-credential": "using the credential configured here",
@@ -975,8 +955,6 @@ export const en: Record<keyof typeof zh, string> = {
   "engine.details.toggle": "Details",
   "engine.summary.signedOut": "Signed out",
 
-  "capabilities.value.view": "View full content",
-
   /* ---- batch41: the plate summary line (DESIGN ★M); since batch42 it lives on the draft page. ---- */
 
   /* ---- batch45b: the room loop (PRD §B4 / AD-168). One new button: Stop. ---- */
@@ -1016,6 +994,7 @@ export const en: Record<keyof typeof zh, string> = {
   "group.run.reconnecting": "Connection lost, retrying",
   "group.memberCount.one": "1 member",
   "skillTree.notIsolable": "Loaded with the Agent; cannot be turned off per project",
+  "skillTree.fromModule": "From a workbench module; change it in Workbench",
   "skillTree.bound": "Agent-bound",
   "skillTree.importButton": "Import capabilities",
   "import.title": "Import capabilities",

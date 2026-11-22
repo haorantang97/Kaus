@@ -45,12 +45,16 @@ IMPORT_KEY = "skill_tree.import_state.v1"
 MCP_DISABLED_KEY = "skill_tree.mcp_disabled_tools.v1"
 #: ``userUnbound``: the user released a rule-bound item for every Agent (MCP 管理, 2026-11-11).
 KAUS_FIELDS = ("imported", "shared", "importedAs", "importCopy", "originFingerprint", "userBound", "userUnbound")
+#: Workbench module MCP rows: the module decides their Project, so the tree shows them locked.
+MODULE_MCP_PREFIX = "module-"
 ARRANGED_TYPES_SQL = ("capability_type = 'skills' OR capability_type LIKE '%:skills' "
                       "OR capability_type LIKE '%:mcp' OR capability_type = 'plugins' "
                       "OR capability_type LIKE '%:plugins' OR capability_type = 'hooks' "
                       "OR capability_type LIKE '%:hooks' "
-                      # MCP added in Kaus (drivers.library_mcp); module and built-in MCP rows stay out.
-                      "OR (capability_type = 'mcp' AND capability_id LIKE 'lib-mcp-%')")
+                      # MCP added in Kaus (drivers.library_mcp); built-in MCP rows stay out.
+                      "OR (capability_type = 'mcp' AND capability_id LIKE 'lib-mcp-%') "
+                      # A workbench module's own MCP (app.workbench.module_mcp): shown locked (2026-11-22).
+                      f"OR (capability_type = 'mcp' AND capability_id LIKE '{MODULE_MCP_PREFIX}%')")
 
 
 def _dump(value) -> str:
@@ -294,6 +298,10 @@ class SkillTreeService:
                 **({"kind": "mcp"} if parsed.name == "mcp" else {"kind": "plugin"} if parsed.name == "plugins"
                    else {"kind": "hook"} if parsed.name == "hooks" else {}),
             }
+            if row["capability_type"] == "mcp" and row["capability_id"].startswith(MODULE_MCP_PREFIX):
+                # Placed by the workbench module's own settings; arranging it here would be overwritten.
+                catalog[skill_id].update(name=row["capability_id"][len(MODULE_MCP_PREFIX):],
+                                         bound=True, boundReason="module")
         self._save_setting(conn, CATALOG_KEY, catalog)
         self._save_setting(conn, BLOCKED_LOCAL_KEY, blocked_local)
         self._save_setting(conn, NATIVE_BLOCKS_KEY, native_blocks)
@@ -462,6 +470,8 @@ class SkillTreeService:
             record = catalog.get(skill_id)
             if not record:
                 raise ApiError(404, "skill_not_found", "技能不存在")
+            if record.get("boundReason") == "module":
+                raise ApiError(409, "capability_from_module", "来自工作台模块，请在工作台调整")
             if record.get("boundReason") == "not_isolable" and action != "reorder":
                 # The native Agent cannot leave it out of a launch: arranging it would change nothing.
                 raise ApiError(409, "capability_not_isolable", "随 Agent 加载，不可调整")

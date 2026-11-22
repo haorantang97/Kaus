@@ -368,18 +368,10 @@ export const zh = {
   "instructions.delivery.keepDone": "已保留 {file}",
 
   /* ---- 能力表（项目详情页 ③ 区） ---- */
-  "capabilities.title": "项目配置",
   "capabilities.scope.common": "通用",
-  "capabilities.scope.native": "引擎配置",
-  "capabilities.loading": "正在读取能力…",
-  "capabilities.col.type": "配置",
-  "capabilities.col.content": "内容",
-  "capabilities.col.source": "来源",
   "capabilities.source.local": "本项目",
   "capabilities.source.inherited": "继承自「{name}」",
   "capabilities.source.blocked": "在「{name}」停用",
-  "capabilities.overridden": "已覆盖",
-  "capabilities.overridden.title": "{chain} 均有设置，生效值来自「{name}」",
 
   /* ---- 已接引擎面板 ---- */
 
@@ -711,17 +703,6 @@ export const zh = {
   /* 第 1 件：后端说这条会话有条目、重放却一条都没到。中性一行，不是错误。 */
   "conversation.historyMissing": "历史记录不完整",
   /* 第 2 件：能力表的「操作」列（AD-144）。 */
-  "capabilities.col.actions": "操作",
-  "capabilities.action.aria": "能力操作",
-  "capabilities.action.block": "停用（子树）",
-  "capabilities.action.blockHere": "在本项目停用",
-  "capabilities.action.clear": "移除本层分配",
-  "capabilities.action.unblock": "解除停用",
-  "capabilities.toast.block": "已停用「{name}」（含子项目）",
-  "capabilities.toast.blockHere": "已在本项目停用「{name}」（含子项目）",
-  "capabilities.toast.clear": "已移除「{name}」的本层分配",
-  "capabilities.toast.unblock": "已解除停用「{name}」",
-  "capabilities.toast.failed": "操作失败：{error}",
 
   /* ---- batch19 ---- */
   /* 第 1 件：登录态里 AD-93 的 `auth_model` 三档，说成人话跟在「已登录」后面。 */
@@ -1075,7 +1056,6 @@ export const zh = {
   "engine.summary.signedOut": "未登录",
 
   /* 第 4 条：能力表的内容列改成人话摘要，原始 JSON 收进「展开」。 */
-  "capabilities.value.view": "查看完整内容",
   /* ---- batch41：铭牌副行（DESIGN ★M）。三个数，为零的不写。batch42 起它在草稿页上。 ---- */
 
   /* ---- batch45b：房间循环（PRD §B4 / AD-168）。只有一枚新按钮：「停」。 ---- */
@@ -1133,6 +1113,7 @@ export const zh = {
   "group.run.reconnecting": "正在重连",
   "group.memberCount.one": "1 名成员",
   "skillTree.notIsolable": "随 Agent 加载，不可按项目关闭",
+  "skillTree.fromModule": "来自工作台模块，在工作台调整",
   "skillTree.bound": "Agent 绑定能力",
   "skillTree.importButton": "导入能力",
   "import.title": "导入能力",

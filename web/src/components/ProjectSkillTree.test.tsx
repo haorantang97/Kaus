@@ -97,6 +97,19 @@ beforeEach(() => {
 });
 
 describe("ProjectSkillTree", () => {
+  it("shows a workbench module's own MCP locked: no drag, no menu (2026-11-22)", async () => {
+    const data = snapshot();
+    data.skills.push({ id: "module-mcp", kind: "mcp", name: "kith", description: "", agentKey: null, agentLabel: "", bound: true, boundReason: "module" } as never);
+    data.entries.push(entry("root", "module-mcp"), entry("creative", "module-mcp", "root"));
+    fetchTree.mockResolvedValue(data);
+    render(<ProjectSkillTree focusProject="root" />);
+    await waitFor(() => expect(skillRow("root", "module-mcp")).toBeVisible());
+    const row = skillRow("root", "module-mcp");
+    expect(within(row).getByRole("img", { name: "来自工作台模块，在工作台调整" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: /的操作$/ })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: /拖动/ })).toBeDisabled();
+  });
+
   it("folds inherited capabilities into one 继承 row until opened (2026-11-18)", async () => {
     render(<ProjectSkillTree focusProject="creative" />);
     await waitFor(() => expect(skillRow("creative", "common-design")).toBeVisible());

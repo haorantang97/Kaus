@@ -186,7 +186,7 @@ beforeEach(() => {
 });
 
 describe("项目详情页", () => {
-  it("项目先展示对话入口与已有会话，再展示项目配置", async () => {
+  it("项目页展示对话、指令与记忆；不再有「项目配置」表（2026-11-22）", async () => {
     renderPage();
 
     // ① 头部：显示名 · slug · 状态 chip · 三个动作
@@ -197,18 +197,13 @@ describe("项目详情页", () => {
     for (const label of ["新建对话", "在终端打开"]) {
       expect(within(head).getByRole("button", { name: label })).toBeInTheDocument();
     }
-    // 会话优先于配置，首屏能直接继续已有对话。
+    // 能力只在「配置」视图看和改，项目页不再列「项目配置」表。
     expect(screen.queryByText("已接引擎")).toBeNull();
-    expect(await screen.findByText("项目配置")).toBeInTheDocument();
     expect(screen.getByText("对话")).toBeInTheDocument();
     expect(await screen.findByText("第一段")).toBeInTheDocument();
-    expect(screen.getByText("对话").compareDocumentPosition(screen.getByText("项目配置")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText("项目配置")).toBeNull();
+    expect(screen.queryByText("继承自「X」")).toBeNull();
     expect(mocked.fetchRecentConversations).toHaveBeenCalledWith(undefined, { project: "project:pronto", limit: 50 });
-
-    // ③ 能力表的四列与 AD-45 的「禁止」文案
-    expect(screen.getByText("继承自「X」")).toBeInTheDocument();
-    expect(screen.getByText("本项目")).toBeInTheDocument();
-    expect(screen.getByText("在「X」停用")).toBeInTheDocument();
     // 面包屑给出上级链
     expect(within(head).getByRole("button", { name: "X" })).toBeInTheDocument();
   });
@@ -221,207 +216,6 @@ describe("项目详情页", () => {
     expect(screen.queryByRole("button", { name: "模型 · default" })).toBeNull();
     expect(mocked.fetchProjectBindings).not.toHaveBeenCalled();
     expect(mocked.patchBinding).not.toHaveBeenCalled();
-  });
-
-  /* 批次十一第 1 件（AD-71）：「能力墙」拆掉 —— unknown / 值为 none 的行不渲染、
-     计数只数看得见的、一行都没有整区不渲染、「操作」列整列去掉。 */
-  describe("能力分区的隐藏规则", () => {
-    const entry = (id: string, extra: Record<string, unknown> = {}) => ({
-      capabilityType: "skill",
-      capabilityId: id,
-      config: { value: "on" },
-      version: null,
-      sourceProjectId: "project:pronto",
-      inherited: false,
-      overridden: false,
-      contributingProjectIds: ["project:pronto"],
-      blocked: false,
-      ...extra,
-    });
-    const caps = (entries: unknown[], blocked: unknown[] = []) => ({
-      projectId: "project:pronto",
-      backendKey: null,
-      ancestry: ["project:pronto"],
-      entries,
-      blocked,
-      counts: { entries: entries.length, blocked: blocked.length },
-    });
-
-    it("verification=unknown 与值为 none 的行不渲染，计数只数渲染出来的", async () => {
-      mocked.fetchEffectiveCapabilities.mockResolvedValue(
-        caps([
-          entry("writing"),
-          entry("unverified", { verification: "unknown" }),
-          entry("empty-axis", { config: { value: "none" } }),
-        ]),
-      );
-      renderPage();
-      expect(await screen.findByText("writing")).toBeInTheDocument();
-      expect(screen.queryByText("unverified")).toBeNull();
-      expect(screen.queryByText("empty-axis")).toBeNull();
-      // 分区右上角的计数 = 1（不是后端给的 counts.entries=3）。
-      const head = screen.getByText("项目配置").parentElement as HTMLElement;
-      expect(within(head).getByText("1")).toBeInTheDocument();
-    });
-
-    it("一行都不剩时整个分区不渲染（不是空态文案）", async () => {
-      mocked.fetchEffectiveCapabilities.mockResolvedValue(
-        caps([entry("unverified", { verification: "unknown" })]),
-      );
-      renderPage();
-      // 引擎面板出来了 = 数据已到位，此刻能力分区应该压根不在。
-      expect(screen.queryByText("已接引擎")).toBeNull();
-      await waitFor(() => expect(screen.queryByRole("table", { name: "项目配置" })).toBeNull());
-      expect(screen.queryByText("暂无能力配置")).toBeNull();
-    });
-
-    it("详情图标打开完整内容，关闭后恢复原来的列表位置与焦点", async () => {
-      mocked.fetchEffectiveCapabilities.mockResolvedValue(
-        caps([
-          entry("hooks", { capabilityType: "hooks", config: { value: { pre_tool: "audit.sh" } } }),
-          entry("mcp_servers", { capabilityType: "mcp", config: { value: { filesystem: {}, git: {} } } }),
-        ]),
-      );
-      renderPage();
-      const table = await screen.findByRole("table", { name: "项目配置" });
-      expect(within(table).getByText("pre_tool: audit.sh")).toBeInTheDocument();
-      expect(within(table).getByText("filesystem, git")).toBeInTheDocument();
-      expect(table.textContent).not.toContain("value=");
-      expect(table.textContent).not.toContain('{"pre_tool"');
-
-      const trigger = within(table).getAllByRole("button", { name: "查看完整内容" })[0];
-      await userEvent.click(trigger);
-      const dialog = screen.getByRole("dialog", { name: "hooks" });
-      expect(JSON.parse(within(dialog).getByTestId("capability-raw").textContent!)).toEqual({ pre_tool: "audit.sh" });
-      expect(within(table).queryByTestId("capability-raw")).toBeNull();
-      await userEvent.keyboard("{Escape}");
-      expect(screen.queryByRole("dialog")).toBeNull();
-      expect(trigger).toHaveFocus();
-    });
-
-    it("列表包含全部配置，不再隐藏第 8 项之后的内容", async () => {
-      mocked.fetchEffectiveCapabilities.mockResolvedValue(
-        caps(Array.from({ length: 11 }, (_, index) => entry(`cap-${index}`))),
-      );
-      renderPage();
-      const table = await screen.findByRole("table", { name: "项目配置" });
-      const rows = () => within(table).getAllByRole("row").filter((row) => !row.classList.contains("is-head"));
-      expect(rows()).toHaveLength(11);
-      expect(within(table).getByText("cap-10")).toBeInTheDocument();
-      expect(screen.queryByTestId("capabilities-show-all")).toBeNull();
-    });
-
-    it("通用和引擎配置直接切换，末项与已禁用项都能访问", async () => {
-      mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([
-        entry("writing"),
-        ...Array.from({ length: 12 }, (_, index) => entry(`native-${index}`, { capabilityType: "custom:runtime" })),
-      ], [{ capabilityType: "custom:runtime", capabilityId: "disabled-native", blockedByProjectId: "project:pronto", blocked: true }]));
-      renderPage();
-      const general = await screen.findByRole("tab", { name: "通用" });
-      const engine = screen.getByRole("tab", { name: "引擎配置" });
-      expect(general).toHaveAttribute("aria-selected", "true");
-      expect(screen.queryByText("native-11")).toBeNull();
-      await userEvent.click(engine);
-      expect(screen.getByText("native-11")).toBeVisible();
-      expect(screen.getByText("disabled-native")).toBeVisible();
-      expect(screen.queryByText("writing")).toBeNull();
-      await userEvent.keyboard("{ArrowLeft}");
-      expect(general).toHaveFocus();
-      expect(general).toHaveAttribute("aria-selected", "true");
-      expect(screen.getByText("writing")).toBeVisible();
-    });
-
-    it("只有引擎配置时直接显示内容", async () => {
-      mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([entry("native-only", { capabilityType: "custom:runtime" })]));
-      renderPage();
-      expect(await screen.findByText("native-only")).toBeVisible();
-      expect(screen.queryByRole("tablist")).toBeNull();
-    });
-
-    /* batch18 第 2 件（AD-144）：写端点在的时候才有「操作」列，菜单里有哪几条
-       只看这一行是什么——本项目行 / 继承行 / 已禁止行各一套。 */
-    describe("操作列（写端点已就位）", () => {
-      const localEntry = entry("fs", { capabilityType: "mcp" });
-      const inheritedEntry = entry("writing", {
-        sourceProjectId: "project:default",
-        inherited: true,
-        contributingProjectIds: ["project:default"],
-      });
-      const blockedRow = {
-        capabilityType: "skill",
-        capabilityId: "danger",
-        blockedByProjectId: "project:pronto",
-        blocked: true,
-      };
-
-      async function openMenu(index: number) {
-        const buttons = await screen.findAllByLabelText("能力操作");
-        await userEvent.click(buttons[index]);
-      }
-
-      it("本项目行：停用（子树）+ 移除本层分配", async () => {
-        mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([localEntry]));
-        renderPage();
-        await openMenu(0);
-        expect(screen.getByTestId("cap-action-block")).toHaveTextContent("停用（子树）");
-        expect(screen.getByTestId("cap-action-clear")).toHaveTextContent("移除本层分配");
-        expect(screen.queryByTestId("cap-action-unblock")).toBeNull();
-      });
-
-      it("Kaus 添加的 MCP 显示名称而不是 lib-mcp-…，提示也用名称", async () => {
-        const libraryMcp = entry("lib-mcp-aaaaaaaaaaaa", { capabilityType: "mcp",
-          config: { value: { libraryRef: { path: "/library/mcp/lib-mcp-aaaaaaaaaaaa.json" }, oauthKey: "lib-mcp-aaaaaaaaaaaa" } } });
-        mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([libraryMcp]));
-        mocked.deleteProjectCapability.mockResolvedValue({});
-        render(<ToastHost />);
-        renderPage();
-        expect(await screen.findByText("notes")).toBeInTheDocument();
-        expect(screen.getByText("笔记检索")).toBeInTheDocument();
-        expect(screen.queryByText(/lib-mcp-/)).toBeNull();
-        await openMenu(0);
-        await userEvent.click(screen.getByTestId("cap-action-clear"));
-        expect((await screen.findAllByText("已移除「notes」的本层分配")).length).toBeGreaterThan(0);
-      });
-
-      it("继承行：只有「在本项目停用」（本层还没有记录，删不动）", async () => {
-        mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([inheritedEntry]));
-        renderPage();
-        await openMenu(0);
-        expect(screen.getByTestId("cap-action-blockHere")).toHaveTextContent("在本项目停用");
-        expect(screen.queryByTestId("cap-action-clear")).toBeNull();
-      });
-
-      it("已停用行：只有「解除停用」，走 DELETE 并重取 effective-capabilities", async () => {
-        mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([], [blockedRow]));
-        renderPage();
-        await openMenu(0);
-        expect(screen.queryByTestId("cap-action-block")).toBeNull();
-        await userEvent.click(screen.getByTestId("cap-action-unblock"));
-        expect(mocked.deleteProjectCapability).toHaveBeenCalledWith("project:pronto", "skill", "danger");
-        // 写完重取一次：桌面上那份以服务端为准。
-        await waitFor(() => expect(mocked.fetchEffectiveCapabilities.mock.calls.length).toBeGreaterThan(1));
-      });
-
-      it("「停用（子树）」打 PUT {blocked:true} 到**当前**项目那一层（AD-45）", async () => {
-        mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([inheritedEntry]));
-        renderPage();
-        await openMenu(0);
-        await userEvent.click(screen.getByTestId("cap-action-blockHere"));
-        expect(mocked.putProjectCapability).toHaveBeenCalledWith("project:pronto", "skill", "writing", {
-          blocked: true,
-        });
-      });
-
-      it("写失败不改表：报一句人话，表里那一行照旧", async () => {
-        mocked.fetchEffectiveCapabilities.mockResolvedValue(caps([localEntry]));
-        mocked.putProjectCapability.mockRejectedValue(new Error("写不动"));
-        renderPage();
-        await openMenu(0);
-        await userEvent.click(screen.getByTestId("cap-action-block"));
-        expect(await screen.findByText("操作失败：写不动")).toBeInTheDocument();
-        expect(screen.getByText("fs")).toBeInTheDocument();
-      });
-    });
   });
 
   it("页内不再渲染项目树；上级项目经面包屑切换", async () => {

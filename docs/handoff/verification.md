@@ -3,6 +3,15 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 22 日：项目页「项目配置」表去掉，模块 MCP 进「配置」
+
+依据 `product-decisions.md`「项目页「项目配置」表」。前后对比（改前 9d309ef、改后当前代码）在本机 `output/visual-20261122/`。
+- 项目页去掉「项目配置」表（含「通用 / 引擎配置」两栏），删除 `CapabilitiesSection` 及 `lib/capabilityRows.ts`；20 个不再使用的 `capabilities.*` 词条同步删除（`ProjectDetailPage.tsx`，`i18n/zh.ts`、`en.ts`）。
+- 工作台模块写入的 MCP（`capability_id` 以 `module-` 开头）进入「配置」视图，显示为模块名、带锁、不可拖动；锁的提示为「来自工作台模块，在工作台调整」。后端对这类行的排布操作返回 409 `capability_from_module`；MCP 列表不重复列出（`skill_tree.py`、`mcp_manager.py`、`ProjectSkillTree.tsx`）。
+- 「引擎配置」（`<agent>:<name>` 类行，仅来自旧版 Hermes 迁移）不再在界面显示；数据库里的行不动，启动时照常下发。
+- 测试：新增 `test_workbench_module_mcp_is_shown_locked_and_cannot_be_arranged` 与前端「模块 MCP 带锁」用例，改写项目页首个用例（断言没有「项目配置」）并删除能力分区用例。前端 `npm run check` 通过（131 个文件 1,093 项）；内核 `pytest -q` 4,226 项通过、127 项跳过、7 项 warning；根目录 `tests/` 369 项通过（2 项 warning）。
+- 限制：模块 MCP 行的拖动柄与 ⋯ 显示为不可用，沿用「不可隔离」锁定行的做法，未另行隐藏；以后若在「设置 → Agent → Hermes」显示引擎配置，需新决定。
+
 ## 11 月 19 日（续）：待处理标记、项目页对话行的「空闲」
 
 依据 `product-decisions.md`「侧栏状态标记与减弱动态」。

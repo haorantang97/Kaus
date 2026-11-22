@@ -289,7 +289,10 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
     const item = { skill, entry };
     const isTarget = drop?.projectId === entry.projectId && drop.row === skill.id;
     // 原生 Agent 关不掉的：随 Agent 加载，树上锁住（拖动、菜单都不可用）。
-    const locked = skill.boundReason === "not_isolable";
+    // Locked: loads with the Agent regardless, or a workbench module decides its Project (2026-11-22).
+    const fromModule = skill.boundReason === "module";
+    const locked = skill.boundReason === "not_isolable" || fromModule;
+    const lockLabel = fromModule ? t("skillTree.fromModule") : t("skillTree.notIsolable");
     return <Fragment key={skill.id}><div className={`skill-tree-row skill-tree-skill${entry.inherited ? " is-inherited" : ""}${entry.blocked ? " is-blocked" : ""}${isTarget ? (drop.beforeSkillId === skill.id ? " drop-before" : " drop-after") : ""}`}
       style={{ "--tree-depth": depth } as CSSProperties} data-skill-drop={skill.pendingAssignment ? undefined : "row"} data-project-id={entry.projectId} data-agent-key={skill.agentKey ?? ""} data-skill-id={skill.id}>
       <button type="button" className="skill-tree-icon skill-tree-grip" aria-label={t("skillTree.drag", { name: skill.name })} title={t("skillTree.drag", { name: skill.name })}
@@ -300,7 +303,7 @@ export function ProjectSkillTree({ focusProject, initialAgent, refreshKey = 0, o
         : <FileText size={15} className="skill-tree-type" aria-hidden="true" />}
       <span className="skill-tree-name" title={skill.kind === "hook" ? hookDetail(skill) : skill.description || skill.name}>{skill.name}</span>
       {skill.kind === "hook" && skill.event && <span className="skill-tree-source" title={hookDetail(skill)}>{hookEvent(skill)}</span>}
-      {skill.bound && <span className="skill-tree-type" role="img" aria-label={locked ? t("skillTree.notIsolable") : t("skillTree.bound")} title={locked ? t("skillTree.notIsolable") : t("skillTree.bound")}><Lock size={12} aria-hidden="true" /></span>}
+      {skill.bound && <span className="skill-tree-type" role="img" aria-label={locked ? lockLabel : t("skillTree.bound")} title={locked ? lockLabel : t("skillTree.bound")}><Lock size={12} aria-hidden="true" /></span>}
       {skill.pendingAssignment && <span className="skill-tree-pending">{t("skillTree.pendingAssignment")}</span>}
       {entry.inherited && <span className="skill-tree-source" title={t("skillTree.inherited", { name: projectName(entry.sourceProjectId) })}><CornerUpLeft size={12} /><span>{projectName(entry.sourceProjectId)}</span></span>}
       {entry.blocked && <Ban size={13} aria-label={t("skillTree.blocked")} />}

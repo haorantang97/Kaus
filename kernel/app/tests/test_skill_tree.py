@@ -287,3 +287,24 @@ def test_generated_skill_versions_remain_pending_until_explicit_nonconflicting_a
     restored = act(svc, refreshed, 'undo', undoToken=view['undoToken'])
     assert next(s for s in restored['skills'] if s['id'] == replacement)['pendingAssignment']
     assert not entries(restored, 'work', replacement)
+
+
+def test_workbench_module_mcp_is_shown_locked_and_cannot_be_arranged(tree):
+    """2026-11-22: a module's own MCP appears in the tree (it used to show only on the project page), locked."""
+    svc, uow, _ = tree
+    row = ProjectCapability.create(project_id="project:work", capability_type="mcp", capability_id="module-kith",
+                                   config={"value": {"command": "node", "args": ["launcher.mjs"]}})
+    asyncio.run(uow.repositories.capabilities.save(row))
+    snap = svc.snapshot()
+    skill = next(s for s in snap["skills"] if s["name"] == "kith")
+    assert skill["kind"] == "mcp" and skill["bound"] is True and skill["boundReason"] == "module"
+    assert entries(snap, "work", skill["id"]) and entries(snap, "leaf", skill["id"])[0]["inherited"] is True
+    for action, extra in (("move", {"sourceProjectId": "project:work", "targetProjectId": "project:other"}),
+                          ("block", {"targetProjectId": "project:leaf"}),
+                          ("remove", {"targetProjectId": "project:work"})):
+        with pytest.raises(ApiError) as caught:
+            act(svc, svc.snapshot(), action, skill["id"], **extra)
+        assert caught.value.code == "capability_from_module"
+    # The row itself is untouched: the module keeps deciding where it goes.
+    rows = asyncio.run(uow.repositories.capabilities.list_for_projects(["project:work"]))["project:work"]
+    assert any(r.capability_id == "module-kith" for r in rows)
