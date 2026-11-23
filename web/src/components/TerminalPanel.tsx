@@ -56,18 +56,30 @@ export function TerminalPanel({ conversationId, onClose }: { conversationId: str
     let disposed = false;
     let ended = false;
     let retriedAuth = false;
-    const send = (frame: object) => { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame)); };
+    // Keys typed while the connection is still opening go out right after authentication.
+    let pending: object[] = [];
+    let ready = false;
+    const send = (frame: object) => {
+      if (ready && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame));
+      else if (!ended) pending.push(frame);
+    };
     const note = (text: string) => term.write(`\r\n\x1b[2m${text}\x1b[0m\r\n`);
 
     const connect = async (forceToken = false) => {
       ended = false;
+      ready = false;
       let token: string;
       try { token = await bootstrapSessionAuth(forceToken); } catch { ended = true; note(messages.current.disconnected); return; }
       if (disposed) return;
       const ws = new WebSocket(terminalUrl(conversationId));
       ws.binaryType = "arraybuffer";
       socket = ws;
-      ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, cols: term.cols, rows: term.rows }));
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: "auth", token, cols: term.cols, rows: term.rows }));
+        ready = true;
+        for (const frame of pending) ws.send(JSON.stringify(frame));
+        pending = [];
+      };
       ws.onmessage = event => {
         if (typeof event.data === "string") {
           try { if ((JSON.parse(event.data) as { type?: string }).type === "exit") { ended = true; note(messages.current.exited); } } catch { /* ignore */ }
@@ -77,7 +89,7 @@ export function TerminalPanel({ conversationId, onClose }: { conversationId: str
       };
       ws.onclose = event => {
         if (disposed || socket !== ws) return;
-        socket = null;
+        socket = null; ready = false; pending = [];
         if (event.code === CLOSE_UNAUTHORIZED && !retriedAuth) { retriedAuth = true; void connect(true); return; }
         if (ended) return;
         ended = true;

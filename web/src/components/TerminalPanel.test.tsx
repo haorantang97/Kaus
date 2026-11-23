@@ -49,8 +49,11 @@ describe("终端面板", () => {
     const socket = sockets[0];
     expect(socket.url).toBe(terminalUrl("c 1"));
     expect(socket.url).toMatch(/^ws:\/\/[^/]+\/api\/conversations\/c%201\/terminal$/);
+    act(() => terms[0].dataHandler("p"));
+    expect(socket.sent).toEqual([]);
     act(() => socket.open());
-    expect(socket.frames()[0]).toEqual({ type: "auth", token: "tok", cols: 90, rows: 20 });
+    // Authentication first; a key typed while connecting follows it.
+    expect(socket.frames().slice(0, 2)).toEqual([{ type: "auth", token: "tok", cols: 90, rows: 20 }, { type: "input", data: "p" }]);
     act(() => socket.onmessage?.({ data: new TextEncoder().encode("~/proj $ ").buffer }));
     expect(terms[0].text()).toContain("~/proj $ ");
     act(() => terms[0].dataHandler("ls\r"));
