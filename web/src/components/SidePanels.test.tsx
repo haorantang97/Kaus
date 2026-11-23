@@ -70,7 +70,7 @@ describe("文件面板", () => {
 });
 
 describe("一个面板位", () => {
-  const available = { changes: true, browser: false, files: true };
+  const available = { changes: true, browser: false, files: true, terminal: true };
   it("点另一个图标替换面板，再点当前图标收起；记在本窗口", () => {
     const { result } = renderHook(() => useSidePanel(available));
     act(() => result.current.toggle("files"));
@@ -88,13 +88,16 @@ describe("一个面板位", () => {
     expect(renderHook(() => useSidePanel({ ...available, browser: true })).result.current.panel).toBe("browser");
   });
 
-  it("页头按 改动、浏览器、文件 排列，当前面板按下", () => {
+  it("页头按 改动、浏览器、文件、终端 排列，当前面板按下；「到终端继续」另用外移图标", () => {
     const onToggle = vi.fn();
     render(<ConversationHeader title="t" onRename={vi.fn()} running={false} archived={false} statusText="" statusTitle={undefined}
       showUsage={false} usage={null as never} canOpenExternal handoffBusy={false} onOpenExternal={vi.fn()} archiveBusy={false} onChangeArchive={() => true}
-      panels={{ current: "files", available: { changes: true, browser: true, files: true }, onToggle }} />);
+      panels={{ current: "files", available: { changes: true, browser: true, files: true, terminal: true }, onToggle }} />);
     const labels = screen.getAllByRole("button").map(button => button.getAttribute("aria-label"));
-    expect(labels.slice(labels.indexOf("改动"), labels.indexOf("改动") + 4)).toEqual(["改动", "浏览器", "文件", "在终端打开"]);
+    expect(labels.slice(labels.indexOf("改动"), labels.indexOf("改动") + 5)).toEqual(["改动", "浏览器", "文件", "终端", "到终端继续"]);
+    const glyph = (name: string) => screen.getByRole("button", { name }).querySelector("svg")?.getAttribute("class");
+    expect(glyph("终端")).toContain("lucide-terminal");
+    expect(glyph("到终端继续")).toContain("square-arrow-out-up-right");
     expect(screen.getByRole("button", { name: "文件" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "改动" }));
     expect(onToggle).toHaveBeenCalledWith("changes");

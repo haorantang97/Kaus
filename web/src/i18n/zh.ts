@@ -169,6 +169,9 @@ export const zh = {
   "panel.changes": "改动",
   "panel.browser": "浏览器",
   "panel.files": "文件",
+  "panel.terminal": "终端",
+  "panel.terminal.exited": "进程已退出，按任意键重启",
+  "panel.terminal.disconnected": "连接已断开，按任意键重连",
   "panel.close": "收起面板",
   "panel.resize": "调整面板宽度",
   "panel.changes.count": "{count} 个文件",
@@ -613,7 +616,7 @@ export const zh = {
   "engine.approval.aria": "{name} 的审批模式",
   "card.question.answered": "已回答 · {prompt}",
   /* ---- phase4：双表面（到终端 / 回站内 / 只读态 / 校准） ---- */
-  "surface.action.openExternal": "在终端打开",
+  "surface.action.openExternal": "到终端继续",
   "surface.action.stopFirst": "先停止当前回合",
   "surface.action.returnToCard": "切回 Kaus",
   "surface.external.banner": "正在外部终端运行",

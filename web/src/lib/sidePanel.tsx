@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useState } from "react";
 
 /** The conversation page has one side panel slot; header icons switch what it shows
- *  (2026-11-22「页头面板」, same panels as the reference desktop app). */
-export type SidePanelKind = "changes" | "browser" | "files";
+ *  (2026-11-22「页头面板」, same panels as the reference desktop app; Terminal added 2026-11-23). */
+export type SidePanelKind = "changes" | "browser" | "files" | "terminal";
 
 const PANEL_KEY = "kaus.panel";
 const LEGACY_BROWSER_KEY = "kaus.browser.open";
@@ -13,7 +13,7 @@ const write = (key: string, value: string | null) => {
 
 function remembered(): SidePanelKind | null {
   const value = read(PANEL_KEY);
-  if (value === "changes" || value === "browser" || value === "files") return value;
+  if (value === "changes" || value === "browser" || value === "files" || value === "terminal") return value;
   return read(LEGACY_BROWSER_KEY) === "1" ? "browser" : null;
 }
 

@@ -111,6 +111,7 @@ from app.api.session_routes.events import build_event_routes
 from app.api.session_routes.interactions import build_interaction_routes
 from app.api.session_routes.messages import build_message_routes
 from app.api.session_routes.settings import build_settings_routes
+from app.api.session_routes.terminal import add_terminal_route
 from app.api.session_routes.surfaces import build_surface_routes
 from app.persistence.base import RepositorySet
 from runtime.session_host import SessionHost
@@ -132,6 +133,7 @@ def build_session_router(
     debug_endpoints: bool = False,
     attachment_root: str | Path | None = None,
     module_conversation_ids: Callable[[], set[str]] | None = None,
+    terminals: Any = None,
 ) -> Any:
     """装配会话路由。返回一个框架的 ``APIRouter``，由调用方 include。
 
@@ -221,6 +223,8 @@ def build_session_router(
                 item.path, item.endpoint, methods=item.methods, name=item.name,
                 dependencies=dependencies[item.auth],
             )
+    # The side panel's workspace shell (2026-11-23). A WebSocket: its own gate, see the module.
+    add_terminal_route(router, ctx, auth_policy, terminals)
     return router
 
 

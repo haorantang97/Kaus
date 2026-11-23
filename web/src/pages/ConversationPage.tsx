@@ -2,7 +2,7 @@ import { ContinuationDialog } from "../components/ContinuationDialog";
 import { ConversationJumpRail } from "../components/ConversationJumpRail";
 import { readableContinuationDraft } from "../lib/continuations";
 import { FileReference } from "../components/cards/ArtifactPreview";
-import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Square, FileText, X, LoaderCircle, GitBranch } from "lucide-react";
 import { BrowserPanel } from "../components/BrowserPanel";
 import { FilesPanel } from "../components/FilesPanel";
@@ -99,6 +99,9 @@ import { agentCommands, buildSuggestions } from "../lib/composerSuggestions";
 import { useConversationSettings } from "./conversation/useConversationSettings";
 import { useConversationSurface } from "./conversation/useConversationSurface";
 import { useTimelineFollow } from "./conversation/useTimelineFollow";
+
+/** xterm is large; it loads when the Terminal panel first opens. */
+const TerminalPanel = lazy(() => import("../components/TerminalPanel").then(module => ({ default: module.TerminalPanel })));
 
 export { FOLLOW_THRESHOLD_PX, STOP_CONFIRM_TIMEOUT_MS, atBottom, groupRows } from "./conversation/pageState";
 
@@ -749,7 +752,7 @@ export function ConversationPage({
     [checkDelivery, readOnly, items, resendText, running, settingsBusy, updateDraft],
   );
 
-  /* One side panel slot (2026-11-22「页头面板」): Changes, Browser and Files, switched from the header. */
+  /* One side panel slot (2026-11-22「页头面板」): Changes, Browser, Files and Terminal, switched from the header. */
   const browserAvailable = Boolean(browserBridge());
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
   useEffect(() => {
@@ -759,7 +762,8 @@ export function ConversationPage({
     return () => { cancelled = true; };
   }, [conversationId]);
   const changes = useMemo(() => changedFiles(items.filter((item): item is FileChangeItem => item.kind === "file")), [items]);
-  const side = useSidePanel({ changes: changes.length > 0 || workspaceRoot !== null, browser: browserAvailable, files: workspaceRoot !== null });
+  const panelsAvailable = { changes: changes.length > 0 || workspaceRoot !== null, browser: browserAvailable, files: workspaceRoot !== null, terminal: workspaceRoot !== null };
+  const side = useSidePanel(panelsAvailable);
   const browser = { open: side.panel === "browser" };
   const [filePath, setFilePath] = useState<string | null>(null);
   useEffect(() => { setFilePath(null); }, [conversationId]);
@@ -896,7 +900,7 @@ export function ConversationPage({
         onChangeArchive={changeArchive}
         onOpenContinuation={onContinue ? () => setContinuationOpen(true) : undefined}
         continuationDisabled={running || sending || handoffBusy}
-        panels={{ current: side.panel, available: { changes: changes.length > 0 || workspaceRoot !== null, browser: browserAvailable, files: workspaceRoot !== null }, onToggle: side.toggle }}
+        panels={{ current: side.panel, available: panelsAvailable, onToggle: side.toggle }}
       />
       {continuationOpen && detail && onContinue && <ContinuationDialog
         source={{ kind: "conversation", id: conversationId, projectId: detail.conversation.projectId }}
@@ -1170,6 +1174,7 @@ export function ConversationPage({
     {side.panel === "browser" && <BrowserPanel onClose={() => side.setPanel(null)} />}
     {side.panel === "files" && <FilesPanel conversationId={conversationId} selected={filePath} onSelect={setFilePath} onClose={() => side.setPanel(null)} />}
     {side.panel === "changes" && <ChangesPanel files={changes} onComment={addComment} onClose={() => side.setPanel(null)} />}
+    {side.panel === "terminal" && <Suspense fallback={null}><TerminalPanel conversationId={conversationId} onClose={() => side.setPanel(null)} /></Suspense>}
     </div>
     </SidePanelRoutingProvider>
   );

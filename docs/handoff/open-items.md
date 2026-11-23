@@ -58,7 +58,7 @@
 | 固定剪辑模块日常发布 | Chromium 开发预览已完成真实剪辑导出，日常 WKWebView 壳未替换 | 发布前验证现有聊天/终端、窗口和下载生命周期；补全新账号 OAuth、长视频与 4K。跨容器本地素材首次重新关联，不自动复制其他应用缓存 |
 | Kaus 外部贡献 | 已定 AGPL-3.0-only（版权方 Haoran Tang），`sdk/`、`examples/` 为 Apache-2.0；尚无 CLA | 接受外部 PR 前完成 CLA 文本审阅、CLA 工具和 `CONTRIBUTING.md` |
 | 启动时的旧 Hermes 导入 | 2026-11-03 实测：项目还没有能力行时，启动会重跑 `domain_bootstrap` 导入；本机一装 Hermes（出现 `~/.hermes/config.yaml`），就新建了指向 `backend:hermes`（原生 HTTP，未配置网关所以无驱动）的默认关联，还把根项目显示名从用户的「X」改回「default」。Agent 选择现已优先已接入的关联，但导入本身未改。2026-11-03 合并 `claude/external-terminal` 后：空环境默认接入 Hermes 已删除，旧文件导入改为打开领域库时一次性执行（见现状「Project 唯一存储」），是否仍会改名或抢默认未在真机复验 | 真机复验一次（已有项目 + 新装 Hermes）；仍复现则按「Hermes 只是普通 Agent」修导入：不改已有根项目显示名、不新建默认关联 |
-| 内嵌终端（已列入计划，暂不开发） | 会话页内嵌终端，与对话视图同一原生会话一键切换；外部终端启动器保留为选项 | 参考 stablyai/orca 的 PTY 常驻进程（服务端画面模型、重连复原、流量控制）与前端交互细节；开工前单独出设计，先做 node-pty 与 WKWebView 下 xterm 6 的可行性验证 |
+| 内嵌终端（已列入计划，暂不开发） | 会话页内嵌终端，与对话视图同一原生会话一键切换（与 11-23 的工作目录终端面板不同，那个只是普通 shell）；外部终端启动器保留为选项 | 参考 stablyai/orca 的 PTY 常驻进程（服务端画面模型、重连复原、流量控制）与前端交互细节；开工前单独出设计，先做 node-pty 与 WKWebView 下 xterm 6 的可行性验证 |
 | 外部终端增强实测 | 目录信任、更新提示、实时预览、Claude 状态 hook、草稿预填、控制 MCP 只有单元与 Mock 验证 | 装好 Claude Code / Codex 后按[设计文末记录](../product/external-terminal-enhancement-design.md)逐项实测；重点是 Claude `--settings` 与用户已有 hook 是否合并，以及 `--prefill` 与 `--resume` 同用 |
 | 终端状态覆盖 | cmux 的 Claude 包装器会把 Kaus 的 `--settings` 并入自己的 hook（依赖 `node`，缺失时 Kaus 不附加）；Codex 未接 | 在 cmux 下实测 Kaus 状态与 cmux 通知同时生效；Codex 只在 Kaus 托管 `CODEX_HOME` 时考虑 |
 | 运行中引导与回撤 | 普通对话运行中发送被拒绝；没有排队、引导和回撤 | 先做通用的排队发送；引导、回撤随 Claude Agent SDK、Codex app-server 直连驱动接入，ACP 等协议提案落地后再扩。Claude 改用 Agent SDK 前先核对 Anthropic 对第三方产品使用 claude.ai 订阅登录的限制，可能要求用户改用 API key |
@@ -109,4 +109,4 @@
 - 参考 Claude Code 桌面端页头，评估为对话页加浏览器、文件等面板入口。
 - 研究 Claude Code 的终端续接（同一会话在终端与图形界面之间切换）是怎样实现的，对照 Kaus 现有的「在终端打开 / 回到站内」。
 
-11-19 调研与提案见 `docs/product/header-panels-terminal-resume.md`（未定）：文件面板（含「改动」页签）、终端图标含义、通用带外检测等 8 项待负责人决定。
+11-19 调研与提案见 `docs/product/header-panels-terminal-resume.md`：8 项已于 11-22、11-23 全部定下并实现（见 `product-decisions.md`「页头面板」「带外检测」）。

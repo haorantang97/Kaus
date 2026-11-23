@@ -1380,7 +1380,7 @@ describe("成员终端入口", () => {
     renderDock();
     await openAndExpand(user, "评审");
     await user.click(screen.getByTestId("member-actions-group-member"));
-    await user.click(await screen.findByRole("menuitem", { name: "在终端打开" }));
+    await user.click(await screen.findByRole("menuitem", { name: "到终端继续" }));
     expect(navigate).toHaveBeenCalledWith("/conversations/conversation%3Agroup-member");
     expect(sessionStorage.getItem("kaus.surface.autoExternal")).toBe("conversation:group-member");
   });
@@ -1392,7 +1392,7 @@ describe("成员终端入口", () => {
     renderDock();
     await openAndExpand(user, "评审");
     await user.click(screen.getByTestId("member-actions-m1"));
-    expect(await screen.findByRole("menuitem", { name: "在终端打开" })).toBeDisabled();
+    expect(await screen.findByRole("menuitem", { name: "到终端继续" })).toBeDisabled();
     expect(navigate).not.toHaveBeenCalled();
   });
 
@@ -1403,7 +1403,7 @@ describe("成员终端入口", () => {
     await openAndExpand(user, "评审");
     await user.click(screen.getByTestId("member-actions-m1"));
     await waitFor(() => expect(session.fetchBackendUiCapabilities).toHaveBeenCalledWith("backend:mock"));
-    expect(screen.queryByRole("menuitem", { name: "在终端打开" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "到终端继续" })).toBeNull();
   });
 });
 

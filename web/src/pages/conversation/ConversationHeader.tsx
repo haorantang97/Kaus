@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArchiveRestore, FileDiff, Folder, GitBranch, Globe, Terminal } from "lucide-react";
+import { ArchiveRestore, FileDiff, Folder, GitBranch, Globe, SquareArrowOutUpRight, Terminal } from "lucide-react";
 
 import { useLocale } from "../../i18n";
 import { useDraftEscape } from "../../hooks/useDraftEscape";
@@ -32,12 +32,12 @@ export interface ConversationHeaderProps {
   /** 「用其他 Agent 接续」 as a header icon (2026-11-18); also in the sidebar row menu. */
   onOpenContinuation?: () => void;
   continuationDisabled?: boolean;
-  /** Panel switches (2026-11-22, same order as the reference desktop app: Changes, Browser, Files). One slot:
+  /** Panel switches (2026-11-22, same order as the reference desktop app: Changes, Browser, Files, Terminal). One slot:
    *  pressing another icon replaces the panel, pressing the open one closes it. */
   panels?: { current: SidePanelKind | null; available: Record<SidePanelKind, boolean>; onToggle: (kind: SidePanelKind) => void };
 }
 
-const PANEL_ICONS = [["changes", FileDiff], ["browser", Globe], ["files", Folder]] as const;
+const PANEL_ICONS = [["changes", FileDiff], ["browser", Globe], ["files", Folder], ["terminal", Terminal]] as const;
 
 export function ConversationHeader({
   title,
@@ -134,7 +134,8 @@ export function ConversationHeader({
               aria-label={t("surface.action.openExternal")}
               onClick={onOpenExternal}
             >
-              <Terminal size={16} aria-hidden />
+              {/* 2026-11-23: the terminal glyph belongs to the Terminal panel; moving the conversation out uses this one. */}
+              <SquareArrowOutUpRight size={16} aria-hidden />
             </button>
           )}
           {onOpenContinuation && !archived && (

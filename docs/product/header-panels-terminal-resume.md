@@ -158,6 +158,8 @@
 - 两家都没有 Kaus 这种「把对话搬到外部终端再搬回」；工作目录 shell 是工作区的一个面板，迁移对话放在会话菜单或斜杠命令里。若 Kaus 再做工作目录终端，不应与「搬到终端」共用终端图标。
 - 来源：learn.chatgpt.com integrated-terminal、commands、changelog；code.claude.com/docs/en/desktop。
 
+2026-11-23 负责人定 Q4：做工作目录终端面板，换新图标；实现见 `docs/handoff/verification.md`「11 月 23 日：终端面板」。
+
 ## 7 未确认与限制
 
 - Claude Code 桌面端是否列出 CLI 会话、如何从 CLI 会话接入桌面端（desktop.md「Coming from the CLI」正文未读到，与 sessions.md 表述可能不一致）。

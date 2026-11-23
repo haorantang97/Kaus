@@ -23,7 +23,7 @@ export default defineConfig({
     watch: { usePolling: true, interval: 1000 },
     ...(TUNNEL ? { allowedHosts: true as const } : {}),
     proxy: {
-      "/api": { target: BACKEND, changeOrigin: !TUNNEL },
+      "/api": { target: BACKEND, changeOrigin: !TUNNEL, ws: true },
     },
   },
 });

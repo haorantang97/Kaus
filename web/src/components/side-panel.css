@@ -42,3 +42,8 @@
 .kaus-changes-comment { padding: 6px 12px 8px 62px; background: color-mix(in srgb, var(--midground-base) 4%, transparent); }
 .kaus-changes-comment textarea { width: 100%; min-height: 44px; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--midground-base) 20%, transparent); border-radius: 7px; background: var(--background-base, transparent); color: var(--midground-base); font: 12.5px/1.5 inherit; resize: vertical; }
 .kaus-changes-comment textarea:focus { border-color: color-mix(in srgb, var(--midground-base) 36%, transparent); outline: none; }
+
+/* Terminal panel (2026-11-23): xterm fills the slot below the header. */
+.kaus-terminal-host { flex: 1; min-height: 0; padding: 6px 4px 6px 10px; overflow: hidden; background: var(--background-base, #fff); color: var(--midground-base, #222); }
+.kaus-terminal-host .xterm { height: 100%; }
+.kaus-terminal-host .xterm-viewport { background-color: transparent !important; }

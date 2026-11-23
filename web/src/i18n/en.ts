@@ -172,6 +172,9 @@ export const en: Record<keyof typeof zh, string> = {
   "panel.changes": "Changes",
   "panel.browser": "Browser",
   "panel.files": "Files",
+  "panel.terminal": "Terminal",
+  "panel.terminal.exited": "Process exited. Press any key to restart.",
+  "panel.terminal.disconnected": "Disconnected. Press any key to reconnect.",
   "panel.close": "Close panel",
   "panel.resize": "Resize panel",
   "panel.changes.count": "{count} files",
@@ -587,7 +590,7 @@ export const en: Record<keyof typeof zh, string> = {
   "engine.approval.aria": "Approval mode for {name}",
   "card.question.answered": "Answered · {prompt}",
   /* ---- phase4 ---- */
-  "surface.action.openExternal": "Open in terminal",
+  "surface.action.openExternal": "Continue in terminal",
   "surface.action.stopFirst": "Stop the current turn first",
   "surface.action.returnToCard": "Switch to Kaus",
   "surface.external.banner": "Running in an external terminal",

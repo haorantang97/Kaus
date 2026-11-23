@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pencil, Terminal, UserMinus, UserPlus } from "lucide-react";
+import { Pencil, SquareArrowOutUpRight, Terminal, UserMinus, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useLocale, type DictKey } from "../../i18n";
@@ -74,7 +74,7 @@ function MemberActions({
 
   const items: RowMenuItem[] = [
     ...(terminalSupported && conversation && !left && conversation.surface !== "external-cli" ? [{
-      id: "terminal", icon: <Terminal size={16} aria-hidden />, label: t("surface.action.openExternal"), disabled: running,
+      id: "terminal", icon: <SquareArrowOutUpRight size={16} aria-hidden />, label: t("surface.action.openExternal"), disabled: running,
       title: running ? t("surface.action.stopFirst") : undefined,
       onSelect: () => {
         requestExternalHandoff(member.conversationId);

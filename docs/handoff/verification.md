@@ -3,6 +3,17 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 23 日：终端面板（Q4）
+
+依据 `product-decisions.md`「页头面板」⑥。前后对比（改前 293a936、改后当前代码）在本机 `output/visual-20261123/`（`before-header`、`after-header`、`after-terminal`、`after-terminal-reopen`）。
+- 面板位第四个面板「终端」：会话工作目录里的普通登录 shell，不接管对话、不进原生会话。每个对话一个；收起或换面板只断开查看，shell 继续跑，再打开时回放最近 256 KB 输出；shell 退出、30 分钟无人连接、内核退出（关闭主端，挂断 shell）时结束；同时最多 8 个，满了先结束断开最久的。环境去掉 `KAUS_*`、`DASH_*`（`drivers/terminals/workspace_shell.py`）。
+- 接口：`WS /api/conversations/{id}/terminal`。握手查 `Origin`（与会话接口同一白名单），首帧 `{"type":"auth","token",cols,rows}` 校验 token（不放 URL）；之后 `input` / `resize` 帧，输出走二进制帧，退出发 `{"type":"exit"}`。关闭码 4401 token 无效、4403 跨站、4404 无此对话、4409 无工作目录。工作目录与文件面板同源（Runtime 观察到的 `runtime.workspace`）（`session_routes/terminal.py`、`session_router.py`）。
+- 前端：xterm.js 6.0.0 + addon-fit 0.11.0，按需加载（不进主包）；颜色取面板计算样式，跟随明暗主题；进程退出或断开后按任意键重启 / 重连；token 失效重取一次（`components/TerminalPanel.tsx`、`ConversationPage.tsx`）。Vite 开发代理开 `ws`。
+- 图标：终端图标归面板；「在终端打开」改名「到终端继续」，换外移图标（`SquareArrowOutUpRight`），页头与协作组成员菜单一致。项目页「在终端打开」（在项目目录开外部终端）不变。
+- 测试：前端 `npm run check` 通过（134 个文件 1,099 项，新增终端面板 3 项，页头顺序与图标断言更新）；根目录 `tests/` 369 项通过；内核全量首轮 4,242 项通过、1 项失败（公共层纯度检查拒收 PTY 代码放在 `app/api/`），把实现移到 `drivers/terminals/` 后纯度、终端与 `drivers/terminals` 测试 176 项通过；全量复跑 4,242 项通过、128 项跳过、7 项 warning（纯度检查少一个被扫文件，所以总数与首轮相同）。新增 `test_workspace_terminal.py` 7 项（真实 `/bin/sh`、临时目录：工作目录、回放、退出、闲置结束、腾位、环境过滤、路由鉴权与无工作目录）。
+- 实测：隔离实例 + 无头 Chrome 打开终端面板，`ls src`、`cat` 输出正确，换面板再打开输出保留。
+- 限制：只在 macOS 上运行过；日常 WKWebView 窗口未实测 xterm 6；终端不跟随项目改目录（换目录后下次连接重开）；后台进程占着终端时，shell 退出不会立即结束会话。
+
 ## 11 月 22 日（再续）：页头面板与带外检测
 
 依据 `product-decisions.md`「页头面板」「带外检测」。前后对比（改前 ae79bfb、改后当前代码）在本机 `output/visual-20261122/`（`before-conv*`、`after-*`）。
