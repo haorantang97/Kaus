@@ -43,7 +43,7 @@ export function ModuleFrame({module, onConversation, onConfigure}: {module: Work
       copy: content=>copyText(content),
       external: async url=>{
         const host=new URL(url).hostname;
-        if (!await confirmAsync(locale==="zh"?`打开 ${host}？`:`Open ${host}?`)) return false;
+        if (!await confirmAsync(t("module.openExternal", { host }))) return false;
         window.open(url,"_blank","noopener,noreferrer");return true;
       },
     }});

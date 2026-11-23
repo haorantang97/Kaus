@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { sessionRequest } from "./sessionApi";
 
 export interface TerminalSettingsWire {
@@ -9,7 +10,7 @@ export interface TerminalSettingsWire {
 function validatedSettings(value: TerminalSettingsWire): TerminalSettingsWire {
   if (!value || typeof value.app !== "string" || typeof value.trustWorkspace !== "boolean" || !Array.isArray(value.launchers) ||
       value.launchers.some((item) => !item || typeof item.id !== "string" || typeof item.label !== "string" || typeof item.installed !== "boolean")) {
-    throw new Error("无法读取终端设置，请刷新后重试");
+    throw new Error(t("terminal.settings.loadFailed"));
   }
   return value;
 }

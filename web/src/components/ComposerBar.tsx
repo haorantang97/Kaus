@@ -473,8 +473,8 @@ export function EngineConfigFields({ options, values = {}, onChange }: EngineCon
 }
 
 function EngineConfigMenu(props: EngineConfigProps) {
-  const { locale } = useLocale();
-  const label = locale === "en" ? "More settings" : "更多设置";
+  const { t } = useLocale();
+  const label = t("composer.moreSettings");
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);

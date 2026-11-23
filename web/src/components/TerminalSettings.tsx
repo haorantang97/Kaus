@@ -7,8 +7,7 @@ import { cream } from "./ui";
 import { SelectPopover } from "./SelectPopover";
 
 export function TerminalSettings() {
-  const { locale } = useLocale();
-  const en = locale === "en";
+  const { t } = useLocale();
   const id = useId();
   const [settings, setSettings] = useState<TerminalSettingsWire | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,27 +25,27 @@ export function TerminalSettings() {
     catch (failure) { setError(describeFailure(failure)); }
     finally { setSaving(false); }
   }
-  return <section className="flex flex-col gap-2" aria-label={en ? "Terminal" : "终端"}>
+  return <section className="flex flex-col gap-2" aria-label={t("terminal.settings.section")}>
     <div className="kaus-settings-preference-row">
-      <label htmlFor={id}><Terminal size={16} aria-hidden="true" />{en ? "Default terminal" : "默认终端"}</label>
-      <SelectPopover id={id} label={en ? "Default terminal" : "默认终端"} value={settings?.app ?? ""} disabled={!settings || saving}
-        placeholder={en ? "Loading…" : "加载中…"} searchable={false} onChange={app => void save({ app })}
+      <label htmlFor={id}><Terminal size={16} aria-hidden="true" />{t("terminal.settings.default")}</label>
+      <SelectPopover id={id} label={t("terminal.settings.default")} value={settings?.app ?? ""} disabled={!settings || saving}
+        placeholder={t("terminal.settings.loading")} searchable={false} onChange={app => void save({ app })}
         options={[
           ...(settings && !settings.launchers.some(item => item.id === settings.app) ? [{ value: settings.app, label: settings.app, disabled: true }] : []),
           ...(settings?.launchers.map(item => ({ value: item.id, label: item.label, disabled: !item.installed,
-            description: item.installed ? undefined : en ? "Not installed" : "未安装" })) ?? []),
+            description: item.installed ? undefined : t("terminal.settings.notInstalled") })) ?? []),
         ]} />
-      <span className="kaus-settings-save-status" role="status" aria-label={saving ? (en ? "Saving" : "保存中") : saved ? (en ? "Saved" : "已保存") : undefined}>
+      <span className="kaus-settings-save-status" role="status" aria-label={saving ? t("terminal.settings.saving") : saved ? t("terminal.settings.saved") : undefined}>
         {saving ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : saved ? <Check className="size-4" style={{ color: "var(--accent-text)" }} aria-hidden="true" /> : null}
       </span>
     </div>
     <div className="kaus-settings-preference-row">
-      <label id={`${id}-trust`}><ShieldCheck size={16} aria-hidden="true" />{en ? "Trust project folder" : "自动信任项目目录"}</label>
+      <label id={`${id}-trust`}><ShieldCheck size={16} aria-hidden="true" />{t("terminal.settings.trust")}</label>
       <button type="button" role="switch" className="kaus-switch" aria-labelledby={`${id}-trust`} aria-checked={settings?.trustWorkspace ?? false}
-        disabled={!settings || saving} title={en ? "Skip the agent's trust prompt when opening a terminal" : "打开终端时跳过 Agent 的目录信任询问"}
+        disabled={!settings || saving} title={t("terminal.settings.trustHint")}
         onClick={() => settings && void save({ trustWorkspace: !settings.trustWorkspace })}><span /></button>
     </div>
     {error && <p role="alert" className="text-xs" style={{ color: "var(--danger)", margin: 0 }}>{error}</p>}
-    {!settings && !error && <span className="sr-only" style={{ color: cream(50) }}>{en ? "Loading terminal settings" : "正在读取终端设置"}</span>}
+    {!settings && !error && <span className="sr-only" style={{ color: cream(50) }}>{t("terminal.settings.reading")}</span>}
   </section>;
 }

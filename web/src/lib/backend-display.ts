@@ -3,6 +3,7 @@
  * 这里只有名字与图标，没有任何行为分支。表里查不到的引擎回退成「用 id 当名字」
  * ——新引擎接进来不改代码也能显示，这正是这张表存在的理由。
  */
+import { t } from "../i18n";
 
 interface BackendDisplay {
   displayName: string;
@@ -76,7 +77,7 @@ export function backendKey(backendId: string | null | undefined): string {
 
 export function backendDisplay(backendId: string | null | undefined, fallback?: string): BackendDisplay {
   const key = backendKey(backendId);
-  if (!key) return { displayName: "未知引擎" };
+  if (!key) return { displayName: t("engine.unknown") };
   const brand = engineBrand(key);
   const displayName = brand?.catalog?.label ?? engineBrand(fallback)?.catalog?.label ?? fallback ?? brand?.name ?? key;
   return { displayName };
