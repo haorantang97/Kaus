@@ -6,6 +6,10 @@ import * as api from "../lib/sessionApi";
 import { ALL_SUPPORTED_UI_CAPABILITIES } from "../components/cards/capabilities";
 import { uploadConversationAttachment } from "../lib/attachmentsApi";
 
+vi.mock("../lib/enginePresets", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../lib/enginePresets")>(),
+  fetchEngineCatalog: vi.fn().mockResolvedValue({ engines: [] }),
+}));
 vi.mock("../lib/attachmentsApi", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/attachmentsApi")>(),
   uploadConversationAttachment: vi.fn(),
@@ -622,6 +626,24 @@ describe("新会话草稿页", () => {
     expect([conversationId, text]).toEqual(["conversation:new", "第一句"]);
     expect(clientRef).toBeTruthy();
     expect(onCreated).toHaveBeenCalledWith("conversation:new", { clientRef, text: "第一句" });
+  });
+
+  it("一个 Agent 都没有时，输入框换成接入一屏；有 Agent 时输入框下给示例问题，点了只填入", async () => {
+    mocked.fetchProjectBindings.mockResolvedValue({ projectId: "project:pronto", bindings: [], count: 0 });
+    const { unmount } = render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    expect(await screen.findByTestId("connect-first-agent")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    unmount();
+
+    mocked.fetchProjectBindings.mockResolvedValue({ projectId: "project:pronto", bindings: [binding], count: 1 });
+    const user = userEvent.setup();
+    render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
+    const examples = await screen.findByRole("group", { name: "示例问题" });
+    expect(screen.queryByTestId("connect-first-agent")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "梳理这个项目的结构与关键文件" }));
+    expect(screen.getByRole("textbox")).toHaveValue("梳理这个项目的结构与关键文件");
+    expect(examples).not.toBeInTheDocument();
+    expect(mocked.createConversation).not.toHaveBeenCalled();
   });
 
   it("换项目会清掉上一个项目的错误横幅（默认去向已失效时不粘住）", async () => {

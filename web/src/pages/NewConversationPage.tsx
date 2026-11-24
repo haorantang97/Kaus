@@ -1,5 +1,6 @@
 import { engineAcceptsNewWork } from "../lib/engineAvailability";
 import { EngineIcon } from "../components/EngineIcon";
+import { ConnectFirstAgent } from "../components/ConnectFirstAgent";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileText, LoaderCircle, ArrowUp } from "lucide-react";
 import { useLocale } from "../i18n";
@@ -50,6 +51,9 @@ import {
 
 /** 项目清单 → 菜单项：按项目树深度优先排开，`depth` 交给 `BarMenu` 做缩进。
  *  父不在清单里的当顶层处理，环（不该出现，但真出现时）靠 `seen` 兜住。 */
+const EXAMPLES_DONE_KEY = "kaus.examples.done";
+const EXAMPLE_KEYS = ["draft.example.structure", "draft.example.fix", "draft.example.tests"] as const;
+
 export function projectMenuOptions(projects: ProjectWire[], profiles: BindingWire[] = []): BarMenuOption[] {
   const ids = new Set(projects.map((project) => project.id));
   const children = new Map<string | null, ProjectWire[]>();
@@ -110,7 +114,12 @@ export function NewConversationPage({
   const [projects, setProjects] = useState<ProjectWire[]>([]);
   const [projectId, setProjectId] = useState<string>(() => matchProjectId([], initialProjectId || readDefaultDestination()));
   const [bindings, setBindings] = useState<BindingWire[] | null>(null);
+  /** The project's bindings could not be read: not the same as having none. */
+  const [bindingsFailed, setBindingsFailed] = useState(false);
   const [connectedBackends, setConnectedBackends] = useState<BackendWire[]>([]);
+  const [backendsLoaded, setBackendsLoaded] = useState(false);
+  /** An Agent connected from the empty state, to select once the lists include it. */
+  const pendingEngine = useRef<string | null>(null);
   const [bindingId, setBindingId] = useState<string>("");
   const selectionEpoch = useRef(0);
   // Remember each product's selected profile only for this draft, never in project defaults.
@@ -134,6 +143,8 @@ export function NewConversationPage({
   const [selectedExecution, setSelectedExecution] = useState<string | null>(null);
   const [selectedConfig, setSelectedConfig] = useState<Record<string, string | boolean>>({});
   const [text, setText] = useState<string>(() => readDraftText());
+  // Example prompts until the first message is sent from this window (a per-viewer convenience).
+  const [showExamples] = useState(() => { try { return localStorage.getItem(EXAMPLES_DONE_KEY) !== "1"; } catch { return true; } });
   const [files, setFiles] = useState<File[]>([]);
   const filesRef = useRef<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -148,12 +159,22 @@ export function NewConversationPage({
   const canAttach = caps?.card.attachments === "images" || caps?.card.attachments === "files";
   const canChooseModel = hasCapability(caps?.models.conversationScoped);
 
+  const [backendsRevision, setBackendsRevision] = useState(0);
   useEffect(() => {
     let cancelled = false;
     void fetchConnectedBackends().then(({ backends }) => {
-      if (!cancelled) setConnectedBackends(backends ?? []);
+      if (!cancelled) { setConnectedBackends(backends ?? []); setBackendsLoaded(true); }
     }).catch((failure) => { if (!cancelled) setError(describeFailure(failure)); });
     return () => { cancelled = true; };
+  }, [backendsRevision]);
+  // No Agent at all: the composer gives way to the connect screen (2026-11-24「新用户引导与空环境」).
+  // The connection list omits demo (mock) engines, so a usable binding also counts as an Agent.
+  const noAgents = backendsLoaded && bindings !== null && !bindingsFailed && !connectedBackends.some(backend => engineAcceptsNewWork(backend))
+    && !bindings.some(item => item.enabled && engineAcceptsNewWork(item));
+  const agentConnected = useCallback((backendId: string) => {
+    pendingEngine.current = backendId;
+    bindingsCache.current.clear();
+    setBackendsRevision(value => value + 1);
   }, []);
 
   useEffect(() => {
@@ -177,6 +198,7 @@ export function NewConversationPage({
     let cancelled = false;
     selectionEpoch.current += 1;
     const applyBindings = (list: BindingWire[]) => {
+      setBindingsFailed(false);
       setBindings(list);
       const usable = list.filter((item) => item.enabled && engineAcceptsNewWork(item));
       const preferred = preferredBinding(usable, connectedBackends, initialBindingId);
@@ -201,6 +223,7 @@ export function NewConversationPage({
       .catch((failure) => {
         if (cancelled) return;
         setBindings([]);
+        setBindingsFailed(true);
         setError(describeFailure(failure));
       });
     return () => {
@@ -230,6 +253,14 @@ export function NewConversationPage({
       }
     }
   };
+
+  // Select the Agent just connected from the empty state once both lists include it.
+  useEffect(() => {
+    const pending = pendingEngine.current;
+    if (!pending || bindings === null || !connectedBackends.some(backend => backend.id === pending)) return;
+    pendingEngine.current = null;
+    void selectEngine(pending);
+  });
 
   const engineGroups = useMemo(() => {
     const groups = new Map<string, { primary: BindingWire; choice: BindingWire }>();
@@ -418,6 +449,7 @@ export function NewConversationPage({
       if (attachments.length) await sendConversationMessage(draft.id, body, clientRef, attachments);
       else await sendConversationMessage(draft.id, body, clientRef);
       writeDraftText("");
+      try { localStorage.setItem(EXAMPLES_DONE_KEY, "1"); } catch { /* examples only */ }
       writeDefaultDestination(projectId);
       onCreated(draft.id, { clientRef, text: body, ...(attachments.length ? { attachments } : {}) });
       completed = true;
@@ -469,8 +501,9 @@ export function NewConversationPage({
           <button type="button" className="kaus-inline-action" onClick={() => onCreated(unconfirmed.conversationId, { clientRef: unconfirmed.clientRef, text: unconfirmed.text, ...(unconfirmed.attachments.length ? { attachments: unconfirmed.attachments } : {}) })}>{t("draft.send.openExisting")}</button>
         </div>}
 
+        {noAgents && <ConnectFirstAgent onConnected={agentConnected} />}
         {/* 批次十三：草稿页接会话页那条工具栏（DESIGN ★ I），项目下拉保留在最左。 */}
-        <Composer
+        {!noAgents && <Composer
           bar={{
             contextKey: projectId ?? "draft",
             leading: (
@@ -546,7 +579,11 @@ export function NewConversationPage({
           rows={3}
           disabled={sending}
           onSend={onSend}
-        />
+        />}
+        {!noAgents && showExamples && !text.trim() && !files.length && <div className="kaus-draft-examples" role="group" aria-label={t("draft.examples")}>
+          {EXAMPLE_KEYS.map(key => <button key={key} type="button" className="kaus-draft-example"
+            onClick={() => { setText(t(key)); textareaRef.current?.focus(); }}>{t(key)}</button>)}
+        </div>}
       </div>
     </div>
   );
