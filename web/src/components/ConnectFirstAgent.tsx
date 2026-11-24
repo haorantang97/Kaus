@@ -12,10 +12,12 @@ import { EngineIcon } from "./EngineIcon";
 import { ErrorNotice, Modal, toast } from "./ui";
 import "./connect-first-agent.css";
 
-/** Installed engines first, then the catalog's own order. */
-export function firstAgentRows(groups: EngineCatalogGroup[]): EngineCatalogGroup[] {
+/** Every installed engine, then the catalog's leading others up to `limit` rows; the rest are
+ *  under「其他 Agent」. */
+export function firstAgentRows(groups: EngineCatalogGroup[], limit = 6): EngineCatalogGroup[] {
   const installed = (group: EngineCatalogGroup) => group.variants.some(variant => variant.detected);
-  return [...groups.filter(installed), ...groups.filter(group => !installed(group))];
+  const found = groups.filter(installed);
+  return [...found, ...groups.filter(group => !installed(group)).slice(0, Math.max(0, limit - found.length))];
 }
 
 /** Shown instead of the composer while no Agent is connected (2026-11-24「新用户引导与空环境」).

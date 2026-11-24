@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { ConnectFirstAgent } from "./ConnectFirstAgent";
+import { ConnectFirstAgent, firstAgentRows } from "./ConnectFirstAgent";
+import { groupEnginePresets } from "../lib/enginePresets";
 import { connectEngine, fetchEngineCatalog, type EnginePreset } from "../lib/enginePresets";
 
 vi.mock("../lib/enginePresets", async original => ({ ...await original<typeof import("../lib/enginePresets")>(), fetchEngineCatalog: vi.fn(), connectEngine: vi.fn() }));
@@ -30,6 +31,14 @@ describe("没有 Agent 时的接入一屏", () => {
     await user.click(screen.getByRole("button", { name: "复制安装命令：npm install -g @google/gemini-cli" }));
     expect(writeText).toHaveBeenCalledWith("npm install -g @google/gemini-cli");
     expect(screen.getByRole("button", { name: "其他 Agent" })).toBeInTheDocument();
+  });
+
+  it("全部已安装的都列出，其余补到 6 行为止", () => {
+    const engines = [...Array.from({ length: 8 }, (_, i) => preset(`x${i}`, `X${i}`, false)), preset("a", "A", true), preset("b", "B", true)];
+    const rows = firstAgentRows(groupEnginePresets(engines));
+    expect(rows).toHaveLength(6);
+    expect(rows.slice(0, 2).map(row => row.label).sort()).toEqual(["A", "B"]);
+    expect(firstAgentRows(groupEnginePresets(engines), 1).map(row => row.label).sort()).toEqual(["A", "B"]);
   });
 
   it("接入后交回刚接入的 Agent；第一次接入先走能力分配", async () => {
