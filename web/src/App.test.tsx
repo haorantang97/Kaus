@@ -279,6 +279,19 @@ describe("404 与幽灵页", () => {
     expect(page.querySelector("a")?.getAttribute("href")).toBe("/");
   });
 
+  it("g+字母不再是快捷键（2026-11-23 去掉，页面命令只走菜单栏 ⌘ 组合）", async () => {
+    stubFetch(200);
+    renderApp("/conversations/conversation:1");
+    await waitFor(() => expect(screen.getByTestId("conversation-sidebar")).toBeInTheDocument());
+    const before = screen.getByTestId("pathname").textContent;
+    fireEvent.keyDown(document.body, { key: "g" });
+    fireEvent.keyDown(document.body, { key: "s" });
+    fireEvent.keyDown(document.body, { key: "g" });
+    fireEvent.keyDown(document.body, { key: "n" });
+    expect(screen.getByTestId("pathname").textContent).toBe(before);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("/projects/不存在 渲染「没有这个项目」，不渲染项目页骨架", async () => {
     stubFetch(200);
     renderApp("/projects/nope");

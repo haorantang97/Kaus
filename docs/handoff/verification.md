@@ -10,7 +10,7 @@
 - 菜单栏语言：桌面菜单原来固定中文，而界面默认跟随系统语言（本机 en-GB 时界面英文、菜单中文）。改为跟随 macOS 首选语言：首选中文用中文，其余用英文（`desktop/app_menu.py` `menu_language`）。在 Kaus 设置里手动改界面语言时菜单不跟着变（菜单在启动时建好）。
 - 菜单与快捷键实测：用 `desktop/app.py` 打开日常窗口接隔离后端，经菜单触发「新对话」「设置」「放大 / 实际大小」都生效（11-18 记的「WKWebView 里未验证」已补）；改后菜单显示 File / View / Settings 等英文标题。键盘直接按 ⌘N 未单独测（菜单项绑定了同一快捷键）。
 - 焦点：文件面板树行自带的 2px 描边规则删掉；实际上它一直被统一焦点样式覆盖，前后截图一致（`output/visual-20261123/before-tree-focus`、`after-tree-focus`）。
-- g+字母快捷键（`App.tsx`）未动，待负责人定。
+- g+字母快捷键：负责人定为去掉（product-decisions「快捷键」）。`App.tsx` 只保留 Esc 关闭菜单与新建项目框；键盘事件目标不是元素时（直接派发到 window）不再报错。`App.test.tsx` 新增 1 项：按 g s、g n 地址与弹窗都不变（旧代码下此测试失败，会跳到 `/config`）。
 - 测试：前端 `npm run check` 135 个文件 1,100 项通过（新增 `backend-display.test.ts`）；根目录 `tests/` 372 项通过（新增 `test_desktop_menu.py` 3 项）。内核未改动，未重跑。
 
 ## 11 月 23 日：终端面板（Q4）

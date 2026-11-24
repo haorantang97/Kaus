@@ -208,34 +208,17 @@ export function App() {
   // `<html lang>` 跟着界面语言走（读屏软件与浏览器翻译都看它）。
   useEffect(applyDocumentLang, [pref]);
 
-  // keyboard shortcuts: Esc close · g then a/r/d/v/w/s/n
+  // Esc closes the menu and the new-project dialog. Page shortcuts are ⌘ combinations in the desktop
+  // menu bar; the old g+letter chords were removed 2026-11-23 (product-decisions「快捷键」).
   useEffect(() => {
     if (!sessionOn) return;
-    let g = false;
-    let t = 0;
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const inInput = Boolean(target?.closest("input, textarea, select, [contenteditable='true']"));
-      if (inInput) return;
-      if (e.key === "Escape") { setMenu(null); setNewOpen(false); g = false; return; }
-      if (e.key === "g") { g = true; clearTimeout(t); t = window.setTimeout(() => { g = false; }, 1200); return; }
-      if (g) {
-        g = false;
-        /* `g` + 字母 = 换地址（第 1 件）：以前是改 view/overlay，URL 不动，
-           于是"跳过去了但链接还是上一页"。 */
-        if (e.key === "h") goView("overview");
-        else if (e.key === "a") { setAgentMode("chat"); goView("agents"); }
-        else if (e.key === "r") {
-          setAgentMode("governance");
-          goView("agents");
-        }
-        else if (e.key === "s") goView("config");
-        else if (e.key === "n") { setNewAgentParent(null); setNewOpen(true); }
-      }
+      if (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (e.key === "Escape") { setMenu(null); setNewOpen(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [goView, sessionOn]);
+  }, [sessionOn]);
   // Desktop menu bar commands (desktop/app_menu.py, 2026-11-18): 新对话 ⌘N · 新建项目 ⇧⌘N · 设置 ⌘,
   useEffect(() => {
     if (!sessionOn) return;
