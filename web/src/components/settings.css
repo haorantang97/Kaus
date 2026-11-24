@@ -125,3 +125,6 @@ a.kaus-settings-link { text-decoration:none; }
 .kaus-mcp-section { margin-top:16px; }
 .kaus-mcp-section>h4 { margin:0 0 6px; font-size:12px; font-weight:400; color:color-mix(in srgb,var(--midground-base) 70%,transparent); }
 .kaus-mcp-diagnostics { margin-top:6px; max-height:160px; overflow:auto; padding:8px; border-radius:6px; white-space:pre-wrap; word-break:break-all; background:color-mix(in srgb,var(--midground-base) 6%,transparent); font-size:11px; }
+
+/* Data location (installed app only): the path, home shown as ~. */
+.kaus-settings-path { min-width:0; max-width:46%; overflow:hidden; color:var(--text-secondary); font:12px var(--theme-font-mono); text-overflow:ellipsis; white-space:nowrap; }

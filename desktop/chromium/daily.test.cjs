@@ -46,3 +46,13 @@ test('quota sign-in reads only this site’s secure Oasis-Token after activation
   assert.equal(d.stepfunTokens('evil', page, [cookie]), null);
   assert.ok(d.LOGIN_ID.test('a'.repeat(32))); assert.ok(!d.LOGIN_ID.test('short')); assert.ok(!d.LOGIN_ID.test('a'.repeat(31) + '/'));
 });
+
+test('data moves into the chosen folder, or a Kaus folder inside a non-empty one', () => {
+  const from = '/Users/a/Library/Application Support/Kaus/Data';
+  assert.deepEqual(d.moveTarget(from, '/Users/a/Data/Kaus', true), { target: '/Users/a/Data/Kaus' });
+  assert.deepEqual(d.moveTarget(from, '/Users/a/Data/', false), { target: '/Users/a/Data/Kaus' });
+  assert.deepEqual(d.moveTarget(from, from, true), { error: 'same_location' });
+  assert.deepEqual(d.moveTarget(from, `${from}/sub`, true), { error: 'nested_location' });
+  assert.deepEqual(d.moveTarget(from, '/Users/a/Library/Application Support', true), { error: 'nested_location' });
+  assert.deepEqual(d.moveTarget(from, 'relative', true), { error: 'invalid_location' });
+});

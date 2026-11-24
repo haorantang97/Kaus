@@ -12,6 +12,7 @@ import { archiveConversation, deleteConversation, describeFailure, fetchArchived
 import { backendDisplay } from "../lib/backend-display";
 import { CoordinatorSettings } from "./CoordinatorSettings";
 import { TerminalSettings } from "./TerminalSettings";
+import { DataLocationSetting } from "./DataLocationSetting";
 import { SelectPopover } from "./SelectPopover";
 import { AgentConnections } from "./AgentConnections";
 import { AccountQuotaSettings } from "./AccountQuotaSettings";
@@ -152,6 +153,7 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "system", onThe
                 onChange={value => setPref(value as LocalePref)} />
             </div>
             <TerminalSettings key={reload} />
+            <DataLocationSetting />
           </div>
         </>}
         {section === "agents" && <AgentConnections refreshKey={`${refreshKey}:${reload}`} />}

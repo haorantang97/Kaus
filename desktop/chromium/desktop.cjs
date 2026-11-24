@@ -28,8 +28,19 @@ function backendCommand() {
   const repo = path.resolve(__dirname, '..', '..');
   return { python: path.join(repo, '.venv', 'bin', 'python'), cwd: repo };
 }
-/** Where an installed Kaus keeps its data (KAUS_HOME overrides; see product-decisions「安装包与后台」). */
-function dataHome() { return path.isAbsolute(process.env.KAUS_HOME || '') ? process.env.KAUS_HOME : path.join(app.getPath('appData'), 'Kaus', 'Data'); }
+// The shell's own settings (the data location); not part of the backend's data.
+function settingsPath() { return path.join(app.getPath('userData'), 'desktop-settings.json'); }
+function readSettings() { try { const value = JSON.parse(fs.readFileSync(settingsPath(), 'utf8')); return value && typeof value === 'object' ? value : {}; } catch { return {}; } }
+function writeSettings(value) { fs.mkdirSync(path.dirname(settingsPath()), { recursive: true }); fs.writeFileSync(settingsPath(), JSON.stringify(value, null, 2) + '\n'); }
+/** Where an installed Kaus keeps its data: KAUS_HOME, else the location chosen in Settings,
+ *  else Application Support (product-decisions「安装包与后台」③). */
+function dataHome() {
+  if (path.isAbsolute(process.env.KAUS_HOME || '')) return process.env.KAUS_HOME;
+  const chosen = readSettings().dataHome;
+  return typeof chosen === 'string' && path.isAbsolute(chosen) ? chosen : path.join(app.getPath('appData'), 'Kaus', 'Data');
+}
+/** Only an installed app that runs its own backend moves its data; development keeps the repository's. */
+function dataMovable() { return app.isPackaged && !path.isAbsolute(process.env.KAUS_HOME || ''); }
 /** Copy the bundled backend into the data folder when its version changes; never touch state/. */
 function syncBackend(source, target) {
   const version = fs.readFileSync(path.join(source, 'VERSION'), 'utf8').trim();
@@ -110,6 +121,17 @@ function installDesktop({ getWindow, origin, isUi, preferences }) {
       if (!fs.statSync(chosen).isFile()) throw new Error('The selected file is not executable');
       return chosen;
     });
+    if (action === 'dataLocation') {
+      if (!isUi(event)) return { error: 'scope_denied' };
+      return { path: dataHome(), home: app.getPath('home'), movable: dataMovable() };
+    }
+    if (action === 'moveData') {
+      if (!isUi(event)) return { error: 'scope_denied' };
+      if (!dataMovable()) return { error: 'not_movable' };
+      if (busy) return { error: 'busy' };
+      busy = true;
+      try { return await moveData(typeof data.target === 'string' ? data.target : null); } finally { busy = false; }
+    }
     if (action === 'loginQuotaConnection') {
       if (!isUi(event)) return { status: 'failed', reason: 'login_failed' };
       if (busy) return { status: 'failed', reason: 'login_in_progress' };
@@ -118,6 +140,42 @@ function installDesktop({ getWindow, origin, isUi, preferences }) {
     }
     return { error: 'invalid_request' };
   });
+
+  /** Move the data folder: stop the backend, copy, switch, restart; drop the old copy only once
+   *  the backend runs from the new one. On failure everything goes back to the old folder. */
+  async function moveData(requested) {
+    const current = dataHome();
+    let chosen = requested;
+    if (!chosen) {
+      const result = await dialog.showOpenDialog(getWindow(), { defaultPath: app.getPath('home'), properties: ['openDirectory', 'createDirectory'] });
+      if (result.canceled || !result.filePaths[0]) return { cancelled: true };
+      chosen = result.filePaths[0];
+    }
+    if (!path.isAbsolute(chosen)) return { error: 'invalid_location' };
+    let empty = true;
+    try { empty = fs.readdirSync(chosen).filter(name => name !== '.DS_Store').length === 0; } catch {}
+    const plan = daily.moveTarget(path.resolve(current), path.resolve(chosen), empty);
+    if (plan.error) return plan;
+    const target = plan.target;
+    if (fs.existsSync(target) && fs.readdirSync(target).filter(name => name !== '.DS_Store').length) return { error: 'target_not_empty' };
+    const previous = readSettings();
+    await stopBackend();
+    try {
+      fs.mkdirSync(target, { recursive: true });
+      if (fs.existsSync(current)) fs.cpSync(current, target, { recursive: true, preserveTimestamps: true });
+      writeSettings({ ...previous, dataHome: target });
+      if (!await ensureBackend(origin)) throw new Error('backend did not start');
+    } catch {
+      await stopBackend();
+      writeSettings(previous);
+      try { fs.rmSync(target, { recursive: true, force: true }); } catch {}
+      await ensureBackend(origin);
+      return { error: 'move_failed' };
+    }
+    try { fs.rmSync(current, { recursive: true, force: true }); } catch {}
+    const w = getWindow(); if (w && !w.isDestroyed()) w.webContents.reload();
+    return { path: target };
+  }
 
   /** Only the fresh sign-in window's credentials cross the local API boundary. */
   async function quotaLogin(loginId) {
@@ -211,4 +269,4 @@ function buildMenu(getWindow) {
   ]);
 }
 
-module.exports = { ensureBackend, stopBackend, backendDownPage, dataHome, installDesktop, buildMenu };
+module.exports = { ensureBackend, stopBackend, backendDownPage, dataHome, dataMovable, installDesktop, buildMenu };

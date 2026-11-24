@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('kausDesktop', Object.freeze({
   chooseDirectory: initialPath => ipcRenderer.invoke('kaus:desktop', { action: 'chooseDirectory', initialPath }),
   chooseExecutable: initialPath => ipcRenderer.invoke('kaus:desktop', { action: 'chooseExecutable', initialPath }),
   loginQuotaConnection: loginId => ipcRenderer.invoke('kaus:desktop', { action: 'loginQuotaConnection', loginId }),
+  dataLocation: () => ipcRenderer.invoke('kaus:desktop', { action: 'dataLocation' }),
+  moveData: target => ipcRenderer.invoke('kaus:desktop', { action: 'moveData', ...(typeof target === 'string' ? { target } : {}) }),
 }));
 contextBridge.exposeInMainWorld('kausBrowserNative', Object.freeze({
   version: 1,

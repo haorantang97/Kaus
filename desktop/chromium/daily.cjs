@@ -73,4 +73,16 @@ function stepfunTokens(site, pageUrl, cookies) {
   return null;
 }
 
-module.exports = { DEFAULT_ORIGIN, origin, startPath, MENU_TEXT, menuLanguage, menuText, ZOOM_STEPS, nextZoom, scaleBounds, STEPFUN, LOGIN_ID, stepfunLoginUrl, stepfunTokens };
+/** Where moved data goes: the chosen folder itself when it is empty (or new), otherwise a "Kaus"
+ *  folder inside it. Never the current folder, inside it, or around it. */
+function moveTarget(current, chosen, chosenIsEmpty) {
+  const norm = value => typeof value === 'string' && value.startsWith('/') ? value.replace(/\/+$/, '') || '/' : null;
+  const from = norm(current), base = norm(chosen);
+  if (!from || !base) return { error: 'invalid_location' };
+  const target = chosenIsEmpty ? base : `${base === '/' ? '' : base}/Kaus`;
+  if (target === from) return { error: 'same_location' };
+  if (target.startsWith(`${from}/`) || from.startsWith(`${target}/`)) return { error: 'nested_location' };
+  return { target };
+}
+
+module.exports = { moveTarget, DEFAULT_ORIGIN, origin, startPath, MENU_TEXT, menuLanguage, menuText, ZOOM_STEPS, nextZoom, scaleBounds, STEPFUN, LOGIN_ID, stepfunLoginUrl, stepfunTokens };

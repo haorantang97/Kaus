@@ -3,6 +3,16 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 25 日：数据位置设置、旧窗口资料清理
+
+依据 `product-decisions.md`「安装包与后台」③。前后对比在本机 `output/visual-20261125/`（`before-settings-row`、`after-settings-row`；改前效果用同一个安装包在 `KAUS_HOME` 固定、该行隐藏的模式下拍）。
+- 设置 → 通用新增「数据位置」：只在安装版、且未用 `KAUS_HOME` 固定时显示；显示当前数据文件夹（家目录写成 `~`）和「更改」（`components/DataLocationSetting.tsx`）。开发时不显示（数据在仓库 `state/`）。
+- 更改由桌面壳完成（`desktop/chromium/desktop.cjs` `moveData`）：选文件夹（空文件夹就用它，否则在里面建 `Kaus`）→ 停后台 → 复制 → 记到壳自己的 `desktop-settings.json` → 用新位置启动后台并确认 → 删旧副本 → 刷新窗口。任一步失败就还原设置、删掉复制品、在原位置重启，提示「移动失败，数据仍在原位置」。不能移到当前文件夹之内或外层、目标不能非空（`daily.moveTarget`，有 node 测试）。
+- 实测（安装包、隔离的窗口资料，经调试端口调用）：移到当前文件夹内被拒（`nested_location`）；移到新文件夹后旧文件夹已删、新文件夹有完整 `state/`、设置已更新、后台从新文件夹（进程工作目录）运行并正常响应；退出 App 后后台结束。原生文件夹选择框没有点按（负责人未授权屏幕控制）。
+- `~/Library/Application Support/KausChromiumPreview`（旧开发窗口资料，35 MB，含 ChatCut / Midjourney 登录）移到废纸篓，可从废纸篓恢复；PROJECT.md 与存储指南同步。
+- 仍做不了：签名与公证（需 Apple 开发者账号）、自动更新（macOS 自动更新要求已签名的 App）、Intel 版（本机没有 Rosetta，装出来也无法验证运行）。
+- 测试：前端 `npm run check` 通过（新增 `DataLocationSetting.test.tsx` 3 项）；`desktop/chromium` `npm test` 13 项通过。
+
 ## 11 月 24 日（再续）：没有 Agent 时的接入一屏（示例问题 11-25 删除）
 
 依据 `product-decisions.md`「新用户引导与空环境」。前后对比在本机 `output/visual-20261124/`（`before-empty` / `after-empty`、`before-examples` / `after-examples`），用同一份合成数据、两个隔离实例（改前 07789c4，改后当前代码）拍摄，测试用 `codex` / `claude` 是只打印版本的替身命令。
