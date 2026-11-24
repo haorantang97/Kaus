@@ -628,7 +628,7 @@ describe("新会话草稿页", () => {
     expect(onCreated).toHaveBeenCalledWith("conversation:new", { clientRef, text: "第一句" });
   });
 
-  it("一个 Agent 都没有时，输入框换成接入一屏；有 Agent 时输入框下给示例问题，点了只填入", async () => {
+  it("一个 Agent 都没有时，输入框换成接入一屏；有可用绑定时照常显示输入框", async () => {
     mocked.fetchProjectBindings.mockResolvedValue({ projectId: "project:pronto", bindings: [], count: 0 });
     const { unmount } = render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
     expect(await screen.findByTestId("connect-first-agent")).toBeInTheDocument();
@@ -636,14 +636,9 @@ describe("新会话草稿页", () => {
     unmount();
 
     mocked.fetchProjectBindings.mockResolvedValue({ projectId: "project:pronto", bindings: [binding], count: 1 });
-    const user = userEvent.setup();
     render(<NewConversationPage initialProjectId="pronto" onCreated={vi.fn()} />);
-    const examples = await screen.findByRole("group", { name: "示例问题" });
+    expect(await screen.findByRole("textbox")).toBeInTheDocument();
     expect(screen.queryByTestId("connect-first-agent")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "梳理这个项目的结构与关键文件" }));
-    expect(screen.getByRole("textbox")).toHaveValue("梳理这个项目的结构与关键文件");
-    expect(examples).not.toBeInTheDocument();
-    expect(mocked.createConversation).not.toHaveBeenCalled();
   });
 
   it("换项目会清掉上一个项目的错误横幅（默认去向已失效时不粘住）", async () => {

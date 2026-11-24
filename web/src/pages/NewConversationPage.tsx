@@ -51,9 +51,6 @@ import {
 
 /** 项目清单 → 菜单项：按项目树深度优先排开，`depth` 交给 `BarMenu` 做缩进。
  *  父不在清单里的当顶层处理，环（不该出现，但真出现时）靠 `seen` 兜住。 */
-const EXAMPLES_DONE_KEY = "kaus.examples.done";
-const EXAMPLE_KEYS = ["draft.example.structure", "draft.example.fix", "draft.example.tests"] as const;
-
 export function projectMenuOptions(projects: ProjectWire[], profiles: BindingWire[] = []): BarMenuOption[] {
   const ids = new Set(projects.map((project) => project.id));
   const children = new Map<string | null, ProjectWire[]>();
@@ -143,8 +140,6 @@ export function NewConversationPage({
   const [selectedExecution, setSelectedExecution] = useState<string | null>(null);
   const [selectedConfig, setSelectedConfig] = useState<Record<string, string | boolean>>({});
   const [text, setText] = useState<string>(() => readDraftText());
-  // Example prompts until the first message is sent from this window (a per-viewer convenience).
-  const [showExamples] = useState(() => { try { return localStorage.getItem(EXAMPLES_DONE_KEY) !== "1"; } catch { return true; } });
   const [files, setFiles] = useState<File[]>([]);
   const filesRef = useRef<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -449,7 +444,6 @@ export function NewConversationPage({
       if (attachments.length) await sendConversationMessage(draft.id, body, clientRef, attachments);
       else await sendConversationMessage(draft.id, body, clientRef);
       writeDraftText("");
-      try { localStorage.setItem(EXAMPLES_DONE_KEY, "1"); } catch { /* examples only */ }
       writeDefaultDestination(projectId);
       onCreated(draft.id, { clientRef, text: body, ...(attachments.length ? { attachments } : {}) });
       completed = true;
@@ -580,10 +574,6 @@ export function NewConversationPage({
           disabled={sending}
           onSend={onSend}
         />}
-        {!noAgents && showExamples && !text.trim() && !files.length && <div className="kaus-draft-examples" role="group" aria-label={t("draft.examples")}>
-          {EXAMPLE_KEYS.map(key => <button key={key} type="button" className="kaus-draft-example"
-            onClick={() => { setText(t(key)); textareaRef.current?.focus(); }}>{t(key)}</button>)}
-        </div>}
       </div>
     </div>
   );

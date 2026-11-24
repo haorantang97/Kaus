@@ -15,7 +15,3 @@
 .kaus-first-agent-more { align-self: flex-start; font-size: 12.5px; }
 .kaus-first-agent-error { font-size: 12px; }
 
-/* Example prompts under an empty composer; a click fills the composer, never sends. */
-.kaus-draft-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-.kaus-draft-example { padding: 6px 12px; border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent); border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: 12.5px; }
-.kaus-draft-example:hover { background: var(--control-hover, color-mix(in srgb, var(--midground-base) 5%, transparent)); color: var(--midground-base); }
