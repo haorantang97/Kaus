@@ -4,7 +4,7 @@
 
 ## 执行顺序（2026-11-09 项目负责人确认）
 
-新用户引导单独处理：先调研同类产品，再和项目负责人逐屏打磨交互，暂不开发。其余按下列顺序做：
+新用户引导：11-24 按设计稿 `docs/product/first-run-onboarding-20261124.md` 做了「没有 Agent 时的接入一屏」与示例问题，不另做引导页。其余按下列顺序做：
 
 1. 内置备份（已完成，见 `verification.md` 11 月 9 日）
 2. 第一期：11 月 9 日完成（编辑器、自动送达、原生 MCP 排除、送达状态与导入、删除手动应用）。真实 Agent 上的送达与排除待实测（见 `docs/product/project-config-generalization-20261102.md`）
@@ -79,7 +79,6 @@
 | 主 Agent 分身（通用化） | 原实现：主 Agent（根 Project）的 Hermes 分身档案把 `memories/` 软链到主 Agent，共享记忆；`SOUL.md` 头部标出模式与权限档（如「配置模式·高权限」「后台模式·低权限」）。2026-11-03 随 Hermes 遗留删除了这套文件机制；领域模型里同一 Project 挂多条同 Agent Binding（AD-01 第四段 discriminator）仍在 | 2026-11-11 定：做通用版，先做「后台分身（低权限）」承担定时整理记忆、事后提炼、Agent 自查等后台事务；可选、默认关（见 product-decisions「主 Agent 分身与后台事务」）。设计稿已写（`docs/product/main-agent-clones-design-20261111.md`），待负责人定 |
 | 项目地图（原上下文索引） | 原设计：给所有 Agent 一份「谁知道什么、什么任务找谁」的索引（INDEX.md），只在 Hermes 上部分实现，已删除。控制 MCP 的 `kaus_overview` 每次调用直接读库，Project、接入的 Agent 与模块始终最新，但没有各 Project 的职责描述 | 2026-11-03 定：职责描述不是 Project 指令（AGENTS.md 一类），不要求手工维护。取自 Project 记忆里的「项目概述」条目，由在该 Project 工作的 Agent 随记忆静默更新；新建 Project 时可选填一句；用户也可在对话里让 Agent 改。`kaus_overview` 带上它，主 Agent 按需读取。随配置通用化第二期（记忆）实现；「新建时选填一句」11-11 补上（新建项目窗口的「项目概述」写成记忆概述条目，见 verification 同日） |
 | Hermes 驱动防御的边界 | 2026-11-03 已在 `kernel/drivers/hermes/` 实现：托管运行结束或停止时把技能用量回写到来源 `skills/.usage.json`（Kaus 唯一写入用户 Hermes 目录的内容，只改已有记录的时间与计数，持 Hermes 自己的锁）；技能被 Hermes 归档时返回 409 `skill_archived_by_engine` 与恢复命令；执行目录写 `curator.enabled: false`；复制 `SOUL.md` 时剥离旧宪法块；投射遇软链接目标报 `target_linked` 不替换。边界：用户只用站外 `hermes chat` 时用量要等下一次 Kaus 运行才回写；已标 stale 的技能等 curator 下一轮自行恢复；归档识别依赖 Hermes 当前的 `.archive/` 布局；非 POSIX 平台无文件锁 | 装好 Hermes 后实测一轮托管会话的回写与归档提示 |
-| 空环境的引擎选择 | 清除默认接入 Hermes 后，一个 Agent 都没接入时，新会话页的引擎下拉是空的，没有去接入的入口 | 下拉为空时给一个「接入 Agent」项，打开设置里的接入 |
 | 界面与真实业务测试 | 关键路径已有单独验收，仍需持续真实使用反馈 | 按实际复现修正布局/动效/交互；不要用解释性文字或额外状态面板替代功能修复 |
 
 账号、系统授权和许可证属于需要人处理的具体事项；其余代码或验证工作应由接手 Agent 继续推进。新增阻塞应附复现、受影响入口、已做尝试和可实施方案。
