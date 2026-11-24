@@ -47,7 +47,7 @@ npm ci
 npm start
 ```
 
-桌面窗口是 Electron（Chromium）壳，2026-11-24 起取代 pywebview/WKWebView 壳（已删除）。它连 8877 服务（`KAUS_ORIGIN` 可改到其他本机端口），后端没响应时唤起 launchd 服务 `io.github.haorantang97.kaus.backend` 再等 15 秒；新设备未安装这个服务时，先手动启动后端。测试时用 `KAUS_USER_DATA` 指向临时目录，不碰真实窗口资料；`KAUS_START_PATH` 指定打开的页面。尚无签名安装包（见 open-items）。
+桌面窗口是 Electron（Chromium）壳，2026-11-24 起取代 pywebview/WKWebView 壳（已删除）。它连 8877 服务（`KAUS_ORIGIN` 可改到其他本机端口）。8877 已有后端在跑（开发时）就直接用、退出时不动它；没有就自己用仓库的 `.venv` 启动 `server.py`，退出 App 时一并结束（产品决定「安装包与后台」）。后端日志在 `~/Library/Logs/Kaus/backend.log`。测试时用 `KAUS_USER_DATA` 指向临时目录，不碰真实窗口资料；`KAUS_START_PATH` 指定打开的页面。安装包：`python3 desktop/build_app.py` 生成 `output/apps/Kaus.app`（未签名，见 desktop/chromium/README）。
 
 电脑操作工具从能力库按插件安装（或用 Agent 自带的），由该程序自己请求辅助功能和屏幕录制授权；每台 Mac 重新授权，通过实际屏幕读取验证。不要迁移 TCC 数据库或将另一台机器的权限状态标为已完成。新系统/架构需重新验收。
 

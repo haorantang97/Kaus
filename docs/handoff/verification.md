@@ -3,6 +3,15 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 24 日（续）：安装包、后台随 App 退出、引导设计稿
+
+依据 `product-decisions.md`「安装包与后台」。
+- 后台随 App：窗口启动时 8877 已有后端（开发时）就用它、退出不动；没有就自己启动——开发时用仓库 `.venv`，安装版用包内 Python 跑数据目录里的后端副本；退出 App 时 SIGTERM，5 秒后 SIGKILL。不再用 launchd（`desktop/chromium/desktop.cjs`）。日志 `~/Library/Logs/Kaus/backend.log`。
+- 安装包：`desktop/build_app.py` → `output/apps/Kaus.app`（arm64，369 MB：Python 101 MB、后端 13 MB，其余为 Electron），标识 `io.github.haorantang97.kaus`。Python 用 python-build-standalone 20261026 的 3.11.18（核对 sha256）并装 `requirements.txt`；后端只取 git 跟踪、不含测试的文件加 `web/dist`，写 `VERSION` 与默认配置（开 session host、无 Agent）。安装版首次启动把后端复制到数据目录（暂定 `~/Library/Application Support/Kaus/Data`，`KAUS_HOME` 可改），版本变化才覆盖且保留 `state/`、`dashboard-config.json`。未签名、未公证。
+- 实测（隔离：假 HOME、临时数据目录与窗口资料）：打开 `Kaus.app`，后端在 15 秒内由包内 Python 起来，`/api/health` 正常，界面与会话接口（200）可用，数据写进数据目录的 `state/`；首屏即新用户看到的空环境——「Choose engine」下拉为空、没有接入入口（设计稿 3.1 要解决的问题）。退出 App 后后端进程结束、8877 释放，日志显示正常关闭。
+- 设计稿：`docs/product/first-run-onboarding-20261124.md`（同类产品调研 + 「没有 Agent 时一屏接入选择」+ 不另做引导页），待负责人定。
+- 测试：`desktop/chromium` `npm test` 12 项、根目录 `tests/` 354 项通过；内核上一提交后全量 4,227 项通过（本次未改内核）。
+
 ## 11 月 24 日：日常窗口换成 Chromium（Electron）壳
 
 依据 `product-decisions.md`「上线前工作（11-24）」①。

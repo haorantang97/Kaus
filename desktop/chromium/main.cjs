@@ -239,8 +239,14 @@ app.whenReady().then(async () => {
   });
   desktop.installDesktop({ getWindow: () => window, origin: policy.ORIGIN, isUi: fromUi, preferences });
   Menu.setApplicationMenu(desktop.buildMenu(() => window));
-  // Closing the window leaves the backend (a launchd service) and its conversations running.
+  // The backend starts with the app and stops when it quits (product-decisions「安装包与后台」).
   const ready = await desktop.ensureBackend(policy.ORIGIN);
   void window.loadURL(ready ? policy.ORIGIN + daily.startPath(process.env.KAUS_START_PATH) : desktop.backendDownPage(zh));
 });
 app.on('window-all-closed', () => app.quit());
+let quitting = false;
+app.on('before-quit', event => {
+  if (quitting) return;
+  event.preventDefault(); quitting = true;
+  void desktop.stopBackend().finally(() => app.quit());
+});

@@ -1,8 +1,8 @@
 # Kaus 桌面窗口（Electron）
 
-2026-11-24 起这是日常 Kaus 窗口（取代 pywebview/WKWebView 壳）：连本机 8877 后端，提供侧边浏览器、固定站点视图（ChatCut、Midjourney）、选择文件夹 / 程序、额度登录窗口与菜单栏（新对话 ⌘N、新建项目 ⇧⌘N、设置 ⌘,、缩放）。菜单文字跟随 macOS 首选语言。
+2026-11-24 起这是日常 Kaus 窗口（取代 pywebview/WKWebView 壳）：连本机 8877 后端（没有就自己启动，退出时结束），提供侧边浏览器、固定站点视图（ChatCut、Midjourney）、选择文件夹 / 程序、额度登录窗口与菜单栏（新对话 ⌘N、新建项目 ⇧⌘N、设置 ⌘,、缩放）。菜单文字跟随 macOS 首选语言。
 
-环境变量：`KAUS_ORIGIN`（本机 http 端口，默认 `http://127.0.0.1:8877`）、`KAUS_START_PATH`（打开的页面）、`KAUS_USER_DATA`（窗口资料目录，测试用临时目录）。测试：`npm test`。
+环境变量：`KAUS_ORIGIN`（本机 http 端口，默认 `http://127.0.0.1:8877`）、`KAUS_START_PATH`（打开的页面）、`KAUS_USER_DATA`（窗口资料目录，测试用临时目录）、`KAUS_HOME`（安装版的数据目录）。测试：`npm test`。
 
 ## 固定编辑器的隔离预览
 
@@ -30,16 +30,14 @@ npm ci
 KAUS_ORIGIN=http://127.0.0.1:3187 KAUS_START_PATH=/workbench/content-workbench npm start
 ```
 
-也可打包当前 macOS arm64 预览：
+## 安装包
 
 ```sh
-npx --yes @electron/packager@20.3.0 desktop/chromium 'Kaus Chromium Preview' \
-  --out=output/apps --platform=darwin --arch=arm64 --electron-version=45.0.0 \
-  --app-bundle-id=local.kaus.chromium-preview \
-  --extra-resource=LICENSE --extra-resource=NOTICE
+cd web && npm run build && cd ..
+python3 desktop/build_app.py   # -> output/apps/Kaus.app（macOS arm64，未签名、未公证）
 ```
 
-桌面包不自动启动 Python 服务。先启动上述隔离服务，再打开 `.app`；当前不是签名发布安装器。
+脚本下载固定版本的 python-build-standalone（核对 sha256）并装好 `requirements.txt`，暂存不含测试的后端与 `web/dist`，再用 `@electron/packager` 打包。安装版启动时把后端复制到数据目录（默认 `~/Library/Application Support/Kaus/Data`，`KAUS_HOME` 可改；版本变了才覆盖，保留 `state/` 与 `dashboard-config.json`），用包内 Python 运行，退出 App 时结束后端。数据目录的最终位置待负责人定（product-decisions「安装包与后台」）。
 
 ## 边界
 

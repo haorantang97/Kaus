@@ -1,32 +1,82 @@
 // Daily-window services that used to live in the pywebview shell (desktop/app.py,
 // workspace_bridge.py, quota_login.py, app_menu.py; retired 2026-11-24): native pickers,
-// the isolated quota sign-in window, the backend check and the menu bar.
+// the isolated quota sign-in window, the backend lifecycle and the menu bar.
 const { app, BrowserWindow, Menu, dialog, ipcMain, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFile } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const daily = require('./daily.cjs');
 
-const BACKEND_SERVICE = 'io.github.haorantang97.kaus.backend';
 const LOGIN_SECONDS = 600;
 
 async function healthy(origin, timeout = 1500) {
   try { return (await fetch(`${origin}/api/health`, { signal: AbortSignal.timeout(timeout) })).ok; } catch { return false; }
 }
-/** The backend is a launchd service; if it does not answer, kick it once and wait. */
+
+/** The backend runs with the app and stops with it (2026-11-24, like Codex and Claude).
+ *  A backend already answering (a development server) is used as is and left running. */
+const backend = { child: null };
+function backendCommand() {
+  if (app.isPackaged) {
+    // Installed app: read-only code and Python in the bundle; a working copy in the data folder.
+    const resources = process.resourcesPath, home = dataHome();
+    syncBackend(path.join(resources, 'backend'), path.join(home, 'app'));
+    return { python: path.join(resources, 'python', 'bin', 'python3'), cwd: path.join(home, 'app') };
+  }
+  // Development: the repository's own backend and virtualenv.
+  const repo = path.resolve(__dirname, '..', '..');
+  return { python: path.join(repo, '.venv', 'bin', 'python'), cwd: repo };
+}
+/** Where an installed Kaus keeps its data (KAUS_HOME overrides; see product-decisions「安装包与后台」). */
+function dataHome() { return path.isAbsolute(process.env.KAUS_HOME || '') ? process.env.KAUS_HOME : path.join(app.getPath('appData'), 'Kaus', 'Data'); }
+/** Copy the bundled backend into the data folder when its version changes; never touch state/. */
+function syncBackend(source, target) {
+  const version = fs.readFileSync(path.join(source, 'VERSION'), 'utf8').trim();
+  let current = '';
+  try { current = fs.readFileSync(path.join(target, 'VERSION'), 'utf8').trim(); } catch {}
+  if (current === version) return;
+  fs.mkdirSync(target, { recursive: true });
+  for (const entry of fs.readdirSync(target)) {
+    if (['state', 'dashboard-config.json'].includes(entry)) continue;
+    fs.rmSync(path.join(target, entry), { recursive: true, force: true });
+  }
+  for (const entry of fs.readdirSync(source)) fs.cpSync(path.join(source, entry), path.join(target, entry), { recursive: true });
+  const config = path.join(target, 'dashboard-config.json');
+  if (!fs.existsSync(config)) fs.copyFileSync(path.join(source, 'dashboard-config.default.json'), config);
+}
 async function ensureBackend(origin) {
   if (await healthy(origin)) return true;
-  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
-  if (uid !== null) await new Promise(resolve => execFile('launchctl', ['kickstart', `gui/${uid}/${BACKEND_SERVICE}`], () => resolve()));
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) { if (await healthy(origin)) return true; await new Promise(r => setTimeout(r, 400)); }
+  let command;
+  try { command = backendCommand(); } catch { return false; }
+  if (!fs.existsSync(command.python)) return false;
+  const logDir = app.getPath('logs'); fs.mkdirSync(logDir, { recursive: true });
+  const log = fs.openSync(path.join(logDir, 'backend.log'), 'a');
+  backend.child = spawn(command.python, ['-B', 'server.py'], { cwd: command.cwd, stdio: ['ignore', log, log], env: { ...process.env, PYTHONUNBUFFERED: '1' } });
+  backend.child.on('exit', () => { backend.child = null; });
+  fs.closeSync(log);
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (await healthy(origin)) return true;
+    if (!backend.child) return false;
+    await new Promise(r => setTimeout(r, 300));
+  }
   return false;
 }
+/** Stop the backend this app started: SIGTERM, then SIGKILL after 5 s. */
+function stopBackend() {
+  const child = backend.child;
+  if (!child) return Promise.resolve();
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} resolve(); }, 5000);
+    child.once('exit', () => { clearTimeout(timer); resolve(); });
+    try { child.kill('SIGTERM'); } catch { clearTimeout(timer); resolve(); }
+  });
+}
 function backendDownPage(zh) {
-  const title = zh ? 'Kaus 后台未启动' : 'The Kaus backend is not running';
-  const body = zh ? '请重新打开 Kaus；仍无法启动时，在终端执行：' : 'Reopen Kaus. If it still does not start, run in Terminal:';
-  const html = `<!doctype html><meta charset="utf-8"><title>Kaus</title><body style="font:14px -apple-system,sans-serif;padding:3em;color:#242428;background:#fcfcfb"><h2>${title}</h2><p>${body}</p><pre>launchctl kickstart -k gui/$(id -u)/${BACKEND_SERVICE}</pre></body>`;
+  const title = zh ? 'Kaus 后台未能启动' : 'The Kaus backend did not start';
+  const body = zh ? '请重新打开 Kaus。日志：' : 'Reopen Kaus. Log:';
+  const html = `<!doctype html><meta charset="utf-8"><title>Kaus</title><body style="font:14px -apple-system,sans-serif;padding:3em;color:#242428;background:#fcfcfb"><h2>${title}</h2><p>${body}</p><pre>${path.join(app.getPath('logs'), 'backend.log').replace(/[<&]/g, '')}</pre></body>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
@@ -161,4 +211,4 @@ function buildMenu(getWindow) {
   ]);
 }
 
-module.exports = { BACKEND_SERVICE, ensureBackend, backendDownPage, installDesktop, buildMenu };
+module.exports = { ensureBackend, stopBackend, backendDownPage, dataHome, installDesktop, buildMenu };
