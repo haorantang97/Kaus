@@ -23,7 +23,8 @@ export function firstAgentRows(groups: EngineCatalogGroup[], limit = 6): EngineC
 /** Shown instead of the composer while no Agent is connected (2026-11-24「新用户引导与空环境」).
  *  One action per row: an installed engine connects; one that is not installed offers its install
  *  command. Login state is unknown before connecting; a sign-in it needs goes through the usual flow. */
-export function ConnectFirstAgent({ onConnected }: { onConnected: (backendId: string) => void }) {
+/** `onConnected(null)`: the full connect dialog closed; the page rereads the connections. */
+export function ConnectFirstAgent({ onConnected }: { onConnected: (backendId: string | null) => void }) {
   const { t } = useLocale();
   const [groups, setGroups] = useState<EngineCatalogGroup[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -75,7 +76,8 @@ export function ConnectFirstAgent({ onConnected }: { onConnected: (backendId: st
         })}
       </ul>}
       <button type="button" className="kaus-inline-action kaus-first-agent-more" onClick={() => setMore(true)}>{t("firstAgent.more")}</button>
-      {more && <ConnectEngineModal onClose={() => setMore(false)} onAttach={backendId => { setMore(false); onConnected(backendId); }} />}
+      {/* The full connect dialog in its own connect mode (not the project-attach mode). */}
+      {more && <ConnectEngineModal onClose={() => { setMore(false); onConnected(null); }} />}
       {step && <Modal onClose={() => { void finishSkillOnboarding(step.invitation.id, "skipped").catch(() => undefined); onConnected(step.backendId); }} width={820}>
         <CapabilityOnboardingStep key={step.invitation.id} invitation={step.invitation} onFinish={() => onConnected(step.backendId)} />
       </Modal>}

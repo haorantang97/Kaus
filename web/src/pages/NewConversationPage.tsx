@@ -51,6 +51,9 @@ import {
 
 /** 项目清单 → 菜单项：按项目树深度优先排开，`depth` 交给 `BarMenu` 做缩进。
  *  父不在清单里的当顶层处理，环（不该出现，但真出现时）靠 `seen` 兜住。 */
+/** Marks "select whichever Agent the full connect dialog connected". */
+const FIRST_CONNECTION = "\u0000first";
+
 export function projectMenuOptions(projects: ProjectWire[], profiles: BindingWire[] = []): BarMenuOption[] {
   const ids = new Set(projects.map((project) => project.id));
   const children = new Map<string | null, ProjectWire[]>();
@@ -155,10 +158,12 @@ export function NewConversationPage({
   const canChooseModel = hasCapability(caps?.models.conversationScoped);
 
   const [backendsRevision, setBackendsRevision] = useState(0);
+  /** The revision whose connection list is loaded (the auto-select waits for its own reread). */
+  const [loadedRevision, setLoadedRevision] = useState(-1);
   useEffect(() => {
     let cancelled = false;
     void fetchConnectedBackends().then(({ backends }) => {
-      if (!cancelled) { setConnectedBackends(backends ?? []); setBackendsLoaded(true); }
+      if (!cancelled) { setConnectedBackends(backends ?? []); setBackendsLoaded(true); setLoadedRevision(backendsRevision); }
     }).catch((failure) => { if (!cancelled) setError(describeFailure(failure)); });
     return () => { cancelled = true; };
   }, [backendsRevision]);
@@ -166,8 +171,9 @@ export function NewConversationPage({
   // The connection list omits demo (mock) engines, so a usable binding also counts as an Agent.
   const noAgents = backendsLoaded && bindings !== null && !bindingsFailed && !connectedBackends.some(backend => engineAcceptsNewWork(backend))
     && !bindings.some(item => item.enabled && engineAcceptsNewWork(item));
-  const agentConnected = useCallback((backendId: string) => {
-    pendingEngine.current = backendId;
+  const agentConnected = useCallback((backendId: string | null) => {
+    // null: connected (or not) in the full dialog; pick the first usable connection, if any.
+    pendingEngine.current = backendId ?? FIRST_CONNECTION;
     bindingsCache.current.clear();
     setBackendsRevision(value => value + 1);
   }, []);
@@ -251,8 +257,10 @@ export function NewConversationPage({
 
   // Select the Agent just connected from the empty state once both lists include it.
   useEffect(() => {
-    const pending = pendingEngine.current;
-    if (!pending || bindings === null || !connectedBackends.some(backend => backend.id === pending)) return;
+    const requested = pendingEngine.current;
+    if (!requested || bindings === null || loadedRevision !== backendsRevision) return;
+    const pending = requested === FIRST_CONNECTION ? connectedBackends.find(backend => engineAcceptsNewWork(backend))?.id : requested;
+    if (!pending || !connectedBackends.some(backend => backend.id === pending)) { if (requested === FIRST_CONNECTION) pendingEngine.current = null; return; }
     pendingEngine.current = null;
     void selectEngine(pending);
   });

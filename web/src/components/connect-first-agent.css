@@ -3,15 +3,15 @@
 .kaus-first-agent h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .kaus-first-agent-loading { display: flex; justify-content: center; margin: 0; padding: 18px 0; color: var(--text-tertiary); }
 .kaus-first-agent-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
-.kaus-first-agent-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 64px; align-items: center; gap: 10px; min-height: 42px; padding: 0 2px; }
+.kaus-first-agent-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto minmax(64px, max-content); align-items: center; gap: 10px; min-height: 42px; padding: 0 2px; }
 .kaus-first-agent-row + .kaus-first-agent-row { border-top: 1px solid color-mix(in srgb, var(--midground-base) 7%, transparent); }
 .kaus-first-agent-name { overflow: hidden; font-size: 13.5px; text-overflow: ellipsis; white-space: nowrap; }
 .kaus-first-agent-status { color: var(--text-tertiary); font-size: 12px; white-space: nowrap; }
-.kaus-first-agent-connect { display: inline-flex; align-items: center; justify-content: center; justify-self: end; min-width: 56px; height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: var(--accent-text); color: var(--background-base, #fff); font-size: 12.5px; }
+.kaus-first-agent-connect { display: inline-flex; align-items: center; justify-content: center; justify-self: end; min-width: 56px; height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: var(--accent-text); color: var(--background-base, #fff); font-size: 12.5px; white-space: nowrap; }
 .kaus-first-agent-connect:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-text) 88%, black); }
 .kaus-first-agent-connect:disabled { opacity: .55; }
 .kaus-first-agent-connect.is-empty { background: transparent; }
 .kaus-first-agent-copy { justify-self: end; }
-.kaus-first-agent-more { align-self: flex-start; font-size: 12.5px; }
+.kaus-first-agent-more { align-self: flex-start; margin: 0; padding: 4px 2px; font-size: 12.5px; }
 .kaus-first-agent-error { font-size: 12px; }
 

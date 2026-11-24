@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ConnectFirstAgent, firstAgentRows } from "./ConnectFirstAgent";
@@ -49,5 +49,17 @@ describe("没有 Agent 时的接入一屏", () => {
     await user.click(await screen.findByRole("button", { name: "接入" }));
     expect(connectEngine).toHaveBeenCalledWith("codex");
     await waitFor(() => expect(onConnected).toHaveBeenCalledWith("backend:codex"));
+  });
+
+  it("「其他 Agent」打开的是接入对话框（不是添加到项目）；关掉后让页面重读接入列表", async () => {
+    const user = userEvent.setup();
+    const onConnected = vi.fn();
+    render(<ConnectFirstAgent onConnected={onConnected} />);
+    await user.click(await screen.findByRole("button", { name: "其他 Agent" }));
+    const dialog = await screen.findByTestId("connect-engine-modal");
+    await waitFor(() => expect(within(dialog).getAllByRole("button", { name: "接入" }).length).toBeGreaterThan(0));
+    expect(within(dialog).queryByRole("button", { name: "添加到项目" })).toBeNull();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(onConnected).toHaveBeenCalledWith(null));
   });
 });
