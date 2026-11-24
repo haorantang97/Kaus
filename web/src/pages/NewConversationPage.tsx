@@ -578,7 +578,7 @@ export function NewConversationPage({
           text={text}
           onTextChange={setText}
           placeholder={t("draft.composer.placeholder")}
-          rows={3}
+          rows={2}
           disabled={sending}
           onSend={onSend}
         />}

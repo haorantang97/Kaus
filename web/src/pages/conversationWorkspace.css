@@ -4,39 +4,41 @@
   min-width: 0;
 }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread { max-width: 850px; padding-left: 32px; padding-right: 32px; }
-:is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-header { padding: 18px 0 14px; border-bottom-color: transparent; }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-header { padding: 8px 0; border-bottom-color: transparent; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-headline { justify-content: space-between; flex-wrap: wrap; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-title { font: 400 14px/1.5 var(--theme-font-sans); letter-spacing: 0; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-meta { gap: 10px; flex-wrap: wrap; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-status { font: 12px/1.5 var(--theme-font-sans); letter-spacing: 0; text-transform: none; }
-:is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread-flow { padding-top: 26px; padding-bottom: 36px; gap: 24px; }
-:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-wrap { padding-bottom: 16px; }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread-flow { padding-top: 16px; padding-bottom: 32px; gap: 24px; }
+/* Empty placeholder rows (no content yet) must not add a gap of their own. */
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread-flow > div:empty { display: none; }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-wrap { padding-bottom: 12px; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer {
   position: relative;
   border: 1px solid var(--chat-border);
   border-radius: 20px;
   background: color-mix(in srgb, var(--midground-base) 3%, var(--background-base));
-  padding: 14px 16px 10px;
+  padding: 10px 14px 8px;
   box-shadow: 0 3px 14px rgb(0 0 0 / 3%);
   transition: border-color 140ms, box-shadow 140ms;
 }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer:focus-within { border-color: color-mix(in srgb, var(--midground-base) 28%, transparent); box-shadow: 0 3px 16px rgb(0 0 0 / 5%); }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer textarea {
-  width: 100%; min-height: 72px; max-height: 240px; resize: none;
-  font: 15px/1.65 var(--theme-font-sans); padding: 2px 0 8px;
+  width: 100%; min-height: 24px; max-height: 240px; resize: none;
+  font: 14px/1.6 var(--theme-font-sans); padding: 2px 0 6px;
   background: transparent; border: 0; outline: 0; box-shadow: none;
 }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer textarea::placeholder { color: var(--chat-muted); }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-bar { border-top: 0; margin-top: 4px; padding-top: 0; gap: 4px; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-pill {
-  border: 0; border-radius: 7px; padding: 6px 8px; max-width: 190px;
+  border: 0; border-radius: 7px; padding: 4px 8px; max-width: 190px;
   font: 400 12px/1.4 var(--theme-font-sans); letter-spacing: 0; text-transform: none;
   color: color-mix(in srgb, var(--midground-base) 84%, transparent);
 }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-pill.is-button:hover { background: color-mix(in srgb, var(--midground-base) 7%, transparent); color: var(--midground-base); }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-pop { border-radius: 12px; box-shadow: 0 8px 32px rgb(0 0 0 / 12%); min-width: 240px; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-filter { font: 13px/1.5 var(--theme-font-sans); letter-spacing: 0; text-transform: none; }
-:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer .kaus-send { border-radius: 999px; padding: 0; width: 34px; height: 34px; flex: 0 0 34px; justify-content: center; }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer .kaus-send { border-radius: 999px; padding: 0; width: 28px; height: 28px; flex: 0 0 28px; justify-content: center; }
 .kaus-composer-caption { display: flex; justify-content: space-between; gap: 12px; margin: 7px 5px 0; color: var(--chat-muted); font: 11px/1.5 var(--theme-font-sans); }
 .kaus-attachment-tray { display: flex; gap: 8px; flex-wrap: wrap; padding-bottom: 12px; }
 .kaus-attachment-chip { display: flex; align-items: center; gap: 9px; max-width: 250px; min-width: 110px; padding: 9px 10px; border: 1px solid var(--chat-border); border-radius: 12px; background: var(--background-base); font: 12px/1.4 var(--theme-font-sans); }

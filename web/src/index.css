@@ -224,7 +224,7 @@
   --theme-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo,
     Consolas, monospace;
   --theme-font-display: var(--theme-font-sans);
-  --theme-base-size: 15px;
+  --theme-base-size: 14px; /* 2026-11-25「界面密度」: Codex and Claude both use 14px body text */
   --theme-line-height: 1.55;
   --theme-letter-spacing: 0;
 

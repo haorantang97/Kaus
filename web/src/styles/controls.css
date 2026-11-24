@@ -158,7 +158,7 @@ body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 22px 28px 18px;
+  padding: 10px 24px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 8%, transparent);
 }
 

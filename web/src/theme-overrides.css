@@ -308,14 +308,15 @@ body,
   min-width: 280px;
   flex-direction: column;
   overflow: hidden;
-  padding: 22px 20px;
+  padding: 14px 12px;
   background: var(--background-secondary);
   border-right: 1px solid
     color-mix(in srgb, var(--midground-base) 13%, transparent);
 }
 
 .sidebar-brand {
-  margin-bottom: 22px;
+  margin-bottom: 14px;
+  padding-left: 8px;
 }
 
 /* 字标 A（设计画布）：展示体 KAUS，28px。头像与 "Control Plane" 副标题去掉。
@@ -323,7 +324,7 @@ body,
    投影属于铭牌那块深底；燕麦底上的投影只会显脏（浅色主题下尤其）。 */
 .brand-wordmark {
   display: inline-block;
-  font: 400 28px/1 var(--theme-font-brand);
+  font: 400 22px/1 var(--theme-font-brand);
   letter-spacing: 0.02em;
   color: var(--accent-text);
   transform: skewX(-7deg);
@@ -367,9 +368,9 @@ body,
 .shell-nav-item {
   display: flex;
   align-items: center;
-  gap: 13px;
+  gap: 10px;
   width: 100%;
-  padding: 8px 9px;
+  padding: 6px 8px;
   border-radius: 8px;
   color: var(--midground-base);
   cursor: default;
@@ -389,7 +390,7 @@ body,
 }
 
 .shell-nav-item.is-new {
-  margin: 5px 0;
+  margin: 2px 0;
 }
 
 .shell-nav-icon {
@@ -416,7 +417,7 @@ body.dark .shell-nav-item.is-active .shell-nav-icon {
 }
 
 .shell-nav-label {
-  font: 400 12.5px/1 var(--theme-font-sans);
+  font: 400 13px/1 var(--theme-font-sans);
 }
 
 .shell-nav-en {
@@ -445,7 +446,7 @@ body.dark .shell-nav-item.is-active .shell-nav-icon {
 .sidebar-agent-row {
   min-height: 30px;
   border-radius: 7px;
-  padding-block: 6px;
+  padding-block: 1px;
   padding-right: 7px;
   font: 13px/1 var(--theme-font-mono);
 }
@@ -470,7 +471,7 @@ body.dark .shell-nav-item.is-active .shell-nav-icon {
 
 .sidebar-agent-tree.is-compact .sidebar-agent-row {
   min-height: 28px;
-  padding-block: 5px;
+  padding-block: 1px;
 }
 
 .sidebar-context-title {

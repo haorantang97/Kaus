@@ -1,12 +1,18 @@
 /* Conversation content uses the existing neutral theme; controls stay reachable without hover. */
-.kaus-msg.kaus-content-message { width: 100%; padding: 5px 0 9px; }
+.kaus-msg.kaus-content-message { width: 100%; padding: 2px 0 6px; }
 .kaus-msg.kaus-content-message.is-user { width: fit-content; max-width: min(82%, 760px); margin-left: auto; text-align: left; }
-.kaus-content-message.is-user .kaus-msg-body { padding: 12px 16px; border: 0; border-radius: 18px; background: color-mix(in srgb, var(--midground-base) 6%, var(--surface-raised)); font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
-.kaus-content-message.is-assistant .kaus-prose { font-size: 15px; font-weight: 400; line-height: 1.6; letter-spacing: normal; }
-.kaus-content-message .kaus-msg-footer { display: flex; min-height: 27px; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 9px; }
+.kaus-content-message.is-user .kaus-msg-body { padding: 10px 14px; border: 0; border-radius: 18px; background: color-mix(in srgb, var(--midground-base) 6%, var(--surface-raised)); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.kaus-content-message.is-assistant .kaus-prose { font-size: 14px; font-weight: 400; line-height: 1.6; letter-spacing: normal; }
+.kaus-msg.kaus-content-message { position: relative; }
+/* 2026-11-25「界面密度」: time and actions appear on hover in the gap below the message (as in Codex and
+   Claude), so they take no row of their own; always shown on touch screens and for keyboard focus. */
+.kaus-content-message .kaus-msg-footer { position: absolute; top: calc(100% - 6px); left: 0; right: 0; z-index: 3; display: flex; height: 26px; flex-wrap: nowrap; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+.kaus-content-message:hover .kaus-msg-footer, .kaus-content-message:focus-within .kaus-msg-footer, .kaus-content-message[data-actions-visible="true"] .kaus-msg-footer { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .kaus-content-message .kaus-msg-footer { position: static; opacity: 1; pointer-events: auto; margin-top: 4px; } }
+@media (prefers-reduced-motion: reduce) { .kaus-content-message .kaus-msg-footer { transition: none; } }
 .kaus-content-message.is-user .kaus-msg-footer { justify-content: flex-end; }
 .kaus-content-message .kaus-msg-actions { position: static; opacity: 1; display: flex; gap: 3px; z-index: auto; }
-.kaus-content-message .kaus-msg-action { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; padding: 5px; border-radius: 6px; background: transparent; color: color-mix(in srgb, var(--midground-base) 72%, transparent); }
+.kaus-content-message .kaus-msg-action { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 0; padding: 5px; border-radius: 6px; background: transparent; color: color-mix(in srgb, var(--midground-base) 72%, transparent); }
 .kaus-content-message .kaus-msg-action:hover { color: var(--midground-base); background: color-mix(in srgb, var(--midground-base) 6%, transparent); }
 .kaus-content-message .kaus-msg-action:disabled { cursor: default; opacity: .4; }
 .kaus-content-message .kaus-msg-time { opacity: 1; display: inline; margin: 0; color: var(--text-tertiary); font: 11px/1.4 var(--theme-font-sans); }

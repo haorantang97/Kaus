@@ -15,7 +15,7 @@ body:not(.dark) .skill-tree { --tree-accent: var(--accent-text); }
 .skill-tree-search:focus-within { color: var(--midground-base); box-shadow: 0 1px 0 var(--control-focus, var(--accent-text)); }
 .skill-tree-status { color: var(--tree-muted); display: flex; align-items: center; width: 20px; }
 .skill-tree-scroll { overflow: auto; flex: 1; min-height: 0; overscroll-behavior: contain; padding: 0 6px 30px 0; }
-.skill-tree-row { position: relative; display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 3px 8px 3px calc(8px + var(--tree-depth, 0) * 22px); border-radius: 7px; transition: background-color 140ms ease, color 140ms ease; }
+.skill-tree-row { position: relative; display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 1px 8px 1px calc(8px + var(--tree-depth, 0) * 22px); border-radius: 7px; transition: background-color 140ms ease, color 140ms ease; }
 .skill-tree-row:hover { background: var(--tree-hover); }
 .skill-tree-project { min-height: 42px; margin-top: 5px; font-weight: 400; }
 .skill-tree-project.is-current { background: color-mix(in srgb, var(--midground-base) 9%, transparent); }

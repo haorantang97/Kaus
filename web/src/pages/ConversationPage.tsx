@@ -1137,7 +1137,7 @@ export function ConversationPage({
           /* 第 2 件：外部态下输入框禁用，占位文字换成"回到站内后可继续"。 */
           disabled={readOnly}
           placeholder={archived ? t("conversation.archived") : external ? t("surface.composer.placeholder") : t("conversation.composer.placeholder")}
-          rows={2}
+          rows={1}
           onSend={() => void send()}
           suggest={readOnly ? undefined : suggest}
           onEscape={() => {

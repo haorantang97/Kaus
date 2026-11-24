@@ -4,7 +4,8 @@
 .kaus-composer-tail { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 3px; margin-left: auto; min-width: 0; max-width: 100%; }
 .kaus-composer-tail > .kaus-send { margin-left: 5px; flex-shrink: 0; }
 .kaus-composer-layout .kaus-composer-bar > :not(.kaus-send) { max-width: 100%; min-width: 0; }
-body :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer textarea,
+/* 2026-11-25「界面密度」: the conversation input starts at one line, like Codex, and grows with content. */
+body :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer textarea { min-height: 24px; max-height: min(40svh, 384px); field-sizing: content; overflow-y: auto; }
 .kaus-group-workspace .kaus-group-textarea { min-height: 44px; max-height: min(40svh, 384px); field-sizing: content; overflow-y: auto; }
 @container kaus-composer (max-width: 576px) {
   .kaus-composer-context .kaus-bar-pill { max-width: 160px; }
@@ -65,7 +66,7 @@ body .kaus-bar-pop { border: 0; border-radius: var(--radius-panel, 12px); paddin
 body .kaus-bar-pop .kaus-bar-filter { flex-shrink: 0; min-height: 36px; margin: 0 0 5px; padding: 6px 8px 9px; border: 0; border-bottom: var(--hairline, 1px) solid var(--border-subtle); border-radius: 0; background: transparent; box-shadow: none; }
 body .kaus-bar-pop .kaus-bar-filter:focus-visible { outline: none; }
 body .kaus-bar-pop .kaus-bar-filter:focus { border-bottom-color: color-mix(in srgb, var(--midground-base) 30%, transparent); }
-body .kaus-bar-pop .kaus-bar-pop-item { min-height: 36px; padding: 8px 9px; gap: 10px; border-radius: 7px; }
+body .kaus-bar-pop .kaus-bar-pop-item { min-height: 30px; padding: 5px 9px; gap: 10px; border-radius: 7px; }
 body .kaus-group-workspace .kaus-group-textarea { min-height: 44px; }
 
 .kaus-attachment-filename { display: flex; min-width: 0; max-width: 100%; }
