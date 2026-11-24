@@ -1,8 +1,13 @@
 {
-  "name": "kaus-chromium-preview",
+  "name": "kaus-desktop",
   "version": "0.1.0",
   "private": true,
   "main": "main.cjs",
-  "scripts": { "start": "electron .", "test": "node --test policy.test.cjs" },
-  "devDependencies": { "electron": "45.0.0" }
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test policy.test.cjs daily.test.cjs"
+  },
+  "devDependencies": {
+    "electron": "45.0.0"
+  }
 }

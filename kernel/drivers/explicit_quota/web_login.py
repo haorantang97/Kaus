@@ -1,4 +1,5 @@
-"""StepFun login boundary shared by the desktop child and quota reader.
+"""StepFun session checks for the quota reader. The desktop shell captures the
+sign-in cookie (desktop/chromium/daily.cjs); this module validates what it sends.
 
 Token claims select the expected identity only. The platform must accept the
 session before it is saved; decoding a JWT is not authentication.
@@ -8,7 +9,6 @@ from __future__ import annotations
 import base64
 import json
 import re
-from urllib.parse import urlsplit
 
 SITES = {
     'ai': ('https://platform.stepfun.ai', '20700'),
@@ -27,10 +27,6 @@ def site_details(site):
     if not isinstance(site, str) or site not in SITES:
         raise LoginInvalid('invalid_fields')
     return SITES[site]
-
-
-def login_url(site):
-    return site_details(site)[0] + '/step-plan'
 
 
 def token_claims(token):
@@ -72,32 +68,3 @@ def clean_session(captured):
     # The refresh grant's device is authoritative, not local storage or input.
     web_id = _identity(grant.get('device_id') or captured.get('webId'))
     return dict(access=access, refresh=refresh, webId=web_id, account=account)
-
-
-def capture_session(site, page_url, cookies):
-    """Read only cookies supplied by this newly created, isolated WebView."""
-    origin, _ = site_details(site)
-    try:
-        page = urlsplit(page_url)
-        if (page.scheme != 'https' or page.hostname != urlsplit(origin).hostname
-                or page.port not in (None, 443) or page.username or page.password):
-            return None
-    except (ValueError, TypeError):
-        return None
-    domains = {'platform.stepfun.' + site, 'stepfun.' + site}
-    for cookie in cookies:
-        if (cookie.get('name') != 'Oasis-Token'
-                or str(cookie.get('domain', '')).lstrip('.') not in domains
-                or not cookie.get('secure') or cookie.get('path', '/') != '/'):
-            continue
-        raw = cookie.get('value', '')
-        if not isinstance(raw, str) or len(raw) > TOKEN_LIMIT * 2 + 3:
-            continue
-        parts = raw.split('...')
-        if len(parts) != 2:
-            continue
-        try:
-            return clean_session(dict(access=parts[0], refresh=parts[1]))
-        except LoginInvalid:
-            continue
-    return None

@@ -1,6 +1,12 @@
-# 固定编辑器的 Chromium 开发预览
+# Kaus 桌面窗口（Electron）
 
-此壳只承载 Kaus 与获授权的固定 ChatCut 视图，不提供地址栏或通用浏览器。现有日常 WKWebView 客户端保持不变。ChatCut 本地导出在本机 WKWebView 返回 `browser_unsupported`，Chromium 45 已通过实际 MP4 导出。
+2026-11-24 起这是日常 Kaus 窗口（取代 pywebview/WKWebView 壳）：连本机 8877 后端，提供侧边浏览器、固定站点视图（ChatCut、Midjourney）、选择文件夹 / 程序、额度登录窗口与菜单栏（新对话 ⌘N、新建项目 ⇧⌘N、设置 ⌘,、缩放）。菜单文字跟随 macOS 首选语言。
+
+环境变量：`KAUS_ORIGIN`（本机 http 端口，默认 `http://127.0.0.1:8877`）、`KAUS_START_PATH`（打开的页面）、`KAUS_USER_DATA`（窗口资料目录，测试用临时目录）。测试：`npm test`。
+
+## 固定编辑器的隔离预览
+
+ChatCut 本地导出在 WKWebView 返回 `browser_unsupported`，Chromium 45 已通过实际 MP4 导出。
 
 ## 启动
 
@@ -21,7 +27,7 @@ cd ..
 ```sh
 cd desktop/chromium
 npm ci
-npm start
+KAUS_ORIGIN=http://127.0.0.1:3187 KAUS_START_PATH=/workbench/content-workbench npm start
 ```
 
 也可打包当前 macOS arm64 预览：
@@ -37,14 +43,14 @@ npx --yes @electron/packager@20.3.0 desktop/chromium 'Kaus Chromium Preview' \
 
 ## 边界
 
-- 站点在 `policy.cjs` 的 `SITES` 中注册（目前是 ChatCut 和 Midjourney），新增站点还要同步 `preload.cjs`（有测试核对）和 `web/src/lib/siteSurface.ts`。启动时可以用 `KAUS_PREVIEW_PATH=/workbench/<模块>`（或任意站内路径）指定打开的页面；预览服务可以用 `--dist` 指定前端构建，避免覆盖日常使用的 `web/dist`。
-- 侧边浏览器（`kaus:browser`）：会话页右侧的通用浏览器，标签页共用 `persist:browser` 分区，网页没有 preload；只放行 http/https，拦截 Kaus 自身 3187/8877 端口；下载进入 `Downloads/Kaus-Browser`。`fill` 只插入文字、不发送按键，站点有配置时按配置定位输入框。可以用 `KAUS_PREVIEW_PATH=/conversations/<id>` 打开会话页。
+- 站点在 `policy.cjs` 的 `SITES` 中注册（目前是 ChatCut 和 Midjourney），新增站点还要同步 `preload.cjs`（有测试核对）和 `web/src/lib/siteSurface.ts`。启动时可以用 `KAUS_START_PATH=/workbench/<模块>`（或任意站内路径）指定打开的页面；预览服务可以用 `--dist` 指定前端构建，避免覆盖日常使用的 `web/dist`。
+- 侧边浏览器（`kaus:browser`）：会话页右侧的通用浏览器，标签页共用 `persist:browser` 分区，网页没有 preload；只放行 http/https，拦截 Kaus 自身 3187/8877 端口；下载进入 `Downloads/Kaus-Browser`。`fill` 只插入文字、不发送按键，站点有配置时按配置定位输入框。可以用 `KAUS_START_PATH=/conversations/<id>` 打开会话页。
 - Midjourney 需要 `surface:midjourney` 权限；`fill` 只填入文字或粘贴参考图，不发送按键，下载进入 `Downloads/Kaus-Midjourney`。
 - `editor:chatcut` 单独声明和授权；`context.get` 仅在实际支持的桌面壳返回 `surfaces.chatcut=true`。
 - `editor.chatcut` 接受 open/layout/hide/status，只能打开官方首页或项目编辑器。每次调用核对模块启用状态和授权。
 - 宿主将模块内坐标转换成窗口坐标，并限制在模块矩形内；切走、撤销通道、打开宿主弹窗时隐藏，保留页面与导出任务。
 - ChatCut 远端视图和授权弹窗没有 Node、preload 或宿主令牌。iframe sandbox/CSP 没有放宽。
-- 自有 Chromium 配置保存在用户 Application Support 的 KausChromiumPreview；不同模块使用独立持久会话。不会搬移 Safari、Chrome、Codex 或 Claude 的 Cookie。
+- 窗口资料保存在用户 Application Support 的 Kaus（旧的 KausChromiumPreview 不再使用）；不同模块使用独立持久会话。不会搬移 Safari、Chrome、Codex 或 Claude 的 Cookie。
 - 下载进入 `Downloads/Kaus-ChatCut`，路径不可由远端选择，重名不覆盖。正在写入文件时禁止关闭；已有项目关闭时提示先确认保存和渲染完成。
 - 本地素材缓存不跨容器复制，首次迁移按 ChatCut 提示重新关联。官方云端已保存的项目和时间线正常恢复。
 

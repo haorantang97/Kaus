@@ -42,11 +42,12 @@ cp dashboard-config.example.json dashboard-config.json
 后端已经运行时可在另一个终端执行：
 
 ```sh
-.venv/bin/python -m pip install -r desktop/requirements.txt
-.venv/bin/python desktop/app.py
+cd desktop/chromium
+npm ci
+npm start
 ```
 
-桌面壳使用当前 8877 服务。自动唤起服务使用兼容 launchd 名 `com.hermes.dashboard.backend`；新设备未安装这个服务时，先手动启动后端即可。仓库包含图标、Info.plist 和壳源码，不包含本机个人路径的 `.app` 启动器或完整签名分发安装器。
+桌面窗口是 Electron（Chromium）壳，2026-11-24 起取代 pywebview/WKWebView 壳（已删除）。它连 8877 服务（`KAUS_ORIGIN` 可改到其他本机端口），后端没响应时唤起 launchd 服务 `io.github.haorantang97.kaus.backend` 再等 15 秒；新设备未安装这个服务时，先手动启动后端。测试时用 `KAUS_USER_DATA` 指向临时目录，不碰真实窗口资料；`KAUS_START_PATH` 指定打开的页面。尚无签名安装包（见 open-items）。
 
 电脑操作工具从能力库按插件安装（或用 Agent 自带的），由该程序自己请求辅助功能和屏幕录制授权；每台 Mac 重新授权，通过实际屏幕读取验证。不要迁移 TCC 数据库或将另一台机器的权限状态标为已完成。新系统/架构需重新验收。
 

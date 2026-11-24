@@ -6,7 +6,7 @@ import pytest
 
 from drivers.account_quota import QuotaUnavailable
 from drivers.explicit_quota import stepfun
-from drivers.explicit_quota.web_login import LoginInvalid, capture_session, clean_session, login_url
+from drivers.explicit_quota.web_login import LoginInvalid, clean_session
 
 
 def token(**claims):
@@ -142,28 +142,6 @@ async def test_login_validation_checks_the_selected_official_site(monkeypatch):
     with pytest.raises(LoginInvalid):
         await stepfun.validate_session('attacker.test', secrets)
     assert len(seen) == 1
-
-
-def test_cookie_capture_is_tied_to_new_view_site_domain_and_secure_cookie():
-    data = session()
-    cookie = dict(name='Oasis-Token', value=data['access'] + '...' + data['refresh'],
-                  domain='.stepfun.ai', path='/', secure=True)
-    assert capture_session('ai', login_url('ai'), [cookie]) == data
-    assert capture_session('com', login_url('com'), [cookie]) is None
-    assert capture_session('ai', 'https://platform.stepfun.ai.evil.test/', [cookie]) is None
-    assert capture_session('ai', 'https://platform.stepfun.ai:444/', [cookie]) is None
-    for change in [dict(domain='.evil.test'), dict(name='other'), dict(secure=False), dict(path='/other')]:
-        assert capture_session('ai', login_url('ai'), [dict(cookie, **change)]) is None
-
-
-def test_cookie_capture_waits_for_activated_login_and_requires_refresh_device():
-    data = session(activated=False)
-    cookie = dict(name='Oasis-Token', value=data['access'] + '...' + data['refresh'], domain='.stepfun.ai', secure=True)
-    assert capture_session('ai', login_url('ai'), [cookie]) is None
-    data = session()
-    data['refresh'] = token(oasis_id=data['account'])
-    cookie['value'] = data['access'] + '...' + data['refresh']
-    assert capture_session('ai', login_url('ai'), [cookie]) is None
 
 
 def test_refresh_device_and_account_must_match():

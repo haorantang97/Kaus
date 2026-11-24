@@ -3,9 +3,13 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { randomUUID } = require('node:crypto');
 const policy = require('./policy.cjs');
+const daily = require('./daily.cjs');
+const desktop = require('./desktop.cjs');
 
-app.setName('Kaus Chromium Preview');
-app.setPath('userData', path.join(app.getPath('appData'), 'KausChromiumPreview'));
+// The daily Kaus window (2026-11-24; previously the pywebview/WKWebView shell).
+app.setName('Kaus');
+// KAUS_USER_DATA keeps test runs out of the real profile.
+app.setPath('userData', path.isAbsolute(process.env.KAUS_USER_DATA || '') ? process.env.KAUS_USER_DATA : path.join(app.getPath('appData'), 'Kaus'));
 app.enableSandbox();
 let window, pendingDownloads = 0;
 const surfaces = new Map(), popups = new Set();
@@ -165,7 +169,7 @@ async function browserRequest(data) {
     case 'state': return browserState();
     case 'layout': {
       const size = window.getContentBounds();
-      browser.bounds = data.visible === true ? policy.layout(data.bounds, size.width, size.height) : null;
+      browser.bounds = data.visible === true ? policy.layout(daily.scaleBounds(data.bounds, window.webContents.getZoomFactor()), size.width, size.height) : null;
       if (browser.bounds) for (const surface of surfaces.values()) surface.view.setVisible(false);
       showBrowser(); return { accepted: true };
     }
@@ -192,8 +196,9 @@ async function browserRequest(data) {
 }
 function fromUi(event) { return event.sender.id === window.webContents.id && event.senderFrame === window.webContents.mainFrame && policy.trusted(event.senderFrame.url); }
 
-app.whenReady().then(() => {
-  window = new BrowserWindow({ width: 1600, height: 1000, minWidth: 720, minHeight: 520, backgroundColor: nativeTheme.shouldUseDarkColors ? '#16180f' : '#fcfcfb', title: 'Kaus · 开发预览', webPreferences: { ...preferences, preload: path.join(__dirname, 'preload.cjs'), partition: 'kaus-preview-ui' } });
+app.whenReady().then(async () => {
+  const zh = daily.menuLanguage(app.getPreferredSystemLanguages()) === 'zh';
+  window = new BrowserWindow({ width: 1500, height: 940, minWidth: 720, minHeight: 520, backgroundColor: nativeTheme.shouldUseDarkColors ? '#16180f' : '#fcfcfb', title: 'Kaus', webPreferences: { ...preferences, preload: path.join(__dirname, 'preload.cjs'), partition: 'persist:kaus-ui' } });
   restrict(window.webContents, policy.trusted);
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (policy.remote('chatcut', url)) authorize('chatcut', url, 'persist:chatcut-content-workbench');
@@ -201,8 +206,8 @@ app.whenReady().then(() => {
     return { action: 'deny' };
   });
   window.on('close', event => {
-    if (pendingDownloads) { event.preventDefault(); dialog.showMessageBoxSync(window, { message: '文件正在保存，请稍后关闭。', buttons: ['继续等待'] }); return; }
-    if ([...surfaces.values()].some(s => s.project) && dialog.showMessageBoxSync(window, { message: '关闭开发预览？', detail: '请确认剪辑已保存，且没有正在渲染的导出。', buttons: ['取消', '关闭'], defaultId: 0, cancelId: 0 }) !== 1) event.preventDefault();
+    if (pendingDownloads) { event.preventDefault(); dialog.showMessageBoxSync(window, { message: zh ? '文件正在保存，请稍后关闭。' : 'A file is still saving. Close Kaus when it finishes.', buttons: [zh ? '继续等待' : 'Keep Waiting'] }); return; }
+    if ([...surfaces.values()].some(s => s.project) && dialog.showMessageBoxSync(window, { message: zh ? '关闭 Kaus？' : 'Close Kaus?', detail: zh ? '请确认剪辑已保存，且没有正在渲染的导出。' : 'Make sure your edit is saved and no export is rendering.', buttons: zh ? ['取消', '关闭'] : ['Cancel', 'Close'], defaultId: 0, cancelId: 0 }) !== 1) event.preventDefault();
   });
   window.on('closed', () => { for (const popup of popups) popup.destroy(); for (const { view } of [...surfaces.values(), ...browser.tabs.values()]) view.webContents.close(); surfaces.clear(); browser.tabs.clear(); app.quit(); });
   ipcMain.handle('kaus:browser', async (event, data) => (fromUi(event) && data && typeof data.action === 'string' ? browserRequest(data) : { error: 'scope_denied' }));
@@ -213,7 +218,7 @@ app.whenReady().then(() => {
     if (data.action === 'status') return surfaces.get(key)?.status || {};
     if (data.action === 'fill') return policy.site(name).input ? fill(surfaces.get(key), data) : { error: 'invalid_request' };
     if (data.action === 'layout') {
-      const size = window.getContentBounds(), bounds = policy.layout(data.bounds, size.width, size.height);
+      const size = window.getContentBounds(), bounds = policy.layout(daily.scaleBounds(data.bounds, window.webContents.getZoomFactor()), size.width, size.height);
       if (!bounds || data.visible !== true) surfaces.get(key)?.view.setVisible(false);
       else {
         // A module may show several of its own sites side by side; other modules' surfaces yield.
@@ -232,7 +237,10 @@ app.whenReady().then(() => {
     } else return { error: 'invalid_request' };
     return { accepted: true };
   });
-  Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }]));
-  void window.loadURL(policy.ORIGIN + (/^\/(?!\/)/.test(process.env.KAUS_PREVIEW_PATH || '') ? process.env.KAUS_PREVIEW_PATH : '/workbench/content-workbench'));
+  desktop.installDesktop({ getWindow: () => window, origin: policy.ORIGIN, isUi: fromUi, preferences });
+  Menu.setApplicationMenu(desktop.buildMenu(() => window));
+  // Closing the window leaves the backend (a launchd service) and its conversations running.
+  const ready = await desktop.ensureBackend(policy.ORIGIN);
+  void window.loadURL(ready ? policy.ORIGIN + daily.startPath(process.env.KAUS_START_PATH) : desktop.backendDownPage(zh));
 });
 app.on('window-all-closed', () => app.quit());

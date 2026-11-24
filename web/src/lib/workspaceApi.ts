@@ -1,4 +1,5 @@
 import { sessionRequest } from "./sessionApi";
+import { desktopBridge } from "./desktopBridge";
 
 export interface WorkspaceDirectories {
   path: string;
@@ -8,17 +9,10 @@ export interface WorkspaceDirectories {
   truncated: boolean;
 }
 
-declare global {
-  interface Window {
-    pywebview?: { api?: { choose_directory?: (initialPath: string | null) => Promise<string | null>;
-      choose_executable?: (initialPath: string | null) => Promise<string | null> } };
-  }
-}
-
 // undefined means browser fallback; null means the user cancelled the native picker.
 export async function chooseNativeWorkspace(initialPath: string | null): Promise<string | null | undefined> {
-  const choose = window.pywebview?.api?.choose_directory;
-  return choose ? await choose(initialPath) : undefined;
+  const bridge = desktopBridge();
+  return bridge ? await bridge.chooseDirectory(initialPath) : undefined;
 }
 
 export function fetchWorkspaceDirectories(path?: string, showHidden = false): Promise<WorkspaceDirectories> {

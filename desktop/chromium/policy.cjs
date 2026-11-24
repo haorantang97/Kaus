@@ -1,4 +1,5 @@
-const ORIGIN = 'http://127.0.0.1:3187';
+// The local Kaus backend (daily 8877; KAUS_ORIGIN for the isolated preview server).
+const ORIGIN = require('./daily.cjs').origin(process.env.KAUS_ORIGIN);
 function parse(value) { try { return typeof value === 'string' && value.length <= 16384 ? new URL(value) : null; } catch { return null; } }
 function plain(u) { return !!u && !u.username && !u.password; }
 // Each site is a fixed surface, not a browser: launch pages, navigation origins,

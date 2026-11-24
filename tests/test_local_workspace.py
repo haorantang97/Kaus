@@ -1,7 +1,6 @@
-"""Real temporary filesystem navigation, authentication, and native cancellation."""
+"""Real temporary filesystem navigation and authentication."""
 from pathlib import Path
 import sys
-from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -11,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "kernel")]
 from app.api.session_auth import SessionAuthPolicy
 from local_workspace import build_workspace_router
-from desktop.workspace_bridge import WorkspaceBridge
 
 
 @pytest.fixture
@@ -48,60 +46,3 @@ def test_auth_origin_and_invalid_paths(client, tmp_path):
     assert client.get(route, headers=AUTH, params={"path": str(tmp_path / "missing")}).status_code == 404
     (tmp_path / "file").touch()
     assert client.get(route, headers=AUTH, params={"path": str(tmp_path / "file")}).status_code == 404
-
-
-def native_bridge(monkeypatch, result, url="http://127.0.0.1:8877/conversations/new"):
-    monkeypatch.setitem(sys.modules, "webview", SimpleNamespace(FileDialog=SimpleNamespace(FOLDER=20)))
-    calls = []
-    def dialog(kind, **kwargs):
-        calls.append((kind, kwargs))
-        return result
-    window = SimpleNamespace(get_current_url=lambda: url, create_file_dialog=dialog)
-    bridge = WorkspaceBridge()
-    bridge._bind(window)
-    return bridge, calls, window
-
-
-def test_native_selection_and_cancel(monkeypatch, tmp_path):
-    bridge, calls, _ = native_bridge(monkeypatch, (str(tmp_path),))
-    assert bridge.choose_directory(str(tmp_path)) == str(tmp_path)
-    assert calls == [(20, {"directory": str(tmp_path), "allow_multiple": False})]
-    bridge, _, _ = native_bridge(monkeypatch, None)
-    assert bridge.choose_directory() is None
-
-
-@pytest.mark.parametrize("url", ["https://example.com", "http://127.0.0.1:8000/", "file:///tmp/index.html"])
-def test_native_bridge_rejects_other_origins(monkeypatch, url):
-    bridge, calls, _ = native_bridge(monkeypatch, None, url)
-    with pytest.raises(PermissionError):
-        bridge.choose_directory()
-    assert not calls
-
-
-def test_native_selection_does_not_leak_after_navigation(monkeypatch, tmp_path):
-    bridge, _, window = native_bridge(monkeypatch, (str(tmp_path),))
-    def dialog(*args, **kwargs):
-        window.get_current_url = lambda: "https://example.com"
-        return (str(tmp_path),)
-    window.create_file_dialog = dialog
-    with pytest.raises(PermissionError):
-        bridge.choose_directory()
-
-
-def test_native_executable_picker_preserves_selected_link_and_cancel(monkeypatch, tmp_path):
-    executable = tmp_path / 'engine'
-    executable.write_text('#!/bin/sh\nexit 0\n')
-    executable.chmod(0o700)
-    link = tmp_path / 'cli'
-    link.symlink_to(executable)
-    bridge, calls, _ = native_bridge(monkeypatch, (str(link),))
-    sys.modules['webview'].FileDialog.OPEN = 10
-    assert bridge.choose_executable(str(link)) == str(link)
-    assert calls == [(10, {'directory': str(tmp_path), 'allow_multiple': False})]
-    bridge, _, _ = native_bridge(monkeypatch, None)
-    sys.modules['webview'].FileDialog.OPEN = 10
-    assert bridge.choose_executable() is None
-    bridge, calls, _ = native_bridge(monkeypatch, (str(link),), 'https://example.com')
-    with pytest.raises(PermissionError):
-        bridge.choose_executable()
-    assert calls == []

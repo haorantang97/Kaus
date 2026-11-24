@@ -12,4 +12,4 @@ python3 desktop/build_icon.py
 
 The builder reads the existing web font and uses Core Text/Core Graphics, then `iconutil`. It writes only the three icon assets beside itself. The generated asset needs no font or build dependency at runtime.
 
-The application bundle uses `Info.plist` for Kaus branding. The existing executable name and bundle identifier remain compatible with installed launchers; service identifiers and user data directories do not change.
+The packaged app (`desktop/chromium`, see its README) uses `AppIcon.icns`.

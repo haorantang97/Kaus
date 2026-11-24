@@ -1,6 +1,7 @@
 import { sessionRequest, type BackendWire } from "./sessionApi";
 import { bindingDisplayName, engineBrand, engineFamily } from "./backend-display";
 import type { CapabilityInvitation } from "./skillOnboarding";
+import { desktopBridge } from "./desktopBridge";
 
 /** The backend catalog owns engine names, installation hints, and runtime state. */
 export interface EngineSetupFields {
@@ -63,8 +64,8 @@ export function openEngineLogin(backendId: string): Promise<{ launched: true; ba
 }
 
 export async function chooseNativeExecutable(initialPath: string | null): Promise<string | null | undefined> {
-  const choose = window.pywebview?.api?.choose_executable;
-  return choose ? await choose(initialPath) : undefined;
+  const bridge = desktopBridge();
+  return bridge ? await bridge.chooseExecutable(initialPath) : undefined;
 }
 
 export interface EngineCatalogGroup {

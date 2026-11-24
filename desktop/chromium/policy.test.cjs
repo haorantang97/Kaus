@@ -22,9 +22,9 @@ test('filling is limited to sites with an input and never carries a submit key',
  assert.equal(p.fillImage('chatcut','data:image/png;base64,iVBORw0KGgo='),null);
 });
 test('main-frame origin and module identities are exact', () => {
- assert.equal(p.trusted('http://127.0.0.1:3187/'),true);assert.equal(p.trusted('http://127.0.0.1:8877/'),false);
- assert.equal(p.trusted('http://u@127.0.0.1:3187/'),false);assert.equal(p.callback('http://127.0.0.1:3187/api/workbench/callback/content-workbench?code=synthetic'),true);
- assert.equal(p.callback('http://127.0.0.1:3187/arbitrary'),false);
+ assert.equal(p.trusted('http://127.0.0.1:8877/'),true);assert.equal(p.trusted('http://127.0.0.1:3187/'),false);
+ assert.equal(p.trusted('http://u@127.0.0.1:8877/'),false);assert.equal(p.callback('http://127.0.0.1:8877/api/workbench/callback/content-workbench?code=synthetic'),true);
+ assert.equal(p.callback('http://127.0.0.1:8877/arbitrary'),false);
  for(const id of ['../a','https://example.com','a/b','']) assert.equal(p.moduleId(id),false);
 });
 test('layout and downloads remain in bounded scopes', () => {

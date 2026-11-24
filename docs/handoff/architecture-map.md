@@ -23,7 +23,7 @@
 | 额度 | `kernel/app/account_quotas.py`、`quota_connections.py`、`kernel/drivers/*/quota.py` | 凭据只留后端；按账号来源而非 Agent 数量计额度；部分失败不影响其他卡片 |
 | 用户模块 | `kernel/app/workbench/`、`kernel/app/api/workbench*.py`、`module_backend.py`、`sdk/workbench/client.js` | 独立模块数据/权限、MessageChannel、任务绑定、可取消/恢复、禁止重放副作用 |
 | 电脑操作 | `kernel/drivers/computer_use/lease.py`、`mcp_servers/kaus_builtin_mcp.py`、`kernel/app/projects/builtin_mcp.py` | Kaus 不识别工具；只有一块屏幕牌子，由 Agent 自己占用 / 释放 |
-| 原生桌面壳 | `desktop/app.py`、`app_menu.py`、`workspace_bridge.py`、`quota_login.py`、`webview_compat.py` | 使用真实目录选择/授权跳转；浏览器截图不能代替 WKWebView 验收 |
+| 桌面窗口 | `desktop/chromium/main.cjs`（窗口、侧边浏览器、固定站点）、`desktop.cjs`（选择文件夹 / 程序、额度登录窗口、后台检查、菜单栏）、`daily.cjs`（纯函数，有测试）、`preload.cjs`（`kausDesktop` 等桥）；前端经 `web/src/lib/desktopBridge.ts` | 2026-11-24 由 pywebview 换成 Electron；原生对话框与菜单需实机验收 |
 
 ## 电脑操作调用链
 

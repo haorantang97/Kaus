@@ -3,6 +3,16 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 24 日：日常窗口换成 Chromium（Electron）壳
+
+依据 `product-decisions.md`「上线前工作（11-24）」①。
+- `desktop/chromium` 成为日常窗口：连 8877（`KAUS_ORIGIN` 可改本机端口），后端没响应时 `launchctl kickstart` 新服务名 `io.github.haorantang97.kaus.backend` 再等 15 秒，仍不行显示说明页；窗口资料移到 Application Support/Kaus（`KAUS_USER_DATA` 测试用），界面分区改为持久（localStorage 跨启动保留）；默认打开首页（`KAUS_START_PATH`）。
+- 从 pywebview 壳搬过来（`desktop.cjs`）：选择文件夹 / 程序（原生对话框，一次一个，只给 Kaus 主框架）、额度登录窗口（每次新的内存会话，只取 StepFun 平台激活后的 `Oasis-Token`，交给后端 `/complete` 校验，关窗或 10 分钟取消，结束时清会话）、菜单栏（应用 / 文件 / 编辑 / 显示 / 窗口，⌘N、⇧⌘N、⌘,、⌘0/⌘=/⌘-，文字跟随 macOS 语言）。缩放用 Chromium 页面缩放；侧边浏览器与固定站点视图的位置按缩放倍数换算（`daily.scaleBounds`）。
+- 前端：`window.pywebview.api` 三处改走 `lib/desktopBridge.ts`（`window.kausDesktop`：chooseDirectory / chooseExecutable / loginQuotaConnection）。
+- 删除 pywebview 壳：`desktop/app.py`、`app_menu.py`、`webview_compat.py`、`workspace_bridge.py`、`quota_login.py`、`requirements.txt`、`Info.plist` 及其测试；内核里只给它用的 `capture_session`、`login_url` 一并删除，判断搬到 `daily.cjs`（同样的用例改成 node 测试）。
+- 测试：`desktop/chromium` `npm test` 12 项通过（新增 `daily.test.cjs` 4 组）；前端 `npm run check` 1,101 项通过；根目录 `tests/` 354 项、`drivers/explicit_quota` 138 项通过（删掉的是旧壳测试）。
+- 实测：隔离后端（8892）+ Electron 窗口打开会话页；经调试端口检查：`kausDesktop` 等三个桥存在、`pywebview` 不存在；页头出现浏览器图标；消息里的网页链接在侧边浏览器打开（标签页载入 Example Domain）；终端面板执行命令正常；localStorage 跨刷新保留。负责人未授权屏幕控制这个窗口，所以原生菜单、文件夹 / 程序选择框、额度登录窗口、缩放后侧边浏览器的对齐没有点按实测。
+
 ## 11 月 23 日（续）：写死的文案、菜单栏语言、焦点复查
 
 负责人要求做「写死的中文、键盘焦点、快捷键、对比度」。核对后：键盘焦点（统一内侧描边）、菜单栏与 ⌘ 快捷键、灰字与 11px 字号下限已在 11-18 做完（见下方 11 月 18 日各节），本次只补剩余缺口。

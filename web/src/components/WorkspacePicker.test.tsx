@@ -11,13 +11,13 @@ vi.mock("../lib/workspaceApi", async () => ({
 }));
 const folder = (path = "/work") => ({ path, parent: "/", home: "/home", directories: [{ name: "Project", path: "/work/Project" }], truncated: false });
 beforeEach(() => { vi.mocked(fetchWorkspaceDirectories).mockReset().mockImplementation(async path => folder(path)); });
-afterEach(() => { delete window.pywebview; });
+afterEach(() => { delete window.kausDesktop; });
 
 describe("workspace selection", () => {
   it("opens the native picker and saves only the selected directory", async () => {
     const user = userEvent.setup();
     const choose = vi.fn().mockResolvedValue("/work/Project");
-    window.pywebview = { api: { choose_directory: choose } };
+    window.kausDesktop = { version: 1, chooseDirectory: choose, chooseExecutable: vi.fn(), loginQuotaConnection: vi.fn() };
     const save = vi.fn().mockResolvedValue(undefined);
     render(<WorkspacePill setting={{ value: "/work", source: "project" }} onSave={save} />);
     await user.click(screen.getByRole("button", { name: "工作目录" }));
@@ -29,7 +29,7 @@ describe("workspace selection", () => {
   it("cancel and late results from a previous project do not write", async () => {
     const user = userEvent.setup();
     let finish: (value: string | null) => void = () => {};
-    window.pywebview = { api: { choose_directory: vi.fn().mockResolvedValueOnce(null).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })) } };
+    window.kausDesktop = { version: 1, chooseDirectory: vi.fn().mockResolvedValueOnce(null).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })), chooseExecutable: vi.fn(), loginQuotaConnection: vi.fn() };
     const save = vi.fn();
     const view = render(<WorkspacePill key="a" setting={{ value: "/work", source: "project" }} onSave={save} />);
     await user.click(screen.getByRole("button", { name: "工作目录" }));

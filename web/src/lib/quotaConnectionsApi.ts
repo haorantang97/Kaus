@@ -1,4 +1,5 @@
 import { authorizedFetch } from "./authorizedFetch";
+import { desktopBridge } from "./desktopBridge";
 
 export interface QuotaConnectionField {
   key: string; label: string; type: "text" | "password" | "select"; required: boolean;
@@ -60,9 +61,7 @@ export async function saveQuotaConnection(draft: QuotaConnectionDraft, id?: stri
 export async function deleteQuotaConnection(id: string, signal?: AbortSignal): Promise<void> {
   await request(`/${encodeURIComponent(id)}`, "DELETE", undefined, signal);
 }
-type DesktopQuotaBridge = { login_quota_connection?: (id: string) => Promise<unknown> };
-function desktopBridge(): DesktopQuotaBridge | undefined { return window.pywebview?.api as DesktopQuotaBridge | undefined; }
-export function canLoginQuotaConnection(): boolean { return typeof desktopBridge()?.login_quota_connection === "function"; }
+export function canLoginQuotaConnection(): boolean { return typeof desktopBridge()?.loginQuotaConnection === "function"; }
 export async function startQuotaConnectionLogin(draft: QuotaConnectionDraft, connectionId?: string, signal?: AbortSignal): Promise<string> {
   if (!canLoginQuotaConnection()) throw new QuotaConnectionError("desktop_required");
   const value = await request("/login", "POST", { provider: draft.provider, config: draft.config, label: draft.label, sourceId: draft.sourceId, connectionId }, signal);
@@ -70,9 +69,9 @@ export async function startQuotaConnectionLogin(draft: QuotaConnectionDraft, con
   return value.loginId;
 }
 export async function openQuotaConnectionLogin(loginId: string): Promise<void> {
-  const open = desktopBridge()?.login_quota_connection;
-  if (!open) throw new QuotaConnectionError("desktop_required");
-  const result = await open(loginId);
+  const bridge = desktopBridge();
+  if (!bridge) throw new QuotaConnectionError("desktop_required");
+  const result = await bridge.loginQuotaConnection(loginId);
   if (record(result) && result.status === "failed") throw new QuotaConnectionError(typeof result.reason === "string" ? result.reason : "request_failed");
 }
 export async function fetchQuotaConnectionLogin(loginId: string, signal?: AbortSignal): Promise<QuotaLoginStatus> {
