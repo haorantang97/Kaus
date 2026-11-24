@@ -3,6 +3,14 @@
 检查于 2026-10-23–24 完成。下表是本地独立候选目录的结果；GitHub CI 以对应提交的工作流结果为准。
 
 
+## 11 月 25 日（续）：接入一屏的显示问题
+
+负责人反馈「点进去 connect 那里 UI 有 bug」。在隔离实例（无 Agent、替身 `codex` / `claude`）里点按复现，前后对比在本机 `output/visual-20261125/`（`before/after-connect-list-en`、`before/after-connect-dialog`）。
+- 英文界面「Connect」按钮比固定的 64px 动作列宽，挤到「Installed」上、也和复制图标对不齐：动作列改为至少 64px、按内容变宽，按钮不换行。「其他 Agent」左边多缩进，与各行对齐。
+- 「其他 Agent」打开的完整对话框处在「添加到项目」模式（按钮写「添加到项目」）：改为普通接入模式；关掉对话框后页面重读接入列表，并在重读完成后选中第一个可用 Agent。
+- 未处理：点「接入」后右下角「已接入」提示会盖住「协作组」胶囊（全局提示位置问题）。
+- 测试：前端 `npm run check` 1,109 项通过（新增：「其他 Agent」打开接入模式、关闭后重读）。安装包已用新代码重打。
+
 ## 11 月 25 日：数据位置设置、旧窗口资料清理
 
 依据 `product-decisions.md`「安装包与后台」③。前后对比在本机 `output/visual-20261125/`（`before-settings-row`、`after-settings-row`；改前效果用同一个安装包在 `KAUS_HOME` 固定、该行隐藏的模式下拍）。
