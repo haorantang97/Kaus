@@ -6,16 +6,23 @@
 .kaus-msg.kaus-content-message { position: relative; }
 /* 2026-11-25「界面密度」: time and actions appear on hover in the gap below the message (as in Codex and
    Claude), so they take no row of their own; always shown on touch screens and for keyboard focus. */
-.kaus-content-message .kaus-msg-footer { position: absolute; top: calc(100% - 6px); left: 0; right: 0; z-index: 3; display: flex; height: 26px; flex-wrap: nowrap; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+.kaus-content-message .kaus-msg-footer { position: absolute; top: calc(100% - 6px); left: 0; right: 0; z-index: 3; display: flex; height: 28px; flex-wrap: nowrap; align-items: center; gap: 4px; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
 .kaus-content-message:hover .kaus-msg-footer, .kaus-content-message:focus-within .kaus-msg-footer, .kaus-content-message[data-actions-visible="true"] .kaus-msg-footer { opacity: 1; pointer-events: auto; }
 @media (hover: none) { .kaus-content-message .kaus-msg-footer { position: static; opacity: 1; pointer-events: auto; margin-top: 4px; } }
 @media (prefers-reduced-motion: reduce) { .kaus-content-message .kaus-msg-footer { transition: none; } }
 .kaus-content-message.is-user .kaus-msg-footer { justify-content: flex-end; }
-.kaus-content-message .kaus-msg-actions { position: static; opacity: 1; display: flex; gap: 3px; z-index: auto; }
-.kaus-content-message .kaus-msg-action { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 0; padding: 5px; border-radius: 6px; background: transparent; color: color-mix(in srgb, var(--midground-base) 72%, transparent); }
+/* Icons line up with the text edge; the 6px button padding sits outside it (ChatGPT, Claude). */
+.kaus-content-message.is-assistant .kaus-msg-footer { left: -6px; }
+.kaus-content-message.is-user .kaus-msg-footer { right: -6px; }
+@media (hover: none) { .kaus-content-message.is-assistant .kaus-msg-footer { margin-left: -6px; } .kaus-content-message.is-user .kaus-msg-footer { margin-right: -6px; } }
+.kaus-content-message .kaus-msg-actions { position: static; opacity: 1; display: flex; gap: 0; z-index: auto; }
+.kaus-content-message .kaus-msg-action { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; padding: 6px; border-radius: 6px; background: transparent; color: var(--text-tertiary); }
+.kaus-content-message .kaus-msg-action svg { width: 15px; height: 15px; }
 .kaus-content-message .kaus-msg-action:hover { color: var(--midground-base); background: color-mix(in srgb, var(--midground-base) 6%, transparent); }
 .kaus-content-message .kaus-msg-action:disabled { cursor: default; opacity: .4; }
-.kaus-content-message .kaus-msg-time { opacity: 1; display: inline; margin: 0; color: var(--text-tertiary); font: 11px/1.4 var(--theme-font-sans); }
+/* Claude: the time leads the user message's hover row; assistant replies carry no time (Codex shows none). */
+.kaus-content-message .kaus-msg-time { order: -1; opacity: 1; display: inline; margin: 0 2px 0 0; color: var(--text-tertiary); font: 12px/1.4 var(--theme-font-sans); font-variant-numeric: tabular-nums; }
+.kaus-content-message.is-assistant .kaus-msg-time { display: none; }
 .kaus-content-message .kaus-msg-attachments { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
 .kaus-msg-delivery { display: inline-flex; align-items: center; gap: 3px; }
 .kaus-msg-delivery-status { position: relative; display: inline-flex; }
@@ -30,27 +37,27 @@
 .kaus-markdown-content { min-width: 0; overflow-wrap: anywhere; }
 .kaus-markdown-content > :first-child { margin-top: 0; }
 .kaus-markdown-content > :last-child { margin-bottom: 0; }
-.kaus-markdown-content p { margin: 0 0 14px; }
-.kaus-markdown-content h1, .kaus-markdown-content h2, .kaus-markdown-content h3, .kaus-markdown-content h4, .kaus-markdown-content h5, .kaus-markdown-content h6 { margin: 23px 0 10px; color: inherit; font-weight: 400; line-height: 1.5; }
+.kaus-markdown-content p { margin: 0 0 12px; }
+.kaus-markdown-content h1, .kaus-markdown-content h2, .kaus-markdown-content h3, .kaus-markdown-content h4, .kaus-markdown-content h5, .kaus-markdown-content h6 { margin: 20px 0 8px; color: inherit; font-weight: 600; line-height: 1.5; }
 .kaus-markdown-content h1 { font-size: 1.38em; }
 .kaus-markdown-content h2 { font-size: 1.22em; }
 .kaus-markdown-content h3 { font-size: 1.1em; }
 .kaus-markdown-content :is(h4,h5,h6) { font-size: 1em; }
-.kaus-markdown-content ul, .kaus-markdown-content ol { padding-left: 24px; margin: 10px 0 16px; }
+.kaus-markdown-content ul, .kaus-markdown-content ol { padding-left: 22px; margin: 8px 0 12px; }
 .kaus-markdown-content ul { list-style: disc; }
 .kaus-markdown-content ol { list-style: decimal; }
-.kaus-markdown-content li { padding-left: 3px; margin: 5px 0; }
+.kaus-markdown-content li { padding-left: 2px; margin: 2px 0; }
 .kaus-markdown-content li > p { margin: 0 0 6px; }
 .kaus-markdown-content li > :is(ul,ol) { margin: 4px 0; }
 .kaus-markdown-content blockquote { border-left: 3px solid color-mix(in srgb, var(--midground-base) 17%, transparent); padding: 2px 0 2px 14px; margin: 14px 0; color: color-mix(in srgb, var(--midground-base) 72%, transparent); }
 .kaus-markdown-content a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--midground-base) 40%, transparent); text-underline-offset: 3px; }
 .kaus-markdown-content hr { border: 0; border-top: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent); margin: 22px 0; }
-.kaus-markdown-content :not(pre) > code { border-radius: 4px; padding: 2px 5px; background: color-mix(in srgb, var(--midground-base) 6%, transparent); font: .89em/1.65 var(--theme-font-mono); }
-.kaus-code-block { margin: 14px 0 18px; border: 1px solid color-mix(in srgb, var(--midground-base) 11%, transparent); border-radius: 10px; overflow: hidden; background: color-mix(in srgb, var(--midground-base) 3%, var(--surface-raised)); }
-.kaus-code-header { display: flex; align-items: center; justify-content: space-between; min-height:36px; padding: 4px 12px; border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 8%, transparent); color: var(--text-tertiary); font: 11px/1.4 var(--theme-font-sans); }
+.kaus-markdown-content :not(pre) > code { border-radius: 4px; padding: 1px 4px; background: color-mix(in srgb, var(--midground-base) 6%, transparent); font: .86em/1.5 var(--theme-font-mono); }
+.kaus-code-block { margin: 12px 0 14px; border: 1px solid color-mix(in srgb, var(--midground-base) 11%, transparent); border-radius: 10px; overflow: hidden; background: color-mix(in srgb, var(--midground-base) 3%, var(--surface-raised)); }
+.kaus-code-header { display: flex; align-items: center; justify-content: space-between; min-height:32px; padding: 2px 6px 2px 12px; border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 8%, transparent); color: var(--text-tertiary); font: 11px/1.4 var(--theme-font-sans); }
 .kaus-code-header button { display: inline-flex; gap: 5px; align-items: center; cursor: default; }
-.kaus-code-block pre { margin: 0; padding: 14px 16px; overflow-x: auto; white-space: pre; }
-.kaus-code-block pre code { color: inherit; background: none; font: 12px/1.7 var(--theme-font-mono); }
+.kaus-code-block pre { margin: 0; padding: 12px 14px; overflow-x: auto; white-space: pre; }
+.kaus-code-block pre code { color: inherit; background: none; font: 12.5px/1.6 var(--theme-font-mono); }
 .kaus-markdown-table { margin: 14px 0 20px; overflow-x: auto; border: 1px solid color-mix(in srgb, var(--midground-base) 12%, transparent); border-radius: 8px; }
 .kaus-markdown-table table { width: 100%; border-collapse: collapse; font-size: .93em; }
 .kaus-markdown-table th, .kaus-markdown-table td { text-align: left; border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent); padding: 9px 12px; min-width: 90px; vertical-align: top; }

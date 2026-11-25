@@ -5,7 +5,7 @@
  * 项目概述固定在最上面，可以直接改写。还没有时，开对话注入的索引会先用新建项目时填的描述顶上。 */
 
 import { useCallback, useEffect, useState } from "react";
-import { Brain, History, Undo2 } from "lucide-react";
+import { History, Undo2 } from "lucide-react";
 
 import { useLocale } from "../i18n";
 import { backendDisplay } from "../lib/backend-display";
@@ -136,7 +136,7 @@ export function ProjectMemoryCard({ projectId, projectLabel }: {
   };
 
   return (
-    <Card title={t("memory.title")} icon={Brain} right={
+    <Card title={t("memory.title")} right={
       <Button aria-label={historyLabel} title={historyLabel} aria-pressed={history !== null} onClick={toggleHistory}><History size={15} /></Button>
     }>
       {memories === null ? <div className="py-2 text-xs" style={{ color: cream(45) }}>{t("instructions.loading")}</div> : (

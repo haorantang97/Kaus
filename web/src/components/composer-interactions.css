@@ -57,7 +57,7 @@ body :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer.is-stacked:fo
 body .kaus-group-workspace .kaus-group-composer-row:focus-within { border-color: var(--border-strong, color-mix(in srgb, var(--midground-base) 28%, transparent)); }
 body .kaus-msg.kaus-content-message.is-user { max-width: 85%; }
 body .kaus-content-message.is-user .kaus-msg-body { padding: 12px 16px; border-radius: calc(var(--radius-control, 8px) + 4px); }
-.kaus-content-message.is-assistant > .kaus-prose { padding-inline-start: 4px; }
+.kaus-content-message.is-assistant > .kaus-prose { padding-inline-start: 0; }
 .kaus-content-message.is-assistant .kaus-markdown-content > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) { padding-inline-end: clamp(0px, (100% - 384px) * .175, 56px); }
 .kaus-content-message.is-assistant .kaus-markdown-content > :is(.kaus-code-block, .kaus-markdown-table, .kaus-file-reference, .kaus-media-blocks) { margin-inline-start: -4px; }
 @media (max-width: 640px) { body .kaus-msg.kaus-content-message.is-user { max-width: clamp(85%, 448px, 100%); } }

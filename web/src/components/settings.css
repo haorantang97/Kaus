@@ -1,34 +1,41 @@
-.kaus-settings { display:grid; grid-template-columns:160px minmax(0,720px); gap:36px; max-width:980px; margin:0 auto; }
+.kaus-settings { display:grid; grid-template-columns:180px minmax(0,700px); gap:40px; max-width:920px; margin:0 auto; }
 .kaus-settings-nav { display:flex; flex-direction:column; gap:1px; align-self:start; position:sticky; top:0; }
 .kaus-settings-nav button { display:flex; align-items:center; gap:10px; min-height:30px; padding:5px 10px; border:0; border-radius:7px; background:transparent; color:var(--midground-base); font-size:13px; text-align:left; }
 .kaus-settings-nav button:hover { background:var(--control-hover); }
 .kaus-settings-nav button.is-active { background:color-mix(in srgb,var(--midground-base) 9%,transparent); font-weight: 400; }
 .kaus-settings-nav button:focus-visible { outline: none; }
 .kaus-settings-content { min-width:0; }
-.kaus-settings-content h2 { display:flex; align-items:center; gap:9px; font-size:15px; font-weight: 400; margin:0 0 20px; }
+/* Codex settings: a 24px page title, 14px group headings, rows grouped in one bordered card. */
+.kaus-settings-content h2 { display:flex; align-items:center; gap:9px; font-size:24px; font-weight:600; line-height:1.3; letter-spacing:-.01em; margin:4px 0 24px; }
 .kaus-settings-section { padding:4px 0 24px; margin-bottom:8px; }
-.kaus-settings-content .kaus-settings-page-title { font-size:19px; letter-spacing:-.025em; margin:5px 0 26px; }
-.kaus-settings-preferences { display:flex; flex-direction:column; gap:2px; max-width:620px; }
-.kaus-settings-preference-row { position:relative; display:flex; align-items:center; justify-content:space-between; gap:20px; min-height:38px; padding:3px 0; }
-.kaus-settings-preference-row > label { display:flex; align-items:center; gap:11px; flex:1; min-width:0; font-size:13px; }
+.kaus-settings-content .kaus-settings-page-title { font-size:24px; font-weight:600; letter-spacing:-.01em; margin:4px 0 24px; }
+.kaus-settings-preferences { display:flex; flex-direction:column; gap:0; padding:0 16px; border:1px solid color-mix(in srgb,var(--midground-base) 10%,transparent); border-radius:12px; background:var(--surface-raised, transparent); }
+.kaus-settings-preference-row { position:relative; display:flex; align-items:center; justify-content:space-between; gap:20px; min-height:48px; padding:8px 0; }
+.kaus-settings-preferences .kaus-settings-preference-row { border-top:1px solid color-mix(in srgb,var(--midground-base) 8%,transparent); }
+.kaus-settings-preferences > .kaus-settings-preference-row:first-child { border-top:0; }
+.kaus-settings-preferences [role="alert"] { padding:0 0 8px; }
+.kaus-settings-preference-row > label { display:flex; align-items:center; gap:11px; flex:1; min-width:0; font-size:13px; font-weight:500; }
 .kaus-settings-preference-row > label > svg { color:var(--text-secondary); flex-shrink:0; }
-.kaus-settings-preference-row > .kaus-select { width:220px; max-width:58%; }
+.kaus-settings-preference-row > .kaus-select { width:auto; min-width:140px; max-width:58%; }
 .kaus-settings-save-status { position:absolute; right:-24px; top:50%; width:16px; height:16px; transform:translateY(-50%); }
 .kaus-settings-heading { display:flex; align-items:baseline; justify-content:space-between; }
 .kaus-settings-heading>span,.kaus-settings-empty { color:var(--text-tertiary); font-size:12px; }
+/* Lists sit in the same bordered card as preference rows (Codex「Archived chats」). */
+.kaus-archive-list,.kaus-settings-list:not(:empty) { padding:0 12px; border:1px solid color-mix(in srgb,var(--midground-base) 10%,transparent); border-radius:12px; background:var(--surface-raised, transparent); }
 .kaus-archive-row,.kaus-agent-connection { display:flex; align-items:center; gap:4px; }
-.kaus-archive-row-open,.kaus-agent-connection-open { display:flex; align-items:center; gap:12px; flex:1; min-width:0; margin:0 -8px; padding:13px 8px; border:0; border-radius:8px; background:transparent; color:inherit; font:inherit; text-align:left; cursor: default; }
+.kaus-archive-row + .kaus-archive-row,.kaus-agent-connection + .kaus-agent-connection { border-top:1px solid color-mix(in srgb,var(--midground-base) 8%,transparent); }
+.kaus-archive-row-open,.kaus-agent-connection-open { display:flex; align-items:center; gap:12px; flex:1; min-width:0; margin:4px -6px; padding:6px; border:0; border-radius:8px; background:transparent; color:inherit; font:inherit; text-align:left; cursor: default; }
 .kaus-archive-row-open:hover,.kaus-agent-connection-open:hover { background:var(--control-hover); }
 .kaus-archive-row-open:focus-visible,.kaus-agent-connection-open:focus-visible { outline:2px solid var(--accent-text); outline-offset:-2px; }
 .kaus-archive-row-open>span { display:block; flex:1; min-width:0; }
-.kaus-archive-row-open strong { display:block; font-size:13px; font-weight: 400; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.kaus-archive-row-open small { display:block; margin-top:5px; font-size:11px; opacity:.55; }
-.kaus-agent-connection-open { padding:15px 8px; }
+.kaus-archive-row-open strong { display:block; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kaus-archive-row-open small { display:block; margin-top:2px; font-size:12px; color:var(--text-tertiary); }
+.kaus-agent-connection-open { padding:6px; }
 .kaus-agent-connection-open>span:first-child { flex:1; min-width:0; }
-.kaus-agent-connection strong { display:flex; align-items:center; gap:9px; font-size:13px; font-weight: 400; }
+.kaus-agent-connection strong { display:flex; align-items:center; gap:9px; font-size:13px; font-weight:500; }
 .kaus-agent-connection .kaus-engine-icon { flex-shrink:0; }
-.kaus-agent-connection-open small { display:block; font-size:11px; color:color-mix(in srgb,var(--midground-base) 65%,transparent); }
-.kaus-agent-connection-open>span>small { margin:5px 0 0 29px; }
+.kaus-agent-connection-open small { display:block; font-size:12px; color:var(--text-tertiary); }
+.kaus-agent-connection-open>span>small { margin:2px 0 0 29px; }
 .kaus-archive-row:hover .kaus-conversation-menu-trigger,.kaus-archive-row:focus-within .kaus-conversation-menu-trigger,
 .kaus-agent-connection:hover .kaus-conversation-menu-trigger,.kaus-agent-connection:focus-within .kaus-conversation-menu-trigger { opacity:1; }
 @media(max-width:720px) { .kaus-settings { grid-template-columns:1fr; gap:22px; } .kaus-settings-nav { flex-direction:row; flex-wrap:wrap; position:static; } .kaus-settings-nav button { padding:7px 10px; } }
@@ -38,6 +45,9 @@
 .kaus-settings-link { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; min-height:44px; padding:10px 0; border:0; background:transparent; color:inherit; font-size:13px; text-align:left; }
 .kaus-settings-link:hover { color:var(--accent-text); }
 a.kaus-settings-link { text-decoration:none; }
+.kaus-settings-preferences .kaus-settings-link { min-height:48px; padding:8px 0; font-weight:500; }
+.kaus-settings-preferences .kaus-settings-link + .kaus-settings-link { border-top:1px solid color-mix(in srgb,var(--midground-base) 8%,transparent); }
+.kaus-settings-preferences .kaus-settings-link-value { font-weight:400; }
 .kaus-settings-link-value { display:inline-flex; align-items:center; gap:8px; color:var(--text-secondary); }
 .kaus-settings-native { margin-top:16px; }
 .kaus-settings-native > summary { display:flex; align-items:center; justify-content:space-between; padding:14px 0; font-size:13px; cursor: default; list-style:none; }

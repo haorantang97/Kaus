@@ -254,7 +254,6 @@ export function ProjectDetailPage({
         {/* 对话入口优先于配置表，已有记录整行可打开。 */}
         <Card
           title={t("project.conversations.title")}
-          icon={MessageSquare}
           right={<Pill tone="muted">{(conversations?.length ?? 0) + historyItems.length}</Pill>}
         >
           {conversations === null ? (

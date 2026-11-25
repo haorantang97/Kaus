@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HardDrive, LoaderCircle } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 
 import { useLocale, type DictKey } from "../i18n";
 import { desktopBridge } from "../lib/desktopBridge";
@@ -44,7 +44,7 @@ export function DataLocationSetting() {
   };
   return <>
     <div className="kaus-settings-preference-row">
-      <label id="settings-data-location"><HardDrive size={16} aria-hidden="true" />{t("settings.dataLocation")}</label>
+      <label id="settings-data-location">{t("settings.dataLocation")}</label>
       <span className="kaus-settings-path" title={location.path}>{shortPath(location.path, location.home)}</span>
       <button type="button" className="kaus-inline-action" aria-describedby="settings-data-location" disabled={moving} onClick={() => void move()}>
         {moving ? <LoaderCircle size={14} className="animate-spin" aria-label={t("settings.dataLocation.moving")} /> : t("settings.dataLocation.change")}

@@ -1,7 +1,7 @@
 import { ErrorNotice, confirmAsync } from "./ui";
 import { EngineIcon } from "./EngineIcon";
 import { useEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowUpRight, Bot, FolderInput, Gauge, Info, Languages, Moon, Network, Settings2, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUpRight, Bot, FolderInput, Gauge, Info, Network, Settings2, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { LegacyApiError, restoreDeletedAgent } from "../lib/api";
 import { NewAgentModal } from "./NewAgentModal";
@@ -141,13 +141,13 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "system", onThe
           <h2 className="kaus-settings-page-title">{t("capabilities.scope.common")}</h2>
           <div className="kaus-settings-preferences">
             {onThemeChange && <div className="kaus-settings-preference-row">
-              <label htmlFor="settings-theme"><Moon size={16} aria-hidden="true" />{t("settings.appearance")}</label>
+              <label htmlFor="settings-theme">{t("settings.appearance")}</label>
               <SelectPopover id="settings-theme" label={t("settings.appearance")} value={theme} searchable={false}
                 options={[{ value: "system", label: t("settings.theme.system") }, { value: "light", label: t("settings.theme.light") }, { value: "dark", label: t("settings.theme.dark") }]}
                 onChange={value => onThemeChange(value as "system" | "light" | "dark")} />
             </div>}
             <div className="kaus-settings-preference-row">
-              <label htmlFor="settings-language"><Languages size={16} aria-hidden="true" />{t("settings.language")}</label>
+              <label htmlFor="settings-language">{t("settings.language")}</label>
               <SelectPopover id="settings-language" label={t("settings.language")} value={pref} searchable={false}
                 options={[{ value: "system", label: t("settings.language.system") }, { value: "zh", label: "简体中文" }, { value: "en", label: "English" }]}
                 onChange={value => setPref(value as LocalePref)} />
@@ -159,9 +159,9 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "system", onThe
         {section === "agents" && <AgentConnections refreshKey={`${refreshKey}:${reload}`} />}
         {section === "mcp" && <McpSettings key={`${refreshKey}:${reload}`} />}
         {section === "usage" && <AccountQuotaSettings key={`${refreshKey}:${reload}`} />}
-        {section === "coordinator" && <div className="kaus-settings-section"><h2>{t("group.coordinator.default")}</h2><CoordinatorSettings global /></div>}
+        {section === "coordinator" && <div className="kaus-settings-section"><h2 className="kaus-settings-page-title">{t("group.coordinator.default")}</h2><CoordinatorSettings global /></div>}
         {section === "archive" && <>
-          <h2>{t("settings.archive.title")}</h2>
+          <h2 className="kaus-settings-page-title">{t("settings.archive.title")}</h2>
           {error && archived && <ErrorNotice error={error} className="text-xs" />}
           <AsyncState data={archived} err={archived ? null : error}>{items => items.length === 0 ? <p className="kaus-settings-empty">{t("settings.archive.empty")}</p> :
             <div className="kaus-archive-list">{items.map(item => { const owner = archivedProject(item.projectId); return <div key={item.id} className="kaus-archive-row"
@@ -190,9 +190,9 @@ export function ConfigOverlay({ onClose, refreshKey = 0, theme = "system", onThe
         </>}
         {section === "about" && <>
           <h2 className="kaus-settings-page-title">{t("settings.about")}</h2>
-          {ABOUT_LINKS.map(link => <a key={link.key} className="kaus-settings-link" href={link.href} target="_blank" rel="noopener noreferrer">
+          <div className="kaus-settings-preferences">{ABOUT_LINKS.map(link => <a key={link.key} className="kaus-settings-link" href={link.href} target="_blank" rel="noopener noreferrer">
             {t(link.key)}<span className="kaus-settings-link-value">{link.value}<ArrowUpRight size={16} aria-hidden="true" /></span>
-          </a>)}
+          </a>)}</div>
         </>}
       </section>
     </div>

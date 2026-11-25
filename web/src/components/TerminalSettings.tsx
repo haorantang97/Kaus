@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { Check, LoaderCircle, ShieldCheck, Terminal } from "lucide-react";
+import { Check, LoaderCircle } from "lucide-react";
 import { useLocale } from "../i18n";
 import { describeFailure } from "../lib/sessionApi";
 import { fetchTerminalSettings, saveTerminalSettings, type TerminalSettingsWire } from "../lib/terminalApi";
@@ -25,9 +25,9 @@ export function TerminalSettings() {
     catch (failure) { setError(describeFailure(failure)); }
     finally { setSaving(false); }
   }
-  return <section className="flex flex-col gap-2" aria-label={t("terminal.settings.section")}>
+  return <section className="contents" aria-label={t("terminal.settings.section")}>
     <div className="kaus-settings-preference-row">
-      <label htmlFor={id}><Terminal size={16} aria-hidden="true" />{t("terminal.settings.default")}</label>
+      <label htmlFor={id}>{t("terminal.settings.default")}</label>
       <SelectPopover id={id} label={t("terminal.settings.default")} value={settings?.app ?? ""} disabled={!settings || saving}
         placeholder={t("terminal.settings.loading")} searchable={false} onChange={app => void save({ app })}
         options={[
@@ -40,7 +40,7 @@ export function TerminalSettings() {
       </span>
     </div>
     <div className="kaus-settings-preference-row">
-      <label id={`${id}-trust`}><ShieldCheck size={16} aria-hidden="true" />{t("terminal.settings.trust")}</label>
+      <label id={`${id}-trust`}>{t("terminal.settings.trust")}</label>
       <button type="button" role="switch" className="kaus-switch" aria-labelledby={`${id}-trust`} aria-checked={settings?.trustWorkspace ?? false}
         disabled={!settings || saving} title={t("terminal.settings.trustHint")}
         onClick={() => settings && void save({ trustWorkspace: !settings.trustWorkspace })}><span /></button>

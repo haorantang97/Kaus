@@ -95,8 +95,9 @@
 
 /* Composer hierarchy: context, message, then compact actions. */
 .kaus-composer-layout { width: 100%; min-width: 0; }
-:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-context { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; margin: -3px -5px 4px; }
-:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-context .kaus-bar-pill { font-size: 11px; color: color-mix(in srgb, var(--midground-base) 76%, transparent); }
+/* Where the work runs sits in the bar's leading group, after attach (Codex: + · Approve for me). */
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-context { display: inline-flex; align-items: center; gap: 2px; min-width: 0; margin: 0; }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-context .kaus-bar-pill { color: var(--chat-muted); }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-bar { flex-wrap: wrap; gap: 3px; margin: 4px -3px -2px; padding: 0; border: 0; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-bar .kaus-bar-pill.is-icon-only,
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-attach { width: 30px; height: 30px; padding: 0; justify-content: center; }

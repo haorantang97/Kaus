@@ -3,13 +3,15 @@
   --chat-muted: color-mix(in srgb, var(--midground-base) 58%, transparent);
   min-width: 0;
 }
-:is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread { max-width: 850px; padding-left: 32px; padding-right: 32px; }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread { max-width: 800px; padding-left: 32px; padding-right: 32px; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-header { padding: 8px 0; border-bottom-color: transparent; }
+/* Codex keeps the title bar across the whole pane: title at the left edge, actions at the right edge. */
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-header > .kaus-conversation-headline { max-width: none; padding-left: 20px; padding-right: 12px; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-headline { justify-content: space-between; flex-wrap: wrap; }
-:is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-title { font: 400 14px/1.5 var(--theme-font-sans); letter-spacing: 0; }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-title { font: 500 13px/1.5 var(--theme-font-sans); letter-spacing: 0; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-meta { gap: 10px; flex-wrap: wrap; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-status { font: 12px/1.5 var(--theme-font-sans); letter-spacing: 0; text-transform: none; }
-:is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread-flow { padding-top: 16px; padding-bottom: 32px; gap: 24px; }
+:is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread-flow { padding-top: 12px; padding-bottom: 32px; gap: 12px; }
 /* Empty placeholder rows (no content yet) must not add a gap of their own. */
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread-flow > div:empty { display: none; }
 :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer-wrap { padding-bottom: 12px; }
@@ -56,7 +58,7 @@
 @media (max-width: 700px) {
   :is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread { padding-left: 16px; padding-right: 16px; }
   :is(.kaus-conversation-page, .kaus-draft-page) .kaus-conversation-header { padding-top: 12px; }
-  :is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread-flow { padding-top: 16px; gap: 20px; }
+  :is(.kaus-conversation-page, .kaus-draft-page) .kaus-thread-flow { padding-top: 12px; gap: 12px; }
   :is(.kaus-conversation-page, .kaus-draft-page) .kaus-composer { padding: 12px 12px 8px; border-radius: 16px; }
   :is(.kaus-conversation-page, .kaus-draft-page) .kaus-bar-pill { max-width: 140px; padding: 5px 6px; }
   .kaus-composer-caption { font-size: 11px; }

@@ -190,13 +190,11 @@ export function Overlay({
 /* Grouped content with a quiet surface and a readable heading. */
 export function Card({
   title,
-  icon: Icon,
   right,
   children,
   className = "",
 }: {
   title?: string;
-  icon?: React.ComponentType<{ className?: string; style?: CSSProperties }>;
   right?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -205,7 +203,6 @@ export function Card({
     <div className={`kaus-card ${className}`}>
       {title && (
         <div className="kaus-card-header">
-          {Icon && <Icon className="size-[18px] shrink-0" />}
           <h3 className="kaus-card-title">{title}</h3>
           {right && <span className="ml-auto">{right}</span>}
         </div>

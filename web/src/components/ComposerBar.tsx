@@ -590,19 +590,19 @@ export function ComposerBar({
 
   return (
     <div className="kaus-composer-layout" data-testid="composer-bar">
-      <div className="kaus-composer-context">
-        {leading}
-        {engineName && <BarPill label={t("bar.engine")}><EngineIcon engine={engineId ?? engineName} />{engineName}</BarPill>}
-        <span className="kaus-bar-spacer" />
-        <WorkspacePill key={contextKey} setting={workspaceRoot} onSave={onChangeWorkspaceRoot} />
-      </div>
       {children}
+      {/* One row under the input: attach, where the work runs, then the run settings and send (2026-11-25「界面对齐」). */}
       <div className="kaus-composer-bar">
       {showAttachments && onAttach && (
         <button type="button" className="kaus-bar-pill is-button kaus-composer-attach" aria-label={t("bar.attach")} title={t("bar.attach")} onClick={onAttach}>
           <Plus size={18} aria-hidden />
         </button>
       )}
+      <div className="kaus-composer-context">
+        {leading}
+        {engineName && <BarPill label={t("bar.engine")}><EngineIcon engine={engineId ?? engineName} />{engineName}</BarPill>}
+        <WorkspacePill key={contextKey} setting={workspaceRoot} onSave={onChangeWorkspaceRoot} />
+      </div>
 
       {approval.options.length > 0 && approval.source !== "none" && approval.value !== null && (
         <BarMenu

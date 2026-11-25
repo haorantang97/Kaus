@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronRight, Info, LogIn, LogOut, Lock, Network, Pencil, Plug, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ChevronRight, Info, LogIn, LogOut, Lock, Pencil, Plug, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useLocale } from "../i18n";
 import { bindMcp, checkMcp, fetchMcp, fetchMcpList, importMcp, loginMcp, removeMcp, signOutMcp, unbindMcp,
   type McpDetail, type McpGroup, type McpItem, type McpStatus } from "../lib/mcpApi";
@@ -63,7 +63,7 @@ export function McpSettings() {
   </button>;
 
   return <div className="kaus-settings-section">
-    <div className="kaus-settings-heading"><h2><Network size={17} />MCP</h2>
+    <div className="kaus-settings-heading"><h2 className="kaus-settings-page-title">MCP</h2>
       <div className="flex gap-2">
         <Button disabled={checking || !items?.length} onClick={() => void check()} aria-label={t("mcp.check")} title={t("mcp.check")}>
           <RefreshCw size={15} className={checking ? "animate-spin" : undefined} /></Button>

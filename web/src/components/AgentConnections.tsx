@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { KeyRound, Plug, Plus, RefreshCw, Terminal } from "lucide-react";
+import { KeyRound, Plus, RefreshCw, Terminal } from "lucide-react";
 import { useLocale } from "../i18n";
 import { fetchAgentCredentials, fetchConnectedBackends, describeFailure } from "../lib/sessionApi";
 import { AgentApiKeyDialog } from "./AgentApiKeyDialog";
@@ -67,12 +67,12 @@ export function AgentConnections({ refreshKey = 0 }: { refreshKey?: string | num
     finally { setBusy(false); }
   };
   return <div className="kaus-settings-section">
-    <div className="kaus-settings-heading"><h2><Plug size={17} />Agent</h2>
+    <div className="kaus-settings-heading"><h2 className="kaus-settings-page-title">Agent</h2>
       <div className="flex gap-2"><Button disabled={busy} onClick={() => void refresh()} aria-label={t("engines.connect.refresh")} title={t("engines.connect.refresh")}><RefreshCw size={15} className={busy ? "animate-spin" : undefined} /></Button>
         <Button onClick={() => setOpen("")}><Plus size={15} />{t("engines.connect.title")}</Button></div>
     </div>
     {error && <p role="alert" className="kaus-group-error">{error}</p>}
-    <div>{preferredEngineConnections(connections).map(item => {
+    <div className="kaus-settings-list">{preferredEngineConnections(connections).map(item => {
       const name = engineBrand(item.productId ?? item.id)?.name ?? item.productName ?? backendDisplay(item.id).displayName;
       const actions: RowMenuItem[] = [
         ...(item.apiKeyEnv ? [{ id: "key", icon: <KeyRound size={16} aria-hidden />, label: t("engines.apiKey.open"), onSelect: () => setKeyFor(item) }] : []),

@@ -8,7 +8,7 @@
  * 用户自己写的内容时，问一次导入还是保留（设计稿第 3、4 节）。 */
 
 import { useEffect, useState } from "react";
-import { FileText, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { CardRowMenu } from "./CardRowMenu";
 import { useDraftEscape } from "../hooks/useDraftEscape";
@@ -144,7 +144,7 @@ export function ProjectInstructionsEditor({
   );
 
   return (
-    <Card title={t("instructions.title")} icon={FileText} right={
+    <Card title={t("instructions.title")} right={
       <Button aria-label={add} title={add} disabled={busy || draft !== null}
         onClick={() => setDraft({ id: newSectionId(), title: "", body: "", initial: { title: "", body: "" } })}><Plus size={15} /></Button>
     }>

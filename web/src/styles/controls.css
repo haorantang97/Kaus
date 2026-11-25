@@ -158,8 +158,10 @@ body :is(button, [role="button"], summary, .kaus-preview-actions > a):not(
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 24px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--midground-base) 8%, transparent);
+  /* Same title bar as a conversation (Codex): 44px, small title at the left edge, actions at the right. */
+  min-height: 44px;
+  padding: 6px 12px 6px 20px;
+  border-bottom: 0;
 }
 
 body.dark .kaus-overlay-header { border-bottom-color: color-mix(in srgb, var(--gold-deep) 30%, transparent); }
@@ -167,8 +169,8 @@ body.dark .kaus-overlay-header { border-bottom-color: color-mix(in srgb, var(--g
 .kaus-overlay-title {
   margin: 0;
   color: var(--midground-base);
-  font: 400 20px/1.35 var(--theme-font-sans);
-  letter-spacing: -.02em;
+  font: 500 13px/1.5 var(--theme-font-sans);
+  letter-spacing: 0;
 }
 
 body.dark .kaus-overlay-title { color: var(--accent-text); }
@@ -184,26 +186,26 @@ body.dark .kaus-overlay-title { color: var(--accent-text); }
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  padding: 24px 28px;
+  padding: 16px 28px 32px;
 }
 
+/* Codex settings groups: a 14px heading above one bordered card (2026-11-25). */
 .kaus-card {
-  overflow: hidden;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--midground-base) 2%, transparent);
+  background: transparent;
 }
 
 .kaus-card-header {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 18px 18px 0;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 0 8px;
 }
 
 .kaus-card-title,
 .kaus-section-title {
   margin: 0;
-  font: 400 13px/1.5 var(--theme-font-sans);
+  font: 600 14px/1.5 var(--theme-font-sans);
 }
 
 .kaus-card-header > svg {
@@ -212,7 +214,7 @@ body.dark .kaus-overlay-title { color: var(--accent-text); }
 
 body.dark .kaus-card-header > svg { color: var(--accent-text); }
 
-.kaus-card-body { padding: 18px; }
+.kaus-card-body { padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--midground-base) 10%, transparent); border-radius: 12px; background: var(--surface-raised, transparent); }
 
 .kaus-section { padding: 20px 0; }
 
@@ -249,7 +251,7 @@ body.dark .kaus-section-header::before {
 
 .kaus-modal-title {
   margin: 0 0 6px;
-  font: 400 15px/1.5 var(--theme-font-sans);
+  font: 600 16px/1.5 var(--theme-font-sans);
 }
 
 .kaus-modal-layer { animation: kaus-fade-in var(--motion-snap) var(--ease-out); }

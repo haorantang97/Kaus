@@ -26,7 +26,7 @@ import { backendDisplay, bindingDisplayName } from "../lib/backend-display";
  */
 
 import { useEffect, useState } from "react";
-import { LogIn, MessageSquare, Plug } from "lucide-react";
+import { LogIn, MessageSquare } from "lucide-react";
 
 import { useLocale, type DictKey } from "../i18n";
 import { approvalLabel, BarMenu, sourceHint } from "./ComposerBar";
@@ -824,7 +824,6 @@ export function EnginePanel({
   return (
     <Card
       title={t("engine.panel.title")}
-      icon={Plug}
       right={
         <span className="inline-flex items-center gap-2">
           {onConnectEngine && (
